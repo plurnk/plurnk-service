@@ -29,7 +29,7 @@ import { seedDemoFixture } from "./_fixture.ts";
 import { latestStableNodeVersion, versionsNamed } from "./_web-oracle.ts";
 import { hasAuditOutcome } from "./_audit-oracle.ts";
 import { failAfterCleanup } from "../live-failure.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 
 interface StoryOpts {
     signal: AbortSignal;
@@ -68,9 +68,9 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         );
         const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;
         console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
-        // {§fs-world-state} — every demo story also audits the world the model leaves behind.
-        const wsViolations = await WorldState.check(s.db);
-        assert.deepEqual(wsViolations, [], `[story:${opts.label}] the world stays lawful after the story`);
+        // {§fs-resource-state} — every demo story also audits the workspace the model leaves behind.
+        const wsViolations = await ResourceState.check(s.db);
+        assert.deepEqual(wsViolations, [], `[story:${opts.label}] the workspace stays lawful after the story`);
 
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
@@ -127,9 +127,9 @@ const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
             console.error(`[chain:${opts.label}] step ${steps.length} turns=${loop.turnIds.length} finalStatus=${loop.finalStatus}`);
             if (opts.onStep !== undefined) await opts.onStep(steps.length - 1, fixture.workspace);
         }
-        // {§fs-world-state} — the chain leaves a lawful world, audited like every story.
-        const chainViolations = await WorldState.check(s.db);
-        assert.deepEqual(chainViolations, [], `[chain:${opts.label}] the world stays lawful after the chain`);
+        // {§fs-resource-state} — the chain leaves a lawful workspace, audited like every story.
+        const chainViolations = await ResourceState.check(s.db);
+        assert.deepEqual(chainViolations, [], `[chain:${opts.label}] the workspace stays lawful after the chain`);
         return { workspace: fixture.workspace, steps, db: s.db, cleanup };
     } catch (error) {
         return await failAfterCleanup(error, cleanup);
@@ -466,11 +466,11 @@ test("an execution-restricted workspace answers a shell-tempting question withou
     } finally { await story.cleanup(); }
 });
 
-// {§fs-world-state} — create, revise, and reread one model-authored file across loops.
-test("{§fs-world-state}: create and revise a decisions document without fragmenting identity", async (t) => {
+// {§fs-resource-state} — create, revise, and reread one model-authored file across loops.
+test("{§fs-resource-state}: create and revise a decisions document without fragmenting identity", async (t) => {
     const chain = await runStoryChain({
         signal: t.signal,
-        label: "world-state-edit",
+        label: "resource-state-edit",
         prompts: [
             "Create a new file docs/decisions.md that lists exactly two architecture decisions as bullet points: we use express, and we use sqlite.",
             "In docs/decisions.md, change the sqlite decision to postgres. Leave the express one alone.",

@@ -60,7 +60,7 @@ const project = join(temp, "project");
 // harness drives AguiTransport directly with the same value.
 const operatorSecret = randomBytes(32).toString("base64url");
 const seededToken = async () => operatorSecret;
-const world = "cross-client-conformance";
+const workspace = "cross-client-conformance";
 
 const freePort = () => new Promise((accept, reject) => {
     const server = createServer();
@@ -283,7 +283,7 @@ try {
         || JSON.stringify(modelOps) !== JSON.stringify(["SEND"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
-    process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + delivered response + observed completion\n");
+    process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion\n");
     // {§file-publication} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
         "--json", "--yolo", "--workspace", "installed-files", "--worker", "File_Worker",
@@ -431,7 +431,7 @@ try {
 
     fixture.assertComplete();
 
-    const terminal = new AguiTransport(credential(), world, { workspace: world });
+    const terminal = new AguiTransport(credential(), workspace, { workspace: workspace });
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
@@ -469,7 +469,7 @@ try {
     const observer = new AguiTransport(
         credential(),
         "independent-observer",
-        { workspace: world },
+        { workspace: workspace },
     );
     const observedCapabilities = await observer.rpc("workspace.capabilities.get");
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
@@ -502,8 +502,8 @@ try {
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
     const afterRestart = new AguiTransport(
         credential(),
-        world,
-        { workspace: world },
+        workspace,
+        { workspace: workspace },
     );
     const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
     const persistedMembers = await afterRestart.rpc("workspace.members.list");

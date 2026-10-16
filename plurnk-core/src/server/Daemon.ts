@@ -1181,7 +1181,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             }) };
     }
 
-    // {§model-catalog} The catalog is a bounded, worldless local projection.
+    // {§model-catalog} The catalog is a bounded, daemon-local projection.
     // It performs no provider I/O and never changes the worker's selection.
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
         return listModelCatalog(query);
@@ -1371,9 +1371,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
-        // {§workspace-name} — with a project root and no name, the world is named after the root with
-        // the daemon's home abbreviated to `~`, and that name selects the existing world when one exists:
-        // a default is a convention shared by every client, never a second world.
+        // {§workspace-name} — with a project root and no name, the workspace is named after the root with
+        // the daemon's home abbreviated to `~`, and that name selects the existing workspace when one exists:
+        // a default is a convention shared by every client, never a second workspace.
         const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
         const selected = async (): Promise<ClientEnvelope | undefined> => {
             if (derived === undefined) return undefined;
@@ -1437,7 +1437,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§methods-worker-create}: a fresh worker is model-origin, with an empty private log.
-    // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
+    // {§machine-processes} Workers have independent histories within a shared workspace.
     async createWorker(args: ApplicationWorkerCreation): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
@@ -1477,7 +1477,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { workerId: worker.id, workerName: worker.name };
     }
 
-    // {§worker-scheme-fork} — branch a worker's log while sharing the workspace world.
+    // {§worker-scheme-fork} — branch a worker's log while sharing its workspace.
     // Core owns the workspace check and immutable worker-name admission.
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
         const workspaceId = ClientInput.assertId("run.fork", "workspaceId", args.workspaceId);
@@ -1569,7 +1569,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     registerModuleAction(registration: ModuleActionRegistration): void {
         const { name, scope, inputSchema, outputSchema, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
-        if (scope !== "worldless" && scope !== "workspace" && scope !== "worker") {
+        if (scope !== "daemon" && scope !== "workspace" && scope !== "worker") {
             throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
         }
         if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
@@ -1589,8 +1589,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         if (registration.residency !== "required" && registration.residency !== "none") {
             throw new Error(`module action '${name}' must declare its residency requirement`);
         }
-        if (scope === "worldless" && registration.residency !== "none") {
-            throw new Error(`worldless module action '${name}' cannot require workspace residency`);
+        if (scope === "daemon" && registration.residency !== "none") {
+            throw new Error(`daemon module action '${name}' cannot require workspace residency`);
         }
         if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
         this.#moduleActions.set(name, registration);
@@ -1633,7 +1633,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 );
             }
         }
-        if (registration.residency === "required" && context.scope !== "worldless") {
+        if (registration.residency === "required" && context.scope !== "daemon") {
             releaseCapabilities = await this.#residency.acquire(context.workspaceId);
         } else if (context.scope === "workspace") {
             await this.#residency.identity(context.workspaceId);

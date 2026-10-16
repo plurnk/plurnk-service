@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { failAfterCleanup } from "../live-failure.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 
 const MUTATING = new Set(["EDIT", "KILL", "COPY", "MOVE", "WORK", "FORK"]);
 
@@ -47,7 +47,7 @@ const ask = async (opts: { signal: AbortSignal; label: string; prompt: string; m
                 if (section.name === "notices" && typeof section.content === "string") notices.push(section.content);
             }
         }
-        assert.deepEqual(await WorldState.check(s.db), [], `[${opts.label}] the world stays lawful`);
+        assert.deepEqual(await ResourceState.check(s.db), [], `[${opts.label}] the workspace stays lawful`);
         const notes = join(fixture.workspace, "notes.md");
         return { result: { finalStatus: loop.finalStatus, reply: loop.lastContent, ops, notices }, notes, cleanup };
     } catch (error) {

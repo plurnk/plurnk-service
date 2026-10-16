@@ -21,7 +21,7 @@ const FLOOR = {
     PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_MAX_TURNS: "", PLURNK_AGUI_HEARTBEAT_MS: "0",
 };
 
-// The least seam the module needs to start and to answer a worldless action: the authority holding
+// The least seam the module needs to start and to answer a daemon action: the authority holding
 // the operator's secret ({§credential-authority}), the listener, no module actions and no events.
 const boot = async (
     env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret",

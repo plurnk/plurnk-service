@@ -59,8 +59,8 @@ const workspaceRow = (id: number, name: string) => ({
     project_label: null,
     created_at: "2026-01-01T00:00:00.000Z",
 });
-// {§agui-sync} An observation watches a world that exists: here, workspace 3 named `name`.
-const existingWorld = (seam: ApplicationPort, name: string): void => {
+// {§agui-sync} An observation watches a workspace that exists: here, workspace 3 named `name`.
+const existingWorkspace = (seam: ApplicationPort, name: string): void => {
     seam.listWorkspaces = async () => [workspaceRow(3, name)];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null });
 };
@@ -80,7 +80,7 @@ const workerRow = (
     lifecycle: "idle" as const,
 });
 type WorkerRow = ReturnType<typeof workerRow>;
-// A world's workers as the daemon serves them: listed, and read by exact name or id whatever their
+// A workspace's workers as the daemon serves them: listed, and read by exact name or id whatever their
 // origin. Rows read live, so a fixture that mints a worker can add its row.
 const directory = (seam: ApplicationPort, workers: readonly WorkerRow[] | ((workspaceId: number) => readonly WorkerRow[])): void => {
     const rows = typeof workers === "function" ? workers : () => workers;
@@ -105,9 +105,9 @@ const mockSeam = (operatorSecret: string | null = null) => {
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const owners = new Map<string, WorkerOwner>();
     const activations: number[] = [];
-    // A world the fixture creates exists from then on under the name it was created with, as the daemon's does.
-    const worlds = new Set<string>();
-    const world = (name: string) => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null });
+    // A workspace the fixture creates exists from then on under the name it was created with, as the daemon's does.
+    const workspaces = new Set<string>();
+    const workspace = (name: string) => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null });
     const seam: ApplicationPort = {
         credentials: new Credentials({ operatorSecret }),
         activateWorkspace: async ({ workspaceId }) => { activations.push(workspaceId); },
@@ -174,15 +174,15 @@ const mockSeam = (operatorSecret: string | null = null) => {
                 total: 1,
             };
         },
-        createWorkspace: async ({ name = "agui-t" }) => { worlds.add(name); return world(name); },
+        createWorkspace: async ({ name = "agui-t" }) => { workspaces.add(name); return workspace(name); },
         attachWorkspace: async () => {
-            const [name] = worlds;
+            const [name] = workspaces;
             if (name === undefined) throw new Error("unexpected attach");
-            return world(name);
+            return workspace(name);
         },
-        listWorkspaces: async () => [...worlds].map((name) => workspaceRow(3, name)),
+        listWorkspaces: async () => [...workspaces].map((name) => workspaceRow(3, name)),
         listWorkers: async () => [],
-        // Every named model worker of this fixture's world is worker 77, as createWorker mints it.
+        // Every named model worker of this fixture's workspace is worker 77, as createWorker mints it.
         readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
         workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
@@ -405,7 +405,7 @@ test("{§agui-status-spend} a Run's spend is its worker's since it began, republ
 
 test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal bodies without mutating history", async () => {
     const { seam, loopRuns } = mockSeam();
-    existingWorld(seam, "history");
+    existingWorkspace(seam, "history");
     const body = "Inspect, implement, and verify.\nRetain the observed evidence.";
     const tx = { runtime: "NOTE", aside: "working memory", target: null, body };
     const rows = [
@@ -487,7 +487,7 @@ test("{§module-shutdown-order} stopping AG-UI refuses new work while an existin
 
 test("{§agui-shutdown} close ends every idle connection without cancelling workers", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "w");
+    existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam);
@@ -527,7 +527,7 @@ test("{§agui-shutdown} close ends every idle connection without cancelling work
 
 test("{§agui-shutdown} preparation finishing after close cannot open a stream", async () => {
     const { seam, loopRuns } = mockSeam();
-    existingWorld(seam, "w");
+    existingWorkspace(seam, "w");
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     seam.readWorker = async ({ identity }) => {
@@ -665,7 +665,7 @@ test("a read-only management Run does not duplicate the message Run's model sett
 
 test("{§agui-worker-owner} a control Run declares its owner's capability set: the review every AG-UI owner gives, its tools, and whether a person attends", async () => {
     const { seam, owners } = mockSeam();
-    existingWorld(seam, "t1");
+    existingWorkspace(seam, "t1");
     seam.readWorkerModel = async () => ({ model: null, spawnModel: null });
     const mod = await host(seam);
     try {
@@ -687,7 +687,7 @@ test("{§agui-worker-owner} a control Run declares its owner's capability set: t
 
 test("{§agui-management-plane} a management-action AG-UI Run executes via the seam and finishes with its outcome as the Run's result, no loop", async () => {
     const { seam, modelQueries } = mockSeam();
-    // loop.inject below addresses a live world; it never mints one.
+    // loop.inject below addresses a live workspace; it never mints one.
     seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "t1", projectRoot: null, projectLabel: null });
     const mod = await host(seam);
@@ -736,7 +736,7 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
 
 test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model and exact packet count, and its workspace the current preparation and derivation", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "status");
+    existingWorkspace(seam, "status");
     seam.readWorkerModel = async () => ({
         model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
         spawnModel: null,
@@ -801,7 +801,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
 
 test("{§application-worker-observation}: an older running task owns the snapshot over newer queued and completed loops", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "status");
+    existingWorkspace(seam, "status");
     const base = { workerId: 20, prompt: "task", promptSource: null, claimedAt: null, terminatedAt: null, terminalResult: null, packetCount: 4, waitUntil: null, invocation: null };
     seam.listWorkerLoops = async () => [
         { ...base, id: 56, sequence: 2, status: 102 },
@@ -823,7 +823,7 @@ test("{§application-worker-observation}: an older running task owns the snapsho
 
 test("{§agui-worker-model-actions}: worker model get/set reach the seam and child null means inherit", async () => {
     const { seam, modelSets } = mockSeam();
-    existingWorld(seam, "t1");
+    existingWorkspace(seam, "t1");
     seam.readWorkerModel = async () => ({ model: { alias: "opus", provider: "anthropic", model: "claude" }, spawnModel: { alias: "tiny", provider: "openai", model: "mini" } });
     const mod = await host(seam);
     try {
@@ -851,7 +851,7 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
 
 test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
     const { seam, effortSets } = mockSeam();
-    existingWorld(seam, "t1");
+    existingWorkspace(seam, "t1");
     seam.readWorkerEffort = async () => ({ effort: "adaptive", source: "default", supportedEfforts: ["off", "adaptive", "high"] });
     const mod = await host(seam);
     try {
@@ -875,7 +875,7 @@ test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as
 
 test("entry.read defaults to the thread actor, honors an explicit actor, and preserves the contracts-owned wire", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "agui-t");
+    existingWorkspace(seam, "agui-t");
     const calls: Array<Parameters<ApplicationPort["readEntry"]>[0]> = [];
     const entry = {
         entryId: 42,
@@ -1097,7 +1097,7 @@ test("{§agui-module-actions} a module action colliding with an AG-UI built-in f
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "ping",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: MODULE_INPUT_SCHEMA,
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
@@ -1116,7 +1116,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
     }> = [];
     seam.listModuleActions = () => [{
         name: "example.inspect",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: MODULE_INPUT_SCHEMA,
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
@@ -1148,7 +1148,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
             };
         };
         assert.deepEqual(discovery.result.actions["example.inspect"], {
-            scope: "worldless",
+            scope: "daemon",
             inputSchema: MODULE_INPUT_SCHEMA,
             outputSchema: MODULE_OUTPUT_SCHEMA,
         });
@@ -1177,7 +1177,7 @@ test("module actions are advertised and invoked without AG-UI importing their ow
             params: {
                 target: "sample",
             },
-            context: { scope: "worldless" },
+            context: { scope: "daemon" },
         }]);
     } finally {
         await mod.close();
@@ -1205,7 +1205,7 @@ test("advertised action schemas admit inputs and reject undeclared parameters be
     let calls = 0;
     seam.listModuleActions = () => [{
         name: "example.inspect",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: {
             type: "object",
             required: ["target"],
@@ -1251,7 +1251,7 @@ test("an owner output violating its advertised schema fails at the AG-UI boundar
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "example.inspect",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: MODULE_INPUT_SCHEMA,
         outputSchema: {
             type: "object",
@@ -1296,7 +1296,7 @@ test("{§agui-module-action-scope} workspace module actions receive authority fr
             threadId: "module-workspace",
             forwardedProps: {
                 plurnk: {
-                    workspace: "trusted-world",
+                    workspace: "trusted-workspace",
                     action: {
                         kind: "example.configure",
                         workspaceId: 999,
@@ -1316,7 +1316,7 @@ test("{§agui-module-action-scope} workspace module actions receive authority fr
 
 test("{§agui-module-action-scope} worker module actions receive authority from the thread's bound worker", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "trusted-world");
+    existingWorkspace(seam, "trusted-workspace");
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
         context: ApplicationActionContext;
@@ -1337,7 +1337,7 @@ test("{§agui-module-action-scope} worker module actions receive authority from 
             threadId: "module-worker",
             forwardedProps: {
                 plurnk: {
-                    workspace: "trusted-world",
+                    workspace: "trusted-workspace",
                     action: {
                         kind: "example.worker.configure",
                         workspaceId: 999,
@@ -1367,7 +1367,7 @@ test("a module action preserves its owner-defined validation Problem", async () 
     );
     seam.listModuleActions = () => [{
         name: "example.inspect",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: MODULE_INPUT_SCHEMA,
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
@@ -1391,7 +1391,7 @@ test("{§agui-module-actions} a throwing module action becomes one generic actio
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "example.inspect",
-        scope: "worldless",
+        scope: "daemon",
         inputSchema: MODULE_INPUT_SCHEMA,
         outputSchema: MODULE_OUTPUT_SCHEMA,
     }];
@@ -1413,7 +1413,7 @@ test("{§agui-module-actions} a throwing module action becomes one generic actio
 
 test("an action failure preserves its originating Problem instead of rebuilding it at the client boundary", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "action-problem");
+    existingWorkspace(seam, "action-problem");
     const problem = Problems.create(
         "file:read",
         "target-not-found",
@@ -1551,7 +1551,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
 
 test("an unexpected action exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "action-failure");
+    existingWorkspace(seam, "action-failure");
     seam.readEntry = async () => { throw new Error("private adapter detail"); };
     const mod = await host(seam);
     try {
@@ -1666,7 +1666,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
     for (const ending of ["disconnect", "terminal"] as const) {
         test(`{§agui-run-disconnect}: ${origin} retains its lifetime role through resume and ${ending}`, async () => {
             const { seam, emit } = mockSeam();
-            existingWorld(seam, "w");
+            existingWorkspace(seam, "w");
             const workerId = 77;
             const gateWorkerId = 88;
             let pending: ProposalProjection[] = [{
@@ -1776,7 +1776,7 @@ test("{§agui-run-disconnect}: a socket closed during preparation cannot start i
 
 test("{§agui-proposal-resolve}: invalid presentation sets release nothing and leave the original complete set resumable", async () => {
     const { seam, resolves } = mockSeam();
-    existingWorld(seam, "w");
+    existingWorkspace(seam, "w");
     let pending: ProposalProjection[] = [41, 42].map((logEntryId) => ({
         logEntryId, workerId: 77, worker: "presentations", loopId: 1, turnId: 1, coordinate: `1/1/${logEntryId}`, op: "EDIT",
         target: { scheme: "file", authority: null, pathname: `file-${logEntryId}` }, body: "replacement", attrs: {},
@@ -1865,7 +1865,7 @@ test("{§agui-run-disconnect}: disconnect during resume validation cancels contr
 
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
-    existingWorld(seam, "t2");
+    existingWorkspace(seam, "t2");
     let pending: ProposalProjection[] = [{
         logEntryId: 42,
         workerId: 77,
@@ -2195,12 +2195,12 @@ test("a workspace name is its identity; attach rebinds", async () => {
     seam.listWorkspaces = async () => [workspaceRow(4, "alpha")];
     const mod = await host(seam);
     try {
-        // 1) A workspace named like an existing world attaches to IT — the exact name.
-        // (A world-scoped action binds the workspace; a control-plane one would not.)
+        // 1) A workspace named like an existing workspace attaches to IT — the exact name.
+        // (A workspace-scoped action binds the workspace; a control-plane one would not.)
         const run = await post(mod.address().port, { threadId: "alpha", workerId: "r1", forwardedProps: { plurnk: { workspace: "alpha", action: { kind: "workspace.workers" } } } });
         assert.equal(run[run.length - 1].type, "RUN_FINISHED");
-        assert.deepEqual(attached, [4], "workspace 'alpha' attached the world 'alpha' — no agui- prefix lookup");
-        // 2) A new workspace name creates a world with EXACTLY that name.
+        assert.deepEqual(attached, [4], "workspace 'alpha' attached the workspace 'alpha' — no agui- prefix lookup");
+        // 2) A new workspace name creates a workspace with EXACTLY that name.
         await post(mod.address().port, { threadId: "beta", workerId: "r2", forwardedProps: { plurnk: { workspace: "beta", action: { kind: "workspace.workers" } } } });
         assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
         // 3) workspace.attach is a REAL action kind returning the envelope.
@@ -2368,16 +2368,16 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
     } finally { await mod.close(); }
 });
 
-test("{§agui-thread-binding} a thread's worker belongs to its world, not a name: a new world under an old name binds its own", async () => {
+test("{§agui-thread-binding} a thread's worker belongs to its workspace, not a name: a new workspace under an old name binds its own", async () => {
     const { seam, finish } = mockSeam();
-    const worlds = [workspaceRow(3, "before")];
+    const workspaces = [workspaceRow(3, "before")];
     const envelope = (id: number) => ({
-        workspaceId: id, workspaceName: worlds.find((world) => world.id === id)!.name,
+        workspaceId: id, workspaceName: workspaces.find((workspace) => workspace.id === id)!.name,
         projectRoot: null, projectLabel: null,
     });
-    seam.listWorkspaces = async () => worlds;
+    seam.listWorkspaces = async () => workspaces;
     seam.attachWorkspace = async ({ workspaceId }) => envelope(workspaceId);
-    seam.createWorkspace = async ({ name }) => { worlds.push(workspaceRow(4, name!)); return envelope(4); };
+    seam.createWorkspace = async ({ name }) => { workspaces.push(workspaceRow(4, name!)); return envelope(4); };
     const workers = new Map<number, WorkerRow[]>([[3, [workerRow(77, "page")]], [4, []]]);
     directory(seam, (workspaceId) => workers.get(workspaceId) ?? []);
     seam.createWorker = async ({ workspaceId, name }) => {
@@ -2396,11 +2396,11 @@ test("{§agui-thread-binding} a thread's worker belongs to its world, not a name
     });
     try {
         await message("before");
-        worlds[0]!.name = "after"; // renamed by another client
+        workspaces[0]!.name = "after"; // renamed by another client
         await message("before");
         await message("after");
         assert.deepEqual(bound, [[3, 77], [4, 78], [3, 77]],
-            "the world now called before binds its own page; the renamed world keeps the page it had");
+            "the workspace now called before binds its own page; the renamed workspace keeps the page it had");
     } finally { await mod.close(); }
 });
 
@@ -2443,9 +2443,9 @@ test("{§agui-sync} an observation binds an existing workspace and worker, exact
     const created: string[] = [];
     seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an observation created a workspace"); };
     seam.createWorker = async () => { created.push("worker"); throw new Error("an observation created a worker"); };
-    seam.listWorkspaces = async () => [workspaceRow(3, "world")];
-    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null });
-    directory(seam, [workerRow(5, "_plurnk", "_plurnk"), workerRow(88, "world")]);
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null });
+    directory(seam, [workerRow(5, "_plurnk", "_plurnk"), workerRow(88, "workspace")]);
     const reads: number[] = [];
     seam.readLog = async ({ workerId }) => { reads.push(workerId); return logRows([]); };
     const mod = await host(seam);
@@ -2458,11 +2458,11 @@ test("{§agui-sync} an observation binds an existing workspace and worker, exact
     try {
         for (const connect of [false, true]) {
             assert.deepEqual(await refused(await observe("t", "elsewhere", connect)), [404, "workspace-not-found"]);
-            assert.deepEqual(await refused(await observe("unknown", "world", connect)), [404, "worker-not-found"]);
-            assert.deepEqual(await refused(await observe("_plurnk", "world", connect)), [404, "worker-not-found"],
+            assert.deepEqual(await refused(await observe("unknown", "workspace", connect)), [404, "worker-not-found"]);
+            assert.deepEqual(await refused(await observe("_plurnk", "workspace", connect)), [404, "worker-not-found"],
                 "the runtime actor is never bound");
         }
-        const exact = await observe("world", "world");
+        const exact = await observe("workspace", "workspace");
         assert.equal(exact.status, 200);
         await exact.text();
         assert.deepEqual(reads, [88], "the thread names the observed worker exactly, though its workspace shares the name");
@@ -2632,7 +2632,7 @@ for (const [lastName, last] of Object.entries(lastMessages)) {
             const expected = outcomeOf(last, carries, connect);
             test(`{§agui-run-input}: ${lastName} with ${carries} on ${connect ? "/agui/connect" : "/agui"} ${expected}`, async () => {
                 const { seam, loopRuns, owners, finish } = mockSeam();
-                existingWorld(seam, "matrix");
+                existingWorkspace(seam, "matrix");
                 let attached = 0;
                 seam.attachWorkspace = async () => { attached += 1; return { workspaceId: 3, workspaceName: "matrix", projectRoot: null, projectLabel: null }; };
                 // Core's keyed answers ({§message-idempotency}): a row by its coordinate, and the address the client's own
@@ -2766,7 +2766,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
     }
 });
 
-test("WORKSPACE=WORLD, AG-UI THREAD=WORKER: the workspace prop selects the world; the thread resolves to a worker", async () => {
+test("{§agui-thread-binding} explicit workspace selection resolves the thread's worker inside that workspace", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const minted: Array<Parameters<ApplicationPort["createWorker"]>[0]> = [];
@@ -2780,12 +2780,12 @@ test("WORKSPACE=WORLD, AG-UI THREAD=WORKER: the workspace prop selects the world
     seam.runLoop = async (a) => { drivenRuns.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await host(seam);
     try {
-        // The `workspace` workspace prop selects the WORLD — not the threadId. Two
+        // The `workspace` workspace prop selects the WORKSPACE — not the threadId. Two
         // distinct threads naming the SAME workspace share the one workspace.
         await post(mod.address().port, { threadId: "chat-1", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace-a" } } });
         assert.deepEqual(attaches, [7], "the workspace 'workspace-a' was attached (not a workspace named 'chat-1')");
-        assert.deepEqual(created, [], "no world was created for the thread");
-        assert.deepEqual(minted, [{ workspaceId: 7, name: "chat-1" }], "the thread names its own worker in that world");
+        assert.deepEqual(created, [], "no workspace was created for the thread");
+        assert.deepEqual(minted, [{ workspaceId: 7, name: "chat-1" }], "the thread names its own worker in that workspace");
         assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own worker");
     } finally { await mod.close(); }
 });
@@ -2836,7 +2836,7 @@ test("{§agui-thread-binding}: the same thread name remains isolated across work
     }
 });
 
-test("NO workspace prop is a 400 Problem - a worker has no world to forge from the threadId", async () => {
+test("{§agui-thread-binding} current workspace-qualified binding reports its missing selection as a Problem", async () => {
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
@@ -2844,7 +2844,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
-        assert.equal(res.status, 400, "the missing workspace is a request defect, not an internal failure");
+        assert.equal(res.status, 400, "the current adapter rejects the missing workspace selection");
         assert.equal(res.headers.get("content-type"), "application/problem+json");
         const body = await res.json() as { type: string; status: number; detail: string; stage: string; recovery: string; retryable: boolean };
         assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-required");
@@ -2853,12 +2853,11 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
         assert.equal(body.stage, "request-validation");
         assert.equal(body.recovery, "Provide a non-empty workspace name."); // {§problems-agui}
         assert.equal(body.retryable, false);
-        assert.doesNotMatch(body.detail, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO workspace was forged from the threadId");
     } finally { await mod.close(); }
 });
 
-// {§agui-thread-binding} — only a message Run brings a world into being.
+// {§agui-thread-binding} — only a message Run brings a workspace into being.
 test("an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
     let created = 0;
     const { seam } = mockSeam();
@@ -2867,13 +2866,13 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
     const mod = await host(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "designer", workerId: "r1", forwardedProps: { plurnk: { workspace: "designer", action: { kind: "loop.inject", prompt: "what are you waiting on?" } } } })) });
-        assert.equal(res.status, 404, "an action addresses a world that exists");
+        assert.equal(res.status, 404, "an action addresses a workspace that exists");
         const body = await res.json() as { type: string; workspace: string; recovery: string; retryable: boolean };
         assert.equal(body.type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
         assert.equal(body.workspace, "designer");
         assert.match(body.recovery, /workspace\.create or a message Run/);
         assert.equal(body.retryable, false);
-        assert.equal(created, 0, "no world was minted on the action's behalf");
+        assert.equal(created, 0, "no workspace was minted on the action's behalf");
     } finally { await mod.close(); }
 });
 
@@ -2969,7 +2968,7 @@ test("{§workspace-label} the workspace list and the snapshot carry each folder'
     } finally { await mod.close(); }
 });
 
-test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", async () => {
+test("CONTROL PLANE: a daemon action needs NO workspace and FORGES none", async () => {
     let created = 0, bound = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(1, "a"), workspaceRow(2, "b")];
@@ -2978,7 +2977,7 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
     seam.createWorker = async () => { bound++; throw new Error("a control-plane action minted a worker"); };
     const mod = await host(seam);
     try {
-        // workspace.list with NO workspace prop — control plane, so no world required, none forged.
+        // workspace.list with NO workspace prop — control plane, so no workspace required, none forged.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.list" } } } });
         const r = actionOutcome(ev) as { ok: boolean; result: { workspaces: unknown[] } };
         assert.equal(r.ok, true);
@@ -2991,7 +2990,7 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", asy
 
 test("run.fork admits the contract's anonymous-fork form", async () => {
     const { seam } = mockSeam();
-    existingWorld(seam, "anonymous-fork");
+    existingWorkspace(seam, "anonymous-fork");
     const calls: Parameters<ApplicationPort["forkWorker"]>[0][] = [];
     seam.forkWorker = async (args) => {
         calls.push(args);
@@ -3075,7 +3074,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "workspace/preparation",
         ]);
         for (const action of Object.values(r.result.actions)) {
-            assert.ok(action.scope === "worldless" || action.scope === "workspace");
+            assert.ok(action.scope === "daemon" || action.scope === "workspace");
             assert.equal(typeof action.inputSchema, "object");
             assert.equal(typeof action.outputSchema, "object");
         }
@@ -3085,17 +3084,17 @@ test("{§discovery} discover returns the exact public action and notification me
     } finally { await mod.close(); }
 });
 
-test("workspace.create WITH a name is worldless and does NOT demand a pre-bound workspace", async () => {
+test("workspace.create WITH a name is daemon and does NOT demand a pre-bound workspace", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, projectLabel: null });
     const mod = await host(seam);
     try {
-        // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
-        const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-world" } } } });
+        // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own workspace.
+        const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-workspace" } } } });
         const r = actionOutcome(ev) as { ok: boolean; result: { name: string } };
         assert.equal(r.ok, true);
-        assert.equal(r.result.name, "fresh-world", "created the named world, no workspace-required throw");
+        assert.equal(r.result.name, "fresh-workspace", "created the named workspace, no workspace-required throw");
     } finally { await mod.close(); }
 });
 
@@ -3121,7 +3120,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
 
 // {§agui-thread-binding} AG-UI THREAD ↔ CORE WORKER: the threadId names its worker in every Run, never
 // compared with the workspace's name; {§agui-action-binding} says what each form of Run binds of it. The
-// matrix below enumerates every form, each run in world 3 ("world") by thread "page" unless it says otherwise.
+// matrix below enumerates every form, each run in workspace 3 ("workspace") by thread "page" unless it says otherwise.
 type RunForm = {
     readonly path?: "/agui" | "/agui/connect";
     readonly messages?: ReadonlyArray<Record<string, unknown>>;
@@ -3161,7 +3160,7 @@ const UNBOUND_FORMS: Readonly<Record<string, RunForm>> = {
     "workspace.prompts naming worker 91": actionForm("workspace.prompts", { workerId: 91 }),
     "workspace.rollback naming worker 91": actionForm("workspace.rollback", { to: "1/1/1", workerId: 91 }),
     "workspace.workers": actionForm("workspace.workers"),
-    "workspace.rename": actionForm("workspace.rename", { name: "world" }),
+    "workspace.rename": actionForm("workspace.rename", { name: "workspace" }),
     "workspace.share": actionForm("workspace.share", { folder: "/srv/share" }),
     "workspace.capabilities.get": actionForm("workspace.capabilities.get"),
     "workspace.capabilities.set": actionForm("workspace.capabilities.set", { policy: {} }),
@@ -3173,11 +3172,11 @@ const UNBOUND_FORMS: Readonly<Record<string, RunForm>> = {
     "providers.list": actionForm("providers.list"),
     "models.list": actionForm("models.list"),
     "workspace.list": actionForm("workspace.list"),
-    "workspace.create": actionForm("workspace.create", { name: "world" }),
+    "workspace.create": actionForm("workspace.create", { name: "workspace" }),
     "workspace.attach": actionForm("workspace.attach", { id: 3 }),
 };
 const formKind = ({ plurnk }: RunForm): string | undefined => (plurnk?.action as { kind?: string } | undefined)?.kind;
-const formInput = (threadId: string, { messages, plurnk }: RunForm, workspace = "world"): Record<string, unknown> =>
+const formInput = (threadId: string, { messages, plurnk }: RunForm, workspace = "workspace"): Record<string, unknown> =>
     ({ threadId, messages: messages ?? [], forwardedProps: { plurnk: { workspace, ...plurnk } } });
 const runForm = (port: number, threadId: string, form: RunForm, signal?: AbortSignal): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}${form.path ?? "/agui"}`, {
@@ -3197,7 +3196,7 @@ for (const [form, input] of Object.entries(CREATING_FORMS)) {
     for (const present of [false, true]) {
         test(`{§agui-action-binding} ${form} ${present ? "binds the worker its thread names" : "creates the worker its thread names, once"}`, async () => {
             const { seam, finish } = mockSeam();
-            existingWorld(seam, "world");
+            existingWorkspace(seam, "workspace");
             const workers = [workerRow(20, "elsewhere"), ...(present ? [workerRow(44, "page")] : [])];
             directory(seam, workers);
             const minted: Array<Parameters<ApplicationPort["createWorker"]>[0]> = [];
@@ -3245,7 +3244,7 @@ for (const [form, input] of Object.entries(OWNER_OBSERVATIONS)) {
     for (const present of [false, true]) {
         test(`{§agui-action-binding} ${form} ${present ? "binds and claims the worker its thread names" : "creates the worker its thread names, once, and claims it"}`, async () => {
             const { seam } = mockSeam();
-            existingWorld(seam, "world");
+            existingWorkspace(seam, "workspace");
             const workers = [workerRow(20, "elsewhere"), ...(present ? [workerRow(44, "page")] : [])];
             directory(seam, workers);
             const minted: Array<Parameters<ApplicationPort["createWorker"]>[0]> = [];
@@ -3286,7 +3285,7 @@ for (const [form, input] of Object.entries(OWNER_OBSERVATIONS)) {
 for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
     test(`{§agui-action-binding} ${form} requires the worker its thread names: 404 before any SSE when there is none, with nothing created`, async () => {
         const { seam } = mockSeam();
-        existingWorld(seam, "world");
+        existingWorkspace(seam, "workspace");
         directory(seam, [workerRow(20, "elsewhere")]);
         seam.listModuleActions = bindingModuleActions;
         const effects: string[] = [];
@@ -3307,7 +3306,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
             // {§problems-agui}
             assert.deepEqual([problem.type, problem.detail, problem.recovery], [
                 "https://problems.plurnk.xyz/agui/http/worker-not-found",
-                'No model worker named "ghost" exists in workspace "world".',
+                'No model worker named "ghost" exists in workspace "workspace".',
                 "Name an existing model worker, or create one by sending it a message.",
             ]);
             assert.deepEqual(effects, [], "nothing is created, claimed, activated or read for a worker that does not exist");
@@ -3316,7 +3315,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
 
     test(`{§agui-action-binding} ${form} binds exactly the worker its thread names`, async () => {
         const { seam } = mockSeam();
-        existingWorld(seam, "world");
+        existingWorkspace(seam, "workspace");
         directory(seam, [workerRow(20, "elsewhere"), workerRow(44, "page")]);
         seam.listModuleActions = bindingModuleActions;
         const reached: Array<[effect: string, workerId: number]> = [];
@@ -3357,7 +3356,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
 for (const present of [true, false]) {
     test(`{§agui-client-operation} {§actor-boundary-client-operations} a client operation acts as its thread's owner, for the worker the thread names ${present ? "when it exists" : "only when it exists"}, and claims nothing`, async () => {
         const { seam, owners } = mockSeam();
-        existingWorld(seam, "world");
+        existingWorkspace(seam, "workspace");
         directory(seam, [workerRow(20, "elsewhere"), ...(present ? [workerRow(44, "page")] : [])]);
         seam.createWorker = async () => { throw new Error("a client operation minted a worker"); };
         const claims: number[] = [];
@@ -3370,7 +3369,7 @@ for (const present of [true, false]) {
         const mod = await host(seam);
         try {
             for (const action of [{ kind: "op.exec", command: "true" }, { kind: "op.parse", text: "````READ (worker:///a)````" }]) {
-                const events = await post(mod.address().port, { threadId: "page", forwardedProps: { plurnk: { workspace: "world", action } } });
+                const events = await post(mod.address().port, { threadId: "page", forwardedProps: { plurnk: { workspace: "workspace", action } } });
                 const result = actionOutcome(events) as { ok: boolean } | undefined;
                 assert.equal(result?.ok, true, JSON.stringify(result));
             }
@@ -3385,7 +3384,7 @@ for (const present of [true, false]) {
 for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
     test(`{§agui-action-binding} ${form} binds no worker, and its Run reports no worker status`, async () => {
         const { seam } = mockSeam();
-        existingWorld(seam, "world");
+        existingWorkspace(seam, "workspace");
         directory(seam, [workerRow(20, "elsewhere")]);
         seam.listModuleActions = bindingModuleActions;
         seam.invokeModuleAction = async () => ({});
@@ -3410,8 +3409,8 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
             assert.deepEqual(addressed, named === undefined ? [] : [named], "a reader reads only the worker it names");
             const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT") as BoundSnapshot | undefined;
             const scope = (AGUI_BUILTIN_ACTIONS as Readonly<Record<string, { scope: string }>>)[formKind(input)!]?.scope;
-            if (scope === "worldless") {
-                assert.equal(snapshot, undefined, "a worldless action binds no workspace either");
+            if (scope === "daemon") {
+                assert.equal(snapshot, undefined, "a daemon action binds no workspace either");
             } else {
                 assert.ok(snapshot !== undefined, "a workspace Run reports its workspace");
                 assert.equal(Object.hasOwn(snapshot.snapshot.plurnk, "status"), false, "a Run bound to no worker reports no worker status");
@@ -3441,11 +3440,11 @@ test("{§agui-thread-binding} {§agui-action-binding}: concurrent first touches 
     const { seam, finish } = mockSeam();
     let attached = 0;
     const created: string[] = [];
-    seam.listWorkspaces = async () => [workspaceRow(3, "world")];
+    seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => {
         attached += 1;
         await new Promise<void>((resolve) => setImmediate(resolve));
-        return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null };
+        return { workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null };
     };
     const workers: WorkerRow[] = [];
     directory(seam, workers);
@@ -3477,7 +3476,7 @@ test("{§agui-thread-binding} {§agui-action-binding}: concurrent first touches 
     } finally { await mod.close(); }
 });
 
-test("{§agui-thread-binding}: concurrent threads create one world, and each thread its own worker in it", async () => {
+test("{§agui-thread-binding}: concurrent threads create one workspace, and each thread its own worker in it", async () => {
     const { seam, finish } = mockSeam();
     const created: Parameters<ApplicationPort["createWorkspace"]>[0][] = [];
     let available = false;
@@ -3536,7 +3535,7 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
         assert.equal(refused.status, 404);
         assert.equal((await refused.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
         assert.notEqual(loopTerminal(await run), undefined, "the message Run ends with its loop's terminal record");
-        assert.equal(created, 1, "the creating request looks the world up itself after the failed action, and creates it");
+        assert.equal(created, 1, "the creating request looks the workspace up itself after the failed action, and creates it");
     } finally { release.resolve(); await mod.close(); }
 });
 
@@ -3548,11 +3547,11 @@ for (const stage of ["envelope", "worker"] as const) {
         let created = 0;
         const problem = Problems.create("daemon:worker", "fixture-unavailable", 503, "Fixture acquisition unavailable.", { retryable: true });
         const failure = Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
-        seam.listWorkspaces = async () => [workspaceRow(3, "world")];
+        seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
         seam.attachWorkspace = async () => {
             attached += 1;
             if (fail && stage === "envelope") throw failure;
-            return { workspaceId: 3, workspaceName: "world", projectRoot: null, projectLabel: null };
+            return { workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null };
         };
         directory(seam, []);
         seam.createWorker = async () => {
@@ -3561,7 +3560,7 @@ for (const stage of ["envelope", "worker"] as const) {
             return { workerId: 42, workerName: "named" };
         };
         const mod = await host(seam);
-        const input = { threadId: "named", runId: "fixture", forwardedProps: { plurnk: { workspace: "world", action: { kind: "worker.model.set", selector: "fresh" } } } };
+        const input = { threadId: "named", runId: "fixture", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "worker.model.set", selector: "fresh" } } } };
         try {
             const refused = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(input)) });
             assert.equal(refused.status, 503);
@@ -3638,7 +3637,7 @@ test("{§agui-thread-binding} a workspace renamed to one of its workers' names s
 
 test("{§agui-thread-binding} a thread named after its workspace binds the worker of that name, never a different one", async () => {
     const { seam, finish } = mockSeam();
-    existingWorld(seam, "project");
+    existingWorkspace(seam, "project");
     const workers = [workerRow(21, "reviewer"), workerRow(22, "page")];
     directory(seam, workers);
     const minted: string[] = [];
@@ -4014,7 +4013,7 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
 
 test("{§agui-oauth-revocation} revoking a credential ends the streams admitted under it and cancels no worker; another family's stream continues", async () => {
     const { seam } = mockSeam("s3cret");
-    existingWorld(seam, "w");
+    existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
@@ -4054,7 +4053,7 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
 
 test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a Run ended mid-reasoning closes its reasoning before RUN_ERROR; a Run that joins mid-request presents none of it", async () => {
     const { seam, emit } = mockSeam("s3cret");
-    existingWorld(seam, "w");
+    existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });

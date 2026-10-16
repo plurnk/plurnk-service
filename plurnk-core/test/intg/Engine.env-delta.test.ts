@@ -201,7 +201,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
         // A's turn 2 pulls B's edit from the shared log as a body-suppressed delta — A consulted no
-        // per-worker snapshot; it learned its world moved purely through its own log.
+        // per-worker snapshot; it learned its workspace moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");

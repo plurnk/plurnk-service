@@ -9,7 +9,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 const CHAPTER = "skill://plurnk/references/extensibility.md";
@@ -23,7 +23,7 @@ const integrate = async (t: TestContext, label: string, prompt: string): Promise
         const result = await liveLoop(s, 2, { prompt, maxTurns: 48 }, { signal: t.signal });
         assert.equal(result.finalStatus, 200, `[${label}] the request concludes`);
         assert.ok(result.lastContent.trim().length > 0, `[${label}] an answer arrives`);
-        assert.deepEqual(await WorldState.check(s.db), [], `[${label}] the world stays lawful`);
+        assert.deepEqual(await ResourceState.check(s.db), [], `[${label}] the workspace stays lawful`);
         const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
         const read = log.some((row) => row.op === "READ" && JSON.stringify(row).includes(CHAPTER));
         t.diagnostic(`[${label}] read ${CHAPTER}: ${read}`);

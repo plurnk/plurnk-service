@@ -7,7 +7,7 @@ const discovery = {
     schemaVersion: 1,
     actions: {
         ping: {
-            scope: "worldless",
+            scope: "daemon",
             inputSchema: { type: "object", additionalProperties: false },
             outputSchema: { type: "object", additionalProperties: false },
         },

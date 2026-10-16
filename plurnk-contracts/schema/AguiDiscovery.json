@@ -46,7 +46,7 @@
             "additionalProperties": false,
             "properties": {
                 "scope": {
-                    "enum": ["worldless", "workspace", "worker"]
+                    "enum": ["daemon", "workspace", "worker"]
                 },
                 "inputSchema": {
                     "$ref": "#/$defs/jsonSchema"

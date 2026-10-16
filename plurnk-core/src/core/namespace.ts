@@ -58,7 +58,7 @@ export default class Namespace {
         return key === "." ? "" : key;
     }
 
-    // True when `key` is already canonical — the fixpoint the world-state invariant
+    // True when `key` is already canonical — the fixpoint the resource-state invariant
     // asserts over every stored file-class pathname: canon(key, root) === key.
     static isCanonical(key: string, root: string | null): boolean {
         return Namespace.canonicalize(key, root) === key;

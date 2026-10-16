@@ -21,7 +21,7 @@ The exact model-facing language and operation set are owned by
 
 ## Lifecycle model
 
-Workspace = the shared world (one filesystem + membership overlay). Worker = one actor and its history over that world. Loop = one queued-to-terminal unit of work within a worker. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Workers fork and message each other — many clients, many workers, one workspace.
+Workspace = shared resources, configuration, and an optional project folder. Worker = one actor and its history within a workspace. Loop = one queued-to-terminal unit of work within a worker. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Workers fork and message each other — many clients, many workers, one workspace.
 
 ## Integration
 
@@ -80,7 +80,7 @@ The daemon can emit OpenTelemetry traces and low-cardinality metrics through the
 
 ## What the model can see
 
-Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A path admitted by neither source does not exist to the model and cannot be overwritten. Accepted creation is exclusive and never orphaned: it is Git-added or receives an inspectable exact pick. Creation defaults to `project_root`, can be disabled or expanded to the canonical namespace by operator policy, and only an explicit pick overrides Git ignore. Member edits remain proposal-gated; an outside-root member is read-only unless a pick grants it. This is a membership list, not a perimeter: an execution deliberately reaches past it, so its proposal policy — not the file surface — is where consent is asked. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-world-state}).
+Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md policy path is injected separately as privileged policy, not as a file entry. A path admitted by neither source does not exist to the model and cannot be overwritten. Accepted creation is exclusive and never orphaned: it is Git-added or receives an inspectable exact pick. Creation defaults to `project_root`, can be disabled or expanded to the canonical namespace by operator policy, and only an explicit pick overrides Git ignore. Member edits remain proposal-gated; an outside-root member is read-only unless a pick grants it. This is a membership list, not a perimeter: an execution deliberately reaches past it, so its proposal policy — not the file surface — is where consent is asked. Details: SPEC {§scheme-address} ({§fs-namespace} through {§fs-resource-state}).
 
 ## Tests
 

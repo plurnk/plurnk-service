@@ -94,7 +94,7 @@ test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream conc
         const { result, elapsed, streams } = await driveLoop(800, 0);
         assert.equal(result.result.status, 200);
         assert.ok(elapsed >= 800, `the cycle paused for the stream (elapsed ${elapsed}ms >= 800ms)`);
-        assert.ok(!/holdstub1/.test(streams), "turn 2's packet lists NO live holdstub stream — it woke to a finished world");
+        assert.ok(!/holdstub1/.test(streams), "turn 2's packet lists no live holdstub stream after its completion");
     } finally {
         if (prevHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prevHold;
     }
@@ -118,7 +118,7 @@ test("{§exec-hold-until-concluded}: a `:read` delimiter holds a read-effect spa
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { elapsed, streams } = await driveLoop(400, 0, "read", ":read");
-        assert.ok(!/holdstub/.test(streams), "turn 2 woke to a finished world — the read-effect spawn was held by its :read delimiter");
+        assert.ok(!/holdstub/.test(streams), "turn 2 observed completion — the read-effect spawn was held by its :read delimiter");
         assert.ok(elapsed >= 350, "the cycle actually paused for the stream (held, not raced)");
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });

@@ -16,7 +16,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_db.ts";
 import { connect, rpcCall } from "../intg/_rpc.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 const CODENAME = "velvet-harbor-19";
@@ -70,7 +70,7 @@ test("a2a: two workers in different roles coordinate over A2A — the writer ask
             maxTurns: 12,
         }, { signal: t.signal });
 
-        assert.deepEqual(await WorldState.check(db), [], "the world stays lawful");
+        assert.deepEqual(await ResourceState.check(db), [], "the workspace stays lawful");
         assert.equal(loop.finalStatus, 200, "the writer's loop concludes");
         assert.equal(loop.hitMaxTurns, false, "without exhausting its turns");
         assert.ok(loop.lastContent.includes(CODENAME), `the writer reports the fact only the researcher's files hold; got: ${loop.lastContent.slice(0, 300)}`);

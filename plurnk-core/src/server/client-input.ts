@@ -99,13 +99,18 @@ export default class ClientInput {
         return value;
     }
 
-    // {§workspace-name} — admission, at creation and rename. A name is embedded in paths a URL parser
-    // reads, so two spellings no path can carry are refused, never repaired: text with no Unicode
-    // encoding, and a slash-delimited segment that is exactly `.` or `..`. Nothing is decoded: a
-    // literal `%2E%2E` is ordinary text, and a dot inside a segment (`.config`, `file.txt`) is ordinary.
+    // {§workspace-name} — new names are checked at creation and rename; existing names are not rewritten.
     static assertOptionalWorkspaceName(context: string, field: string, value: unknown): string | undefined {
         const name = ClientInput.assertOptionalName(context, field, value);
         if (name === undefined) return undefined;
+        if (/^[0-9]+$/u.test(name)) {
+            ClientInput.#invalid(
+                context,
+                "name-invalid",
+                `${field} consists only of ASCII decimal digits, reserved for workspace IDs.`,
+                { field, recovery: `Provide a ${field} containing a non-digit character.` },
+            );
+        }
         if (!name.isWellFormed()) {
             ClientInput.#invalid(
                 context,

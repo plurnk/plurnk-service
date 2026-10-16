@@ -6,7 +6,7 @@
 
 import AdministrativeLoop from "../core/AdministrativeLoop.ts";
 import type { Db } from "../core/Db.ts";
-import { randomBytes } from "node:crypto";
+import crypto from "node:crypto";
 import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -62,7 +62,11 @@ export default class Envelope {
     static readonly AUTO_NAME_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     static generateWorkspaceName(): string {
-        return Array.from(randomBytes(5), (byte) => Envelope.AUTO_NAME_ALPHABET[byte % 62]).join("");
+        let name: string;
+        do {
+            name = Array.from({ length: 5 }, () => Envelope.AUTO_NAME_ALPHABET[crypto.randomInt(Envelope.AUTO_NAME_ALPHABET.length)]).join("");
+        } while (!/[A-Za-z]/u.test(name));
+        return name;
     }
 
     static async createClientEnvelope(db: Db, opts: { name?: string; projectRoot?: string | null; settings?: string } = {}): Promise<WorkspaceEnvelope> {

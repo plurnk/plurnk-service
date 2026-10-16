@@ -28,7 +28,7 @@ const projections = new Map([
             "dist/completions/plurnk-service.fish",
         ],
         forbiddenPrefixes: [
-            "dist/core/world-state.",
+            "dist/core/resource-state.",
             "dist/core/zero-pin.",
         ],
     }],

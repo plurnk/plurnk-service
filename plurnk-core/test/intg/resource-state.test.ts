@@ -1,18 +1,15 @@
-// {§fs-world-state} — the harness proves BOTH directions: a lawful world reports zero
-// violations, and a manufactured breach is DETECTED (a detector nobody has seen catch
-// anything is a guard nobody can trust). The soak half repeats turn boundaries
-// over one workspace: zero entry growth on read-only turns.
+// {§fs-resource-state} Positive and negative integrity witnesses; the soak covers repeated turns.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import WorldState from "./world-state.ts";
+import ResourceState from "./resource-state.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
-test("a lawful world reports ZERO violations after real lifecycle traffic", async () => {
+test("consistent resource state reports no violations after real lifecycle traffic", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-"));
     const db = await openMigrated();
     try {
@@ -24,8 +21,8 @@ test("a lawful world reports ZERO violations after real lifecycle traffic", asyn
         await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });
 
-        const violations = await WorldState.check(db);
-        assert.deepEqual(violations, [], "the lawful world is silent");
+        const violations = await ResourceState.check(db);
+        assert.deepEqual(violations, [], "consistent resources produce no violations");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -45,7 +42,7 @@ test("the detector CATCHES: a non-canon stored key and an alien grantor both sel
             "the closed admission set is enforced at the schema wall",
         );
 
-        const violations = await WorldState.check(db);
+        const violations = await ResourceState.check(db);
         const laws = violations.map((v) => v.invariant).toSorted();
         assert.ok(laws.includes("{§fs-canonical-name}"), `the non-canon key is caught: ${JSON.stringify(violations)}`);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }

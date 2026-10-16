@@ -10,7 +10,7 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import { rpcCall } from "../intg/_rpc.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 
 interface LogRow { op: string | null; origin: string; status_rx: number; rx: string; tx: string }
 
@@ -40,7 +40,7 @@ test("delegation: ping/pong with one named worker — spawn, answer, message by 
             .filter((row) => row.origin === "model" && row.status_rx >= 400)
             .map((row) => `${name}: ${row.op} ${row.status_rx} ${(JSON.parse(row.rx) as { problem?: { type?: string } }).problem?.type?.split("/").slice(-2).join("/") ?? ""}`));
         assert.deepEqual(refused, [], "no model operation was refused or failed in either worker");
-        assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
+        assert.deepEqual(await ResourceState.check(s.db), [], "the workspace stays lawful");
 
         assert.equal(loop.finalStatus, 200, "the parent concluded");
         assert.equal(pong.length, 1, `one worker named pong; workers ${JSON.stringify(workers.map((worker) => worker.name))}`);

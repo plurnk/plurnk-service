@@ -1,15 +1,12 @@
-// The WorldState invariant harness ({§fs-world-state}) — coverage that closes the CLASS,
-// not the instance: op-outcome tests check what an op returned; this checks what the world
-// looks like after. Run as a test epilogue and at every soak turn boundary. Pure-db,
-// read-only; a violation names its law and its row.
+// {§fs-resource-state} Read-only integrity checks over each workspace's resource projection.
 import type { Db } from "../../src/core/Db.ts";
 import Namespace from "../../src/core/namespace.ts";
 
-export interface WorldStateViolation { invariant: string; detail: string }
+export interface ResourceStateViolation { invariant: string; detail: string }
 
-export default class WorldState {
-    static async check(db: Db): Promise<WorldStateViolation[]> {
-        const violations: WorldStateViolation[] = [];
+export default class ResourceState {
+    static async check(db: Db): Promise<ResourceStateViolation[]> {
+        const violations: ResourceStateViolation[] = [];
 
         const dups = await db.ws_dup_identities.all<{ workspace_id: number; scheme: string; authority: string; pathname: string; n: number }>({});
         for (const d of dups) {

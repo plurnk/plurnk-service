@@ -460,7 +460,7 @@ It also opens questions that a chat loop cannot pose:
 - What does a model do with its memory when the memory is its own, over hours instead of minutes?
 - How should a model spend attention when attention is a query rather than a read?
 - What happens when models are trained on an instruction set rather than taught one in context?
-- How do many models, of different sizes and costs, share one world when every process in it can be
+- How do many models, of different sizes and costs, share one workspace when every process in it can be
   named?
 
 Plurnk records every request, packet and decision it makes, so these questions can be studied rather

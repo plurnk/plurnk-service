@@ -277,7 +277,7 @@ export default class Functionality {
                             ? "FunctionalityDiscoverResult"
                             : "FunctionalityMutationResult"),
                     handler: async (params, context) => {
-                        if (context.scope === "worldless" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
+                        if (context.scope === "daemon" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
                         const identity: FunctionalityIdentity = context.scope === "worker"
                             ? { workspaceId: context.workspaceId, workerId: context.workerId, scope }
                             : { workspaceId: context.workspaceId, scope };

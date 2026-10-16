@@ -57,8 +57,8 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "dist/index.js",
     ]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
-        "dist/core/world-state.js",
-        "dist/core/world-state.sql",
+        "dist/core/resource-state.js",
+        "dist/core/resource-state.sql",
         "dist/core/zero-pin.d.ts",
     ]), [
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
@@ -73,8 +73,8 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "plurnk-core: required runtime artifact is absent: dist/completions/plurnk-service.bash",
         "plurnk-core: required runtime artifact is absent: dist/completions/_plurnk-service",
         "plurnk-core: required runtime artifact is absent: dist/completions/plurnk-service.fish",
-        "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
-        "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",
+        "plurnk-core: test-only artifact leaked into package: dist/core/resource-state.js",
+        "plurnk-core: test-only artifact leaked into package: dist/core/resource-state.sql",
         "plurnk-core: test-only artifact leaked into package: dist/core/zero-pin.d.ts",
     ]);
 });

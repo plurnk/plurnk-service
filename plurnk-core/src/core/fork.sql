@@ -1,9 +1,9 @@
--- Fork a worker: branch the log, share the world (SPEC {§machine-processes}). The branch's row
+-- Fork a worker: branch the log, share the workspace (SPEC {§machine-processes}). The branch's row
 -- is claimed by worker_name_claim with fork_snapshot = 1, and that INSERT is the fork: the trigger
 -- below copies the parent's history into the branch inside the same statement
 -- ({§worker-fork-trigger}). Only worker, loop, turn and log ids are remapped, by natural key —
 -- (worker, sequence) for a loop, (loop, sequence) for a turn, (turn, sequence) for a log row.
--- Nothing of the world is copied ({§machine-processes-fork-shares-the-world}).
+-- Nothing of the workspace is copied ({§machine-processes-fork-shares-workspace}).
 
 -- INIT: workers_fork_copies_history
 DROP TRIGGER IF EXISTS workers_fork_copies_history;

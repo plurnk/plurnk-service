@@ -137,7 +137,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         for (const descriptor of this.#seam.listModuleActions()) {
             const { name, scope, inputSchema, outputSchema } = descriptor;
             if (this.#actions.has(name)) throw new Error(`AG-UI action '${name}' is registered more than once`);
-            if (scope !== "worldless" && scope !== "workspace" && scope !== "worker") {
+            if (scope !== "daemon" && scope !== "workspace" && scope !== "worker") {
                 throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
             }
             this.#actions.set(name, {
@@ -145,7 +145,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                 inputSchema,
                 outputSchema,
                 execute: async (params, _input, env, boundWorkerId) => {
-                    if (scope === "worldless") {
+                    if (scope === "daemon") {
                         return {
                             ok: true,
                             result: await this.#seam.invokeModuleAction(name, params, { scope }),
@@ -169,10 +169,10 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     }
 
     // {§agui-action-binding} An action the module does not register, or whose input its schema refuses, binds
-    // nothing and creates nothing: like a worldless one, it is answered on the control path.
+    // nothing and creates nothing: like a daemon one, it is answered on the control path.
     #requiresWorkspace({ kind, params }: ActionRequest): boolean {
         const action = this.#actions.get(kind);
-        return action !== undefined && action.scope !== "worldless"
+        return action !== undefined && action.scope !== "daemon"
             && Validator.validateJsonSchemaInstance(action.inputSchema, params).valid;
     }
 
@@ -313,14 +313,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
     }
 
-    // The name is the identity, verbatim. The workspace is the world
-    // ({§agui-thread-binding}) — selected by name via
-    // `forwardedProps.plurnk.workspace`; attach it if it exists, create it with EXACTLY that
-    // name if it doesn't. No prefixes, no forged names, no dual lookup. The workspace is
-    // REQUIRED: a worker has no existence without a world, so its absence is a contract
-    // violation the client must fix — never a workspace forged from the threadId.
-    // The threadId names a worker in that world — resolved by #boundWorker ({§agui-thread-binding}); a
-    // name resolves among model-origin workers only, so the runtime actor is never bound.
+    // {§agui-thread-binding} Resolve this Run's explicit workspace selection by exact name.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
         if (typeof workspace !== "string" || workspace.length === 0) {
@@ -373,7 +366,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             env = await this.#seam.attachWorkspace({ workspaceId: known.id });
             reattached = true;
         } else if (options.create === false) {
-            // {§agui-action-binding} — a Run that attaches only addresses a world that exists; a name that
+            // {§agui-action-binding} — a Run that attaches only addresses a workspace that exists; a name that
             // does not is the client's error, never a workspace minted on its behalf.
             throw new HttpProblemError(httpProblem(
                 "workspace-not-found",
@@ -442,15 +435,15 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return worker?.origin === "model" ? worker.id : undefined;
     }
 
-    // {§agui-run-input} The conversation a thread names, found without binding or creating anything: the world the
+    // {§agui-run-input} The conversation a thread names, found without binding or creating anything: the workspace the
     // Run selects by name and the model worker the thread names in it, or null when either does not exist.
     async #conversation(threadId: string, forwarded?: Record<string, unknown>): Promise<{ workspaceId: number; workerId: number } | null> {
-        const workspace = forwarded?.workspace;
-        if (typeof workspace !== "string") return null;
-        const world = (await this.#seam.listWorkspaces()).find(({ name }) => name === workspace);
-        if (world === undefined) return null;
-        const workerId = await this.#threadWorker(threadId, world.id);
-        return workerId === undefined ? null : { workspaceId: world.id, workerId };
+        const workspaceName = forwarded?.workspace;
+        if (typeof workspaceName !== "string") return null;
+        const workspace = (await this.#seam.listWorkspaces()).find(({ name }) => name === workspaceName);
+        if (workspace === undefined) return null;
+        const workerId = await this.#threadWorker(threadId, workspace.id);
+        return workerId === undefined ? null : { workspaceId: workspace.id, workerId };
     }
 
     // {§agui-action-binding} — what an action binds of the thread's worker. Reached only for a registered
@@ -474,7 +467,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return statusState(model, loop, spendState(spend), aliveChildren(children));
     }
 
-    // A control-plane AG-UI Run: no world bound. Open the SSE, execute the worldless verb, answer on
+    // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on
     // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
@@ -547,7 +540,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             );
         }
         try {
-            if (action.scope !== "worldless") Module.#requireWorkspace(a.kind, env);
+            if (action.scope !== "daemon") Module.#requireWorkspace(a.kind, env);
             const outcome = await action.execute(a.params, input, env, boundWorkerId, principal, onLoop);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);

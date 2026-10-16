@@ -15,10 +15,10 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
         await daemon.start();
         const { host, port } = http.httpAddress();
         // {§agui-action-binding} Each connection binds the worker its thread names, so each exists first.
-        const worlds = new Map<string, number>();
+        const workspaces = new Map<string, number>();
         for (const [index, workspace] of ["one", "one", "two"].entries()) {
-            if (!worlds.has(workspace)) worlds.set(workspace, (await daemon.createWorkspace({ name: workspace })).workspaceId);
-            await daemon.createWorker({ workspaceId: worlds.get(workspace)!, name: `observer-${index}` });
+            if (!workspaces.has(workspace)) workspaces.set(workspace, (await daemon.createWorkspace({ name: workspace })).workspaceId);
+            await daemon.createWorker({ workspaceId: workspaces.get(workspace)!, name: `observer-${index}` });
         }
         const responses = await Promise.all(["one", "one", "two"].map(async (workspace, index) => {
             const response = await fetch(`http://${host}:${port}/agui/connect`, {

@@ -108,14 +108,14 @@ export default class BuiltinActions {
     // thread's model worker when it exists, and announcing its loop to the Run that observes it.
     async #clientOperation(
         input: RunAgentInput,
-        world: ClientEnvelope,
+        workspace: ClientEnvelope,
         principal: string,
         statements: PlurnkStatement[],
         onLoop: OperationLoopListener | undefined,
     ): Promise<OperationResult[]> {
-        const contextWorkerId = await this.#threadWorker(input.threadId, world.workspaceId);
+        const contextWorkerId = await this.#threadWorker(input.threadId, workspace.workspaceId);
         return await this.#seam().dispatchClientAction({
-            workspaceId: world.workspaceId,
+            workspaceId: workspace.workspaceId,
             actor: MessageAddress.owner(principal, input.threadId),
             ...(contextWorkerId === undefined ? {} : { contextWorkerId }),
             statements,
@@ -136,7 +136,7 @@ export default class BuiltinActions {
         onLoop?: OperationLoopListener,
     ): Promise<ActionOutcome> {
         try {
-            // Worldless actions never bind or forge a workspace.
+            // Daemon actions never bind or forge a workspace.
             switch (kind) {
                 case "ping": return { ok: true, result: {} };
                 case "discover": return { ok: true, result: await this.#capabilities() };
@@ -146,8 +146,7 @@ export default class BuiltinActions {
                 }
                 case "workspace.list": return { ok: true, result: { workspaces: await this.#seam().listWorkspaces() } };
                 case "workspace.create": {
-                    // The name IS the identity: an explicit name creates/attaches EXACTLY
-                    // that workspace; no name = the daemon names it and the real name binds.
+                    // An explicit name selects exactly that workspace; otherwise core names it.
                     if (Object.hasOwn(p, "name") && (typeof p.name !== "string" || p.name.length === 0)) {
                         return actionFailure(
                             "invalid-action-parameters",
@@ -157,8 +156,7 @@ export default class BuiltinActions {
                         );
                     }
                     if (typeof p.name === "string") {
-                        // The name IS the world here — feed it as the workspace so #envelope
-                        // creates/attaches exactly it (p carries no `workspace` of its own).
+                        // Creation parameters carry `name`, while binding receives `workspace`.
                         const { env: created } = await this.#envelope(p.name, { ...p, workspace: p.name });
                         return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                     }
@@ -193,14 +191,14 @@ export default class BuiltinActions {
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName } };
                 }
             }
-            const world = this.#requireWorkspace(kind, env);
+            const workspace = this.#requireWorkspace(kind, env);
             switch (kind) {
-                case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(typeof p.id === "number" ? p.id : world.workspaceId) } };
+                case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(typeof p.id === "number" ? p.id : workspace.workspaceId) } };
                 case "log.read": {
                     // Default worker: the bound worker; p.workerId pins another.
                     const readWorkerId = typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId);
                     const entries = await this.#seam().readLog({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: readWorkerId,
                         ...(Object.hasOwn(p, "limit") ? { limit: p.limit as number } : {}),
                         ...(Object.hasOwn(p, "sinceId") ? { sinceId: p.sinceId as number } : {}),
@@ -222,7 +220,7 @@ export default class BuiltinActions {
                         );
                     }
                     const ack = await this.#seam().runLoop({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                         prompt: p.prompt,
                         ...MessageAddress.submission(principal, input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
@@ -240,13 +238,13 @@ export default class BuiltinActions {
                     ok: true,
                     result: {
                         prompts: await this.#seam().listPrompts(
-                            world.workspaceId,
+                            workspace.workspaceId,
                             Object.hasOwn(p, "limit") ? p.limit as number : undefined,
                             typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                         ),
                     },
                 };
-                case "workspace.share": return { ok: true, result: await this.#seam().shareWorkspace({ workspaceId: world.workspaceId, folder: p.folder as string }) };
+                case "workspace.share": return { ok: true, result: await this.#seam().shareWorkspace({ workspaceId: workspace.workspaceId, folder: p.folder as string }) };
                 case "workspace.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) {
                         return actionFailure(
@@ -256,7 +254,7 @@ export default class BuiltinActions {
                             { field: "name", recovery: "Provide the new workspace name." },
                         );
                     }
-                    return { ok: true, result: await this.#seam().renameWorkspace(world.workspaceId, p.name) };
+                    return { ok: true, result: await this.#seam().renameWorkspace(workspace.workspaceId, p.name) };
                 }
                 // {§rollback} — the bound worker's log, or a named worker's; the reversals are one client
                 // operation of this thread's owner ({§connection-lifecycle}).
@@ -279,7 +277,7 @@ export default class BuiltinActions {
                         );
                     }
                     return { ok: true, result: await this.#seam().rollback({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                         actor: MessageAddress.owner(principal, input.threadId),
                         to: p.to,
@@ -304,7 +302,7 @@ export default class BuiltinActions {
                         );
                     }
                     const result = Validator.assertEntryReadResult(await this.#seam().readEntry({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: typeof p.workerId === "number"
                             ? p.workerId
                             : BuiltinActions.#bound(boundWorkerId),
@@ -328,7 +326,7 @@ export default class BuiltinActions {
                         runtime: "sh", aside: null, target: null,
                         metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
-                    const [result] = await this.#clientOperation(input, world, principal, [statement], onLoop);
+                    const [result] = await this.#clientOperation(input, workspace, principal, [statement], onLoop);
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
                     return operationOutcome(result);
                 }
@@ -343,7 +341,7 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Provide PLURNK statements to parse." },
                         );
                     }
-                    const parsed = PlurnkParser.parseStatements(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
+                    const parsed = PlurnkParser.parseStatements(p.text, { executors: this.#seam().executorTags(workspace.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(workspace.workspaceId) });
                     const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
@@ -373,17 +371,17 @@ export default class BuiltinActions {
                     }
                     const dispatched = statements.length === 0
                         ? []
-                        : await this.#clientOperation(input, world, principal, statements, onLoop);
+                        : await this.#clientOperation(input, workspace, principal, statements, onLoop);
                     let index = 0;
                     for (let i = 0; i < results.length; i++) {
                         if (results[i] === null) results[i] = dispatched[index++];
                     }
                     return { ok: true, result: { results } };
                 }
-                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: world.workspaceId, workerId: BuiltinActions.#bound(boundWorkerId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam().forkWorker({ workspaceId: workspace.workspaceId, workerId: BuiltinActions.#bound(boundWorkerId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 case "worker.model.get": {
                     const { model, spawnModel } = await this.#seam().readWorkerModel({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                     });
                     return { ok: true, result: { model, spawnModel } };
@@ -398,7 +396,7 @@ export default class BuiltinActions {
                         );
                     }
                     return { ok: true, result: await this.#seam().setWorkerModel({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                         selector: p.selector,
                         ...(p.effort === undefined ? {} : { effort: p.effort }),
@@ -415,14 +413,14 @@ export default class BuiltinActions {
                         );
                     }
                     return { ok: true, result: await this.#seam().setWorkerSpawnModel({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                         selector: p.selector as string | null,
                     }) };
                 }
                 case "worker.effort.get": {
                     return { ok: true, result: await this.#seam().readWorkerEffort({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                     }) };
                 }
@@ -436,19 +434,19 @@ export default class BuiltinActions {
                         );
                     }
                     return { ok: true, result: await this.#seam().setWorkerEffort({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                         effort: p.effort,
                     }) };
                 }
                 case "workspace.capabilities.get": {
                     return { ok: true, result: await this.#seam().readWorkspaceCapabilities({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                     }) };
                 }
                 case "workspace.capabilities.set": {
                     return { ok: true, result: await this.#seam().setWorkspaceCapabilities({
-                        workspaceId: world.workspaceId,
+                        workspaceId: workspace.workspaceId,
                         policy: p.policy as CapabilityPolicy,
                     }) };
                 }

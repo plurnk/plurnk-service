@@ -21,7 +21,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
-export type ModuleActionScope = "worldless" | "workspace" | "worker";
+export type ModuleActionScope = "daemon" | "workspace" | "worker";
 
 export type ModuleActionContext = ApplicationActionContext;
 

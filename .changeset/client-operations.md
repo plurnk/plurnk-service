@@ -21,7 +21,7 @@ workspace's: each journals as one administrative loop in the runtime worker
   apply ({§proposal-disposition}). A clarification it would need fails at once
   as unsupported.
 - An operation acts in three frames ({§actor-boundary-client-operations}):
-  - The world is the workspace's. `_plurnk` keeps no layer of its own, so a
+  - Resources belong to the workspace. `_plurnk` keeps no layer of its own, so a
     person's `env:///` reads and writes the workspace layer.
   - The voice is the person's. A message the operation delivers (SEND, or
     WORK to a worker that exists) arrives from the person, as a thread

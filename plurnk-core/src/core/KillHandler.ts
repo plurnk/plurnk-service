@@ -85,7 +85,7 @@ export default class KillHandler {
         }
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // log:/// KILL has already gone through the projection-curation owner.
-        // This path owns scheme-specific world and process KILL semantics.
+        // This path owns scheme-specific resource and process KILL semantics.
         const killable = binding?.handler as SchemeHandler | undefined;
         if (killable !== undefined && typeof killable.kill === "function"
             && (!(killable instanceof ExecOutputScheme) || killable.kills(path))) {

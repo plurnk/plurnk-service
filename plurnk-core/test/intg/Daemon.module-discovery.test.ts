@@ -43,7 +43,7 @@ export default () => ({
     setup(seam) {
         seam.registerModuleAction({
             name: "fixture.ping",
-            scope: "worldless",
+            scope: "daemon",
             residency: "none",
             inputSchema: { type: "object", additionalProperties: false },
             outputSchema: {
@@ -65,7 +65,7 @@ export default () => ({
             actions.some(({ name }) => name === "fixture.ping"),
             `the discovered module's action is registered: ${actions.map(({ name }) => name).join(", ")}`,
         );
-        const result = await daemon.invokeModuleAction("fixture.ping", {}, { scope: "worldless" });
+        const result = await daemon.invokeModuleAction("fixture.ping", {}, { scope: "daemon" });
         assert.deepEqual(result, { pong: true });
     } finally {
         if (daemon !== null) await daemon.stop();
@@ -102,7 +102,7 @@ const trace = ${JSON.stringify(trace)};
 export default () => ({
     setup(seam) {
         seam.registerModuleAction({
-            name: "fixture.native", scope: "worldless", residency: "none",
+            name: "fixture.native", scope: "daemon", residency: "none",
             inputSchema: { type: "object", additionalProperties: false },
             outputSchema: { type: "object", required: ["value"], additionalProperties: false,
                 properties: { value: { type: "string" } } },
@@ -127,7 +127,7 @@ export default () => ({
     const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
     try {
         await daemon.start();
-        assert.deepEqual(await daemon.invokeModuleAction("fixture.native", {}, { scope: "worldless" }), { value: "from-plugin" });
+        assert.deepEqual(await daemon.invokeModuleAction("fixture.native", {}, { scope: "daemon" }), { value: "from-plugin" });
         const notice = daemon.configurationNotices().find(({ key }) => key === join(broken, "plugin.json"));
         assert.ok(notice, "invalid native code is reported without preventing unrelated modules from loading");
     } finally {

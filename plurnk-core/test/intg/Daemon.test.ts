@@ -231,7 +231,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             assert.throws(
                 () => seam.registerModuleAction({
                     name: "",
-                    scope: "worldless",
+                    scope: "daemon",
                     residency: "none",
                     inputSchema: MODULE_INPUT_SCHEMA,
                     outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -242,7 +242,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             assert.throws(
                 () => seam.registerModuleAction({
                     name: "example.invalid",
-                    scope: "worldless",
+                    scope: "daemon",
                     residency: "none",
                     inputSchema: { $ref: "https://example.invalid/Missing.json" },
                     outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -252,7 +252,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             );
             seam.registerModuleAction({
                 name: "example.inspect",
-                scope: "worldless",
+                scope: "daemon",
                 residency: "none",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -264,7 +264,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             assert.throws(
                 () => seam.registerModuleAction({
                     name: "example.inspect",
-                    scope: "worldless",
+                    scope: "daemon",
                     residency: "none",
                     inputSchema: MODULE_INPUT_SCHEMA,
                     outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -281,7 +281,7 @@ test("{§module-action-registration} Daemon: module actions register once during
         const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp.", "workspace.a2a."];
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
             name: "example.inspect",
-            scope: "worldless",
+            scope: "daemon",
             inputSchema: MODULE_INPUT_SCHEMA,
             outputSchema: MODULE_OUTPUT_SCHEMA,
         }]);
@@ -299,16 +299,16 @@ test("{§module-action-registration} Daemon: module actions register once during
             await daemon.invokeModuleAction(
                 "example.inspect",
                 { target: "sample" },
-                { scope: "worldless" },
+                { scope: "daemon" },
             ),
             { inspected: "sample" },
         );
         assert.deepEqual(calls, [{
             params: { target: "sample" },
-            context: { scope: "worldless" },
+            context: { scope: "daemon" },
         }]);
         await assert.rejects(
-            () => daemon.invokeModuleAction("missing", {}, { scope: "worldless" }),
+            () => daemon.invokeModuleAction("missing", {}, { scope: "daemon" }),
             /module action 'missing' is not registered/,
         );
         await assert.rejects(
@@ -317,7 +317,7 @@ test("{§module-action-registration} Daemon: module actions register once during
                 {},
                 { scope: "workspace", workspaceId: 1 },
             ),
-            /requires worldless context, not workspace/,
+            /requires daemon context, not workspace/,
         );
     } finally {
         await daemon.stop();
@@ -782,11 +782,12 @@ test("workspace.create with no name auto-generates a unique name", async () => {
             const response = await rpcCall(ws, 1, "workspace.create");
             const result = response.result as { id: number; name: string };
             assert.match(result.name, /^[0-9A-Za-z]{5}$/, "{§workspace-auto-name}: five anchor-alphabet characters, no prefix");
+            assert.match(result.name, /[A-Za-z]/u, "{§workspace-name}: a generated name is not a decimal ID");
         } finally { ws.close(); }
     });
 });
 
-test("{§workspace-name} workspace.create with a project root and no name is named after the root and selects that world next time", async () => {
+test("{§workspace-name} workspace.create with a project root and no name is named after the root and selects that workspace next time", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const home = new HostPaths().home;
         const inside = await mkdtemp(join(home, "project-"));
@@ -796,19 +797,19 @@ test("{§workspace-name} workspace.create with a project root and no name is nam
             const first = (await rpcCall(ws, 1, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
             assert.equal(first.name, `~/${basename(inside)}`, "the root's path with the daemon's home abbreviated to ~");
             const again = (await rpcCall(ws, 2, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
-            assert.equal(again.id, first.id, "a second default launch on the same project selects the same world");
+            assert.equal(again.id, first.id, "a second default launch on the same project selects the same workspace");
             const [pair] = await Promise.all([
                 daemon.createWorkspace({ projectRoot: inside }),
                 daemon.createWorkspace({ projectRoot: inside }),
             ].map((p) => p.then(({ workspaceId }) => workspaceId)));
-            assert.equal(pair, first.id, "a concurrent pair resolves to the one world");
-            assert.equal((await daemon.listWorkspaces()).filter(({ name }) => name === first.name).length, 1, "no second world of that name");
+            assert.equal(pair, first.id, "a concurrent pair resolves to the one workspace");
+            assert.equal((await daemon.listWorkspaces()).filter(({ name }) => name === first.name).length, 1, "no second workspace of that name");
             const far = (await rpcCall(ws, 3, "workspace.create", { projectRoot: outside })).result as { name: string };
             assert.equal(far.name, outside, "outside the home the name is the absolute path");
             await assert.rejects(daemon.createWorkspace({ name: first.name, projectRoot: inside }), (error: unknown) =>
                 error instanceof OperationFailureError && /name-conflict$/u.test(error.result.problem?.type ?? ""), "an explicit name that exists is a conflict, never a selection");
-            // The default is a convention, not a mapping: a renamed world is not re-selected by its old default.
-            await daemon.renameWorkspace(first.id, "renamed-world");
+            // The default is a convention, not a mapping: a renamed workspace is not re-selected by its old default.
+            await daemon.renameWorkspace(first.id, "renamed-workspace");
             const fresh = (await rpcCall(ws, 4, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
             assert.notEqual(fresh.id, first.id);
             assert.equal(fresh.name, first.name);
@@ -855,7 +856,7 @@ test("{§workspace-label} every envelope, row and created notice carries the fol
     });
 });
 
-test("{§workspace-name} a folderless world is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
+test("{§workspace-name} a folderless workspace is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const headless = await daemon.createWorkspace({ name: "headless" });
         assert.equal(headless.projectRoot, null);
@@ -884,10 +885,52 @@ const ILL_FORMED = [String.fromCharCode(0xd800), `lead${String.fromCharCode(0xdc
 const RETAINED = [
     "~/ptl/project", "/abs/path", "plain", "with space", "ünïcödé/名前", "😀/emoji", "a@b", "100%", "100%25", "%2E%2E", "a/%2E%2E/b", "%2F",
     ".config", "file.txt", "...", "a/.../b", "..x", "x..", ".x/y.", "q?x=1#frag", "back\\slash", "trailing/", "/", "a//b", "~", "a~b",
+    "~/123", "/123", "123/project", "123#alice", "1.5", "1e3", "0x10", "-1", "+1", "１２３", " 123", "123 ",
 ];
 const nameInvalid = (detail: RegExp) => (error: unknown): boolean =>
     error instanceof OperationFailureError && error.result.status === 400
     && /\/daemon\/input\/name-invalid$/u.test(error.result.problem?.type ?? "") && detail.test(error.result.problem?.detail ?? "");
+
+test("{§workspace-name} decimal ID spellings are refused at creation and rename without changing state", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const standing = await daemon.createWorkspace({ name: "standing" });
+        for (const name of ["0", "1", "42", "00", "0042", "9007199254740993", "9".repeat(100)]) {
+            const refusal = nameInvalid(/^name consists only of ASCII decimal digits, reserved for workspace IDs\.$/u);
+            await assert.rejects(daemon.createWorkspace({ name }), refusal, `create ${name}`);
+            await assert.rejects(daemon.renameWorkspace(standing.workspaceId, name), refusal, `rename to ${name}`);
+        }
+        assert.deepEqual((await daemon.listWorkspaces()).map(({ id, name }) => ({ id, name })), [
+            { id: standing.workspaceId, name: "standing" },
+        ]);
+    });
+});
+
+test("{§workspace-name} a numeric folder basename produces a path name, retaining folder-default selection", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const root = await mkdtemp(join(tmpdir(), "plurnk-numeric-folder-"));
+        try {
+            const projectRoot = join(root, "123");
+            const created = await daemon.createWorkspace({ projectRoot });
+            assert.equal(created.workspaceName, new HostPaths().abbreviateUserPath(projectRoot));
+            assert.equal(created.projectRoot, projectRoot);
+            assert.equal((await daemon.createWorkspace({ projectRoot })).workspaceId, created.workspaceId);
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+});
+
+test("{§workspace-name} an existing numeric name remains listed, attachable and renameable without changing identity", async () => {
+    await withDaemon(null, async (db, daemon) => {
+        const workspaceId = await insertWorkspace(db, "42");
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "alice" });
+        assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === workspaceId)?.name, "42");
+        assert.equal((await daemon.attachWorkspace({ workspaceId })).workspaceName, "42");
+        await assert.rejects(daemon.renameWorkspace(workspaceId, "0042"), nameInvalid(/reserved for workspace IDs/u));
+        assert.deepEqual(await daemon.renameWorkspace(workspaceId, "renamed"), { id: workspaceId, name: "renamed" });
+        const attached = await daemon.attachWorkspace({ workspaceId });
+        assert.deepEqual([attached.workspaceId, attached.workspaceName, attached.projectRoot], [workspaceId, "renamed", null]);
+        assert.ok((await daemon.listWorkers(workspaceId)).some(({ id, name }) => id === workerId && name === "alice"));
+    });
+});
 
 test("{§workspace-name} creation and rename refuse a '.' or '..' segment and ill-formed Unicode as name-invalid; a refusal creates and renames nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
@@ -903,7 +946,7 @@ test("{§workspace-name} creation and rename refuse a '.' or '..' segment and il
             await assert.rejects(daemon.renameWorkspace(standing.workspaceId, name), refusal, "rename to an unpaired surrogate");
         }
         assert.deepEqual((await daemon.listWorkspaces()).map(({ id, name }) => ({ id, name })), [{ id: standing.workspaceId, name: "standing" }],
-            "no refused creation made a world, and no refused rename changed the name");
+            "no refused creation made a workspace, and no refused rename changed the name");
         const refused = await daemon.createWorkspace({ name: "a/../b" }).catch((error: unknown) => error);
         assert.ok(refused instanceof OperationFailureError);
         assert.equal(refused.result.problem?.recovery, "Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary.");
@@ -916,9 +959,9 @@ test("{§workspace-name} every other spelling is admitted as written at creation
     await withDaemon(null, async (_db, daemon) => {
         const created = new Map<number, string>();
         for (const name of RETAINED) {
-            const world = await daemon.createWorkspace({ name });
-            assert.equal(world.workspaceName, name, `create keeps ${JSON.stringify(name)} exactly`);
-            created.set(world.workspaceId, name);
+            const workspace = await daemon.createWorkspace({ name });
+            assert.equal(workspace.workspaceName, name, `create keeps ${JSON.stringify(name)} exactly`);
+            created.set(workspace.workspaceId, name);
         }
         const listed = new Map((await daemon.listWorkspaces()).map(({ id, name }) => [id, name]));
         assert.deepEqual([...listed.entries()].toSorted(([a], [b]) => a - b), [...created.entries()].toSorted(([a], [b]) => a - b),
@@ -941,14 +984,14 @@ test("{§workspace-name} a root spelled with '.' or '..' derives the name of the
             assert.equal(plain.workspaceName, `~/${basename(inside)}`);
             for (const spelling of [`${inside}/.`, `${inside}/sub/..`, `${home}/./${basename(inside)}`, `${inside}/../${basename(inside)}`]) {
                 const selected = await daemon.createWorkspace({ projectRoot: spelling });
-                assert.equal(selected.workspaceId, plain.workspaceId, `${spelling} selects the folder's world`);
+                assert.equal(selected.workspaceId, plain.workspaceId, `${spelling} selects the folder's workspace`);
                 assert.equal(selected.workspaceName, plain.workspaceName, "and no dot segment reaches the name");
             }
             await assert.rejects(daemon.createWorkspace({ projectRoot: `${inside}/${String.fromCharCode(0xd800)}` }), (error: unknown) =>
                 error instanceof OperationFailureError && error.result.status === 400
                 && /\/project-root-invalid$/u.test(error.result.problem?.type ?? "")
                 && error.result.problem?.detail === "projectRoot is not well-formed Unicode: it holds an unpaired surrogate.");
-            assert.equal((await daemon.listWorkspaces()).length, 1, "the refused root made no world");
+            assert.equal((await daemon.listWorkspaces()).length, 1, "the refused root made no workspace");
         } finally { await rm(inside, { recursive: true, force: true }); }
     });
 });
@@ -963,7 +1006,7 @@ test("{§workspace-name} a workspace already carrying a refused spelling stays l
         await assert.rejects(daemon.renameWorkspace(legacyId, "still/./refused"), nameInvalid(/has the path segment '\.'/u));
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === legacyId)?.name, "old/../name", "the refused rename changed nothing");
         const renamed = await daemon.renameWorkspace(legacyId, "old/name");
-        assert.deepEqual(renamed, { id: legacyId, name: "old/name" }, "the same world under an admitted name");
+        assert.deepEqual(renamed, { id: legacyId, name: "old/name" }, "the same workspace under an admitted name");
         const after = await daemon.attachWorkspace({ workspaceId: legacyId });
         assert.equal(after.projectRoot, attached.projectRoot, "its folder is untouched");
         assert.ok((await daemon.listWorkers(legacyId)).some(({ id }) => id === workerId), "its workers are kept");

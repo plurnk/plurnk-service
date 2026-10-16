@@ -25,18 +25,16 @@ does not recompute them.
   started ({§module-http-mounts}). This module mounts `/agui` at `start`, so no
   request reaches it before its port is installed; from `stop` it answers `503
   service-stopping`.
-- §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread names a worker in it**
-  — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
-  curated workspace) from the WORKER (a history over that world). AG-UI's workspace
-  concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.workspace`
-  (attach if it exists, create with exactly that name otherwise — no prefix, no forging), on every
-  Run: a thread's earlier binding serves only while its workspace still carries that name, so after
-  a rename, by any client, the old name resolves afresh and the new one reaches the workspace. The
-  workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
-  violation the module rejects (400) - never a workspace forged from the `threadId`. The
-  `threadId` names a worker in that world by its immutable name, in every Run, and is never
-  compared with the workspace's name: renaming a workspace never changes which worker a thread
-  means. The name resolves among model-origin workers only (forks and earlier workers are
+- §agui-thread-binding **An AG-UI thread represents a worker; workspace selection is a Plurnk extension.**
+  AG-UI itself defines no workspace. The adapter currently requires a non-empty
+  `forwardedProps.plurnk.workspace` on workspace-bound Runs and rejects its absence with
+  `400 workspace-required`; ordinary clients without this extension cannot yet start a conversation.
+  This field selects a workspace by exact name: attach if it exists, create with that name
+  otherwise when the Run permits creation. An earlier binding serves only while the workspace
+  still carries that name. After a rename, the old name resolves afresh and the new one reaches
+  the renamed workspace. Under this binding, `threadId` names a worker by its immutable name and is never
+  compared with the workspace's name. A rename preserves workers and their names; subsequent
+  requests must select the workspace's new name. The worker name resolves among model-origin workers only (forks and earlier workers are
   addressable as threads; the runtime actor `_plurnk` is never bound). A worker comes into being by an act addressed to it or by its owner's session attaching
   to it ({§agui-action-binding}): the first such Run creates the worker the thread names via
   `createWorker`, and a thread named after the runtime actor fails at minting. Reading it,
@@ -50,13 +48,13 @@ does not recompute them.
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
   Concurrent first requests acquire one envelope and worker binding. Workspace
   acquisition is serialized across threads, retaining each request's create/attach contract;
-  the creating request supplies settings, and other threads attach that world. Failed acquisitions retain their cause and leave no failed
+  the creating request supplies settings, and other threads attach that workspace. Failed acquisitions retain their cause and leave no failed
   cache entry preventing a later retry. Explicit Core creation retains its name-conflict
   semantics; protocol binding is not a second creation request.
   `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker.
-  A Run that may create its worker, or that binds none, may bring the world into being; every
+  A Run that may create its worker, or that binds none, may create the workspace; every
   other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the
-  client's error, answered 404 `workspace-not-found` with nothing created — never a second world
+  client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace
   minted after the name and answered there.
   `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
@@ -546,13 +544,13 @@ successfully transported management Run; it does not turn the Run into
 
 | Public action            | Scope     | Parameters                                           | Owner / effect                                                                                                     |
 |--------------------------|-----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| `ping`                   | Worldless | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
-| `discover`               | Worldless | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
-| `providers.list`         | Worldless | none                                                 | `ApplicationPort.listProviders`: each alias as the route a worker seeded from it gets ({§agui-provider-routes}).            |
-| `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
-| `workspace.list`         | Worldless | none                                                 | `ApplicationPort.listWorkspaces`: each workspace with its folder and the folder's label ({§workspace-label}).                |
-| `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named world, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else five characters.                    |
-| `workspace.attach`       | Worldless | `id`                                                 | `ApplicationPort.attachWorkspace`; returns the selected workspace's `{ id, name }`.                                       |
+| `ping`                   | Daemon | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
+| `discover`               | Daemon | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
+| `providers.list`         | Daemon | none                                                 | `ApplicationPort.listProviders`: each alias as the route a worker seeded from it gets ({§agui-provider-routes}).            |
+| `models.list`            | Daemon | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
+| `workspace.list`         | Daemon | none                                                 | `ApplicationPort.listWorkspaces`: each workspace with its folder and the folder's label ({§workspace-label}).                |
+| `workspace.create`       | Daemon | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named workspace, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else a generated name ({§workspace-auto-name}). |
+| `workspace.attach`       | Daemon | `id`                                                 | `ApplicationPort.attachWorkspace`; returns the selected workspace's `{ id, name }`.                                       |
 | `workspace.workers`      | Workspace | `id?`                                                | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace.                                              |
 | `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's bound worker.                                                  |
 | `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
@@ -572,14 +570,14 @@ successfully transported management Run; it does not turn the Run into
 | `worker.effort.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerEffort` on the thread's bound worker; validates and persists the policy between loops. |
 | `workspace.capabilities.get` | Workspace | none                                                | `ApplicationPort.readWorkspaceCapabilities` on the bound workspace, without creating a worker; returns the complete resolver-owned projection {§capability-policy-projection}. |
 | `workspace.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkspaceCapabilities` replaces the workspace policy and returns the complete resolver-owned projection {§capability-policy-projection}. |
-| Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a worldless, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
+| Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a daemon, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
 
 §agui-action-binding **What a Run binds.** A message Run and an action addressed to the thread's
 worker bind the worker the `threadId` names ({§agui-thread-binding}); a workspace-level action
 binds none. Only an act addressed to the worker creates it, and only a Run that may create its
-worker, or binds none, may create the world:
+worker, or binds none, may create the workspace:
 
-| The thread's worker | The world | Runs and actions |
+| The thread's worker | The workspace | Runs and actions |
 |---|---|---|
 | Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set` |
 | Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` unless `workerId` names another worker |
@@ -587,7 +585,7 @@ worker, or binds none, may create the world:
 | Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
 | Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` naming a `workerId` |
 
-A worldless action ({§agui-module-action-scope}), and an action the module does not register or
+A daemon action ({§agui-module-action-scope}), and an action the module does not register or
 whose input its schema refuses, binds neither: it is answered on the control path, the refusal in
 its result. A Run that binds a worker carries that worker's gauge, `plurnk.status` and `budget`, and
 its deltas ({§agui-state-patches}); one that binds none carries neither. Every Run bound to a
@@ -622,7 +620,7 @@ loop is active or parked.
 §agui-module-action-scope **An extension action uses the same management plane,
 not a private endpoint.** `ApplicationPort.listModuleActions()` returns its exact
 `{ name, scope, inputSchema, outputSchema }` descriptors under
-{§agui-discovery-contract}. A worldless action follows the control path and
+{§agui-discovery-contract}. A daemon action follows the control path and
 cannot establish a workspace. A workspace action follows ordinary thread
 binding, resolves the client envelope first, and invokes core with
 `{ scope: "workspace", workspaceId: envelope.workspaceId }`; an `id`,
@@ -665,7 +663,7 @@ The `discover` action returns the complete schema-bearing
 type Discovery = {
     schemaVersion: 1;
     actions: Record<string, {
-        scope: "worldless" | "workspace" | "worker";
+        scope: "daemon" | "workspace" | "worker";
         inputSchema: JsonSchema;
         outputSchema: JsonSchema;
     }>;

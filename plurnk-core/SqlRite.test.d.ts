@@ -612,6 +612,12 @@ export class SqlRiteSync {
 	test_proposal_decision_delete: SqlRiteSyncPreparedStatements;
 	test_model_reasoning_resources: SqlRiteSyncPreparedStatements;
 	test_reasoning_reads: SqlRiteSyncPreparedStatements;
+	ws_dup_identities: SqlRiteSyncPreparedStatements;
+	ws_file_keys: SqlRiteSyncPreparedStatements;
+	ws_orphan_channels: SqlRiteSyncPreparedStatements;
+	ws_alien_origin: SqlRiteSyncPreparedStatements;
+	ws_sig_on_nonfile: SqlRiteSyncPreparedStatements;
+	ws_entry_count: SqlRiteSyncPreparedStatements;
 	test_retirement_state: SqlRiteSyncPreparedStatements;
 	test_retirement_rewrite: SqlRiteSyncPreparedStatements;
 	test_request_payload_rewrite: SqlRiteSyncPreparedStatements;
@@ -668,12 +674,6 @@ export class SqlRiteSync {
 	test_workspaces_insert_with_version: SqlRiteSyncPreparedStatements;
 	test_workspaces_index_exists: SqlRiteSyncPreparedStatements;
 	test_workspaces_list_ordered: SqlRiteSyncPreparedStatements;
-	ws_dup_identities: SqlRiteSyncPreparedStatements;
-	ws_file_keys: SqlRiteSyncPreparedStatements;
-	ws_orphan_channels: SqlRiteSyncPreparedStatements;
-	ws_alien_origin: SqlRiteSyncPreparedStatements;
-	ws_sig_on_nonfile: SqlRiteSyncPreparedStatements;
-	ws_entry_count: SqlRiteSyncPreparedStatements;
 }
 
 export default class SqlRite {
@@ -1233,6 +1233,12 @@ export default class SqlRite {
 	test_proposal_decision_delete: SqlRitePreparedStatements;
 	test_model_reasoning_resources: SqlRitePreparedStatements;
 	test_reasoning_reads: SqlRitePreparedStatements;
+	ws_dup_identities: SqlRitePreparedStatements;
+	ws_file_keys: SqlRitePreparedStatements;
+	ws_orphan_channels: SqlRitePreparedStatements;
+	ws_alien_origin: SqlRitePreparedStatements;
+	ws_sig_on_nonfile: SqlRitePreparedStatements;
+	ws_entry_count: SqlRitePreparedStatements;
 	test_retirement_state: SqlRitePreparedStatements;
 	test_retirement_rewrite: SqlRitePreparedStatements;
 	test_request_payload_rewrite: SqlRitePreparedStatements;
@@ -1289,10 +1295,4 @@ export default class SqlRite {
 	test_workspaces_insert_with_version: SqlRitePreparedStatements;
 	test_workspaces_index_exists: SqlRitePreparedStatements;
 	test_workspaces_list_ordered: SqlRitePreparedStatements;
-	ws_dup_identities: SqlRitePreparedStatements;
-	ws_file_keys: SqlRitePreparedStatements;
-	ws_orphan_channels: SqlRitePreparedStatements;
-	ws_alien_origin: SqlRitePreparedStatements;
-	ws_sig_on_nonfile: SqlRitePreparedStatements;
-	ws_entry_count: SqlRitePreparedStatements;
 }

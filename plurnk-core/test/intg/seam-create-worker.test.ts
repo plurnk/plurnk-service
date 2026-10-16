@@ -1,4 +1,4 @@
-// {§methods-worker-create}: a fresh worker has an empty history over the same world.
+// {§methods-worker-create}: a fresh worker has an empty history over the same workspace.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";

@@ -16,7 +16,7 @@ export interface ProposalResolution {
 }
 
 export type ApplicationActionContext =
-    | { readonly scope: "worldless" }
+    | { readonly scope: "daemon" }
     | { readonly scope: "workspace"; readonly workspaceId: number }
     | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
 

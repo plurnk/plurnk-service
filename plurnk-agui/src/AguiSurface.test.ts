@@ -54,7 +54,7 @@ test("{§discovery} {§agui-discovery-contract}: the AG-UI-owned executable surf
         display: [],
     });
     assert.equal(discovery.actions["op.exec"]?.scope, "workspace");
-    assert.equal(discovery.actions.ping?.scope, "worldless");
+    assert.equal(discovery.actions.ping?.scope, "daemon");
     assert.ok(discovery.notifications["loop/interaction"] !== undefined);
 });
 

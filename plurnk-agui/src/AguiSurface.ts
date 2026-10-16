@@ -4,7 +4,7 @@ import type { JsonSchema } from "@plurnk/plurnk-contracts";
 // representation and the production admission contract; clients never maintain
 // parameter folklore alongside this authority.
 
-type AguiActionScope = "worldless" | "workspace" | "worker";
+type AguiActionScope = "daemon" | "workspace" | "worker";
 
 export interface AguiActionContract {
     readonly scope: AguiActionScope;
@@ -79,10 +79,10 @@ const action = (
 ): AguiActionContract => Object.freeze({ scope, inputSchema, outputSchema });
 
 export const AGUI_BUILTIN_ACTIONS = Object.freeze({
-    ping: action("worldless", EMPTY, EMPTY),
-    discover: action("worldless", EMPTY, ref("AguiDiscovery")),
+    ping: action("daemon", EMPTY, EMPTY),
+    discover: action("daemon", EMPTY, ref("AguiDiscovery")),
     // {§agui-provider-routes} — each alias is the route a worker seeded from it gets, its configured effort included.
-    "providers.list": action("worldless", EMPTY, object({
+    "providers.list": action("daemon", EMPTY, object({
         aliases: array(object({
             alias: NONEMPTY,
             provider: NONEMPTY,
@@ -93,14 +93,14 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
             inputCapacity: nullable(POSITIVE),
         }, ["alias", "provider", "model", "active", "inputCapacity"])),
     }, ["aliases"])),
-    "models.list": action("worldless", ref("ModelCatalogQuery"), ref("ModelCatalogPage")),
-    "workspace.list": action("worldless", EMPTY, object({ workspaces: array(workspace) }, ["workspaces"])),
-    "workspace.create": action("worldless", object({
+    "models.list": action("daemon", ref("ModelCatalogQuery"), ref("ModelCatalogPage")),
+    "workspace.list": action("daemon", EMPTY, object({ workspaces: array(workspace) }, ["workspaces"])),
+    "workspace.create": action("daemon", object({
         name: NONEMPTY,
         projectRoot: nullable(string()),
         settings: { oneOf: [string(), { type: "object", additionalProperties: true }] },
     }), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
-    "workspace.attach": action("worldless", object({ id: POSITIVE }, ["id"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
+    "workspace.attach": action("daemon", object({ id: POSITIVE }, ["id"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
     "workspace.workers": action("workspace", object({ id: POSITIVE }), object({ workers: array(worker) }, ["workers"])),
     "log.read": action("workspace", object({
         workerId: POSITIVE,

@@ -1,9 +1,9 @@
--- WorldState invariant queries ({§fs-world-state}) — the pure-db half of the harness.
+-- ResourceState invariant queries ({§fs-resource-state}).
 -- Read-only; integration and demo harnesses run these checks over their specimens.
 
 -- PREP: ws_dup_identities
 -- {§entry-identity-no-null} in PRACTICE: no two rows may share the identity tuple. The
--- UNIQUE index should make this impossible; the harness asserts the world, not the intent.
+-- Check stored identities independently of the uniqueness constraint.
 SELECT e.workspace_id, e.scheme, e.authority, e.pathname, COUNT(*) AS n
 FROM entries e GROUP BY e.workspace_id, e.scheme, e.authority, e.pathname
 HAVING n > 1;

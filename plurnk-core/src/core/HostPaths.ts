@@ -136,7 +136,7 @@ export default class HostPaths {
     }
 
     // The inverse of expandUserPath for a path at or beneath the home: `~` for the home itself,
-    // `~/<rest>` beneath it, any other path unchanged. {§workspace-name} names a world after its
+    // `~/<rest>` beneath it, any other path unchanged. {§workspace-name} names a workspace after its
     // project root this way.
     abbreviateUserPath(path: string): string {
         const absolute = resolve(path);

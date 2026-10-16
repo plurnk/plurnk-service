@@ -15,8 +15,8 @@ import { type OperationLoopListener } from "./BuiltinActions.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
 
-// {§agui-action-binding} What a Run binds of the worker its thread names: it may create it (and its world), it
-// requires it, it binds none and creates nothing (`attach`), or it binds none and may bring the world into being.
+// {§agui-action-binding} What a Run binds of the worker its thread names: it may create it (and its workspace), it
+// requires it, it binds none and creates nothing (`attach`), or it binds none and may bring the workspace into being.
 export type WorkerBinding = "create" | "required" | "attach" | "none";
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
@@ -120,9 +120,9 @@ export default class RunHandler {
         }
         const synchronize = connect || asks === 0;
 
-        // Control plane FIRST: a management action that doesn't live in a world, and one the module does not
+        // Control plane FIRST: a management action that doesn't live in a workspace, and one the module does not
         // register or whose input it refuses, answers without binding — or forging — a workspace
-        // ({§agui-action-binding}). Only admitted world-scoped actions, message Runs and sync Runs reach #envelope below.
+        // ({§agui-action-binding}). Only admitted workspace-scoped actions, message Runs and sync Runs reach #envelope below.
         if (action !== null && !this.#requiresWorkspace(action)) {
             return await this.#controlRun(action, input, res, principal);
         }
@@ -145,7 +145,7 @@ export default class RunHandler {
         // {§agui-thread-binding} {§agui-action-binding} The threadId names its worker, never compared with the
         // workspace's name. A message, a setting, or its owner's session attaching creates it; watching passively
         // or reading never does. A Run that requires an existing worker, or creates nothing, attaches to an
-        // existing world: a world that does not exist has no worker. A resume continues the Run whose interrupt it
+        // existing workspace: a workspace that does not exist has no worker. A resume continues the Run whose interrupt it
         // answers: it binds the worker that Run bound, if any.
         const binding: WorkerBinding = input.resume !== undefined ? "attach"
             : synchronize ? forwarded?.control === true ? "create" : "required"

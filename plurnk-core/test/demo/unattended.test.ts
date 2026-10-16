@@ -11,7 +11,7 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { initializeDemoRepository } from "./_git.ts";
 import { failAfterCleanup } from "../live-failure.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 
 // Genuinely ambiguous, and bounded: the project names two maintained release branches and targets
 // neither, and nothing says which is right. Two reads find the gap; no amount of further reading
@@ -38,11 +38,11 @@ test("reply: with nobody to ask, plurnk decides and says what it could not resol
             maxTurns: 16,
         }, { signal: t.signal });
 
-        assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
+        assert.deepEqual(await ResourceState.check(s.db), [], "the workspace stays lawful");
         assert.equal(loop.finalStatus, 200, "an unattended run finishes on its own");
         assert.equal(loop.hitMaxTurns, false, "without exhausting its turns");
         assert.ok(loop.lastContent.length > 0, "an answer actually arrives");
-        // The decision is graded by what it disclosed, not by its vocabulary: the world holds one of
+        // The decision is graded by what it disclosed, not by its vocabulary: the workspace holds one of
         // the named branches or the untouched target, and the reply names both branches, the one it
         // took and the one it did not. A reply that names only its choice and calls it correct fails:
         // the alternative went unsaid, which is a guess stated as fact.

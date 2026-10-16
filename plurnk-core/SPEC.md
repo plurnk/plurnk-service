@@ -40,7 +40,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 
 ```mermaid
 flowchart LR
-    W["Workspace<br/>shared world"] --> K["Worker<br/>actor and history"]
+    W["Workspace<br/>shared resources and configuration"] --> K["Worker<br/>actor and history"]
     K --> L["Loop<br/>queued-to-terminal work"]
     L --> T["Turn<br/>one admitted scheduling unit"]
     T --> O["Op<br/>one statement / action row"]
@@ -52,7 +52,7 @@ flowchart LR
 | Term              | Layer                 | Meaning |
 |-------------------|-----------------------|---------|
 | **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the `_plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
-| **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
+| **workspace**     | Core                  | Durable shared resources and configuration, with an optional project folder. Identity: `workspaces.id`; mutable label: unique `workspaces.name`. Persists across workers and process restarts. |
 | **worker**        | Core                  | Durable actor and history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
 | **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
 | **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
@@ -544,7 +544,7 @@ outside the database, every copied row passes the same table triggers the origin
 either lands whole or not at all. Nothing else runs: `Fork.fork` is the claim.
 
 §machine-processes-worker-is-its-log **A worker's memory of
-the shared world is its log, with no hidden per-worker snapshot beside it.**
+the shared workspace is its log, with no hidden per-worker snapshot beside it.**
 A scoped KILL suppresses canonical body intervals on that worker's rows ({§log-kill-scope});
 lineage activity and explicit commons broadcasts arrive as attributed log
 entries ({§env-delta}). Named scratch and evidence follow {§machine-processes-entry-inheritance}. They are not an invisible mirror of shared state. Workspace
@@ -570,7 +570,7 @@ emission ({§provider-cache-identity}). Database ids remain the internal relatio
 client coordinate. BARE calls use isolated per-call provider identities rather
 than either worker value.
 
-§machine-processes-fork-shares-the-world **A fork copies history and named
+§machine-processes-fork-shares-workspace **A fork copies history and named
 scratch while sharing the workspace.** It is a new worker in the
 same workspace (`workers.parent_worker_id`, {§lifecycle-terms}); project files,
 shared entries, and membership remain live and uncopied.
@@ -643,7 +643,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 - §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** child: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
-  world is shared, never copied ({§machine-processes-fork-shares-the-world}). A
+  workspace is shared, never copied ({§machine-processes-fork-shares-workspace}). A
   person's operation branches the worker it acts for ({§actor-boundary-client-operations}).
   WORK and FORK are distinct verbs — WORK spawns a fresh worker, FORK branches
   the log. Both report the resulting `worker://name` address in receipt
@@ -930,7 +930,7 @@ pass.
 
 §membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
 
-**Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
+**Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one workspace would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
 
 **Schema.** The version-1 baseline stores the normalized {§inference-ledger},
 its model-response evidence, emission admission, and cardinal
@@ -3494,23 +3494,26 @@ inventory; allocation never rewrites the submitted operation's target.
 separate fact.** A name is a unique non-empty string compared by exact bytes, the same comparison for
 creation, rename and lookup; nothing in it is normalized or decoded, and it authorizes
 nothing: only `projectRoot` selects a folder, and a workspace may have none. Admission, at creation
-and rename, refuses exactly two spellings as `name-invalid` (400), because a name is embedded in
-paths a URL parser reads and neither survives one: text that is not well-formed Unicode (an unpaired
-surrogate has no encoding), and a name with a slash-delimited segment that is exactly `.` or `..`
-(a parser resolves it away, encoded or not). Neither is repaired or resolved. Every other spelling
+and rename, refuses these spellings as `name-invalid` (400):
+
+- ASCII decimal digits alone (`[0-9]+`, including zero and leading zeroes): reserved for workspace IDs.
+- Text that is not well-formed Unicode: an unpaired surrogate has no encoding.
+- A slash-delimited segment exactly `.` or `..`: a URL parser resolves it away, encoded or not.
+
+None is repaired or resolved. Every other spelling
 is admitted as written: spaces, Unicode, `~`, `@`, `%` and a literal `%2E%2E`, query and fragment
 punctuation, and a dot within a segment (`.config`, `file.txt`, `...`). A refused rename changes
 nothing. Admission governs new names only: a workspace already carrying a refused spelling keeps it,
 its id, its folder and its workers, stays listed and attachable, and is renamed like any other. Rename
 ({§methods-workspace-rename}) changes the name alone; `listWorkspaces` is the lookup. With a project
-root and no name, `workspace.create` names the world after the root, the root's path with the daemon's
+root and no name, `workspace.create` names the workspace after the root, the root's path with the daemon's
 home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the
 workspace of that name when one exists instead of creating a second, so two default launches on the
-same project and daemon share one world and a concurrent pair resolves to one. The root is resolved
+same project and daemon share one workspace and a concurrent pair resolves to one. The root is resolved
 before it is named, so a root spelled with `.` or `..` components derives the name of the folder it
 reaches and no default is ever refused; a root that is not well-formed Unicode is
 `project-root-invalid` (400), since it names no folder. The default is a
-convention, not a mapping: a renamed world is not re-selected by its old default, and a world may
+convention, not a mapping: a renamed workspace is not re-selected by its old default, and a workspace may
 carry any name over any folder. An explicit name that exists is `409 name-conflict`, never a
 selection.
 
@@ -3523,7 +3526,7 @@ folder has a null label. It is derived from the folder on every read and never s
 rewrites a name, so a client compares a workspace's name with its label by equality and derives
 neither from its own home.
 
-§workspace-auto-name **A world with neither name nor project root gets five anchor-alphabet characters.** Such a `workspace.create` draws five characters from the {§line-anchors} alphabet `0-9A-Za-z` (uniformly, from a cryptographic source), redrawing on the astronomically rare collision. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from, so nothing can grow load-bearing on it.
+§workspace-auto-name **A workspace with neither name nor project root gets five alphanumeric characters, at least one a letter.** Such a `workspace.create` draws uniformly from the {§line-anchors} alphabet `0-9A-Za-z` using a cryptographic source, redrawing digit-only names and collisions. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from.
 
 §exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
 
@@ -4440,7 +4443,7 @@ flowchart LR
     release --> warm["Bounded warm grace / idle LRU"]
     warm -->|new demand| lease
     warm -->|idle bound| cool["Deactivate providers;<br/>withdraw runtime projections"]
-    interface -->|worldless call| calls
+    interface -->|daemon call| calls
     calls --> core["Core state and orchestration"]
     core --> events["subscribeToEvents<br/>(workspaceId, event, payload)"]
     events --> interface
@@ -5046,15 +5049,15 @@ Core's behavior behind them.
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and returns its client envelope, minting no worker, and emits global `workspace/created`; with a project root and no name it names and selects the world under {§workspace-name}, emitting `workspace/created` only for a world it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
-| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId })` | Returns the client envelope of an existing world, minting nothing. It does not retain caller or transport binding state in core. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no worker, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§workspace-name}, emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId })` | Returns the client envelope of an existing workspace, minting nothing. It does not retain caller or transport binding state in core. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
 | §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. The source is a model worker, else `409 model-worker-required` ({§machine-processes-worker-origin}). |
-| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the world's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
+| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, workerId, actor, to })` | Reverses `workerId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§rollback}, {§connection-lifecycle}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, workerId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model workers, newest-first; `workerId` narrows to one worker. Authorship is the seed message's address ({§message-arrival}): a worker-issued seed (WORK, FORK, SEND to a worker) has none and is never history, whichever worker it seeded; a client prompt at a forked model worker is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder and its label ({§workspace-label}), and derivation progress. |
@@ -5399,8 +5402,8 @@ running. Shutdown cancels every operation the same way.
 worker's private log, so a client operation's rows are structurally absent from every
 model's packet ({§actor-boundary-isolation}); a person reaches a model through a message.
 
-§actor-boundary-client-operations **A client operation acts as the workspace on the world, as its person in
-what it says, and for one worker in what it reads of a log.** Its loop's `promptSource`
+§actor-boundary-client-operations **A client operation acts on workspace resources, attributes messages
+to its person, and reads a log in the context of one worker.** Its loop's `promptSource`
 ({§methods-worker-loops}) is the acting person's canonical address, the form arrivals use
 ({§message-causal-source}); the daemon's own loops in `_plurnk` have none. Its rows are acts, not arrivals:
 they keep writer `origin: "client"`, so a person never writes as the runtime
@@ -5410,7 +5413,7 @@ FORK is 404 `fork-unaddressed`.
 
 | Frame | Covers | So |
 |---|---|---|
-| The workspace's world | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-scheme}) |
+| Workspace resources | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-scheme}) |
 | The person's voice | messages and delegated prompts | a message the operation delivers (SEND, or WORK to a worker that exists) arrives from the person, as a thread message does; WORK to a new worker starts a root model worker the person owns, its first prompt from them |
 | The worker it acts for | `log:///`, and the log FORK branches | READ and FIND answer from that worker's log as it reads it; FORK branches it as `forkWorker` does, its task from the person; curating the log is a client write it refuses ({§scheme-surface-writableby-403}) |
 
@@ -5621,7 +5624,7 @@ flowchart LR
     log --> packet["Packet lists coordinate;<br/>READ recalls exact body"]
 ```
 
-§env-delta-log-pull **Pull the event record, never a world snapshot.** At
+§env-delta-log-pull **Pull the event record, never a workspace snapshot.** At
 pre-turn, a worker materializes only occurrences whose structural audience
 includes that worker. The set is exhaustive, unranked, and exactly once; the
 engine makes no relevance decision. Each copied event retains the operation,
@@ -6559,7 +6562,7 @@ llama-server rails, the upstream A2A TCK and the client's real-model TUI tier ar
 run wherever their requirements hold. `tier:history` ledgers every census under the home: per
 specimen, its verdicts over runs and its last reason.
 
-§fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
+§fs-resource-state **The resource-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting resource state. `ResourceState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
 ## Problem codes and pinned wording
 

@@ -123,7 +123,7 @@ test("a successful log-item KILL never renders; a non-log KILL renders and stays
         // KILL the log EDIT row just written (active-context curation).
         const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
-        // KILL the worker:/// note (a WORLD mutation, not log housekeeping).
+        // KILL the worker:/// note (a WORKSPACE mutation, not log housekeeping).
         const noteKill = await engine.dispatch({ statement: killStmt(urlWorker("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
         assert.ok(noteKill.status < 400, `KILL of the note succeeds — got ${noteKill.status}`);
 
@@ -133,12 +133,12 @@ test("a successful log-item KILL never renders; a non-log KILL renders and stays
         const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId });
         const killRows = rendered.filter((r) => r.op === "KILL");
         assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL is absent immediately");
-        assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — renders");
+        assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a workspace mutation — renders");
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch3"), "later"), workspaceId, workerId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
         const later = (await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId })).filter((r) => r.op === "KILL");
         assert.ok(!later.some((r) => r.scheme === "log"), "the log-item KILL receipt remains absent on later turns");
-        assert.ok(later.some((r) => r.scheme === "worker"), "the world-mutation KILL stays visible");
+        assert.ok(later.some((r) => r.scheme === "worker"), "the workspace-mutation KILL stays visible");
     } finally { await db.close(); }
 });

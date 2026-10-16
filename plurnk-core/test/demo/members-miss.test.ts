@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { failAfterCleanup } from "../live-failure.ts";
-import WorldState from "../intg/world-state.ts";
+import ResourceState from "../intg/resource-state.ts";
 
 interface LogRow { op: string | null; origin: string; status_rx: number; rx: string; tx: string }
 interface Definition { alias: string; origin: string; state: string; definition?: { glob?: string; provenance?: { kind?: string } } }
@@ -42,7 +42,7 @@ test("members: a miss on an untracked file names the working add body; the model
         assert.deepEqual(refused.map((row) => `${row.op} ${row.status_rx} ${targetOf(row)}`), [`READ 404 ${REPORT}`],
             `exactly one miss, on the generated file; saw ${JSON.stringify(refused.map((row) => `${row.op} ${row.status_rx} ${targetOf(row)} ${problemOf(row).type ?? ""}`))}`);
         assert.equal(problemOf(refused[0]!).recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "the miss names the body the family accepts");
-        assert.deepEqual(await WorldState.check(s.db), [], "the world stays lawful");
+        assert.deepEqual(await ResourceState.check(s.db), [], "the workspace stays lawful");
 
         // The recovery was followed: the file is a workspace definition of the model's own, and a member.
         const { definitions } = await s.invokeWorkspaceAction("workspace.members.list", {}) as { definitions: Definition[] };

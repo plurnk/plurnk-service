@@ -159,7 +159,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
         const rows = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.ok(rows.length > 0);
         for (const { pathname } of rows) {
-            assert.ok(Namespace.isCanonical(pathname, root), `stored key '${pathname}' is its own canon — the world-state predicate`);
+            assert.ok(Namespace.isCanonical(pathname, root), `stored key '${pathname}' is its own canon — the resource-state predicate`);
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -356,7 +356,7 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
     const { root, db, workspaceId, ctx } = await setup();
     try {
         // A real file, physically in the root — non-git root, no pick: NO grantor admits it.
-        await writeFile(join(root, "ungran.md"), "present on disk, absent in the world\n");
+        await writeFile(join(root, "ungran.md"), "present on disk, absent in the workspace\n");
         const invisible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
 

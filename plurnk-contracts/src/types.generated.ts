@@ -164,7 +164,7 @@ display: ClientDisplayCapabilities
 }
 
 export interface Action {
-scope: ("worldless" | "workspace" | "worker")
+scope: ("daemon" | "workspace" | "worker")
 inputSchema: JsonSchema
 outputSchema: JsonSchema
 }

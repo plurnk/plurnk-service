@@ -100,7 +100,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
                     context: [],
                     forwardedProps: {
                         plurnk: {
-                            ...(action.scope !== "worldless"
+                            ...(action.scope !== "daemon"
                                 ? { workspace: "installed-schema-admission" }
                                 : {}),
                             action: { kind: name, unadvertised: true },
