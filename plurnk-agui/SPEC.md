@@ -183,7 +183,8 @@ model worker projects each exact delta immediately through a balanced standard
 reasoning lifecycle identified by its durable model-call id and physical-request
 sequence. A retried request gets a new reasoning message instead of appending to
 the failed request's partial reasoning. Foreign-worker and BARE reasoning never
-enter the thread. Failed or rejected requests may therefore leave honest
+stream into the thread; a subagent's arrives with its rows, attributed to its run
+({§agui-subagents}). Failed or rejected requests may therefore leave honest
 transient reasoning that is not replayed. A Run ended before its request, revoked
 ({§agui-oauth-revocation}), stopped ({§agui-shutdown}) or failed, closes the reasoning message and
 span it opened before its `RUN_ERROR`; the request streams on to every Run still observing it. A Run
