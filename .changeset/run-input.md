@@ -11,6 +11,8 @@ synchronizes ({§agui-sync}), and `forwardedProps.plurnk.mode` is gone with
 `unsupported-run-mode`. A connection accepts the client's copy and refuses a new
 message, an action or a resume (`invalid-connect-input`, replacing
 `invalid-sync-input`). A Run that carries more than one of a new message, an
-action and a resume is refused (`ambiguous-run-input`), as is a held id with other
-content (409 `message-id-conflict`) and a new message that is not non-empty text
-(`user-message-text-required`, replacing `user-message-required`).
+action and a resume is refused (`ambiguous-run-input`), as is a new message
+that is not non-empty text (`user-message-text-required`, replacing
+`user-message-required`). Whether a message is new takes two keyed reads, a
+coordinate the worker's log holds and core's accepted address
+({§message-idempotency}), whatever the log's length.

@@ -5,7 +5,7 @@ import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import NativeContent from "./NativeContent.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
-import { OperationFailureError } from "./results.ts";
+import Results, { OperationFailureError } from "./results.ts";
 
 export default class MessageResources {
     static async publish(body: string, resources: readonly MessageResource[], ctx: PlurnkSchemeContext): Promise<{ body: string; attachments: MessageResourceReceipt[] }> {
@@ -29,6 +29,24 @@ export default class MessageResources {
             links.push(`<${target}>`);
         }
         return { body: [body, ...links].filter((part) => part.length > 0).join("\n\n"), attachments };
+    }
+
+    // {§message-idempotency} A client message's address is its idempotency key ({§message-source-scheme}): new when
+    // nothing is accepted there, accepted when the same body is, and refused when another body is.
+    static async admission(db: Db, workspaceId: number, address: string, body: string): Promise<"new" | "accepted"> {
+        const accepted = await db.message_source_by_address.get<{ body: string; loop_id: number }>({ workspace_id: workspaceId, path: address });
+        if (accepted === undefined) return "new";
+        if (accepted.body === body) return "accepted";
+        throw MessageResources.reused(address, accepted.loop_id);
+    }
+
+    // {§message-idempotency} The key reused for another payload.
+    static reused(address: string, loopId: number): OperationFailureError {
+        return new OperationFailureError(Results.failure(
+            "daemon:admission", "message-address-reused", 422,
+            "This message address was already accepted in this workspace with other words.",
+            {}, { address, loopId, retryable: false },
+        ));
     }
 
     static async read(db: Db, args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {

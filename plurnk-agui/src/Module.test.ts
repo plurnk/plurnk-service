@@ -148,6 +148,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         cancelLoop: async () => false,
         readLog: async () => logRows([{ id: 1, op: "SEND", status_rx: 200, origin: "model" }]),
         readMessages: async () => [],
+        messageAdmission: async () => "new" as const,
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
             modelQueries.push(query);
@@ -2573,7 +2574,7 @@ const lastMessages: Record<string, { messages: Array<Record<string, unknown>>; f
     "the client's own held message": { messages: [copy[0]!] },
     "its held id with other words": { messages: [{ id: "own", role: "user", content: "Edited." }], conflict: true },
     "a peer's held message": { messages: copy },
-    "a reply's id as a user message": { messages: [{ id: "1/1/2", role: "user", content: "Hi." }], conflict: true },
+    "a reply's id as a user message": { messages: [{ id: "1/1/2", role: "user", content: "Hi." }] },
     "an assistant message": { messages: copy.slice(0, 2) },
     "a subagent's message": { messages: [...copy, { id: "worker://child#1/1/1", role: "user", content: "x", subagentRunId: "ops://child/1" }] },
 };
@@ -2583,7 +2584,7 @@ const carried = {
     "a resume": { resume: [{ interruptId: "int:unknown", status: "resolved", payload: {} }] },
 } as const;
 const outcomeOf = (last: (typeof lastMessages)[string], carries: keyof typeof carried, connect: boolean): string => {
-    if (last.conflict) return "409 message-id-conflict";
+    if (last.conflict) return "422 message-address-reused";
     const asks = Number(carries !== "nothing") + Number(last.fresh === true);
     if (connect && asks > 0) return "400 invalid-connect-input";
     if (asks > 1) return "400 ambiguous-run-input";
@@ -2601,7 +2602,17 @@ for (const [lastName, last] of Object.entries(lastMessages)) {
                 existingWorld(seam, "matrix");
                 let attached = 0;
                 seam.attachWorkspace = async () => { attached += 1; return { workspaceId: 3, workspaceName: "matrix", projectRoot: null, projectLabel: null }; };
-                seam.readLog = async () => conversationRows();
+                // Core's keyed answers ({§message-idempotency}): a row by its coordinate, and the address the client's own
+                // message was accepted under, with its words.
+                seam.readLog = async ({ loopSeq, turnSeq, sequence }) => conversationRows().filter((row) => loopSeq === undefined
+                    || [row.loop_seq, row.turn_seq, row.sequence].join() === [loopSeq, turnSeq, sequence].join());
+                seam.messageAdmission = async ({ address, body }) => {
+                    if (address !== "agui://anonymous/threads/matrix/messages/own") return "new";
+                    if (body === "Hello.") return "accepted";
+                    const problem = Problems.create("daemon:admission", "message-address-reused", 422,
+                        "This message address was already accepted in this workspace with other words.", { retryable: false });
+                    throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
+                };
                 seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt }); finish(a.workspaceId, a.workerId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
                 const mod = await host(seam);
                 const stop = new AbortController();

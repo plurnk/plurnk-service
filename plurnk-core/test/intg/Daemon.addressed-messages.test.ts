@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Problems } from "@plurnk/plurnk-contracts";
 import type { SchemeResult } from "../../src/core/results.ts";
 import { holdChild } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -10,6 +11,33 @@ import { waitForDb, withDaemon } from "./_rpc.ts";
 // Exercise reply delivery with a bounded coalescing window; sibling tests cover
 // quiescence, deadlines, and mixed reply/stream/child settlement.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
+
+test("{§message-idempotency}: a client message's address is its idempotency key: the same words are the accepted message, other words are refused", async () => {
+    const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(PlurnkParser.frame("SEND [200]", "Hello back."))] });
+    await withDaemon(provider, async (_db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "keyed-messages", projectRoot: null });
+        const { workerId } = await daemon.createWorker({ workspaceId, name: "keyed" });
+        const address = "agui://anonymous/threads/keyed/messages/m1";
+        const refusal = async (attempt: Promise<unknown>): Promise<string | null> => {
+            try { await attempt; return null; } catch (cause) {
+                const problem = Problems.fromError(cause);
+                return problem === null ? String(cause) : `${problem.status} ${problem.type.slice(problem.type.lastIndexOf("/") + 1)}`;
+            }
+        };
+        assert.equal(await daemon.messageAdmission({ workspaceId, address, body: "Hello." }), "new");
+        await daemon.runLoop({ workspaceId, workerId, prompt: "Hello.", source: address, messageAddress: address });
+        assert.equal(await daemon.messageAdmission({ workspaceId, address, body: "Hello." }), "accepted", "a repeat attaches to the message already accepted");
+        assert.equal(await refusal(daemon.messageAdmission({ workspaceId, address, body: "Edited." })), "422 message-address-reused");
+        assert.equal(await refusal(daemon.runLoop({ workspaceId, workerId, prompt: "Hello.", source: address, messageAddress: address })),
+            "409 message-already-accepted", "admission refuses the same words racing the original");
+        assert.equal(await refusal(daemon.runLoop({ workspaceId, workerId, prompt: "Edited.", source: address, messageAddress: address })),
+            "422 message-address-reused", "and other words under the same key");
+        const elsewhere = await daemon.createWorkspace({ name: "keyed-messages-elsewhere", projectRoot: null });
+        assert.equal(await daemon.messageAdmission({ workspaceId: elsewhere.workspaceId, address, body: "Edited." }), "new", "the key is the workspace's");
+        assert.deepEqual((await daemon.readMessages({ workspaceId, workerId })).filter(({ direction }) => direction === "inbound").map(({ body }) => body),
+            ["Hello."], "nothing refused is admitted");
+    });
+});
 
 test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and the model can recover", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [

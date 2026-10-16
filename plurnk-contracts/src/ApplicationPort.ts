@@ -76,6 +76,9 @@ export interface ApplicationPort extends HttpHost {
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
     readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
+    /** {§message-idempotency} A client message's address is its idempotency key: `new` when nothing is accepted there,
+     *  `accepted` when the same body is; another body under an accepted address is refused, 422 `message-address-reused`. */
+    messageAdmission(args: { readonly workspaceId: number; readonly address: string; readonly body: string }): Promise<"new" | "accepted">;
     ensureRuntimeWorker(workspaceId: number): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;

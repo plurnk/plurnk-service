@@ -330,15 +330,16 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         assert.deepEqual(speech(snapshot.messages), ["Named."],
             "the exact-address response replays once");
 
-        // {§agui-run-input} The conversation holds that id with other words: refused before anything binds.
+        // {§agui-run-input} {§message-idempotency} That address is accepted with other words: core refuses the reuse
+        // before anything binds.
         const duplicate = await fetch(`http://127.0.0.1:${port}/agui`, {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ state: {}, tools: [], context: [], threadId: "run-source", runId: "different-run-same-message",
                 messages: [{ id: "message 1", role: "user", content: "Replace the original." }],
                 forwardedProps: { plurnk: { workspace: "run-source" } } }),
         });
-        assert.equal(duplicate.status, 409);
-        assert.equal(((await duplicate.json()) as { type: string }).type, "https://problems.plurnk.xyz/agui/http/message-id-conflict");
+        assert.equal(duplicate.status, 422);
+        assert.equal(((await duplicate.json()) as { type: string }).type, "https://problems.plurnk.xyz/daemon/admission/message-address-reused");
         assert.equal(provider.received.length, 2, "a conflicting message identity cannot launch another inference");
         const workspace = (await daemon.listWorkspaces()).find(({ name }: { name: string }) => name === "run-source");
         assert.ok(workspace);

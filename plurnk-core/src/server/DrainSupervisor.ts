@@ -9,6 +9,7 @@ import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
+import MessageResources from "../core/MessageResources.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import { observed } from "../observe/spans.ts";
@@ -220,9 +221,12 @@ export default class DrainSupervisor {
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(workerId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
             if (args.messageAddress !== undefined) {
-                const accepted = await this.#db.message_source_by_address.get<{ loop_id: number }>({
+                // {§message-idempotency} Admission refuses every repeat: other words reuse the key, and the same words
+                // duplicate a message already accepted.
+                const accepted = await this.#db.message_source_by_address.get<{ loop_id: number; body: string }>({
                     workspace_id: workspaceId, path: args.messageAddress,
                 });
+                if (accepted !== undefined && accepted.body !== prompt) throw MessageResources.reused(args.messageAddress, accepted.loop_id);
                 if (accepted !== undefined) throw new OperationFailureError(Results.failure(
                     "daemon:admission", "message-already-accepted", 409,
                     "This message address has already been accepted in this workspace.",

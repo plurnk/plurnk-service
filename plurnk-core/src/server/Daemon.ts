@@ -565,6 +565,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return MessageResources.read(this.#db, args);
     }
 
+    // {§message-idempotency}
+    async messageAdmission(args: { workspaceId: number; address: string; body: string }): Promise<"new" | "accepted"> {
+        const workspaceId = ClientInput.assertId("messageAdmission", "workspaceId", args.workspaceId);
+        return await MessageResources.admission(this.#db, workspaceId, args.address, args.body);
+    }
+
     // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/worker/prompt;
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)

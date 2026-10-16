@@ -20,7 +20,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 export type WorkerBinding = "create" | "required" | "attach" | "none";
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
+export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "messageAdmission" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -100,7 +100,7 @@ export default class RunHandler {
         // {§agui-run-input} A Run does one thing, chosen by its input before anything binds: a resume resolves, an
         // action acts, a new message submits, and a Run that carries none of them synchronizes ({§agui-sync}).
         const action = parseAction(input.forwardedProps);
-        const fresh = await this.#newMessage(input, forwarded);
+        const fresh = await this.#newMessage(input, forwarded, principal);
         const asks = Number(input.resume !== undefined) + Number(action !== null) + Number(fresh !== null);
         if (connect && asks > 0) {
             throw new HttpProblemError(httpProblem(
@@ -400,23 +400,23 @@ export default class RunHandler {
     }
 
     // {§agui-run-input} The Run's new message: its last message, when that is a user message of the thread's own
-    // conversation whose id the conversation's snapshot does not hold. A held id whose content differs is a conflict.
-    async #newMessage(input: RunAgentInput, forwarded: Record<string, unknown> | undefined): Promise<UserMessage | null> {
+    // conversation that is neither one the daemon presented, its id a coordinate the worker's log holds, nor one a
+    // client already sent, its address an idempotency key core decides ({§message-idempotency}). Both are keyed reads.
+    async #newMessage(input: RunAgentInput, forwarded: Record<string, unknown> | undefined, principal: string): Promise<UserMessage | null> {
         const last = input.messages.at(-1);
         if (last?.role !== "user" || last.subagentRunId !== undefined) return null;
         const conversation = await this.#conversation(input.threadId, forwarded);
         if (conversation === null) return last;
-        const translator = new Translator({ threadId: input.threadId, runId: input.runId, modelWorkerId: conversation.workerId, workspaceId: conversation.workspaceId });
-        const [snapshot] = Translator.replayAll([{ translator, entries: await this.#history(conversation.workspaceId, conversation.workerId) }]);
-        const held = snapshot?.type === EventType.MESSAGES_SNAPSHOT ? snapshot.messages.find(({ id }) => id === last.id) : undefined;
-        if (held === undefined) return last;
-        if (held.role === "user" && held.content === last.content) return null;
-        throw new HttpProblemError(httpProblem(
-            "message-id-conflict",
-            409,
-            `Message ${JSON.stringify(last.id)} is already in this conversation with other content.`,
-            { stage: "request-validation", messageId: last.id, recovery: "Give a new message its own id.", retryable: false },
-        ));
+        const coordinate = /^(\d+)\/(\d+)\/(\d+)$/u.exec(last.id);
+        if (coordinate !== null) {
+            const [loopSeq, turnSeq, sequence] = coordinate.slice(1).map(Number) as [number, number, number];
+            if ((await this.#seam().readLog({ ...conversation, loopSeq, turnSeq, sequence })).length > 0) return null;
+        }
+        if (typeof last.content !== "string") return last;
+        const admission = await this.#seam().messageAdmission({
+            workspaceId: conversation.workspaceId, address: MessageAddress.render(principal, input.threadId, last.id), body: last.content,
+        });
+        return admission === "new" ? last : null;
     }
 
     // {§agui-snapshot} A snapshot is every message the live projection built, so it reads the whole log, page by page.

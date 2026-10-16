@@ -930,9 +930,11 @@ review to the worker's owner.
 
 §agui-run-input **A Run's input is what its conversation doesn't hold.** A Run's `messages` are the client's copy of
 the conversation its thread names, which the official `HttpAgent` sends whole on every Run. Its last message is new
-when it is a user message of that conversation (no `subagentRunId`) whose id the conversation's snapshot
-({§agui-snapshot}) does not hold; every other message is the client's copy, never imported ({§agui-replay}). The Run
-is decided before it binds anything, and a refused Run binds, creates and claims nothing:
+when it is a user message of that conversation (no `subagentRunId`) that is neither one the daemon presented, its id a
+coordinate the worker's log holds ({§agui-snapshot}), nor one a client already sent: its address is an idempotency key
+core decides ({§message-idempotency}), so the same words attach to what that message started. Every other message is
+the client's copy, never imported ({§agui-replay}). Each check is one keyed read. The Run is decided before it binds
+anything, and a refused Run binds, creates and claims nothing:
 
 | The Run carries | It |
 |---|---|
@@ -943,8 +945,8 @@ is decided before it binds anything, and a refused Run binds, creates and claims
 | More than one of them | Is refused, 400 `ambiguous-run-input` |
 
 A new message that is not non-empty text is refused, 400 `user-message-text-required`: multimodal content waits until
-the model-loop seam supports it deliberately. A last user message whose id the conversation holds with other content
-is refused, 409 `message-id-conflict`. A connection submits nothing ({§agui-owner-connection}).
+the model-loop seam supports it deliberately. A client's address that core holds with other words is core's refusal,
+422 `message-address-reused`. A connection submits nothing ({§agui-owner-connection}).
 
 §agui-run-source The run's user message is the causal actor behind its inbound SEND
 ({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
@@ -1026,7 +1028,6 @@ reconstruct one from `RUN_ERROR`.
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
 | `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |
-| `message-id-conflict` | 409 | Message *id* is already in this conversation with other content. Recovery: Give a new message its own id. |
 | `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*. Recovery: Name an existing model worker, or create one by sending it a message. |
 | `user-message-text-required` | 400 | A new user message must be non-empty text. Recovery: Send the message as non-empty text. |
 | `run-failed` | 500 | The AG-UI Run failed unexpectedly. |
