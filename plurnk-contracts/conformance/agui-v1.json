@@ -106,22 +106,10 @@
                     ]
                 },
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.row",
-                    "value": {
-                        "id": 1,
-                        "worker_id": 7,
-                        "origin": "model",
-                        "op": "NOTE",
-                        "coordinate": "1.1.1",
-                        "tx": { "body": "Work." }
-                    }
-                },
-                {
                     "type": "TOOL_CALL_START",
                     "toolCallId": "1/1/1",
                     "toolCallName": "NOTE",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "signal": null, "status": 200, "attrs": {} } }
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
                 },
                 { "type": "TOOL_CALL_ARGS", "toolCallId": "1/1/1", "delta": "{\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":\"Work.\"}" },
                 { "type": "TOOL_CALL_END", "toolCallId": "1/1/1" },
@@ -130,7 +118,7 @@
                     "toolCallId": "1/1/1",
                     "messageId": "1/1/1/result",
                     "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "signal": null, "status": 200, "attrs": {} } }
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
                 },
                 {
                     "type": "STATE_DELTA",
@@ -597,15 +585,10 @@
             "name": "dead-stream",
             "events": [
                 {
-                    "type": "CUSTOM",
-                    "name": "plurnk.row",
-                    "value": { "id": 1, "worker_id": 7, "origin": "model", "op": "NOTE", "tx": { "body": null } }
-                },
-                {
                     "type": "TOOL_CALL_START",
                     "toolCallId": "1/1/1",
                     "toolCallName": "NOTE",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "signal": null, "status": 200, "attrs": {} } }
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
                 },
                 { "type": "TOOL_CALL_ARGS", "toolCallId": "1/1/1", "delta": "{\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":null}" },
                 { "type": "TOOL_CALL_END", "toolCallId": "1/1/1" },
@@ -614,7 +597,7 @@
                     "toolCallId": "1/1/1",
                     "messageId": "1/1/1/result",
                     "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "signal": null, "status": 200, "attrs": {} } }
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
                 }
             ],
             "expect": {

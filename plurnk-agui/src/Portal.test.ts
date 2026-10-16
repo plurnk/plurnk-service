@@ -986,9 +986,9 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         "Run B does not replay reasoning already delivered by its interrupted predecessor",
     );
     assert.equal(
-        resumedSeen.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").length,
+        resumedSeen.filter((event) => event.type === "TEXT_MESSAGE_START").length,
         1,
-        "the continued SEND row still projects normally",
+        "the continued SEND still speaks normally",
     );
     portal.stop();
 });
@@ -1095,7 +1095,7 @@ test("{§agui-broadcast-fan} an operation Run observes exactly its own loop of t
     m.fire(3, "stream/concluded", concluded("sh:///b1e0977e"));
     portal.finishThread(thread, [], execOutcome);
 
-    const rows = (events: AguiEvent[]) => events.filter((event) => label(event) === "plurnk.row").map((event) => (event as { value: { loop_id: number } }).value.loop_id);
+    const rows = (events: AguiEvent[]) => events.filter((event) => label(event) === "plurnk.ambient").map((event) => (event as { value: { loop_id: number } }).value.loop_id);
     assert.deepEqual(rows(mine), [6], "only its own loop's rows");
     assert.deepEqual(rows(theirs), [7]);
     assert.equal(mine.filter((event) => label(event) === "plurnk.stream").length, 1, "another operation's stream never reaches it");
@@ -1118,7 +1118,7 @@ test("{§agui-broadcast-fan} stream activity that precedes the row announcing it
 
     m.fire(3, "log/entry", startedExec());
     const order = seen.map(label);
-    assert.deepEqual(order.filter((name) => name === "plurnk.row" || name === "plurnk.stream"), ["plurnk.row", "plurnk.stream", "plurnk.stream"],
+    assert.deepEqual(order.filter((name) => name === "plurnk.ambient" || name === "plurnk.stream"), ["plurnk.ambient", "plurnk.stream", "plurnk.stream"],
         `the row, then the latest snapshot, then the conclusion: ${order.join(" → ")}`);
     assert.equal((seen.find((event) => label(event) === "plurnk.stream") as { value: { contentLength: number } }).value.contentLength, 4);
     portal.finishThread(thread, [], execOutcome);
@@ -1169,7 +1169,7 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
     const customs = seen.filter((event) => event.type === "CUSTOM").map((event) => {
         const e = event as { name: string; value: { workerId?: number; depth?: number; parentWorkerId?: number; name?: string; worker_id?: number; id?: number } };
         if (e.name === "plurnk.descendant") return `descendant:${e.value.workerId}:${e.value.depth}:${e.value.parentWorkerId}:${e.value.name}`;
-        if (e.name === "plurnk.row") return `row:${e.value.worker_id}:${e.value.id}`;
+        if (e.name === "plurnk.ambient") return `row:${e.value.worker_id}:${e.value.id}`;
         if (e.name === "plurnk.stream") return `stream:${e.value.workerId}`;
         return e.name;
     }).filter((label) => !label.startsWith("plurnk."));

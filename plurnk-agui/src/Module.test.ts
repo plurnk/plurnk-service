@@ -424,9 +424,12 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
         assert.deepEqual(outcome, { kind: "log.read", ok: true, result: { entries: rows } }, "{§agui-plurnk-metadata} the Run's result is the action's outcome");
         const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
         for (const [index, row] of rows.entries()) {
-            const live = translator.logEntry({ entry: row }).find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
-            assert.equal(live?.type, "CUSTOM");
-            if (live?.type === "CUSTOM") assert.deepEqual(outcome?.result.entries[index], live.value);
+            const live = translator.logEntry({ entry: row });
+            const whole = live.find((event) => event.type === "CUSTOM" && event.name === "plurnk.ambient") as { value?: unknown } | undefined;
+            const args = live.find((event) => event.type === "TOOL_CALL_ARGS") as { delta: string } | undefined;
+            const stored = typeof row.tx === "string" ? JSON.parse(row.tx) as { body?: unknown } : row.tx as { body?: unknown };
+            if (whole !== undefined) assert.deepEqual(outcome?.result.entries[index], whole.value, "{§agui-ambient} a row outside the conversation rides as log.read returns it");
+            else assert.deepEqual(JSON.parse(args!.delta).body, stored.body, "a call carries its statement's body as stored");
         }
         assert.deepEqual(rows, before, "the standards boundary does not rewrite stored notes");
         assert.deepEqual(loopRuns, [], "reading history does not invoke a model");
@@ -652,9 +655,8 @@ test("a read-only management Run does not duplicate the message Run's model sett
 
         const [messageEvents, managementEvents] = await Promise.all([messageRun, management]);
         const answerRows = (events: AguiEvent[]) => events.filter((event) =>
-            event.type === "CUSTOM"
-            && (event as { name?: string; value?: { id?: number } }).name === "plurnk.row"
-            && (event as { value?: { id?: number } }).value?.id === 21);
+            (event.type === "TEXT_MESSAGE_START" || event.type === "TOOL_CALL_START")
+            && (event as { metadata?: { plurnk?: { id?: number } } }).metadata?.plurnk?.id === 21);
         assert.equal(answerRows(messageEvents).length, 1, "the message Run receives its SEND exactly once");
         assert.equal(answerRows(managementEvents).length, 0, "the management Run receives none of the bound worker's rows");
     } finally { await mod.close(); }
@@ -2300,7 +2302,7 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
     try {
         const events = await post(mod.address().port, { threadId: "busy", runId: "observe", forwardedProps: { plurnk: { workspace: "busy", mode: "sync" } } });
         assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
-        const rows = events.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.row").map((event) => ((event as { value: { id: number } }).value.id));
+        const rows = events.filter((event) => event.type === "TOOL_CALL_START").map((event) => (event as { metadata?: { plurnk?: { id?: number } } }).metadata?.plurnk?.id);
         assert.deepEqual(rows, [2, 3], "each row once, in arrival order, after the snapshot");
         assert.equal(events.at(-1)?.type, "RUN_FINISHED");
     } finally { await mod.close(); }
@@ -3838,7 +3840,7 @@ test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a 
         const events = await run;
         const customs = events.filter((event) => event.type === "CUSTOM").map((event) => (event as { name: string }).name);
         const intro = customs.indexOf("plurnk.descendant");
-        const row = customs.indexOf("plurnk.row");
+        const row = customs.indexOf("plurnk.ambient");
         assert.ok(intro >= 0 && row > intro, `the child is introduced before its row: ${customs.join(",")}`);
         const value = (events.find((event) => (event as { name?: string }).name === "plurnk.descendant") as { value: { workerId: number; name: string; depth: number } }).value;
         assert.deepEqual([value.workerId, value.name, value.depth], [78, "child", 1]);

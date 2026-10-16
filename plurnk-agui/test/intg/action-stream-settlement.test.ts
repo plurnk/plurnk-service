@@ -41,7 +41,7 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
             forwardedProps: { plurnk: { workspace: "action-stream", projectRoot: root, action: { kind: "op.exec", command: "sleep 1; printf late" } } },
         }, t.signal);
         const order = events.map(label);
-        const started = events.find((e) => label(e) === "plurnk.row"
+        const started = events.find((e) => label(e) === "plurnk.ambient"
             && typeof (e as { value?: { attrs?: { stream?: unknown } } }).value?.attrs?.stream === "string") as { value: { attrs: { stream: string } } } | undefined;
         assert.ok(started !== undefined, `the started row rides the operation's Run: ${order.join(" → ")}`);
         const conclusion = events.findIndex((e) => label(e) === "plurnk.stream"
@@ -78,7 +78,7 @@ test("{§proposal-disposition} a person's command runs at once under review, whe
             }, t.signal);
             const result = (events.find(({ type }) => type === "RUN_FINISHED") as { result?: { ok?: boolean } } | undefined)?.result;
             assert.equal(result?.ok, true, JSON.stringify(events));
-            const receipt = events.find((event) => label(event) === "plurnk.row") as { value?: { rx?: { outcome?: string } } } | undefined;
+            const receipt = events.find((event) => label(event) === "plurnk.ambient") as { value?: { rx?: { outcome?: string } } } | undefined;
             assert.equal(receipt?.value?.rx?.outcome, "client_operation", "the person's own decision, never routed for review");
             const finish = events.at(-1) as { type?: string; outcome?: { type?: string } } | undefined;
             assert.equal(finish?.type, "RUN_FINISHED");

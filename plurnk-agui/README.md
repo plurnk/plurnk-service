@@ -8,8 +8,9 @@ interface and translates daemon lifecycle events into AG-UI events.
 `POST /agui` accepts `RunAgentInput` and returns an AG-UI event stream.
 
 PLURNK uses standard AG-UI events for Runs, messages, steps, tool calls, state,
-and approval requests. Additional execution metadata uses namespaced
-`plurnk.*` custom events so generic AG-UI clients can ignore it safely.
+and approval requests. PLURNK's facts about those parts ride their standard
+`metadata` under `plurnk`; facts with no standard subject use namespaced
+`plurnk.*` custom events, so generic AG-UI clients can ignore them safely.
 
 Workspace selection and PLURNK-specific management actions use namespaced
 fields under `forwardedProps.plurnk`. `SPEC.md` defines those extensions.
@@ -28,8 +29,8 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | Live provider reasoning | Standard `REASONING_*` deltas, immediately. Retries have separate identities. |
 | SEND | Assistant text; already-streamed reasoning is not repeated. |
 | Other model operations | Standard tool calls and results. |
-| Log rows | `CUSTOM plurnk.row` for richer clients; not a second chat stream to render alongside standard messages. |
-| Harness activity | `CUSTOM plurnk.ambient`, without invented model speech. |
+| A row's facts | `metadata.plurnk` on the message, tool call or result the row builds, live and on snapshot. |
+| Harness activity, other workers' rows | `CUSTOM plurnk.ambient`, the whole row, without invented model speech. |
 | Loop end | `RUN_FINISHED` completed with its result or cancelled, or `RUN_ERROR` for a failure; the end carries its token `usage`. |
 | Packet and terminal usage | State updates, and the loop's terminal record as the end's `metadata.plurnk.terminal`: the complete accounting with cost; daemon quantities pass through unchanged. |
 

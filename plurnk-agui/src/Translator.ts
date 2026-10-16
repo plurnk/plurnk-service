@@ -1,10 +1,9 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
 //   log/entry response (model) → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
-//                                 (assistant speech, a reply or a WAIT's body; the signal rides plurnk.send)
-//   log/entry rejected emission → forensic row only, no message event
+//                                 (assistant speech, a reply or a WAIT's body)
+//   log/entry rejected emission → CUSTOM plurnk.ambient, no message event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id; a bodiless WAIT too)
 //   log/entry arrival  (plurnk) → TEXT_MESSAGE triple, role user, named by its source (another client's
@@ -38,7 +37,8 @@ import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@p
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
-    source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown };
+    source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown;
+    scheme?: unknown; hostname?: unknown; port?: unknown; pathname?: unknown; query?: unknown; fragment?: unknown };
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
@@ -162,34 +162,17 @@ export default class Translator {
     #project(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        const clientEntry = e;
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
-        // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
-        // never interleaved into the messages a generic frontend renders.
+        // Another worker's row is workspace activity, never interleaved into the messages a generic frontend renders.
         const workerId = (e as { worker_id?: number }).worker_id;
         // Lazy binding: a Run that binds no model worker adopts its first model-origin row's worker as the
         // model worker (workers spawn FROM it later).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
-        // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:
-        // curation metadata, durable tags, coordinates — everything clients render that
-        // the core vocabulary can't hold. Rich clients render the original operations.
-        const row = { type: EventType.CUSTOM, name: "plurnk.row", value: clientEntry } as const;
-        if (foreign) {
-            events.push(row);
-            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
-            return events;
-        }
-        // A family client renders the SEND from plurnk.row rather than duplicating
-        // TEXT_MESSAGE. Delay that mirror, and the mirror of the row carrying its turn's
-        // reasoning, until after the standard reasoning lifecycle so both generic and
-        // family clients observe reasoning first.
-        const response = Translator.isResponse(e, this.#threadId);
-        const lifecycle = typeof e.op === "string" && TurnDisposition.isOp(e.op);
-        const carriesReasoning = e.op !== null && typeof e.reasoning === "string" && e.reasoning.length > 0;
-        const delayedRow = e.origin === "model" && (response || lifecycle || e.op === "NOTE" || carriesReasoning);
-        if (!delayedRow) events.push(row);
+        // {§agui-ambient} A row that builds nothing in the conversation rides whole.
+        const ambient = { type: EventType.CUSTOM, name: "plurnk.ambient", value: e } as const;
+        if (foreign) return [ambient];
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         const arrival = this.#arrival(e);
         if (arrival !== null) {
@@ -205,13 +188,14 @@ export default class Translator {
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
             return events;
         }
+        const response = Translator.isResponse(e, this.#threadId);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) {
                 events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e), metadata: Translator.#rowMetadata(e) });
                 return events;
             }
-            events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
+            events.push(ambient);
             return events;
         }
         const id = this.#id(e);
@@ -219,8 +203,6 @@ export default class Translator {
             events.push(...Translator.#readableReasoningEvents(Translator.#reasoningId(e, id),
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
         }
-        if (delayedRow) events.push(row);
-        const signal = { type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: id } } as const;
         // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
         // teaches both as the worker's words to the user. A bodiless WAIT is an operation like any other.
         const text = Translator.#txBody(e.tx);
@@ -228,14 +210,14 @@ export default class Translator {
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant", metadata: Translator.#speechMetadata(e) });
             events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
-            events.push(signal);
             return events;
         }
         if (e.op === null) {
-            const kind = Translator.#modelArtifactKind(e.attrs);
-            if (kind === null) {
+            // {§rejected-emission-entry} An emission the daemon rejected builds no part.
+            if (Translator.#modelArtifactKind(e.attrs) === null) {
                 throw new TypeError("An actionless model-origin row must carry attrs.kind=emissionAttempt.");
             }
+            events.push(ambient);
             return events;
         }
         const metadata = Translator.#rowMetadata(e);
@@ -246,7 +228,6 @@ export default class Translator {
         if (!Translator.#opensObligation(e)) {
             events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
         }
-        if (lifecycle) events.push(signal);
         return events;
     }
 
@@ -631,10 +612,25 @@ export default class Translator {
     }
 
     // {§agui-plurnk-metadata} What the row that builds a message, tool call or result holds beyond the standard fields: its
-    // durable id, log coordinate, worker, origin, operation, source, signal, status and attrs, the same live and on snapshot.
+    // durable id, log coordinate, worker, origin, operation, source, address, signal, status and attrs, the same live and
+    // on snapshot.
     static #rowMetadata(e: RowFacts): { plurnk: Record<string, unknown> } {
         return { plurnk: { id: e.id, coordinate: Translator.idOf(e), worker: e.worker_id, origin: e.origin, op: e.op, source: e.source,
-            signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+            address: Translator.addressOf(e), signal: e.signal, status: e.status_rx, attrs: e.attrs } };
+    }
+
+    // {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a
+    // file target records, with its channel; null when the row named none.
+    static addressOf(e: RowFacts): string | null {
+        const text = (value: unknown): string | null => typeof value === "string" ? value : null;
+        const pathname = text(e.pathname);
+        if (pathname === null) return null;
+        const fragment = text(e.fragment) === null ? "" : `#${text(e.fragment)}`;
+        const scheme = text(e.scheme);
+        if (scheme === null) return `${pathname}${fragment}`;
+        const port = typeof e.port === "number" ? `:${e.port}` : "";
+        const query = text(e.query) === null ? "" : `?${text(e.query)}`;
+        return `${scheme}://${text(e.hostname) ?? ""}${port}${pathname}${query}${fragment}`;
     }
 
     // {§agui-plurnk-metadata} Speech holds the body; its heading's aside and its receipt have no field in a text message.

@@ -62,8 +62,9 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.ok(reply);
         assert.equal(reply.content, "The installed one-shot journey is complete.");
         assert.equal(agent.messages.some(({ role }) => role === "activity"), false, "lifecycle verbs do not invent an ACP Plan");
-        const rows = events.filter((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.row")
-            .map((event) => (event as unknown as { value: { op: string; origin: string } }).value);
+        // {§agui-plurnk-metadata} Each part names the row that built it.
+        const rows = events.filter((event) => event.type === EventType.TOOL_CALL_START || event.type === EventType.TEXT_MESSAGE_START)
+            .flatMap((event) => (event as { metadata?: { plurnk?: { op: string; origin: string } } }).metadata?.plurnk ?? []);
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND"], "the authored completion carries the answer without a synthetic operation");
         assert.equal(fixture.requests.length, 1, "one actual inference request completes the run");
         assert.equal(fixture.requests[0].journey, "cli");

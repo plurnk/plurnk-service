@@ -80,12 +80,11 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: authored("````READ (worker:///notes.md)\n````"), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
-    assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
-    const start = events[1] as { toolCallId: string; toolCallName: string };
+    assert.deepEqual(events.map((e) => e.type), ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"], "the row is its call and receipt, nothing beside them");
+    const start = events[0] as { toolCallId: string; toolCallName: string };
     assert.equal(start.toolCallId, "1/1/3", "the coordinate IS the toolCallId");
     assert.equal(start.toolCallName, "READ");
-    const args = events[2] as { delta: string };
+    const args = events[1] as { delta: string };
     assert.equal(JSON.parse(args.delta).target.raw, "worker:///notes.md", "the target rides the args");
 });
 
@@ -235,39 +234,30 @@ test("{§message-completion}: delivered completion replies enter live and replay
 test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT is an operation and speaks nothing", () => {
     const tr = t();
     const events = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 1, sequence: 3, tx: { body: "Pilot at 12 of 30, 9 passes; next read in ten minutes." } }));
-    assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
-    assert.equal((events[3] as { delta: string }).delta, "Pilot at 12 of 30, 9 passes; next read in ten minutes.", "the body is delivered as it was written");
-    assert.equal((events[5] as { name: string }).name, "plurnk.send");
+    assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END"]);
+    assert.equal((events[2] as { delta: string }).delta, "Pilot at 12 of 30, 9 passes; next read in ten minutes.", "the body is delivered as it was written");
     const silent = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 2, sequence: 3, turn_id: 2, tx: { body: null } }));
     assert.deepEqual(silent.filter((e) => e.type !== "STEP_FINISHED" && e.type !== "STEP_STARTED").map((e) => e.type),
-        ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT", "CUSTOM"], "no body, no speech: the WAIT and its receipt");
+        ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"], "no body, no speech: the WAIT and its receipt");
     assert.equal((silent.find((e) => e.type === "TOOL_CALL_START") as { toolCallName?: string } | undefined)?.toolCallName, "WAIT");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
-    assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
-    const custom = send[4] as { name: string; value: { signal: unknown } };
-    assert.equal(custom.name, "plurnk.send");
-    assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
+    assert.deepEqual(send.map((e) => e.type), ["TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END"]);
+    assert.equal((send[0] as { metadata?: { plurnk?: { signal?: unknown } } }).metadata?.plurnk?.signal, 200,
+        "{§agui-plurnk-metadata} the signal rides the speech's metadata, never lost, never masquerading");
 });
 
-test("{§agui-row-channel} NOTE remains literal in live rows; no task inventory is invented", () => {
+test("{§agui-lifecycle-projection} NOTE remains literal in its call; no task inventory is invented", () => {
     const tr = t();
     const native = "Verify the root lockfile.\nRun the focused tests.";
     const events = tr.logEntry(entry({ op: "NOTE", tx: { body: native } }));
-    const activity = events.find((event) => event.type === "ACTIVITY_SNAPSHOT");
-    const row = events.find((event) => event.type === "CUSTOM") as {
-        name?: string;
-        value?: { tx?: { body?: unknown } };
-    } | undefined;
-
-    assert.equal(row?.name, "plurnk.row");
-    assert.equal(row?.value?.tx?.body, native);
-    assert.equal(activity, undefined);
+    const args = events.find((event) => event.type === "TOOL_CALL_ARGS") as { delta?: string } | undefined;
+    assert.equal(JSON.parse(args?.delta ?? "{}").body, native, "the call's arguments carry the body as written");
+    assert.equal(events.find((event) => event.type === "ACTIVITY_SNAPSHOT"), undefined);
     assert.ok(events.some((event) => event.type === "TOOL_CALL_START" && event.toolCallName === "NOTE"));
     assert.ok(!events.some((event) => event.type === "TEXT_MESSAGE_CONTENT"));
     const ambient = tr.logEntry(entry({ op: "NOTE", origin: "_plurnk", tx: { body: native } }));
-    assert.equal(ambient.length, 2, "harness notes project onto both rich-client channels");
-    const ambientRow = ambient[0] as { value?: { tx?: { body?: unknown } } };
-    assert.equal(ambientRow.value?.tx?.body, native);
+    assert.deepEqual(ambient.map((event) => event.type === "CUSTOM" ? event.name : event.type), ["plurnk.ambient"], "{§agui-ambient} a harness note rides whole");
+    assert.equal((ambient[0] as { value?: { tx?: { body?: unknown } } }).value?.tx?.body, native);
 });
 
 test("{§agui-projection} addressed replies project by thread, including answers delivered by another worker", () => {
@@ -281,9 +271,10 @@ test("{§agui-projection} addressed replies project by thread, including answers
         const events = t().logEntry(record);
         const expected = thread === "th-1" ? [native] : [];
         assert.deepEqual(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta), expected);
-        const row = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
-        assert.ok(row !== undefined && row.type === "CUSTOM");
-        assert.equal((row.value as { tx: { body: { raw: string } } }).tx.body.raw, native);
+        // A reply to another thread is no speech here: the model's is its call, carrying its words; another's rides whole.
+        const operation = events.find((event) => event.type === "TOOL_CALL_ARGS") as { delta?: string } | undefined;
+        const whole = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.ambient") as { value?: { tx: { body: { raw: string } } } } | undefined;
+        if (thread !== "th-1") assert.equal(origin === "model" ? JSON.parse(operation?.delta ?? "{}").body?.raw : whole?.value?.tx.body.raw, native);
         const [snapshot] = t().replay([record.entry]);
         assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
         if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(speech(snapshot.messages), expected);
@@ -315,12 +306,10 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
         "REASONING_MESSAGE_CONTENT",
         "REASONING_MESSAGE_END",
         "REASONING_END",
-        "CUSTOM",
         "TEXT_MESSAGE_START",
         "TEXT_MESSAGE_CONTENT",
         "TEXT_MESSAGE_END",
-        "CUSTOM",
-    ]);
+    ], "reasoning precedes the words it led to");
     const reasoning = events.slice(1, 6);
     assert.deepEqual(reasoning, [
         { type: "REASONING_START", messageId: "1/1/8/reasoning" },
@@ -334,7 +323,6 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
     assert.doesNotThrow(() => ReasoningMessageContentEventSchema.parse(reasoning[2]));
     assert.doesNotThrow(() => ReasoningMessageEndEventSchema.parse(reasoning[3]));
     assert.doesNotThrow(() => ReasoningEndEventSchema.parse(reasoning[4]));
-    assert.equal((events[6] as { name?: string }).name, "plurnk.row", "family clients see reasoning before the paired SEND row");
 });
 
 test("live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
@@ -375,7 +363,7 @@ for (const origin of ["model", "_plurnk"] as const) {
         const events = tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" });
         const settled = entry({ ...prior.entry, status_rx: 200, rx: { status: 200, content: "late result" } });
         const late = tr.logEntry(settled);
-        assert.ok(late.some((event) => event.type === "CUSTOM" && event.name === "plurnk.row"), "the old receipt still reaches clients");
+        assert.ok(late.some((event) => event.type === "TOOL_CALL_RESULT" || (event.type === "CUSTOM" && event.name === "plurnk.ambient")), "the old receipt still reaches clients");
         assert.ok(!late.some(({ type }) => type.startsWith("STEP_")), "late completion does not change the current execution step");
         events.push(...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }));
         const interrupted = tr.interrupt();
@@ -411,7 +399,6 @@ for (const streamed of [false, true]) {
             "one reasoning value per turn, including when a later turn repeats the same text");
         assert.equal(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").length, 4, "three reply SENDs and the WAIT body: a WAIT that carries words speaks them ({§agui-projection})");
         assert.equal(events.filter(({ type }) => type === "ACTIVITY_SNAPSHOT").length, 0);
-        assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.send"));
         const snapshot = tr.replay(rows.map(({ entry }) => entry)).find(({ type }) => type === "MESSAGES_SNAPSHOT");
         assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
         assert.equal(snapshot.messages.filter(({ role }) => role === "reasoning").length, 2,
@@ -519,14 +506,13 @@ test("readable reasoning identity is turn-specific and absent evidence invents n
     assert.ok(!absent.some((event) => event.type.startsWith("REASONING_")));
 });
 
-test("ambient (origin _plurnk) rows ride plurnk.ambient; rejected attempts emit nothing", () => {
+test("{§agui-ambient} ambient (origin _plurnk) rows and rejected attempts ride plurnk.ambient, never speech", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: { body: "orient" } }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
-    assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
-    assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
-    const mirror = tr.logEntry(entry({ op: null, loop_seq: 1, turn_seq: 1, sequence: 3, attrs: { kind: "emissionAttempt" }, tx: "an unparsed reply" }));
-    assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
+    assert.deepEqual(ambient.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"]);
+    const rejected = tr.logEntry(entry({ op: null, loop_seq: 1, turn_seq: 1, sequence: 3, attrs: { kind: "emissionAttempt" }, tx: "an unparsed reply" }));
+    assert.deepEqual(rejected.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"], "a rejected emission builds no part: it rides whole, forensic, never speech");
 });
 
 test("an actionless model row without an artifact discriminator is rejected", () => {
@@ -544,7 +530,7 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     const tr = t();
     const reasoning = entry({ op: "READ", origin: "_plurnk", scheme: "reasoning", pathname: "/1/1/1", rx: { content: "Working reasoning text." } });
     const live = tr.logEntry(reasoning);
-    assert.deepEqual(live.map(({ type }) => type), ["CUSTOM", "STEP_STARTED", "CUSTOM"]);
+    assert.deepEqual(live.map(({ type }) => type), ["STEP_STARTED", "CUSTOM"]);
     const ambient = live.at(-1);
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
@@ -718,12 +704,12 @@ test("a failed termination without a Problem is rejected instead of synthesized 
     );
 });
 
-test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
+test("{§agui-ambient} a FOREIGN worker's rows never enter the core stream — plurnk.ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: wireRow({ id: 1, op: "WAIT", worker_id: 2, tx: JSON.stringify({ body: "mine" }) }) });
-    assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
+    assert.ok(own.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "the thread's own WAIT speaks its body");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
-    assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never the thread's messages");
+    assert.deepEqual(worker.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"], "a worker's rows ride plurnk.ambient — visible topology, never the thread's messages");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's messages");
 });
@@ -734,7 +720,7 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
         attrs: { kind: "emissionAttempt" },
         reasoning: "rejected response reasoning",
     } as never));
-    assert.deepEqual(events.map((event) => event.type), ["CUSTOM", "STEP_STARTED"]);
+    assert.deepEqual(events.map((event) => event.type === "CUSTOM" ? event.name : event.type), ["STEP_STARTED", "plurnk.ambient"], "{§agui-ambient} it rides whole");
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
@@ -867,7 +853,8 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
 
 test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
     const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}`,
-        worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, signal: row.signal, status: row.status_rx, attrs: row.attrs } });
+        worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, address: Translator.addressOf(row), signal: row.signal, status: row.status_rx,
+        attrs: row.attrs } });
     const speech = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
     const rows = [
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),
@@ -889,6 +876,14 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
         ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata),
         [facts(rows[0]!), facts(rows[1]!), facts(rows[1]!), speech(rows[2]!, "the answer"), facts(rows[3]!), facts(rows[3]!), speech(rows[4]!, "parked")],
         "the snapshot holds the same metadata on the same parts");
+});
+
+test("{§agui-plurnk-metadata} a row's address is what it recorded: scheme, host, port, path, query and channel, or the bare path of a file", () => {
+    assert.equal(Translator.addressOf(wireRow({ scheme: "https", hostname: "example.com", port: 8443, pathname: "/a", query: "b=1", fragment: "top" })), "https://example.com:8443/a?b=1#top");
+    assert.equal(Translator.addressOf(wireRow({ scheme: "worker", hostname: null, pathname: "/plan.md" })), "worker:///plan.md", "an empty authority stays empty");
+    assert.equal(Translator.addressOf(wireRow({ scheme: "ops", hostname: "helper", pathname: "/1" })), "ops://helper/1");
+    assert.equal(Translator.addressOf(wireRow({ scheme: null, pathname: "src/a.ts", fragment: "stderr" })), "src/a.ts#stderr", "a file's channel is its fragment");
+    assert.equal(Translator.addressOf(wireRow({ scheme: null, pathname: null })), null, "a row that named nothing has no address");
 });
 
 test("{§methods-log-coordinate} a row's message identity is its L/T/S coordinate, and a row without its ordinals is refused", () => {
