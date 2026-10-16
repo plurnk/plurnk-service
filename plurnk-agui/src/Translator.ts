@@ -7,8 +7,10 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 //   log/entry rejected emission → forensic row only, no message event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
-//   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
-//                                 environment speaking; generic UIs skip, rich UIs render)
+//   log/entry arrival  (plurnk) → TEXT_MESSAGE triple, role user, named by its source (another client's
+//                                 prompt, a worker's message), except the Run's own submission
+//   log/entry          (plurnk) → CUSTOM plurnk.ambient (deltas, narrations — the environment
+//                                 speaking; generic UIs skip, rich UIs render)
 //   outside/event               → CUSTOM plurnk.outside (the thread's worker only: text the model
 //                                 emitted outside every operation, never assistant speech)
 //   turn_id advances            → STEP_FINISHED/STEP_STARTED
@@ -48,6 +50,8 @@ export default class Translator {
     #workspaceId: number | null;
     #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
     #completedReasoning = new Map<number, string[]>();
+    // {§agui-snapshot} The messages this Run submitted: its client already holds them.
+    #submitted = new Set<string>();
 
     constructor(args: {
         threadId: string;
@@ -91,6 +95,11 @@ export default class Translator {
             this.#stepOpen = true;
         }
         return events;
+    }
+
+    // A message this Run submits arrives in its worker's log like any other; its own client already holds it.
+    submitted(messageId: string): void {
+        this.#submitted.add(messageId);
     }
 
     // {§agui-gate-deferral} — a stopped-world cannot split this lifecycle; the Portal holds it until the end.
@@ -168,13 +177,21 @@ export default class Translator {
         const delayedRow = e.origin === "model" && (response || lifecycle || e.op === "NOTE" || carriesReasoning);
         if (!delayedRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
+        const arrival = this.#arrival(e);
+        if (arrival !== null) {
+            if (this.#submitted.has(arrival.id)) return events;
+            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: arrival.id, role: "user", ...(arrival.name === undefined ? {} : { name: arrival.name }) });
+            events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: arrival.id, delta: arrival.content });
+            events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
+            return events;
+        }
         if (e.origin !== "model" && !response) {
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: clientEntry });
             return events;
         }
-        const id = e.coordinate ?? String(e.id);
+        const id = Translator.idOf(e);
         if (e.op !== null) {
-            events.push(...Translator.#readableReasoningEvents(id,
+            events.push(...Translator.#readableReasoningEvents(Translator.#reasoningId(e, id),
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
         }
         if (delayedRow) events.push(row);
@@ -187,7 +204,7 @@ export default class Translator {
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
         }
         if (response || lifecycle) {
-            events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
+            events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: id } });
             return events;
         }
         if (e.op === null) {
@@ -210,7 +227,7 @@ export default class Translator {
     reasoning(event: ReasoningEventNotification): AguiEvent[] {
         if (this.#modelWorkerId === null) this.#modelWorkerId = event.workerId;
         if (event.workerId !== this.#modelWorkerId) return [];
-        const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
+        const messageId = Translator.#requestReasoningId(event.modelCallId, event.requestSequence);
         if (event.phase === "start") {
             if (this.#activeReasoning.has(event.modelCallId)) {
                 throw new TypeError(`Reasoning model call ${event.modelCallId} already started a physical request.`);
@@ -323,12 +340,10 @@ export default class Translator {
             return leftId - rightId;
         });
         for (const e of chronological) {
-            const id = String(e.coordinate ?? e.id);
-            // {§message-arrival} — an arrival replays as a user message; another actor's arrival
-            // carries its source as the message name ({§message-causal-source}).
-            if (e.origin === "_plurnk" && e.op === "SEND" && Translator.#attrKind(e.attrs) === "message") {
-                messages.push({ id: MessageAddress.messageId(e.source, this.#threadId) ?? id,
-                    role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}) });
+            const id = Translator.idOf(e);
+            const arrival = this.#arrival(e);
+            if (arrival !== null) {
+                messages.push({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }) });
                 continue;
             }
             const response = Translator.isResponse(e, this.#threadId);
@@ -340,7 +355,7 @@ export default class Translator {
                 continue;
             }
             const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
-            if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
+            if (reasoning.length > 0) messages.push({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning });
             const text = Translator.#txBody(e.tx);
             if (response || Translator.#waitSpeech(e, text)) messages.push({ id, role: "assistant", content: text });
             if (response || TurnDisposition.isOp(e.op)) continue;
@@ -437,9 +452,8 @@ export default class Translator {
 
     // {§agui-readable-reasoning} Durable reasoning precedes the turn's first
     // speech or note projection when live delivery has not already supplied it.
-    static #readableReasoningEvents(sendId: string, value: unknown): AguiEvent[] {
+    static #readableReasoningEvents(messageId: string, value: unknown): AguiEvent[] {
         if (typeof value !== "string" || value.length === 0) return [];
-        const messageId = `${sendId}/reasoning`;
         return [
             { type: EventType.REASONING_START, messageId },
             { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
@@ -503,6 +517,40 @@ export default class Translator {
         if (typeof v === "string") return v;
         if (v === null || v === undefined) return "";
         return JSON.stringify(v);
+    }
+
+    // {§agui-snapshot} A row's message identity is its log coordinate L/T/S ({§methods-log-coordinate}).
+    static idOf(e: { loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown }): string {
+        const { loop_seq: loop, turn_seq: turn, sequence } = e;
+        if (!Number.isSafeInteger(loop) || !Number.isSafeInteger(turn) || !Number.isSafeInteger(sequence)) {
+            throw new TypeError("A log row carries its loop, turn and sequence ordinals.");
+        }
+        return `${loop as number}/${turn as number}/${sequence as number}`;
+    }
+
+    // {§agui-readable-reasoning} Reasoning is the request that streamed it, live and on replay alike; reasoning a
+    // FORK inherited was streamed by no request of this worker and is its row's.
+    static #requestReasoningId(modelCallId: number, requestSequence: number): string {
+        return `model-call-${modelCallId}/request-${requestSequence}/reasoning`;
+    }
+
+    static #reasoningId(e: { reasoning_model_call_id?: unknown; reasoning_request_sequence?: unknown }, id: string): string {
+        const { reasoning_model_call_id: call, reasoning_request_sequence: request } = e;
+        return typeof call === "number" && typeof request === "number" ? Translator.#requestReasoningId(call, request) : `${id}/reasoning`;
+    }
+
+    // {§message-arrival} An arrival is a user message, live and on replay alike. One a client on this thread sent is that
+    // client's own, under its message id and as it sent it; any other is identified by its coordinate and named by its
+    // source ({§message-causal-source}).
+    #arrival(e: { origin?: unknown; op?: unknown; attrs?: unknown; source?: unknown; tx?: unknown }): { id: string; content: string; name?: string } | null {
+        if (e.origin !== "_plurnk" || e.op !== "SEND" || Translator.#attrKind(e.attrs) !== "message") return null;
+        const messageId = MessageAddress.messageId(e.source, this.#threadId);
+        if (messageId !== null) return { id: messageId, content: Translator.#txBody(e.tx) };
+        return {
+            id: Translator.idOf(e as Parameters<typeof Translator.idOf>[0]),
+            content: Translator.#txBody(e.tx),
+            ...(typeof e.source === "string" ? { name: e.source } : {}),
+        };
     }
 
     // Tool-call args: the op's addressing + body as one JSON string (AG-UI streams args as deltas;

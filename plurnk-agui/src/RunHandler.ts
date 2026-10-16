@@ -290,7 +290,7 @@ export default class RunHandler {
                 emit([{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }]);
             }
             // A sync Run requires its worker ({§agui-action-binding}), so one is bound here.
-            const history = await this.#seam().readLog({ workspaceId, workerId: workerId!, limit: Number.MAX_SAFE_INTEGER });
+            const history = await this.#history(workspaceId, workerId!);
             if (finished) return;
             emit(this.#portal().replay(boundRun, history));
             if (finished) return;
@@ -334,7 +334,7 @@ export default class RunHandler {
         if (prompt === null || currentUser === null || workerId === undefined) throw new Error("message AG-UI Run reached dispatch without a validated prompt and its worker");
 
         if (reattached) {
-            const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER }).catch(() => null);
+            const history = await this.#history(workspaceId, workerId).catch(() => null);
             if (finished) return;
             if (history !== null && !RunHandler.#isOriented(input, history)) {
                 const replayUser = currentUser ?? undefined;
@@ -385,10 +385,23 @@ export default class RunHandler {
         }
     }
 
+    // {§agui-snapshot} A snapshot is every message the live projection built, so it reads the whole log, page by page.
+    async #history(workspaceId: number, workerId: number): Promise<Array<Record<string, unknown>>> {
+        const rows: Array<Record<string, unknown>> = [];
+        for (let beforeId: number | undefined; ;) {
+            const cursor = beforeId;
+            const page = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER, ...(cursor === undefined ? {} : { beforeId: cursor }) });
+            const older = cursor === undefined ? page : page.filter(({ id }) => id < cursor);
+            if (older.length === 0) return rows;
+            rows.push(...older);
+            beforeId = Math.min(...older.map(({ id }) => id));
+        }
+    }
+
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
             Translator.isResponse(entry, input.threadId)
-                    ? [String(entry.coordinate ?? entry.id)]
+                    ? [Translator.idOf(entry)]
                 : []));
         return input.messages.some(({ id }) => durableMessageIds.has(id));
     }

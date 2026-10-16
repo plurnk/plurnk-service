@@ -142,8 +142,13 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         ]);
         assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, message.body);
         assert.ok(model.some(({ op, rx }) => op === "SEND" && JSON.parse(rx).answers.includes(message.source)));
-        assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
-            ["Initial request answered.", "Injected requirement answered."]);
+        const roles = new Map(events.filter(({ type }) => type === "TEXT_MESSAGE_START")
+            .map((event) => [(event as { messageId: string }).messageId, (event as { role: string }).role]));
+        assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => {
+            const { messageId, delta } = event as { messageId: string; delta: string };
+            return [roles.get(messageId), delta];
+        }), [["user", "Also check the new requirement."], ["assistant", "Initial request answered."], ["assistant", "Injected requirement answered."]],
+        "{§agui-snapshot} the steering message reaches the opening Run as a user message, as on replay, then both answers");
         const replay = await post(port, {
             threadId: "main",runId: "reconnected",
             forwardedProps: { plurnk: { workspace: "injected-source", mode: "sync" } },

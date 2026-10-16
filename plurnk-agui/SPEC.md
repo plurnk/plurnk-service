@@ -145,7 +145,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§agui-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
 | `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§agui-readable-reasoning}. |
-| `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
+| `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§agui-snapshot}): a message a client on this thread sent keeps its message id and goes to every Run but the one that submitted it; any other is named by its source |
+| `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
@@ -183,18 +184,20 @@ that joins after a request's reasoning began presents none of that request's del
 Core also derives a turn's optional complete `reasoning` onto its first model operation
 row from the durable packet ({§methods-readable-reasoning}). When that value was not
 already delivered by the completed live stream, projection emits it atomically before
-that row under `<OP identity>/reasoning`. A standard interrupt may divide one durable Loop across consecutive
+that row under the identity of the request that streamed it, `model-call-<call>/request-<n>/reasoning`
+({§methods-readable-reasoning}); history a FORK inherited, which no request of this worker streamed,
+is `<coordinate>/reasoning`. A standard interrupt may divide one durable Loop across consecutive
 AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
-before the stopped operation is released. Reattach replaces transient attempt presentation with the durable
-accepted `ReasoningMessage` once per turn in
-`MESSAGES_SNAPSHOT`. Empty evidence emits nothing, NOTE never substitutes for
+before the stopped operation is released. The accepted request's reasoning keeps its live identity in
+`MESSAGES_SNAPSHOT`, once per turn, so a snapshot leaves it where the live stream put it and drops only the
+transient reasoning of failed or rejected requests. Empty evidence emits nothing, NOTE never substitutes for
 reasoning ({§agui-lifecycle-projection}), and a response row still precedes its text
 sequence.
 
-- **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
-  delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
-  core vocabulary can't hold (curation metadata, tags, coordinates) stays on the row inside
-  `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
+- **An op row IS a tool call** — its coordinate `L/T/S`, from the row's ordinals
+  ({§methods-log-coordinate}), is the `toolCallId`, its tx the args (one delta: a dispatched plurnk
+  op is atomic), its rx the result. The log-shaped richness the core vocabulary can't hold
+  (curation metadata, the ordinals) stays on the row inside `plurnk.row`.
 - §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
   AG-UI defines encrypted-reasoning events and message values; plurnk emits none and
   stores none ({§provider-open-reasoning}). Implementing a transport for bytes the
@@ -288,7 +291,7 @@ ignore the extension; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
-  carrying the complete client-facing row (curation metadata, durable tags, coordinate)
+  carrying the complete client-facing row (its ordinals, curation metadata, reasoning identity)
   alongside its core projection. An emission row ({§emission-row}) rides it like any other; the
   operations it announces arrive as their own rows, so a client that renders operations omits it. Literal bodies follow {§agui-lifecycle-projection}; rich clients
   never receive the internal Plan extension. Generic clients ignore this metadata
@@ -323,12 +326,13 @@ every other daemon surface.
 
 §agui-snapshot **A snapshot is the messages the live projection built**, in log order and under
 the live identities, so a client that applies it keeps every message it built live and a reloaded
-client rebuilds them:
+client rebuilds them. It is built from the bound worker's whole log, read page by page
+({§methods-log-read}), because AG-UI defines a snapshot as the complete set:
 
 | Durable row | Snapshot messages |
 |---|---|
-| Arrival | `user`, named by its source ({§message-causal-source}) |
-| A turn's first model operation, carrying the turn's reasoning | `reasoning` `<coordinate>/reasoning`, before that row's own messages ({§agui-readable-reasoning}) |
+| Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
+| A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§agui-readable-reasoning}) |
 | SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
 | Any other model operation | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt when there is one |
 | Bodiless WAIT, emission attempt, ambient row | No message of its own |

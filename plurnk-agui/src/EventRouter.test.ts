@@ -31,7 +31,7 @@ test("{§agui-workspace-state} workspace preparation is replaceable state, never
 });
 
 test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
-    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, coordinate: "1.2.3", tx: { body: "hello" }, rx: { answers: ["agui://anonymous/threads/t/messages/m"] }, turn_id: 1 } });
+    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 2, sequence: 3, tx: { body: "hello" }, rx: { answers: ["agui://anonymous/threads/t/messages/m"] }, turn_id: 1 } });
     const types = evs.map((e) => e.type);
     assert.ok(types.includes(EventType.TEXT_MESSAGE_START) && types.includes(EventType.TEXT_MESSAGE_CONTENT) && types.includes(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });
@@ -60,7 +60,7 @@ test("reasoning/event validates and projects the standard live lifecycle", () =>
 
 test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {
     const r = router();
-    const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, loop_id: 2, origin: "model", op: "EDIT", coordinate: "1.2.4", scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });
+    const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, loop_id: 2, origin: "model", op: "EDIT", loop_seq: 1, turn_seq: 2, sequence: 4, scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });
     assert.equal(call.find((e) => e.type === "TOOL_CALL_START") !== undefined, true, "an op row is a tool call");
     const term = r.route("loop/terminated", termination({ usage: loopUsage({ inputTokens: 5, outputTokens: 6, curationBudget: 200000 }) }));
     assert.ok(term.some((e) => e.type === "STATE_DELTA"), "budget rides STATE");

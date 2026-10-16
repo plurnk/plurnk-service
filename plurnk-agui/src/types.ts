@@ -15,32 +15,13 @@ export type {
     ToolMessage,
     UserMessage,
 } from "@ag-ui/core";
-import type { OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
+import type { LogEntryWire, OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
 
 // The daemon event shapes this module consumes from the typed in-process seam.
 // Core owns the shapes; this module owns their external AG-UI projection.
+// {§methods-log-entry-wire} The row exactly as core sends it.
 export interface LogEntryNotification {
-    entry: {
-        id: number;
-        worker_id: number;
-        loop_id: number;
-        coordinate?: string;
-        op: string | null;
-        origin: string;
-        signal?: unknown;
-        scheme?: string | null;
-        pathname?: string | null;
-        // Parsed JSON on the real wire (the daemon ships objects); strings tolerated for robustness.
-        tx?: unknown;
-        rx?: unknown;
-        status_rx?: number;
-        turn_id?: number;
-        attrs?: unknown;
-        tags?: string[];
-        source?: string | null;
-        inherited_history?: number;
-        reasoning?: string;
-    };
+    entry: LogEntryWire;
 }
 
 export type ProposalNotification = ProposalProjection;

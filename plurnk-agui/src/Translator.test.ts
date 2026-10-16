@@ -11,15 +11,15 @@ import {
     ReasoningStartEventSchema,
 } from "@ag-ui/core/schemas";
 import Translator from "./Translator.ts";
-import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
+import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
+import { wireRow } from "../test/log-fixture.ts";
 
 const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
-    const rx = over.op === "SEND" && tx?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
-    return { entry: { id: 7, worker_id: 10, loop_id: 1, op: "READ", origin: "model", status_rx: 200,
-        tx: { target: null, body: { raw: "message" } }, rx, coordinate: "1/1/3/READ", turn_id: 1, ...over } };
+    const rx = over.op === "SEND" && (tx as { target?: unknown } | undefined)?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
+    return { entry: wireRow({ id: 7, sequence: 3, tx: { target: null, body: { raw: "message" } }, rx, ...over }) };
 };
 
 // What a reader sees of a snapshot: its speech, and its operations as their calls.
@@ -32,11 +32,11 @@ const calls = (messages: readonly Replayed[]): Array<[string, string]> =>
 test("{§agui-replay} successful replies to the thread are assistant responses in live and replay", () => {
     const tr = t();
     const messages = [
-        entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "First." } } }),
-        entry({ id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, tx: { target: { kind: "url", raw: "worker://child" }, body: { raw: "Private instructions." } } }),
-        entry({ id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 400, tx: { target: null, body: { raw: "Unsent." } }, rx: { status: 400 } }),
-        entry({ id: 4, coordinate: "1/1/4/SEND", op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "Second." } } }),
-        entry({ id: 5, coordinate: "1/1/5/WAIT", op: "WAIT", status_rx: 200, tx: { body: [{ content: "Answer delivered.", status: "completed" }] } }),
+        entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "First." } } }),
+        entry({ id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "SEND", status_rx: 200, tx: { target: { kind: "url", raw: "worker://child" }, body: { raw: "Private instructions." } } }),
+        entry({ id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: "SEND", status_rx: 400, tx: { target: null, body: { raw: "Unsent." } }, rx: { status: 400 } }),
+        entry({ id: 4, loop_seq: 1, turn_seq: 1, sequence: 4, op: "SEND", status_rx: 200, tx: { target: null, body: { raw: "Second." } } }),
+        entry({ id: 5, loop_seq: 1, turn_seq: 1, sequence: 5, op: "WAIT", status_rx: 200, tx: { body: [{ content: "Answer delivered.", status: "completed" }] } }),
     ];
     const live = messages.flatMap((message) => tr.logEntry(message));
     assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["First.", "Second."]);
@@ -44,8 +44,8 @@ test("{§agui-replay} successful replies to the thread are assistant responses i
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) throw new Error("missing snapshot");
     assert.deepEqual(speech(snapshot.messages), ["First.", "Second."]);
-    assert.ok(live.some((event) => event.type === EventType.TOOL_CALL_START && event.toolCallId === "1/1/2/SEND"), "directed messages remain real operations, not missing events");
-    assert.deepEqual(calls(snapshot.messages), [["1/1/2/SEND", "SEND"], ["1/1/3/SEND", "SEND"]], "and replay as the operations they were live");
+    assert.ok(live.some((event) => event.type === EventType.TOOL_CALL_START && event.toolCallId === "1/1/2"), "directed messages remain real operations, not missing events");
+    assert.deepEqual(calls(snapshot.messages), [["1/1/2", "SEND"], ["1/1/3", "SEND"]], "and replay as the operations they were live");
 });
 
 test("{§agui-replay} a SEND without a delivered recipient is an operation in live and replay", () => {
@@ -58,19 +58,18 @@ test("{§agui-replay} a SEND without a delivered recipient is an operation in li
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(speech(snapshot.messages), []);
-    assert.deepEqual(calls(snapshot.messages), [["1/1/3/READ", "SEND"]]);
-    assert.ok(snapshot.messages.some((replayed) => replayed.role === "tool" && replayed.toolCallId === "1/1/3/READ"), "its receipt replays as the call's result");
+    assert.deepEqual(calls(snapshot.messages), [["1/1/3", "SEND"]]);
+    assert.ok(snapshot.messages.some((replayed) => replayed.role === "tool" && replayed.toolCallId === "1/1/3"), "its receipt replays as the call's result");
 });
 
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
-    const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200, tags: ["research"] }));
+    const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
     assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
-    assert.deepEqual((events[0] as { value: { tags: string[] } }).value.tags, ["research"], "durable log classifications survive the full-fidelity row channel");
     const start = events[1] as { toolCallId: string; toolCallName: string };
-    assert.equal(start.toolCallId, "1/1/3/READ", "the coordinate IS the toolCallId");
+    assert.equal(start.toolCallId, "1/1/3", "the coordinate IS the toolCallId");
     assert.equal(start.toolCallName, "READ");
     const args = events[2] as { delta: string };
     assert.match(args.delta, /worker:\/\/\/notes\.md/, "the target rides the args");
@@ -78,15 +77,15 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
 
 test("{§message-completion}: delivered completion replies enter live and replay messages, independent of their outcome", () => {
     const messages = [
-        entry({ id: 11, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 400,
+        entry({ id: 11, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 400,
             tx: { target: null, body: { raw: "Undelivered." } }, rx: { status: 400 } }),
-        entry({ id: 12, coordinate: "1/2/1/SEND", op: "SEND", status_rx: 200,
+        entry({ id: 12, loop_seq: 1, turn_seq: 2, sequence: 1, op: "SEND", status_rx: 200,
             tx: { target: null, body: { raw: "Cancelled this request." } }, rx: { status: 200, completion: 499, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
-        entry({ id: 13, coordinate: "1/3/1/SEND", op: "SEND", status_rx: 200,
+        entry({ id: 13, loop_seq: 1, turn_seq: 3, sequence: 1, op: "SEND", status_rx: 200,
             tx: { target: null, body: { raw: "The answer is **42**." } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
-        entry({ id: 14, coordinate: "1/4/1/SEND", op: "SEND", status_rx: 200,
+        entry({ id: 14, loop_seq: 1, turn_seq: 4, sequence: 1, op: "SEND", status_rx: 200,
             tx: { target: null, body: null }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
-        entry({ id: 15, coordinate: "1/5/1/SEND", op: "SEND", status_rx: 200,
+        entry({ id: 15, loop_seq: 1, turn_seq: 5, sequence: 1, op: "SEND", status_rx: 200,
             tx: { target: null, body: { raw: " \n\t" } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
     ];
     const tr = t();
@@ -100,11 +99,11 @@ test("{§message-completion}: delivered completion replies enter live and replay
 
 test("{§agui-projection} a WAIT body is the model's speech to the user; a bodiless WAIT conveys lifecycle alone and fabricates none", () => {
     const tr = t();
-    const events = tr.logEntry(entry({ op: "WAIT", coordinate: "1/1/3/WAIT", tx: { body: "Pilot at 12 of 30, 9 passes; next read in ten minutes." } }));
+    const events = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 1, sequence: 3, tx: { body: "Pilot at 12 of 30, 9 passes; next read in ten minutes." } }));
     assert.deepEqual(events.map((e) => e.type), ["STEP_STARTED", "CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     assert.equal((events[3] as { delta: string }).delta, "Pilot at 12 of 30, 9 passes; next read in ten minutes.", "the body is delivered as it was written");
     assert.equal((events[5] as { name: string }).name, "plurnk.send");
-    const silent = tr.logEntry(entry({ op: "WAIT", coordinate: "1/2/3/WAIT", turn_id: 2, tx: { body: null } }));
+    const silent = tr.logEntry(entry({ op: "WAIT", loop_seq: 1, turn_seq: 2, sequence: 3, turn_id: 2, tx: { body: null } }));
     assert.deepEqual(silent.filter((e) => e.type !== "STEP_FINISHED" && e.type !== "STEP_STARTED").map((e) => e.type), ["CUSTOM", "CUSTOM"], "no body, no speech");
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
@@ -138,7 +137,7 @@ test("{§agui-projection} addressed replies project by thread, including answers
     for (const origin of ["model", "client", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
         const native = "Verification.";
         const address = `agui://anonymous/threads/${thread}/messages/user-message`;
-        const record = entry({ id: 1, coordinate: "1/1/1/SEND", op: "SEND", origin,
+        const record = entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", origin,
             source: origin === "_plurnk" ? "worker://peer" : null,
             attrs: origin === "_plurnk" ? { kind: "reply" } : {},
             tx: { target: { raw: address }, body: { raw: native } }, status_rx: 200, rx: { answers: [address] } });
@@ -157,17 +156,18 @@ test("{§agui-projection} addressed replies project by thread, including answers
 test("{§agui-replay} an arrival retains the AG-UI message id across reconnects", () => {
     const source = "agui://anonymous/threads/th-1/messages/user%20one";
     const record = entry({ op: "SEND", origin: "_plurnk", source, attrs: { kind: "message" },
-        tx: { body: { raw: "Question." } }, rx: { status: 200 }, coordinate: "1/1/1/SEND" });
+        tx: { body: { raw: "Question." } }, rx: { status: 200 }, loop_seq: 1, turn_seq: 1, sequence: 1 });
     const [snapshot] = t().replay([record.entry]);
     assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
-    if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages, [{ id: "user one", role: "user", name: source, content: "Question." }]);
+    if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages, [{ id: "user one", role: "user", content: "Question." }],
+        "a thread client's message replays as that client sent it");
 });
 
 test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
     const tr = t();
     const events = tr.logEntry(entry({
         op: "SEND",
-        coordinate: "1/1/8/SEND",
+        loop_seq: 1, turn_seq: 1, sequence: 8,
         tx: { body: "answer" },
         reasoning: "checked the evidence",
     } as never));
@@ -186,11 +186,11 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
     ]);
     const reasoning = events.slice(1, 6);
     assert.deepEqual(reasoning, [
-        { type: "REASONING_START", messageId: "1/1/8/SEND/reasoning" },
-        { type: "REASONING_MESSAGE_START", messageId: "1/1/8/SEND/reasoning", role: "reasoning" },
-        { type: "REASONING_MESSAGE_CONTENT", messageId: "1/1/8/SEND/reasoning", delta: "checked the evidence" },
-        { type: "REASONING_MESSAGE_END", messageId: "1/1/8/SEND/reasoning" },
-        { type: "REASONING_END", messageId: "1/1/8/SEND/reasoning" },
+        { type: "REASONING_START", messageId: "1/1/8/reasoning" },
+        { type: "REASONING_MESSAGE_START", messageId: "1/1/8/reasoning", role: "reasoning" },
+        { type: "REASONING_MESSAGE_CONTENT", messageId: "1/1/8/reasoning", delta: "checked the evidence" },
+        { type: "REASONING_MESSAGE_END", messageId: "1/1/8/reasoning" },
+        { type: "REASONING_END", messageId: "1/1/8/reasoning" },
     ]);
     assert.doesNotThrow(() => ReasoningStartEventSchema.parse(reasoning[0]));
     assert.doesNotThrow(() => ReasoningMessageStartEventSchema.parse(reasoning[1]));
@@ -221,7 +221,7 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
     const send = tr.logEntry(entry({
         op: "SEND",
         turn_id: 7,
-        coordinate: "1/7/3/SEND",
+        loop_seq: 1, turn_seq: 7, sequence: 3,
         tx: { body: "answer" },
         reasoning: "checked the evidence",
         ...( { worker_id: 2 } as object),
@@ -232,7 +232,7 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
 for (const origin of ["model", "_plurnk"] as const) {
     test(`{§agui-projection}: late ${origin} receipts do not rewind a streaming or resumed turn`, () => {
         let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });
-        const prior = entry({ id: 6, turn_id: 6, coordinate: "1/6/1/READ", origin, status_rx: 102 });
+        const prior = entry({ id: 6, turn_id: 6, loop_seq: 1, turn_seq: 6, sequence: 1, origin, status_rx: 102 });
         tr.logEntry(prior);
         tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
         const events = tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" });
@@ -257,10 +257,10 @@ for (const streamed of [false, true]) {
     test(`{§agui-readable-reasoning}: SEND and WAIT share one reasoning projection across interrupts (streamed=${streamed})`, () => {
         let tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 10 });
         const rows = [
-            entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, coordinate: "1/7/1/SEND", tx: { body: "progress" }, reasoning: "checked the evidence" }),
-            entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, coordinate: "1/7/2/SEND", tx: { body: "answer" }, reasoning: "checked the evidence" }),
-            entry({ id: 12, op: "WAIT", turn_id: 7, coordinate: "1/7/3/WAIT", tx: { body: "recorded" }, reasoning: "checked the evidence" }),
-            entry({ id: 13, op: "SEND", status_rx: 200, turn_id: 8, coordinate: "1/8/1/SEND", tx: { body: "done" }, reasoning: "checked the evidence" }),
+            entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 1, tx: { body: "progress" }, reasoning: "checked the evidence" }),
+            entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "answer" }, reasoning: "checked the evidence" }),
+            entry({ id: 12, op: "WAIT", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 3, tx: { body: "recorded" }, reasoning: "checked the evidence" }),
+            entry({ id: 13, op: "SEND", status_rx: 200, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, tx: { body: "done" }, reasoning: "checked the evidence" }),
         ];
         const events = streamed ? [
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
@@ -314,7 +314,7 @@ test("a retried physical request receives a separate reasoning message instead o
     const send = tr.logEntry(entry({
         op: "SEND",
         turn_id: 7,
-        coordinate: "1/7/3/SEND",
+        loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "accepted reasoning",
         ...( { worker_id: 2 } as object),
     } as never));
@@ -333,7 +333,7 @@ test("a prior rejected stream cannot suppress different durable reasoning, and f
     const send = tr.logEntry(entry({
         op: "SEND",
         turn_id: 7,
-        coordinate: "1/7/3/SEND",
+        loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "accepted reasoning",
         ...( { worker_id: 2 } as object),
     } as never));
@@ -348,7 +348,7 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
     const send = tr.logEntry(entry({
         op: "SEND",
         turn_id: 7,
-        coordinate: "1/7/3/SEND",
+        loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "whole reasoning",
         ...( { worker_id: 2 } as object),
     } as never));
@@ -369,14 +369,14 @@ test("reasoning lifecycle violations fail at the projection boundary", () => {
 
 test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
     const tr = t();
-    const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, coordinate: "1/1/8/SEND", reasoning: "first" } as never));
-    const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, coordinate: "1/2/4/SEND", reasoning: "second" } as never));
-    const absent = tr.logEntry(entry({ op: "SEND", turn_id: 3, coordinate: "1/3/2/SEND" }));
+    const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 8, reasoning: "first" } as never));
+    const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 4, reasoning: "second" } as never));
+    const absent = tr.logEntry(entry({ op: "SEND", turn_id: 3, loop_seq: 1, turn_seq: 3, sequence: 2 }));
     assert.deepEqual(
         [first, second].map((events) => events.find((event) => event.type === "REASONING_START")),
         [
-            { type: "REASONING_START", messageId: "1/1/8/SEND/reasoning" },
-            { type: "REASONING_START", messageId: "1/2/4/SEND/reasoning" },
+            { type: "REASONING_START", messageId: "1/1/8/reasoning" },
+            { type: "REASONING_START", messageId: "1/2/4/reasoning" },
         ],
     );
     assert.ok(!absent.some((event) => event.type.startsWith("REASONING_")));
@@ -388,7 +388,7 @@ test("ambient (origin _plurnk) rows ride plurnk.ambient; rejected attempts emit 
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
-    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "emissionAttempt" }, tx: "an unparsed reply" }));
+    const mirror = tr.logEntry(entry({ op: null, loop_seq: 1, turn_seq: 1, sequence: 3, attrs: { kind: "emissionAttempt" }, tx: "an unparsed reply" }));
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
@@ -398,7 +398,7 @@ test("an actionless model row without an artifact discriminator is rejected", ()
         /attrs\.kind=emissionAttempt/,
     );
     assert.throws(
-        () => t().replay([{ id: 1, op: null, origin: "model", attrs: {} }]),
+        () => t().replay([{ id: 1, op: null, origin: "model", attrs: {}, loop_seq: 1, turn_seq: 1, sequence: 1 }]),
         /attrs\.kind=emissionAttempt/,
     );
 });
@@ -412,12 +412,12 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
     assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning"), [
-        { id: "8/reasoning", role: "reasoning", content: "Original provider text." },
+        { id: "1/1/4/reasoning", role: "reasoning", content: "Original provider text." },
     ]);
     assert.equal(snapshot.messages.filter(({ role }) => role === "assistant").length, 1);
 });
@@ -548,7 +548,7 @@ test("a failed termination without a Problem is rejected instead of synthesized 
 
 test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
-    const own = tr.logEntry({ entry: { id: 1, op: "WAIT", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
+    const own = tr.logEntry({ entry: wireRow({ id: 1, op: "WAIT", worker_id: 2, tx: JSON.stringify({ body: "mine" }) }) });
     assert.ok(own.some((e) => e.type === "CUSTOM" && e.name === "plurnk.send"), "the thread's own lifecycle signal projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never the thread's messages");
@@ -569,24 +569,24 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
 test("the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
-        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, coordinate: "1/2/2/SEND", turn_id: 2, sequence: 2, tx: { body: "And done." } },
-        { id: 4, op: "WAIT", origin: "model", coordinate: "1/2/1/WAIT", turn_id: 2, sequence: 1, tx: { body: "finish" } },
-        { id: 3, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "emissionAttempt" } },
-        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, coordinate: "1/1/9/SEND", turn_id: 1, sequence: 9, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
-        { id: 1, op: "WAIT", origin: "model", coordinate: "1/1/1/WAIT", turn_id: 1, sequence: 1, tx: { body: "orient" } },
-        { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, coordinate: "1/1/0/SEND", tx: { body: { raw: "What is the answer?" } } },
+        { id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
+        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } },
+        { id: 4, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, tx: { body: "finish" } },
+        { id: 3, op: null, origin: "model", loop_seq: 1, turn_seq: 1, sequence: 10, turn_id: 1, attrs: { kind: "emissionAttempt" } },
+        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
+        { id: 1, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 1, sequence: 1, turn_id: 1, tx: { body: "orient" } },
+        { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, loop_seq: 1, turn_seq: 1, sequence: 0, tx: { body: { raw: "What is the answer?" } } },
     ], { id: "current-user", role: "user", content: "Continue." });
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
     assert.deepEqual(snap.messages, [
-        { id: "1/1/0/SEND", role: "user", content: "What is the answer?" },
-        { id: "1/1/1/WAIT", role: "assistant", content: "orient" },
-        { id: "1/1/9/SEND/reasoning", role: "reasoning", content: "considered the evidence" },
-        { id: "1/1/9/SEND", role: "assistant", content: "The answer is 42." },
-        { id: "1/2/1/WAIT", role: "assistant", content: "finish" },
-        { id: "1/2/2/SEND", role: "assistant", content: "And done." },
+        { id: "1/1/0", role: "user", content: "What is the answer?" },
+        { id: "1/1/1", role: "assistant", content: "orient" },
+        { id: "1/1/9/reasoning", role: "reasoning", content: "considered the evidence" },
+        { id: "1/1/9", role: "assistant", content: "The answer is 42." },
+        { id: "1/2/1", role: "assistant", content: "finish" },
+        { id: "1/2/2", role: "assistant", content: "And done." },
         { id: "current-user", role: "user", content: "Continue." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
@@ -648,4 +648,48 @@ test("{§loop-status-notice} {§agui-status-timing} a lifecycle notice is its lo
     assert.throws(() => beat(102, null, { claimedAt: 1 }), /packet count/u);
     assert.throws(() => beat(102, null, { packetCount: 0, claimedAt: "now" }), /claimedAt/u);
     assert.throws(() => beat(102, null, undefined, null), /names its loop/u);
+});
+
+test("{§agui-snapshot} {§message-arrival} an arrival is the same user message live and on replay, and never reaches the Run that submitted it", () => {
+    const own = "agui://alice/threads/th-1/messages/m-own";
+    const other = "agui://bob/threads/th-1/messages/m-other";
+    const arrival = (id: number, source: string, body: string) => wireRow({ id, origin: "_plurnk", op: "SEND", source, attrs: { kind: "message" }, tx: { body: { raw: body } } });
+    const rows = [arrival(1, own, "From the submitter."), arrival(2, other, "From another client."), arrival(3, "worker://helper", "From a worker.")];
+    const submitter = t();
+    submitter.submitted("m-own");
+    const live = (tr: Translator) => rows.flatMap((row) => tr.logEntry({ entry: row }))
+        .filter((event) => event.type === EventType.TEXT_MESSAGE_START || event.type === EventType.TEXT_MESSAGE_CONTENT);
+    const user = (events: readonly AguiEvent[]) => events.filter((event) => event.type === EventType.TEXT_MESSAGE_START)
+        .map((event) => { const start = event as { messageId: string; role: string; name?: string }; return { id: start.messageId, role: start.role, name: start.name }; });
+    assert.deepEqual(user(live(t())), [
+        { id: "m-own", role: "user", name: undefined },
+        { id: "m-other", role: "user", name: undefined },
+        { id: "1/1/3", role: "user", name: "worker://helper" },
+    ], "an observer receives every arrival natively: a thread client's message as that client sent it, any other named by its source");
+    assert.deepEqual(user(live(submitter)).map(({ id }) => id), ["m-other", "1/1/3"], "the submitting Run's client already holds its own message");
+    const snapshot = t().replay(rows)[0] as { messages: Array<{ id: string; role: string; content: unknown; name?: string }> };
+    assert.deepEqual(snapshot.messages, [
+        { id: "m-own", role: "user", content: "From the submitter." },
+        { id: "m-other", role: "user", content: "From another client." },
+        { id: "1/1/3", role: "user", content: "From a worker.", name: "worker://helper" },
+    ], "the snapshot carries the same messages under the same identities");
+});
+
+test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity of the request that streamed it on replay; reasoning a FORK inherited keeps its row's", () => {
+    const tr = t();
+    const streamed = [
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "start" }),
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "content", delta: "Weighing it." }),
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "end" }),
+    ];
+    const live = (streamed.find((event) => event.type === EventType.REASONING_START) as { messageId: string }).messageId;
+    const accepted = wireRow({ id: 5, op: "READ", reasoning: "Weighing it.", reasoning_model_call_id: 41, reasoning_request_sequence: 2 });
+    const inherited = wireRow({ id: 6, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", reasoning: "The parent's thought." });
+    const snapshot = t().replay([accepted, inherited])[0] as { messages: Array<{ id: string; role: string }> };
+    assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map(({ id }) => id), [live, "1/2/1/reasoning"]);
+});
+
+test("{§methods-log-coordinate} a row's message identity is its L/T/S coordinate, and a row without its ordinals is refused", () => {
+    assert.equal(Translator.idOf(wireRow({ loop_seq: 3, turn_seq: 4, sequence: 5 })), "3/4/5");
+    assert.throws(() => Translator.idOf({ id: 9 } as never), /loop, turn and sequence ordinals/);
 });

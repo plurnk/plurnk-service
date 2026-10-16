@@ -726,6 +726,9 @@ export default class Portal {
     // Core before any pending stopped-world is re-presented.
     async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
         const bound = thread as Thread;
+        // {§agui-snapshot} The submitting Run's client holds its own message; every other Run receives it.
+        const submitted = (args.envelope?.message as { id?: unknown } | undefined)?.id;
+        if (typeof submitted === "string") bound.router.submitted(submitted);
         const ack = await this.#seam.runLoop(args);
         if (bound.disconnected) {
             if (bound.cancelOnDisconnect) this.#cancelOwned(bound);

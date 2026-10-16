@@ -229,11 +229,12 @@ export default class ClientReads {
 
     // {§methods-log-read} — a workspace's journal, the module's primary render input. The worker is
     // ownership-verified against the workspace (a workspace reads only its own workers — the model worker included,
-    // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
+    // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate, newest first,
+    // and `beforeId` pages back through older rows ({§methods-log-read}). Core owns the
     // journal + the invariant; the module shapes the entries into AG-UI messages at its edge.
     async readLog(args: {
         workspaceId: number; workerId: number;
-        loopId?: number; turnId?: number; sinceId?: number; limit?: number;
+        loopId?: number; turnId?: number; sinceId?: number; beforeId?: number; limit?: number;
         loopSeq?: number; turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
         const workspaceId = ClientInput.assertId("log.read", "workspaceId", args.workspaceId);
@@ -265,6 +266,7 @@ export default class ClientReads {
             loopId: args.loopId,
             turnId: args.turnId,
             sinceId: args.sinceId,
+            beforeId: args.beforeId,
             loopSeq: args.loopSeq,
             turnSeq: args.turnSeq,
             sequence: args.sequence };
@@ -300,7 +302,7 @@ export default class ClientReads {
         }
         const rows = await this.#db.log_entries_recent.all<Record<string, unknown>>({
             worker_id: workerId,
-            loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
+            loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null, before_id: args.beforeId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
             // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
             limit: Math.min(args.limit ?? Knob.integer("PLURNK_SERVICE_LOG_READ_PAGE", 1), Knob.integer("PLURNK_SERVICE_LOG_READ_MAX", 1)) });

@@ -3,6 +3,7 @@
 // resolves without driving a loop.
 
 import { test } from "node:test";
+import { wireRow } from "../test/log-fixture.ts";
 import assert from "node:assert/strict";
 import { host } from "../test/host.ts";
 import Translator from "./Translator.ts";
@@ -26,7 +27,7 @@ const FLOOR = {
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
 // carry only what the module under test reads.
-const logRows = (rows: readonly Record<string, unknown>[]): LogEntryWire[] => rows as unknown as LogEntryWire[];
+const logRows = (rows: readonly Record<string, unknown>[]): LogEntryWire[] => rows.map((row) => wireRow(row as Partial<LogEntryWire>));
 // What a reader sees of a snapshot: arrivals and speech as text, an operation as its calls.
 type Replayed = { id: string; role: string; content?: unknown; toolCalls?: ReadonlyArray<{ function: { name: string } }> };
 const transcript = (messages: readonly Replayed[] | undefined): Array<Record<string, unknown>> => (messages ?? []).map(({ id, role, content, toolCalls }) =>
@@ -396,9 +397,9 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
     const body = "Inspect, implement, and verify.\nRetain the observed evidence.";
     const tx = { runtime: "NOTE", aside: "working memory", target: null, body };
     const rows = [
-        { id: 3, worker_id: 20, loop_id: 1, turn_id: 2, coordinate: "1/2/1/NOTE", origin: "model", op: "NOTE", tx, rx: { status: 200 }, reasoning: "Evidence retained." },
-        { id: 2, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/2/READ", origin: "model", op: "READ", tx: { body: null }, rx: { status: 200, content: "verbatim\n" } },
-        { id: 1, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/1/NOTE", origin: "_plurnk", op: "NOTE", tx: JSON.stringify(tx), rx: null },
+        wireRow({ id: 3, worker_id: 20, loop_id: 1, turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 1, origin: "model", op: "NOTE", tx, rx: { status: 200 }, reasoning: "Evidence retained." }),
+        wireRow({ id: 2, worker_id: 20, loop_id: 1, turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 2, origin: "model", op: "READ", tx: { body: null }, rx: { status: 200, content: "verbatim\n" } }),
+        wireRow({ id: 1, worker_id: 20, loop_id: 1, turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, origin: "_plurnk", op: "NOTE", tx: JSON.stringify(tx), rx: null }),
     ];
     const before = structuredClone(rows);
     seam.readLog = async () => logRows(rows);
@@ -630,7 +631,7 @@ test("a read-only management Run does not duplicate the message Run's model sett
                 loop_id: 9,
                 origin: "model",
                 op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/agui-t/messages/m1"] },
-                coordinate: "1/1/1/SEND",
+                loop_seq: 1, turn_seq: 1, sequence: 1,
                 tx: { body: "one answer" },
                 turn_id: 1,
             },
@@ -1631,7 +1632,7 @@ test("an unexpected action exception becomes one generic Problem without leaking
 const OPERATION = { workerId: 10, loopId: 5 } as const;
 const announcing = (id: number, stream: string) => ({ entry: {
     id, worker_id: OPERATION.workerId, loop_id: OPERATION.loopId, turn_id: 1, origin: "client", op: "sh", status_rx: 200,
-    coordinate: "1/1/1", rx: { status: 200, outcome: "started" }, tx: { runtime: "sh", body: "printf done" },
+    loop_seq: 1, turn_seq: 1, sequence: 1, rx: { status: 200, outcome: "started" }, tx: { runtime: "sh", body: "printf done" },
     attrs: { runtime: "sh", stream },
 } });
 
@@ -2142,7 +2143,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     worker_id: 20,
                     loop_id: 9,
                     turn_id: 12,
-                    coordinate: "1/12/1/NOTE",
+                    loop_seq: 1, turn_seq: 12, sequence: 1,
                     op: "NOTE",
                     origin: "model",
                     tx: { body: "Await approval." },
@@ -2162,7 +2163,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     worker_id: 20,
                     loop_id: 9,
                     turn_id: 12,
-                    coordinate: "1/12/3/SEND",
+                    loop_seq: 1, turn_seq: 12, sequence: 3,
                     op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/verified-interrupt/messages/m1"] },
                     origin: "model",
                     tx: { body: "Command approved." },
@@ -2251,10 +2252,10 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null });
     seam.readLog = async () => logRows([
-        { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
-        { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/workspace/messages/m1"] }, turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
-        { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
+        { id: 0, loop_seq: 1, turn_seq: 1, sequence: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "original question" } } },
+        { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "NOTE", origin: "model", turn_id: 1, tx: { body: "Inspect, repair, and verify." } },
+        { id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/workspace/messages/m1"] }, turn_id: 1, tx: { body: "checkpoint complete" } },
+        { id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: null, origin: "model", turn_id: 1, attrs: { kind: "emissionAttempt" } },
     ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
@@ -2270,9 +2271,10 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
         });
         const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: Replayed[] } | undefined;
         assert.deepEqual(transcript(snapshot?.messages), [
-            { id: "1/1/0/SEND", role: "user", content: "original question" },
-            { id: "1/1/1/NOTE", role: "assistant", calls: ["NOTE"] },
-            { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
+            { id: "1/1/0", role: "user", content: "original question" },
+            { id: "1/1/1", role: "assistant", calls: ["NOTE"] },
+            { id: "1/1/1/result", role: "tool", content: '{"status":200}' },
+            { id: "1/1/2", role: "assistant", content: "checkpoint complete" },
             { id: "current-user", role: "user", content: "continue" },
         ]);
     } finally { await mod.close(); }
@@ -2292,9 +2294,9 @@ test("{§agui-sync}: an inference-free sync replays the bound worker's durable l
     seam.readLog = async (args) => {
         reads.push(args);
         return logRows([
-            { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
-            { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answered the prior question." } },
-            { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/sync-client/messages/m1"] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
+            { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "Prior question." } } },
+            { id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "NOTE", origin: "model", turn_id: 1, tx: { body: "Answered the prior question." } },
+            { id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/sync-client/messages/m1"] }, turn_id: 1, tx: { body: "Prior answer." } },
         ]);
     };
     const mod = await host(seam);
@@ -2312,12 +2314,14 @@ test("{§agui-sync}: an inference-free sync replays the bound worker's durable l
         ]);
         const snapshot = events[2] as { messages?: Replayed[] };
         assert.deepEqual(transcript(snapshot.messages), [
-            { id: "1/1/1/SEND", role: "user", content: "Prior question." },
-            { id: "1/1/2/NOTE", role: "assistant", calls: ["NOTE"] },
-            { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
+            { id: "1/1/1", role: "user", content: "Prior question." },
+            { id: "1/1/2", role: "assistant", calls: ["NOTE"] },
+            { id: "1/1/2/result", role: "tool", content: '{"status":200}' },
+            { id: "1/1/3", role: "assistant", content: "Prior answer." },
         ]);
         // Sync asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
-        assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: Number.MAX_SAFE_INTEGER }]);
+        assert.ok(reads.length > 0, "the sync reads the durable log");
+        assert.ok(reads.every(({ workspaceId, workerId }) => workspaceId === 3 && workerId === 20), "every read is the bound worker's");
         assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
     } finally {
         await mod.close();
@@ -2342,7 +2346,7 @@ test("{§agui-run-start} a Run begins with RUN_STARTED and its snapshot; rows th
     seam.listWorkspaces = async () => [workspaceRow(3, "busy")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "busy", projectRoot: null, projectLabel: null });
     directory(seam, [workerRow(20, "busy")]);
-    const row = (id: number) => ({ entry: { id, worker_id: 20, loop_id: 1, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: `1/1/${id}/READ`, tx: { body: "" }, turn_id: 1 } });
+    const row = (id: number) => ({ entry: { id, worker_id: 20, loop_id: 1, origin: "model", op: "READ", status_rx: 200, rx: {}, loop_seq: 1, turn_seq: 1, sequence: id, tx: { body: "" }, turn_id: 1 } });
     // The observed worker is busy: two of its rows land while the Run reads the worker's status.
     seam.readWorkerModel = async () => {
         emit(3, "log/entry", row(2));
@@ -2469,11 +2473,11 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
     const threadId = "rebuilt";
     const question = `agui://anonymous/threads/${threadId}/messages/u1`;
     const rows = [
-        { id: 1, worker_id: 20, loop_id: 9, turn_id: 1, sequence: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk",
+        { id: 1, worker_id: 20, loop_id: 9, turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk",
             source: question, attrs: { kind: "message" }, tx: { body: { raw: "What does the witness say?" } } },
-        { id: 2, worker_id: 20, loop_id: 9, turn_id: 2, sequence: 1, coordinate: "1/2/1/READ", op: "READ", status_rx: 200, origin: "model",
+        { id: 2, worker_id: 20, loop_id: 9, turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 1, op: "READ", status_rx: 200, origin: "model",
             scheme: "worker", pathname: "/witness.txt", tx: { body: null }, rx: { status: 200, content: "hello" }, reasoning: "Read the witness first." },
-        { id: 3, worker_id: 20, loop_id: 9, turn_id: 3, sequence: 1, coordinate: "1/3/1/SEND", op: "SEND", status_rx: 200, origin: "model",
+        { id: 3, worker_id: 20, loop_id: 9, turn_id: 3, loop_seq: 1, turn_seq: 3, sequence: 1, op: "SEND", status_rx: 200, origin: "model",
             tx: { body: "The witness says hello." }, rx: { status: 200, answers: [question] }, reasoning: "Answer from the receipt." },
     ];
     let runs = 0;
@@ -2499,11 +2503,11 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
         const built = structuredClone(live.messages);
         assert.deepEqual(transcript(built).map(({ id, role }) => [id, role]), [
             ["u1", "user"],
-            ["1/2/1/READ/reasoning", "reasoning"],
-            ["1/2/1/READ", "assistant"],
-            ["1/2/1/READ/result", "tool"],
-            ["1/3/1/SEND/reasoning", "reasoning"],
-            ["1/3/1/SEND", "assistant"],
+            ["1/2/1/reasoning", "reasoning"],
+            ["1/2/1", "assistant"],
+            ["1/2/1/result", "tool"],
+            ["1/3/1/reasoning", "reasoning"],
+            ["1/3/1", "assistant"],
         ], "the live Run built the reasoning of both turns, the READ's call and result, and the answer");
 
         // The SDK keeps of a client's messages only those a snapshot names, so a snapshot naming every
@@ -2625,9 +2629,9 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, projectLabel: null });
     seam.readLog = async () => logRows([
-        { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/replay-client/messages/m1"] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
-        { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
-        { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
+        { id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/replay-client/messages/m1"] }, turn_id: 1, tx: { body: "Prior answer." } },
+        { id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "NOTE", origin: "model", turn_id: 1, tx: { body: "Answer the prior question." } },
+        { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "Prior question." } } },
     ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
@@ -2647,9 +2651,9 @@ test("the official AG-UI client keeps the accepted current user message after au
         }, {
             onMessagesSnapshotEvent: ({ event }) => { snapshots.push(event.messages); },
         });
-        assert.deepEqual(snapshots[0]?.filter(({ id }) => ["1/1/1/SEND", "current-user"].includes(id))
+        assert.deepEqual(snapshots[0]?.filter(({ id }) => ["1/1/1", "current-user"].includes(id))
             .map(({ id, content }) => ({ id, content })), [
-            { id: "1/1/1/SEND", content: "Prior question." },
+            { id: "1/1/1", content: "Prior question." },
             { id: "current-user", content: "Current question." },
         ], "the wire snapshot is chronological and retains the accepted message identity");
         // The SDK's snapshot merge retains existing IDs in their old positions (#721).
@@ -2658,7 +2662,7 @@ test("the official AG-UI client keeps the accepted current user message after au
             agent.messages.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })),
             [
                 { id: "current-user", content: "Current question." },
-                { id: "1/1/1/SEND", content: "Prior question." },
+                { id: "1/1/1", content: "Prior question." },
             ],
         );
     } finally {
@@ -2671,8 +2675,8 @@ test("a client carrying a durable assistant identity is already oriented and rec
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, projectLabel: null });
     seam.readLog = async () => logRows([
-        { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/oriented-client/messages/m1"] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
-        { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
+        { id: 2, loop_seq: 1, turn_seq: 1, sequence: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/oriented-client/messages/m1"] }, turn_id: 1, tx: { body: "Prior answer." } },
+        { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "Prior question." } } },
     ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
@@ -2684,7 +2688,7 @@ test("a client carrying a durable assistant identity is already oriented and rec
             threadId: "oriented-client",
             runId: "oriented-run",
             messages: [
-                { id: "1/1/2/SEND", role: "assistant", content: "Prior answer." },
+                { id: "1/1/2", role: "assistant", content: "Prior answer." },
                 { id: "current-user", role: "user", content: "Current question." },
             ],
             forwardedProps: { plurnk: { workspace: "oriented-client" } },
@@ -3768,7 +3772,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
                 worker_id: 20,
                 loop_id: 9,
                 turn_id: 12,
-                coordinate: "1/12/1/NOTE",
+                loop_seq: 1, turn_seq: 12, sequence: 1,
                 op: "NOTE",
                 origin: "model",
                 tx: { body: "Attempt the run." },
@@ -3894,7 +3898,7 @@ test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a 
         const port = mod.address().port;
         const run = openStream(port, { threadId: "chat", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "chat", descendants: true } } });
         await waitForFixture(started.promise, () => "the Run did not bind through runLoop");
-        emit(3, "log/entry", { entry: { id: 2, worker_id: 78, loop_id: 12, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: "1.1.1", tx: { body: "" }, turn_id: 1 } });
+        emit(3, "log/entry", { entry: { id: 2, worker_id: 78, loop_id: 12, origin: "model", op: "READ", status_rx: 200, rx: {}, loop_seq: 1, turn_seq: 1, sequence: 1, tx: { body: "" }, turn_id: 1 } });
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
         emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));

@@ -276,7 +276,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
     // A live model SEND fans to the thread as assistant speech.
     seen.length = 0;
-    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/tui/messages/m1"] }, coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
+    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/tui/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 1, tx: { body: "hi" }, turn_id: 1 } });
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
     // Workspace topology is visible, but another loop's terminal must never
@@ -343,7 +343,7 @@ test("{§agui-sync}: synchronization observes an already-active loop without tak
             loop_id: 77,
             origin: "model",
             op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/observer/messages/m1"] },
-            coordinate: "1/1/2/SEND",
+            loop_seq: 1, turn_seq: 1, sequence: 2,
             tx: { body: "Observed answer." },
             turn_id: 1,
         },
@@ -965,7 +965,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
             loop_id: 77,
             origin: "model",
             op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/client/messages/m1"] },
-            coordinate: "1/1/3/SEND",
+            loop_seq: 1, turn_seq: 1, sequence: 3,
             tx: { body: "continued" },
             reasoning: "working",
             turn_id: 1,
@@ -992,7 +992,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
 
 const startedExec = (over: Record<string, unknown> = {}) => ({
     entry: {
-        id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "sh", status_rx: 200, coordinate: "1.1.1",
+        id: 55, worker_id: 10, loop_id: 6, turn_id: 6, origin: "client", op: "sh", status_rx: 200, loop_seq: 1, turn_seq: 1, sequence: 1,
         rx: { status: 200, outcome: "started" }, tx: { runtime: "sh", body: "sleep 1; printf late" },
         attrs: { runtime: "sh", stream: "sh:///b1e0977e", coordinate: { loop_seq: 1, turn_seq: 1, sequence: 1 }, ...over },
     },
@@ -1151,7 +1151,7 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
     portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "plain", notificationScope: "worker", emit: (events) => quiet.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
-    const row = (id: number, workerId: number) => ({ entry: { id, worker_id: workerId, loop_id: 80 + workerId, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: `1.1.${id}`, tx: { body: "" }, turn_id: 1 } });
+    const row = (id: number, workerId: number) => ({ entry: { id, worker_id: workerId, loop_id: 80 + workerId, origin: "model", op: "READ", status_rx: 200, rx: {}, loop_seq: 1, turn_seq: 1, sequence: id, tx: { body: "" }, turn_id: 1 } });
     m.fire(3, "log/entry", row(2, 20));
     m.fire(3, "log/entry", row(3, 30));
     m.fire(3, "log/entry", row(4, 40));

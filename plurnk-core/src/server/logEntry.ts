@@ -55,6 +55,9 @@ export default class LogEntry {
             weight: row.weight as number,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
             ...(typeof row.reasoning === "string" ? { reasoning: row.reasoning } : {}),
+            ...(typeof row.reasoning === "string" && typeof row.reasoning_model_call_id === "number"
+                ? { reasoning_model_call_id: row.reasoning_model_call_id, reasoning_request_sequence: row.reasoning_request_sequence as number }
+                : {}),
         };
     }
 }

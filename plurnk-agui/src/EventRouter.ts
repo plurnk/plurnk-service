@@ -22,6 +22,7 @@ export default class EventRouter {
     }
 
     runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
+    submitted(messageId: string): void { this.#t.submitted(messageId); }
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] { return this.#t.replay(entries, currentUser); }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
     get reasoningOpen(): boolean { return this.#t.reasoningOpen; }

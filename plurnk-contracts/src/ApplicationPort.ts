@@ -151,6 +151,9 @@ export type LogEntryWire = {
     weight: number;
     attrs: unknown;
     reasoning?: string;
+    // {§methods-readable-reasoning} The request that streamed `reasoning`; absent for history a FORK inherited.
+    reasoning_model_call_id?: number;
+    reasoning_request_sequence?: number;
 };
 export type ApplicationEventHandler = (
     workspaceId: number | null,
@@ -349,6 +352,7 @@ export interface ApplicationPort extends HttpHost {
         readonly loopId?: number;
         readonly turnId?: number;
         readonly sinceId?: number;
+        readonly beforeId?: number;
         readonly limit?: number;
         readonly loopSeq?: number;
         readonly turnSeq?: number;
