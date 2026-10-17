@@ -54,8 +54,13 @@ test("{§skills-module} public seams connect ordinary family publication to orig
         failure: "reject", admissions: [], progress: () => {}, retain: () => () => {},
     });
     assert.equal(source.trees(1).size, 0, "preparation alone publishes nothing");
+    const undo = prepared.publish();
+    assert.equal(source.trees(1).get("guide"), tree, "publication adopts the tree synchronously: no flattening or surrogate source");
+    undo?.();
+    assert.equal(source.trees(1).size, 0, "a rolled-back publication withdraws the candidate");
+    prepared.publish();
     await prepared.commit();
-    assert.equal(source.trees(1).get("guide"), tree, "no flattening or surrogate source");
+    assert.equal(source.trees(1).get("guide"), tree);
     assert.equal(source.trees(2).size, 0);
     const bytes = source.trees(1).get("guide")!.resource("SKILL.md");
     assert.equal(new TextDecoder().decode(await bytes.read(1, body.length)), body);

@@ -30,7 +30,7 @@ test("{§module-shutdown-order} daemon cancels admitted preparation, joins clean
                             events.push("candidate-cleanup");
                             signal.throwIfAborted();
                         }
-                        return { documents: [], outcomes: new Map(), snapshot: null, commit: async () => {}, abort: async () => {} };
+                        return { documents: [], outcomes: new Map(), snapshot: null, publish: () => undefined, commit: async () => {}, abort: async () => {} };
                     },
                     teardown: async () => { events.push(`teardown:${family}`); },
                 });

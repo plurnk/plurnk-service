@@ -815,6 +815,7 @@ export default class Functionality {
             const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable", [], signal);
             try { signal.throwIfAborted(); }
             catch (cause) { return Functionality.#abort(prepared, cause); }
+            prepared.publish();
             await prepared.commit();
             return { status: 200, body: Validator.assertFunctionalityListResult({
                 family: adapter.family,
@@ -831,6 +832,7 @@ export default class Functionality {
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }
+        prepared.publish();
         await prepared.commit();
         return this.#mutationResult(adapter, verb, transition, effectiveAfter, prepared.outcomes);
     }
@@ -1033,9 +1035,12 @@ export default class Functionality {
                     runtimes,
                 }, {
                     gate: "none",
+                    // {§functionality-publication} — the view and the adapter's candidate go live in one instant.
                     publish: () => {
                         this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure });
+                        const undo = prepared?.publish();
                         return () => {
+                            undo?.();
                             if (before === undefined) this.#families.delete(key);
                             else this.#families.set(key, before);
                         };

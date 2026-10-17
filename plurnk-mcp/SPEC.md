@@ -404,8 +404,9 @@ registers the family adapter and owns protocol truth beneath it. `available` is 
 unchanged live attachments, and returns one runtime and resource facet per connected server,
 one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity,
 capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or
-`authorization-required` with its URL), and a two-phase snapshot: `commit` closes connections the new
-set no longer uses and records pending authorizations; `abort` closes only what the attempt opened.
+`authorization-required` with its URL), and a snapshot in three phases: `publish` adopts the connected
+set and consumes or records pending authorizations, synchronously; `commit` closes connections the new
+set no longer uses; `abort` closes only what the attempt opened.
 
 §mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery
 while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty,
@@ -652,8 +653,8 @@ preserving durable MCP state and generated reference entries for transparent
 reactivation.
 
 Add and enable prepare the candidate while the old snapshot remains
-authoritative, then commit only at {§module-workspace-quiescence}. Disable and
-remove commit the complete reduced snapshot at the same boundary. The
+authoritative, then publish only at {§module-workspace-quiescence}. Disable and
+remove publish the complete reduced snapshot at the same boundary. The
 old connection rejects replacement with `409 server-busy` while it owns an active protocol request,
 MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
 with the old connection after the new snapshot commits. A failed candidate or

@@ -732,13 +732,62 @@ export default class Module implements DaemonModule<SetupSeam> {
             }
         }
         const runtimes = [...next.values()].flatMap((attachment) => attachment.kind === "active" ? [attachment.runtime] : []);
+        const published: {
+            removed: Array<{ key: string; pending: PendingAuthorization; registered: boolean }>;
+            added: Array<{ key: string; pending: PendingAuthorization }>;
+        } = { removed: [], added: [] };
         return {
             runtimes,
             documents: [],
             outcomes,
             snapshot: next,
-            commit: async () => {
+            // {§functionality-publication} The connected set and the pending register go live together,
+            // synchronously; the undo restores both if the registry rolls back.
+            publish: () => {
+                const before = this.#attachments.get(workspaceId);
                 this.#attachments.set(workspaceId, next);
+                for (const [name, pending] of consumedPending) {
+                    const key = this.#pendingKey(workspaceId, name);
+                    const registered = this.#pending.get(key) === pending;
+                    if (registered) this.#pending.delete(key);
+                    published.removed.push({ key, pending, registered });
+                }
+                // {§oauth-lifetime} A client's challenge is independent of the published connection.
+                for (const [key, pending] of this.#pending) {
+                    if (!key.startsWith(`${workspaceId}:`)) continue;
+                    const name = key.slice(`${workspaceId}:`.length);
+                    const current = next.get(name);
+                    if (current !== undefined && current.kind !== "active" && sameBinding(current, pending)
+                        && force !== name) continue;
+                    this.#pending.delete(key);
+                    published.removed.push({ key, pending, registered: true });
+                }
+                for (const [name, attachment] of next) {
+                    if (attachment.kind !== "authorization-required" || attachment.authorizationUrl === undefined) continue;
+                    const key = this.#pendingKey(workspaceId, name);
+                    if (this.#pending.has(key)) continue;
+                    const pending: PendingAuthorization = {
+                        definition: attachment.definition,
+                        ...(attachment.context === undefined ? {} : { context: attachment.context }),
+                        connection: attachment.connection,
+                        releaseWorkspace: this.#retain(workspaceId),
+                    };
+                    this.#pending.set(key, pending);
+                    published.added.push({ key, pending });
+                }
+                return () => {
+                    for (const { key, pending } of published.added) {
+                        if (this.#pending.get(key) === pending) this.#pending.delete(key);
+                        pending.releaseWorkspace();
+                    }
+                    for (const { key, pending, registered } of published.removed) if (registered) this.#pending.set(key, pending);
+                    published.added = [];
+                    published.removed = [];
+                    if (before === undefined) this.#attachments.delete(workspaceId);
+                    else this.#attachments.set(workspaceId, before);
+                };
+            },
+            commit: async () => {
                 // {§mcp-catalog-refresh-in-place} A published snapshot acknowledges only
                 // its captured invalidation, never a newer notification or an aborted candidate.
                 for (const [key, invalidation] of refreshed) {
@@ -754,35 +803,11 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const obsolete = [...previous.values()]
                     .flatMap((attachment) => attachmentConnection(attachment) ?? [])
                     .filter((connection) => !retained.has(connection) && !pendingConnections.has(connection));
-                for (const [name, pending] of consumedPending) {
-                    const key = this.#pendingKey(workspaceId, name);
-                    if (this.#pending.get(key) === pending) this.#pending.delete(key);
+                for (const { pending } of published.removed) {
                     pending.releaseWorkspace();
                     if (!retained.has(pending.connection)) obsolete.push(pending.connection);
                 }
-                // {§oauth-lifetime} A client's challenge is independent of the published connection.
-                for (const [key, pending] of this.#pending) {
-                    if (!key.startsWith(`${workspaceId}:`)) continue;
-                    const name = key.slice(`${workspaceId}:`.length);
-                    const current = next.get(name);
-                    if (current !== undefined && current.kind !== "active" && sameBinding(current, pending)
-                        && force !== name) continue;
-                    this.#pending.delete(key);
-                    pending.releaseWorkspace();
-                    if (!retained.has(pending.connection)) obsolete.push(pending.connection);
-                }
-                for (const [name, attachment] of next) {
-                    if (attachment.kind !== "authorization-required" || attachment.authorizationUrl === undefined) continue;
-                    const key = this.#pendingKey(workspaceId, name);
-                    const current = this.#pending.get(key);
-                    if (current !== undefined) continue;
-                    this.#pending.set(key, {
-                        definition: attachment.definition,
-                        ...(attachment.context === undefined ? {} : { context: attachment.context }),
-                        connection: attachment.connection,
-                        releaseWorkspace: this.#retain(workspaceId),
-                    });
-                }
+                published.removed = [];
                 if (obsolete.length > 0) {
                     try {
                         await this.#closeOwned(obsolete);

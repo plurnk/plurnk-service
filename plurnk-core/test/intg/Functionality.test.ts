@@ -118,6 +118,7 @@ const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
             documents,
             outcomes,
             snapshot: { aliases: [...enabled.keys()] },
+            publish: () => { log.push(`publish:${[...enabled.keys()].join(",")}`); return () => { log.push(`undo:${[...enabled.keys()].join(",")}`); }; },
             commit: async () => { log.push(`commit:${[...enabled.keys()].join(",")}`); },
             abort: async () => { log.push(`abort:${[...enabled.keys()].join(",")}`); },
         };
@@ -1047,7 +1048,8 @@ fixture
 test("{§functionality-publication} a failed publication restores state, runtime selection, and every generated document", async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-rollback-${crypto.randomUUID()}`);
-    const daemon = await boot(db, []);
+    const log: string[] = [];
+    const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
     await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````"));
     const materialize = LoopDocs.materialize;
@@ -1057,9 +1059,13 @@ test("{§functionality-publication} a failed publication restores state, runtime
         if (!failed) { failed = true; throw cause; }
         await materialize(...args);
     });
+    const mark = log.length;
     await assert.rejects(() => daemon.invokeModuleAction("workspace.fx.add", {
         alias: "docy", definition: { kind: "doc" },
     }, workspaceContext(workspaceId)), (error) => error === cause);
+    const events = log.slice(mark).filter((event) => /^(publish|undo|commit|abort):/u.test(event));
+    assert.deepEqual(events.map((event) => event.split(":")[0]), ["publish", "undo", "abort"],
+        "the candidate went live at publish, its undo ran with the registry rollback, and it was aborted unpublished; nothing committed");
     const list = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as {
         definitions: Array<{ alias: string }>;
     };
@@ -1068,6 +1074,20 @@ test("{§functionality-publication} a failed publication restores state, runtime
     assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({
         scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md",
     }), [], "rollback cannot leave a document from the rejected workspace snapshot");
+});
+
+test("{§functionality-publication} a candidate goes live at publish, inside the registry commit, and commits after it", async (t) => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `publication-order-${crypto.randomUUID()}`);
+    const log: string[] = [];
+    const daemon = await boot(db, log);
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````"));
+    const mark = log.length;
+    await daemon.invokeModuleAction("workspace.fx.add", { alias: "late", definition: { kind: "ok" } }, workspaceContext(workspaceId));
+    const events = log.slice(mark).filter((event) => /^(publish|undo|commit|abort):/u.test(event));
+    assert.deepEqual(events.map((event) => event.split(":")[0]), ["publish", "commit"], "publish precedes commit; no undo, no abort");
+    assert.equal(events[0]!.split(":")[1], events[1]!.split(":")[1], "both phases belong to the same candidate");
 });
 
 test("{§functionality-publication} a management stream reports publication refusal instead of premature success", { timeout: 30_000 }, async (t) => {

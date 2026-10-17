@@ -149,7 +149,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
 
         // Before commit the Worker resolves nothing; after commit it resolves its own aliases only.
         assert.equal(family.resolve("researcher", 7), null);
-        await first.commit();
+        first.publish(); await first.commit();
         assert.ok(family.resolve("researcher", 7) !== null, "an active alias resolves to its client");
         assert.equal(family.resolve("researcher", 8), null, "another Worker sees nothing");
         assert.equal(family.resolve("missing", 7), null);
@@ -162,7 +162,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
         // Disabling withdraws the attachment and document.
         const third = await family.prepare(preparation(7, {}, { previous: first.snapshot }));
         assert.deepEqual(third.documents, []);
-        await third.commit();
+        third.publish(); await third.commit();
         assert.equal(family.resolve("researcher", 7), null);
         await family.teardown(third.snapshot, { workspaceId: 7 });
     } finally {
@@ -187,7 +187,7 @@ test("{§a2a-outbound-credentials} an oauth2 definition obtains its token from t
         const prepared = await family.prepare(preparation(3, { peer: definition("${SECRET}") }));
         assert.equal(prepared.outcomes.get("peer")?.state, "active", JSON.stringify(prepared.outcomes.get("peer")));
         assert.deepEqual(agent.tokenRequests, [{ clientId: "plurnk", clientSecret: "agent-secret", scope: "echo" }], "preparation minted once, with the card's scope, after discovering the card without it");
-        await prepared.commit();
+        prepared.publish(); await prepared.commit();
         const client = family.resolve("peer", 3);
         assert.ok(client !== null);
         await assert.rejects(client.getTask({ tenant: "", id: "missing-task", historyLength: 0 }), /not found/iu, "the token admits the client at the agent");

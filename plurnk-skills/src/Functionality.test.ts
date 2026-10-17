@@ -92,7 +92,7 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
     });
     const prior = await prepare(join(root, "before"), null, "publish-unavailable");
     assert.equal(prior.outcomes.get("review")?.state, "unavailable");
-    await prior.commit();
+    prior.publish(); await prior.commit();
     const carried = await prepare(join(root, "before"), prior.snapshot, "reject");
     assert.deepEqual(carried.outcomes, prior.outcomes, "the unchanged prior failure can still accompany unrelated mutations");
     await carried.abort();

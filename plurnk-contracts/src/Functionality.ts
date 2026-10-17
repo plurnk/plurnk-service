@@ -99,7 +99,14 @@ export interface FunctionalityPrepared<Runtime = never> {
     readonly documents: readonly FunctionalityDocument[];
     readonly outcomes: ReadonlyMap<string, FunctionalityOutcome>;
     readonly snapshot: unknown;
+    // {§functionality-publication} — candidate state goes live here, synchronously and without
+    // I/O, inside the coordinator's registry commit; the returned undo restores the preceding
+    // live state if that commit rolls back.
+    publish(): (() => void) | undefined;
+    // Post-publication settlement: the I/O the published state entails. Never runs for an
+    // unpublished candidate.
     commit(): Promise<void>;
+    // Discard an unpublished candidate and its resources.
     abort(): Promise<void>;
 }
 

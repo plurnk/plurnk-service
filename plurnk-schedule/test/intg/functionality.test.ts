@@ -127,7 +127,7 @@ for (const settlement of ["commit", "abort"] as const) {
         adapter.scheduler.start(port);
         t.after(() => adapter.scheduler.close());
         const original = await adapter.prepare(preparation(1, { beat: BEAT }));
-        await original.commit();
+        original.publish(); await original.commit();
         time.now += 100;
         const admission = await adapter.admit({ alias: "beat", definition: BEAT }, { workspaceId: 1 });
         const candidate = await adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
@@ -152,7 +152,7 @@ test("{§functionality-replacement} a new schedule target cannot inherit the old
     await time.advance(FIRST);
     const held = await adapter.prepare(preparation(1, { beat: BEAT }));
     assert.equal(held.outcomes.get("beat")?.state, "unavailable");
-    await held.commit();
+    held.publish(); await held.commit();
     port.workers = [{ id: 8, name: "repaired" }];
     const changed = { ...BEAT, target: "worker://repaired" };
     const candidate = await adapter.prepare(preparation(1, { beat: changed }, { previous: held.snapshot }));
@@ -176,14 +176,14 @@ test("{§functionality-publication} aborting an enable retry preserves the sched
     await time.advance(FIRST);
     const held = await adapter.prepare(preparation(1, { beat: BEAT }));
     assert.equal(held.outcomes.get("beat")?.state, "unavailable");
-    await held.commit();
+    held.publish(); await held.commit();
     port.workers = [{ id: 7, name: "bot" }];
     const retry = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: held.snapshot, force: "beat" }));
     assert.equal(retry.outcomes.get("beat")?.state, "active");
     await retry.abort();
     const unchanged = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: held.snapshot }));
     assert.deepEqual(unchanged.outcomes.get("beat"), held.outcomes.get("beat"));
-    await unchanged.commit();
+    unchanged.publish(); await unchanged.commit();
     assert.deepEqual(adapter.scheduler.armed(1), []);
     await (await adapter.prepare(preparation(1, { beat: BEAT }, { force: "beat" }))).commit();
     await time.advance(FIRST + HOUR);
@@ -198,12 +198,12 @@ test("{§schedule-first-arming} identical replacement cannot replay an occurrenc
     t.after(() => adapter.scheduler.close());
     const once = { ...BEAT, rule: BEAT.rule.replace("COUNT=2", "COUNT=1") };
     const original = await adapter.prepare(preparation(1, { once }));
-    await original.commit();
+    original.publish(); await original.commit();
     const admission = await adapter.admit({ alias: "once", definition: once }, { workspaceId: 1 });
     const candidate = await adapter.prepare(preparation(1, { once: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
     await time.advance(FIRST);
     assert.equal(port.deliveries.length, 1);
-    await candidate.commit();
+    candidate.publish(); await candidate.commit();
     await time.advance(FIRST + HOUR);
     assert.equal(port.deliveries.length, 1);
     assert.deepEqual(adapter.scheduler.armed(1), []);
@@ -217,7 +217,7 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     adapter.scheduler.start(port);
     t.after(() => adapter.scheduler.close());
     const original = await adapter.prepare(preparation(1, { beat: BEAT }));
-    await original.commit();
+    original.publish(); await original.commit();
     const replacement = { rule: "DTSTART;TZID=UTC:20260916T123017\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://other", prompt: "Changed." };
     const prepare = async () => {
         const admission = await adapter.admit({ alias: "beat", definition: replacement }, { workspaceId: 1 });
@@ -229,7 +229,7 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     assert.deepEqual(port.deliveries, [{ workspaceId: 1, workerId: 7, prompt: "Beat.", source: "schedule://beat" }]);
     const accepted = await prepare();
     time.now = FIRST + 2 * SECOND;
-    await accepted.commit();
+    accepted.publish(); await accepted.commit();
     assert.deepEqual(time.delays(), [0], "a newly admitted occurrence crossed during publication fires immediately");
     await time.advance(time.now);
     assert.deepEqual(port.deliveries[1], { workspaceId: 1, workerId: 8, prompt: "Changed.", source: "schedule://beat" });
@@ -334,16 +334,16 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
         detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time; no future occurrences", next: null, exhausted: true, target: "worker://bot" },
     });
     assert.deepEqual(adapter.scheduler.armed(1), [], "nothing arms before commit");
-    await prepared.commit();
+    prepared.publish(); await prepared.commit();
     assert.deepEqual(adapter.scheduler.armed(1), ["beat", "heartbeat"], "an exhausted rule arms nothing");
     assert.deepEqual(time.delays(), [FIRST - NOW, FIRST - NOW]);
     await adapter.teardown(prepared.snapshot, { workspaceId: 1 });
     assert.deepEqual(adapter.scheduler.armed(1), ["beat", "heartbeat"], "cooling keeps the obligation");
     const narrowed = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: prepared.snapshot }));
-    await narrowed.commit();
+    narrowed.publish(); await narrowed.commit();
     assert.deepEqual(adapter.scheduler.armed(1), ["beat"], "disable and remove disarm through the published set");
     const emptied = await adapter.prepare(preparation(1, {}, { previous: narrowed.snapshot }));
-    await emptied.commit();
+    emptied.publish(); await emptied.commit();
     assert.deepEqual(adapter.scheduler.armed(1), []);
     assert.deepEqual(time.delays(), []);
 });
@@ -378,7 +378,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     assert.deepEqual(time.delays(), [HOUR], "the next occurrence armed from the fire");
     const republished = await adapter.prepare(preparation(3, { beat: BEAT }));
     assert.equal((republished.outcomes.get("beat") as { detail: { next: string } }).detail.next, "2026-09-16T13:30:16+00:00[UTC]");
-    await republished.commit();
+    republished.publish(); await republished.commit();
     await time.advance(FIRST + HOUR);
     assert.equal(port.deliveries.length, 2);
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
@@ -415,7 +415,7 @@ test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add
         assert.ok(freshOutcome?.state === "active");
         const freshDetail = freshOutcome.detail as { next: string | null; exhausted: boolean };
         assert.deepEqual([freshDetail.next, freshDetail.exhausted], ["2026-09-16T12:30:21+00:00[UTC]", false]);
-        await prepared.commit();
+        prepared.publish(); await prepared.commit();
         assert.deepEqual(adapter.scheduler.armed(5), ["fresh"], "no implicit replay or re-dating of the expired occurrence");
         await time.advance(FIRST + 5 * SECOND);
         assert.deepEqual(port.deliveries, [{ workspaceId: 5, workerId: 7, prompt: "Fresh.", source: "schedule://fresh" }]);
@@ -436,7 +436,7 @@ test("{§schedule-first-arming} a single occurrence that passes between add and 
     const detail = (outcome: unknown): { next: string | null; exhausted: boolean } => (outcome as { detail: { next: string | null; exhausted: boolean } }).detail;
     assert.deepEqual([detail(prepared.outcomes.get("soon")).next, detail(prepared.outcomes.get("soon")).exhausted],
         ["2026-09-16T12:30:19+00:00[UTC]", false], "the receipt names the occurrence the add was judged against, not exhaustion");
-    await prepared.commit();
+    prepared.publish(); await prepared.commit();
     assert.deepEqual(adapter.scheduler.armed(5), ["soon"], "the occurrence armed although it has passed");
     assert.deepEqual(time.delays(), [0], "and fires at once");
     await time.advance(time.now);
@@ -454,7 +454,7 @@ test("{§schedule-first-arming} a single occurrence that passes between add and 
     restarted.scheduler.start(new FakePort());
     const stored = await restarted.prepare(preparation(5, { soon: definition }));
     assert.deepEqual([detail(stored.outcomes.get("soon")).next, detail(stored.outcomes.get("soon")).exhausted], [null, true]);
-    await stored.commit();
+    stored.publish(); await stored.commit();
     assert.deepEqual(restarted.scheduler.armed(5), [], "a start arms from the present, never a backlog");
     await restarted.scheduler.close();
 });
@@ -499,13 +499,13 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/schedule/delivery/target-missing");
     assert.equal(outcome.problem.status, 404);
     assert.equal(outcome.problem.detail, "No worker named 'bot' exists in this workspace."); // {§problems-schedule}
-    await held.commit();
+    held.publish(); await held.commit();
     assert.deepEqual(adapter.scheduler.armed(1), [], "republishing does not retry on its own");
 
     port.workers = [{ id: 7, name: "bot" }];
     const forced = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: held.snapshot, force: "beat" }));
     assert.equal(forced.outcomes.get("beat")?.state, "active", "enable retries");
-    await forced.commit();
+    forced.publish(); await forced.commit();
     assert.deepEqual(adapter.scheduler.armed(1), ["beat"]);
 
     port.refusal = new Error("the loop lane is closed");
@@ -518,7 +518,7 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     const changed = { ...BEAT, rule: "DTSTART;TZID=UTC:20260916T160000\nRRULE:FREQ=HOURLY;COUNT=1" };
     const replaced = await adapter.prepare(preparation(1, { beat: changed }));
     assert.equal(replaced.outcomes.get("beat")?.state, "active", "a changed rule is fresh");
-    await replaced.commit();
+    replaced.publish(); await replaced.commit();
     assert.deepEqual(adapter.scheduler.armed(1), ["beat"]);
     await adapter.scheduler.close();
 });

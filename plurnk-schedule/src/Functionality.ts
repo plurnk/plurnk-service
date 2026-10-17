@@ -224,6 +224,7 @@ export default class ScheduleFunctionality {
             documents: [],
             outcomes,
             snapshot,
+            publish: () => undefined,
             commit: async () => { await this.#scheduler.sync(workspaceId, rules, { admission, force: preparation.force }); },
             abort: async () => {},
         };

@@ -4986,6 +4986,9 @@ adapter prepared ({§module-workspace-residency-facet}).
 Admission, tools, documents, Turn 0, and client status consume that publication.
 The coordinator's synchronous `publish` participates in the registry commit;
 its returned undo restores the previous view before rollback reconciles documents.
+The adapter's `publish` runs inside that same callback, so the family view, the
+registry and the adapter's live candidate change in one instant, and its undo
+composes with the view's; the adapter's `commit` follows a committed publication.
 Neither callback performs fallible I/O. Publication failure restores the preceding
 configuration/runtime snapshot; it cannot roll back an external effect of preparation,
 such as a fetched skill source. A failed external effect retains its cause and must not be

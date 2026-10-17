@@ -363,6 +363,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
             documents,
             outcomes,
             snapshot: { workspaceId, rows },
+            publish: () => undefined,
             commit: async () => { await this.#apply(workspaceId, rows); },
             abort: async () => {},
         };

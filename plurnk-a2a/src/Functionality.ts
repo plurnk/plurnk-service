@@ -350,7 +350,12 @@ export default class A2aFunctionality {
             documents,
             outcomes,
             snapshot,
-            commit: async () => { this.#snapshots.set(workspaceId, snapshot); },
+            publish: () => {
+                const before = this.#snapshots.get(workspaceId);
+                this.#snapshots.set(workspaceId, snapshot);
+                return () => { if (before === undefined) this.#snapshots.delete(workspaceId); else this.#snapshots.set(workspaceId, before); };
+            },
+            commit: async () => {},
             abort: async () => {},
         };
     }

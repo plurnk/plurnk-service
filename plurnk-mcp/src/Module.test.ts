@@ -55,6 +55,7 @@ interface Prepared {
     readonly runtimes: readonly RuntimeRegistration[];
     readonly outcomes: ReadonlyMap<string, Outcome>;
     readonly snapshot: unknown;
+    publish(): (() => void) | undefined;
     commit(): Promise<void>;
     abort(): Promise<void>;
 }
@@ -95,6 +96,9 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
     let leases = 0;
     const retain = () => { leases++; let released = false; return () => { if (released) return; released = true; leases--; }; };
     const identity = (workspaceId: number) => ({ workspaceId });
+    // Runs between a candidate's publish and its commit: the instant the coordinator's registry commit has
+    // adopted the candidate but its settlement has not run.
+    const hooks = { between: async (): Promise<void> => {} };
     const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal } = {}): Promise<Prepared> => {
         if (adapter === undefined) throw new Error("adapter not registered");
         const current = snapshots.get(workspaceId);
@@ -104,6 +108,8 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
             failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), admissions: [], retain,
             progress: () => undefined,
         });
+        prepared.publish();
+        await hooks.between();
         await prepared.commit();
         snapshots.set(workspaceId, { enabled, prepared });
         return prepared;
@@ -160,6 +166,7 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
         refreshes: () => refreshes,
         refreshOptions: () => refreshOptions,
         settleRefreshes: () => Promise.all(pendingRefreshes),
+        hooks,
         adapter: () => { if (adapter === undefined) throw new Error("adapter not registered"); return adapter; },
         identity,
         lane,
@@ -677,6 +684,36 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         assert.deepEqual(h.runtimeTags(1), ["oauth"]);
         assert.equal(h.leases(), 0);
         assert.deepEqual(h.snapshots.get(1)?.enabled.get("oauth"), definition, "the client callback is session state, not configuration");
+    } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} a callback replayed once the grant is published, before its commit, is no longer pending", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const definition = httpServer("oauth", served.url);
+    const h = harness();
+    await h.setup();
+    try {
+        await h.lane(1, new Map([["oauth", definition]]));
+        const started = await h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { authorization: { url: string } };
+        const callback = new URL("http://127.0.0.1:54321/callback");
+        callback.searchParams.set("code", "fixture-code");
+        callback.searchParams.set("state", new URL(started.authorization.url).searchParams.get("state")!);
+        callback.searchParams.set("iss", origin);
+        const complete = () => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href });
+        assert.deepEqual(await complete(), { status: 202, alias: "oauth" });
+        assert.deepEqual(await complete(), { status: 202, alias: "oauth" }, "an accepted, unpublished grant shares its acceptance");
+        let between = 0;
+        h.hooks.between = async () => {
+            between++;
+            await rejectsManagementProblem(complete, "oauth-not-pending", 404);
+        };
+        await h.settleRefreshes();
+        assert.equal(between, 1, "the publication ran once");
+        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.equal(h.leases(), 0, "the consumed candidate's lease is released at commit");
+        await rejectsManagementProblem(complete, "oauth-not-pending", 404);
     } finally { await h.module.stop(); }
 });
 

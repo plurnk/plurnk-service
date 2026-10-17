@@ -118,8 +118,8 @@ it participates in runtime identity and hot-load comparisons, is never projected
 or persisted into a workspace override, and cannot survive replacement by a local definition.
 Removing that override restores the current inherited definition and context together.
 Descriptive provenance alone does not change runtime identity. Preparation returns runtimes, documents, per-alias
-outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
-failure aborts; cooling tears down. Protocol continuations remain ordinary
+outcomes, and a snapshot with `publish`/`commit`/`abort`. Successful publication publishes,
+then commits; failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal. The
 seam's shapes — the identity a verb acts under, its options, the discovery inputs,
@@ -157,7 +157,10 @@ that mutation's `prepare` as `admissions`. The optional `preparation`
 payload is adapter-owned, not configuration: it is never persisted, projected,
 used as definition identity, or carried into later refreshes. Admission and
 preparation must not change the preceding publication's live state. Candidate
-state becomes live at `commit`; `abort` discards only the candidate
+state becomes live at `publish`: synchronous, without I/O, inside the coordinator's
+registry commit, returning the undo that restores the preceding live state if that
+commit rolls back. `commit` settles what the published state entails, after
+publication; `abort` discards only an unpublished candidate
 ({§functionality-publication}).
 
 §functionality-discovery-inputs **An adapter declares the discovery inputs it serves.**

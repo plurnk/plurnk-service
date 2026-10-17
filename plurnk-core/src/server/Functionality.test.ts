@@ -50,7 +50,7 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
         admit: async () => ({ alias: "fixture", definition: {} }),
         prepare: async () => ({
             documents: [], outcomes: new Map(), snapshot: {},
-            commit: async () => {}, abort: async () => {},
+            publish: () => undefined, commit: async () => {}, abort: async () => {},
         }),
         teardown: async () => {},
     });
@@ -104,7 +104,7 @@ const family = (name: string, overrides: Partial<HostFunctionalityAdapter> = {})
     definitionSchema: { type: "object" },
     available: async () => [],
     admit: async () => ({ alias: "fixture", definition: {} }),
-    prepare: async () => ({ documents: [], outcomes: new Map(), snapshot: {}, commit: async () => {}, abort: async () => {} }),
+    prepare: async () => ({ documents: [], outcomes: new Map(), snapshot: {}, publish: () => undefined, commit: async () => {}, abort: async () => {} }),
     teardown: async () => {},
     ...overrides,
 });
@@ -149,6 +149,7 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
                     await hold("preparation");
                     return {
                         documents: [], outcomes: new Map(), snapshot: {},
+                        publish: () => { events.push("publish"); return undefined; },
                         commit: async () => { events.push("commit"); },
                         abort: async () => {
                             events.push("abort");
@@ -178,7 +179,7 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
             } finally { release.resolve(); cleanup.resolve(); }
             await work;
             assert.deepEqual(events, phase === "resolution" ? []
-                : phase === "preparation" ? ["preparation", "abort"] : ["preparation", "publication", "commit"]);
+                : phase === "preparation" ? ["preparation", "abort"] : ["preparation", "publication", "publish", "commit"]);
         });
     }
 }
@@ -220,6 +221,7 @@ for (const scope of ["workspace", "worker"] as const) {
                     documents: [],
                     outcomes: new Map([...enabled.keys()].map((alias) => [alias, { state: "active" as const }])),
                     snapshot: null,
+                    publish: () => undefined,
                     commit: async () => {},
                     abort: async () => { aborts += 1; },
                 };
