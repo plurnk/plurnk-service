@@ -72,6 +72,20 @@ const readJson = async (request) => {
 
 const frame = (value) => `data: ${JSON.stringify(value)}\n\n`;
 
+const textOf = (message) => typeof message?.content === "string" ? message.content : "";
+
+// {§emission-history} {§paired-receipt}: a paired receipt leaves the request (path, scope, pattern) to its replayed
+// operation, so read each replayed turn as the model does: its operations, then their receipts in program order.
+const pairedReceipts = (messages) => messages.flatMap((message, index) => {
+    if (message.role !== "assistant") return [];
+    const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
+    return [...textOf(message).matchAll(/^`{3,}([A-Za-z]\w*)(?: (.*))?$/gmu)].map(([, op, request = ""]) => {
+        const at = receipts.findIndex((row) => String(row.logPath).endsWith(`/${op}`));
+        assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
+        return { ...receipts.splice(at, 1)[0], op, request, path: /^\((\S+)\)/u.exec(request)?.[1] };
+    });
+});
+
 const streamProgram = async (response, journey, program, index) => {
     response.writeHead(200, {
         "cache-control": "no-cache",
@@ -134,41 +148,39 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
-            // {§packet-wire-envelope}: the packet is the system and user messages; the assistant messages are the worker's emissions.
-            const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map((message) => typeof message.content === "string" ? message.content : "").join("\n\n");
+            // {§packet-wire-envelope}: the system and user messages carry the packet; the assistant messages replay the worker's operations.
+            const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map(textOf).join("\n\n");
             if (journey === "files" && index > 0) {
-                const records = [...text.matchAll(/(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/gu)]
-                    .flatMap((match) => parseLogRecords(match[1].trim()));
-                const edits = records.filter((row) => String(row.logPath).endsWith("/EDIT") && row.path === "integrity.txt");
+                const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "EDIT" && row.path === "integrity.txt");
                 assert.equal(edits.length, index, "each published file operation remains observable");
                 assert.ok(edits.every((row) => (row.status ?? 200) === 200), "file publication succeeded through the installed approval path");
             }
             if (journey === "recovery" && index === 1) {
                 assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked worker");
-                assert.ok(text.includes("retained-stream-output"), "the next packet retains the producer's output");
+                // {§subscription-finalization}: the failed close leaves the replayed command's stream open work, its output retained.
+                const [command] = pairedReceipts(body.messages ?? []).filter((row) => row.op === "sh");
+                const work = JSON.parse(/(?:^|\n)## Open Work\n([\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1] ?? "{}");
+                const stream = work.streams?.find(({ path }) => path === command?.stream);
+                assert.ok(stream?.status === "active" && /stdout 1 lines/u.test(stream.detail), "the next packet retains the producer's output");
             }
             if (journey === "tui" && index === 1) {
-                const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";
-                const records = parseLogRecords(log);
-                const messageRead = records.find((row) =>
-                    String(row.logPath).endsWith("/READ") && row.path === "log:///1/2/1/SEND");
+                const reads = pairedReceipts(body.messages ?? []).filter((row) => row.op === "READ");
+                const messageRead = reads.find((row) => row.path === "log:///1/2/1/SEND");
                 assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 // {§read-pattern-evidence} {§teaching-corpus}: packed references and indexed READ compose.
-                const patternRead = records.find((row) =>
-                    String(row.logPath).endsWith("/READ") && row.path === "worker:///_plurnk/plurnk/pattern.md");
+                const patternRead = reads.find((row) => row.path === "worker:///_plurnk/plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
-                assert.equal(patternRead.matcher, "~quotes");
+                assert.match(patternRead.request, / ~quotes$/u, "the pattern rides the replayed READ");
                 assert.match(String(patternRead.body ?? ""), /quotes and escapes, not the property name or colon\./u,
                     "full-text READ returns the selected source line from the installed reference");
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
                 assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
                     "the installed packet retains precise match locations beside whole source lines");
-                const delegationRead = records.find((row) =>
-                    String(row.logPath).endsWith("/READ") && row.path === "worker:///_plurnk/plurnk/delegation.md");
+                const delegationRead = reads.find((row) => row.path === "worker:///_plurnk/plurnk/delegation.md");
                 assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
                 assert.equal(delegationRead.status ?? 200, 200);
                 assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
@@ -176,10 +188,11 @@ export const startClientJourneyModel = async () => {
                     /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```BARE\n *\d+<@[0-9A-Za-z]{5}>A self-contained prompt, with everything it needs pasted in\./u,
                     /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
-                    /^### log:\/\/\/\S+\/READ → skill:\/\/plurnk\/\.env\.defaults · \d+$/mu,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
+                assert.ok(reads.some((row) => row.path === "skill://plurnk/.env.defaults" && (row.status ?? 200) === 200),
+                    "installed reference READ omitted skill://plurnk/.env.defaults");
                 if (/\d+<@[0-9A-Za-z]{5}>.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
                     throw new Error("installed read-only skill advertised model EDIT anchors");
                 }
