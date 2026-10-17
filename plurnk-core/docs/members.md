@@ -72,8 +72,10 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   definition cannot lift it; only the user can.
 
 - **Outside the project root** (`../notes.md`, or an absolute path beyond the
-  root): no model definition reaches it; only a members definition under the
-  operator's namespace scope admits it. File operands beginning with `~/`
+  root): a model definition can admit it under `namespace` scope, but not
+  `root` or `none`; client and operator definitions are not bound by the model's
+  scope. Ignore rules and exclusions still apply as described above.
+  File operands beginning with `~/`
   resolve from the daemon user's home; `./~/` names a literal project
   directory. Members globs remain project-relative, not home shorthand.
   A command runs on the host from the project root, and its output is a stream
