@@ -1,5 +1,10 @@
 # @plurnk/plurnk-hooks
 
+## 2.0.2
+
+- Preserve native ECMAScript resource management for Node 26.
+- Uses contracts/modules 4.0.
+
 ## 2.0.1
 
 ### Patch Changes

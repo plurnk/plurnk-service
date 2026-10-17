@@ -1,5 +1,14 @@
 # @plurnk/plurnk-modules
 
+## 4.0.0
+
+- **Breaking:** daemon-wide action scope is `daemon`, replacing `world`.
+  Update module declarations and consumers; no compatibility alias is retained.
+- Functionality preparation receives host cancellation and reports aliases in
+  flight. Shutdown joins activation, publication and cleanup before disposal;
+  cancellation is not published as a failed resource.
+- Uses contracts 4.0.
+
 ## 3.2.0
 
 ### Minor Changes

@@ -1,5 +1,9 @@
 # @plurnk/plurnk-execs-sqlite
 
+## 2.0.3
+
+- Update compatible dependency ranges: `@plurnk/plurnk-execs@4.0.0`.
+
 ## 2.0.2
 
 ### Patch Changes

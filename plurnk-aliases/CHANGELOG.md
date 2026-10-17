@@ -1,5 +1,9 @@
 # @plurnk/plurnk-aliases
 
+## 2.0.3
+
+- Update compatible dependency ranges: `@plurnk/plurnk-contracts@4.0.0`.
+
 ## 2.0.2
 
 ### Patch Changes

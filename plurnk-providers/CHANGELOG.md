@@ -1,5 +1,10 @@
 # @plurnk/plurnk-providers
 
+## 3.0.3
+
+- Align worker terminology and the contracts 4.0 dependency without changing
+  provider routing or tuning.
+
 ## 3.0.2
 
 ### Patch Changes

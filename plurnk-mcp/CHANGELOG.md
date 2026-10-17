@@ -1,5 +1,12 @@
 # @plurnk/plurnk-mcp
 
+## 3.2.0
+
+- Prepare configured MCP servers concurrently and expose each alias in flight.
+- Honor host cancellation during preparation and join cleanup on shutdown without
+  publishing cancellation as an unavailable server. Real failures remain visible.
+- Uses contracts/modules/execs 4.0.
+
 ## 3.1.0
 
 ### Minor Changes

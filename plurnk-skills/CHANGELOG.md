@@ -1,5 +1,12 @@
 # @plurnk/plurnk-skills
 
+## 3.0.2
+
+- Report aliases in flight and honor host cancellation during preparation.
+  Cleanup completes before shutdown disposal; real failures remain visible.
+- Preserve native ECMAScript resource management for Node 26.
+- Uses contracts/modules 4.0.
+
 ## 3.0.1
 
 ### Patch Changes

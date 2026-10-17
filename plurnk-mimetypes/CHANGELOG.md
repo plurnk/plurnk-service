@@ -1,5 +1,9 @@
 # @plurnk/plurnk-mimetypes
 
+## 3.0.3
+
+- Update compatible dependency ranges: `@plurnk/plurnk-contracts@4.0.0`.
+
 ## 3.0.2
 
 ### Patch Changes

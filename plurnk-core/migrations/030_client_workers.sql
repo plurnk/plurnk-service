@@ -1,4 +1,5 @@
 -- MIGRATE: 30 client workers
+-- Released in 4.0.0 and frozen ({§db-migrations}).
 -- {§connection-lifecycle} A worker is a model's identity: a person's client operations are the workspace's and
 -- journal in its runtime worker. Each client worker's history moves there, and the emptied worker goes.
 -- Rows keep their identity; only their worker, and their loop's place in that worker's numbering, change.

@@ -1,5 +1,11 @@
 # @plurnk/plurnk-schedule
 
+## 3.0.3
+
+- Honor host cancellation during preparation and join cleanup before shutdown
+  disposal. Real preparation and cleanup failures remain visible.
+- Uses contracts/modules 4.0.
+
 ## 3.0.2
 
 ### Patch Changes

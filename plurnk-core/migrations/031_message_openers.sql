@@ -1,4 +1,5 @@
 -- MIGRATE: 31 message openers
+-- Released in 4.0.0 and frozen ({§db-migrations}).
 -- {§worker-obligations} A message a worker's own operation sends records that operation, by the row it writes:
 -- its turn and its sequence there. The message's obligation then holds that worker by identity, its reply
 -- reaches that worker, and a child's answer to its first message is its conclusion. A message a person, a

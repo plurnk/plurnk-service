@@ -1,5 +1,14 @@
 # @plurnk/plurnk-execs-common
 
+## 3.0.0
+
+- **Breaking:** `sh` follows the environment's executable absolute `SHELL`,
+  otherwise `/bin/sh`. Inline commands and script targets use the same
+  resolved shell, advertised with its program/version/path.
+- Runtime declarations use the public `runtimesModule` entry.
+- The shell reference names the packet's Open Work section.
+- Uses execs 4.0.
+
 ## 2.0.2
 
 ### Patch Changes

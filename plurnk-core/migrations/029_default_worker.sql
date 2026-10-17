@@ -1,4 +1,5 @@
 -- MIGRATE: 29 default worker
+-- Released in 4.0.0 and frozen ({§db-migrations}).
 -- The column that marks a workspace's one flagged root model worker takes the worker vocabulary.
 -- Renaming it rewrites its CHECK and the partial index in place; the index then takes its name.
 ALTER TABLE workers RENAME COLUMN default_conversation TO default_worker;

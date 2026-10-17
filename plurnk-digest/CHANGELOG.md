@@ -1,5 +1,12 @@
 # @plurnk/plurnk-digest
 
+## 3.2.1
+
+- Preserve the selected workspace's identity when it contains no workers.
+- Label share, digest and requiem errors once at the calling command boundary.
+- Preserve native ECMAScript resource management for Node 26.
+- Uses contracts 4.0.
+
 ## 3.2.0
 
 ### Minor Changes

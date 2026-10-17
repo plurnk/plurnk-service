@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-a2a",
-    "version": "3.1.1",
+    "version": "4.0.0",
     "description": "A2A v1 exterior adapter for Plurnk",
     "type": "module",
     "license": "MIT",
@@ -49,8 +49,8 @@
         "express": "5.3.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^3.0.1",
-        "@plurnk/plurnk-modules": "^3.0.0",
+        "@plurnk/plurnk-contracts": "^4.0.0",
+        "@plurnk/plurnk-modules": "^4.0.0",
         "@plurnk/plurnk-schemes": "^3.0.0"
     },
     "devDependencies": {

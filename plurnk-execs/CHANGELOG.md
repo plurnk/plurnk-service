@@ -1,5 +1,15 @@
 # @plurnk/plurnk-execs
 
+## 4.0.0
+
+- **Breaking:** shell execution uses an absolute executable `SHELL`, falling
+  back to `/bin/sh`, rather than promising POSIX syntax regardless of the
+  environment. The exported `Shell` resolver is shared by execution and
+  capability advertising, which names the resolved program/version/path.
+- Account-resolution failures retain the host lookup's cause instead of
+  misreporting every failure as an absent account.
+- Uses contracts/parser 4.0.
+
 ## 3.2.0
 
 ### Minor Changes

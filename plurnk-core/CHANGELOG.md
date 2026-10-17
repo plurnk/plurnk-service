@@ -1,5 +1,96 @@
 # @plurnk/plurnk-service
 
+## 4.0.0
+
+### Upgrade
+
+Upgrade the terminal client and daemon together. Version 4 replaces the previous
+authentication and client-binding contracts; it is not wire-compatible with the
+3.x client.
+
+- Authentication is enabled by default. Replace `PLURNK_AGUI_TOKEN` or
+  `PLURNK_AGUI_SECRET` with `PLURNK_SECRET`, or leave it unset and let the
+  daemon generate a per-boot secret beside its database. Clients exchange that
+  secret for short-lived access credentials; it is not itself a bearer token.
+  `PLURNK_AUTH=0` explicitly disables authentication.
+- Browser sign-in uses `PLURNK_PASS`, which defaults to empty and admits nobody.
+  Sessions and access/refresh credentials are revocable and expire; restarting
+  the daemon invalidates them. Set `PLURNK_AGUI_ISSUER` only when the public
+  origin differs from the origin reaching the daemon.
+- Remove `PLURNK_AGUI_LOGIN_ATTEMPTS` and `PLURNK_AGUI_LOGIN_WINDOW_SEC`.
+  The supplied `plurnk.nginx.conf` demonstrates TLS, security headers and
+  front-proxy rate limiting.
+- Hosted A2A uses the same credential authority, not `PLURNK_A2A_TOKEN`.
+  Configure its workspace name, project folder, or both; there is no implicit
+  `a2a` workspace.
+- `sh` uses an executable absolute `SHELL`, otherwise `/bin/sh`, and advertises
+  the resolved shell. Workloads needing a particular shell should select it
+  explicitly in their environment.
+- Existing databases migrate in place through schema version 32. Back up before
+  upgrading; do not open an upgraded database with an older daemon.
+
+### Client and module contracts
+
+- An AG-UI thread represents a model worker. Qualified addresses are
+  `<workspace ID>#<worker name>`; ordinary opaque thread IDs acquire a durable
+  folderless workspace/worker association on their first creating Run.
+  Passive inspection creates nothing, and reconnects and workspace renames
+  preserve the association.
+- Workspace identity, mutable name and optional project folder are separate.
+  Folder-derived defaults use the daemon's `~` abbreviation. New names reject
+  digit-only text, unpaired Unicode surrogates and slash-delimited dot segments;
+  existing names remain accessible by ID. `workspace.attach` selects an existing
+  workspace by exactly one of ID, literal name or folder-derived default.
+- The daemon has no default model worker. Clients choose one; the terminal's
+  default is `user`. Module/action scope `world` is replaced by `daemon`.
+- A person's direct operations journal in the workspace's runtime actor
+  `_plurnk`, attributed to that person, rather than creating client workers.
+  Migration preserves those workers' history, rehomes their children as roots,
+  and removes their former worker-local environment layers.
+- LOOK, the parser's client-only tier and `ApplicationPort.look` are removed.
+  Resource reads use ordinary READ operations or the public read APIs.
+  `ApplicationPort`, `HttpHost` and `HttpRouteHandler` are imported from
+  `@plurnk/plurnk-contracts/port`; the contracts root is browser-neutral.
+- `createWorker` replaces `createConversationWorker`;
+  `workerAccounting` replaces `descendantAccounting`.
+  Direct-operation dispatch and rollback take the acting identity rather than
+  a client-worker ID. See the package specifications for the public API shapes.
+
+### Standard AG-UI conversation
+
+- Live messages and snapshots preserve the same identities, exact operation
+  operands, reasoning, correlated command output and delegated results.
+  Standard subagent events represent child runs; normal tool results carry
+  their conclusions instead of launch receipts.
+- A Run's message list is its copy of the conversation. Only a new trailing
+  user message is submitted; an unchanged list synchronizes. Repeated message
+  IDs are idempotent, and changing an accepted message's body is refused.
+- Standard outcomes carry results and reported token usage. Plurnk's row,
+  terminal and failure details use `metadata.plurnk`; remaining custom events
+  describe facts with no standard conversation representation.
+- Approval interrupts identify the gated operation and resume by interrupt ID.
+  The retired `request_approval` pseudo-call and duplicate custom row/result
+  events are removed. This release adds no web approval interface.
+
+### Reliability and maintenance
+
+- Workspace MCP preparation runs concurrently with per-alias progress, and
+  owner attachment starts activation without blocking the client.
+- Shutdown cancels preparation, joins publication and cleanup, and releases
+  observers. Restart settlement is atomic, preserves unanswered-message waits,
+  and recovers orphaned messages from durable data.
+- Catalog filtering, existence checks, failure counts and empty-entry pruning
+  use relational predicates at their owning write/read boundaries.
+- Loop timing and lifetime worker-plus-descendant spend come from durable
+  daemon state. Output-truncated emissions are no longer mistaken for cycles.
+- The packet names live obligations as Open Work. NOTE teaching and initialization
+  examples emphasize plans, findings, decisions and next actions.
+- Native ECMAScript output and shared erasable-TypeScript checks target Node 26.
+  Digest errors are labelled once, and an empty workspace remains identifiable.
+
+The optional web foundation is not published with this release. Conversation
+waterfall, composer and web approval presentation remain separate work.
+
 ## 3.3.0
 
 ### Minor Changes

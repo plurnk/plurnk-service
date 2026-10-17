@@ -1,5 +1,11 @@
 # @plurnk/plurnk-execs-jq
 
+## 2.0.3
+
+- Probe and execute jq under `PLURNK_EXECS_SPAWN_USER`, including that account's
+  HOME, USER and LOGNAME. Preserve account-lookup failures and their host cause.
+- Uses execs 4.0.
+
 ## 2.0.2
 
 ### Patch Changes

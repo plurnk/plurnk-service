@@ -1,5 +1,14 @@
 # @plurnk/plurnk-parser
 
+## 4.0.0
+
+- **Breaking:** remove LOOK and the client-only parser tier. Use
+  `parseStatements` instead of `parseClient`; `ParseResult` and `ParseItem`
+  are no longer generic. Client statements share the ordinary operation contract.
+- Parse failures retain the attempted verb and exact statement for faithful
+  protocol diagnostics, without changing the model's packet body or weight.
+- Uses contracts 4.0.
+
 ## 3.0.3
 
 ### Patch Changes

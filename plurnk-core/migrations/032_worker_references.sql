@@ -1,4 +1,5 @@
 -- MIGRATE: 32 worker references
+-- Released in 4.0.0 and frozen ({§db-migrations}).
 -- {§worker-external-reference} Protocol adapters own the opaque key; core owns its durable target.
 CREATE TABLE worker_references (
     namespace TEXT NOT NULL CHECK (length(namespace) > 0),

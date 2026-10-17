@@ -1,5 +1,43 @@
 # @plurnk/plurnk-contracts
 
+## 4.0.0
+
+### Breaking changes
+
+- The root entry is runtime-neutral. Import `ApplicationPort`, `HttpHost`
+  and `HttpRouteHandler` from `@plurnk/plurnk-contracts/port`.
+  Request-origin and credential APIs take request headers through
+  `RequestHeaders`; provider aliases and loop admissions have named types.
+- Application action/module scope `world` becomes `daemon`.
+- Worker lifecycle APIs use `createWorker`, `kind: "root"` and
+  `worker-not-found`. There is no workspace default worker or
+  `ensureModelWorker`. Workspace envelopes contain only workspace identity.
+- Direct client operations and rollback take an actor rather than a client
+  worker. Their administrative loops belong to the workspace runtime actor;
+  `cancelLoop` cancels the specific operation and its executions.
+- LOOK, `ClientStatement`, `ClientOp`, their validation surface and
+  `ApplicationPort.look` are removed. Use the ordinary statement/read contracts.
+- `workerAccounting` replaces `descendantAccounting` and reports the worker
+  and descendants over their lifetime.
+- AG-UI conformance fixtures use standard message parts and
+  `metadata.plurnk`, native outcomes/results/usage, subagent relationships and
+  operation-linked interrupts instead of duplicate custom conversation events.
+
+### Additions
+
+- Shared authentication posture, client-secret and password configuration;
+  daemon-issued credentials, module-client registration, sign-in inventory,
+  revocation and request-origin contracts.
+- Durable opaque worker references; workspace attachment by ID, literal name
+  or folder-derived default; daemon-supplied project labels.
+- Message-admission idempotency; invocation/answering identities on log
+  projections; loop timing and opener identity; proposal worker/coordinate and
+  optional expiry.
+- Functionality preparation cancellation and alias progress, plus explicit
+  workspace activation.
+- NOTE teaching records plans, findings, decisions and next actions. Initialization
+  examples follow the same form.
+
 ## 3.3.0
 
 ### Minor Changes

@@ -1,5 +1,29 @@
 # @plurnk/plurnk-a2a
 
+## 4.0.0
+
+### Breaking changes
+
+- Hosted A2A uses the daemon's credential authority and advertises OAuth client
+  credentials with scope `a2a`. Configure remote agents as
+  `PLURNK_AGUI_CLIENT_<id>`; `PLURNK_A2A_TOKEN` is removed.
+- Inbound tasks require a configured workspace name, project folder, or both.
+  There is no implicit `a2a` workspace; set `PLURNK_A2A_WORKSPACE=a2a` to
+  retain that choice. A folder alone selects its unique workspace, creating it
+  lazily when absent and refusing ambiguity.
+- Uses contracts/modules 4.0 and the model-worker lifecycle API.
+
+### Improvements
+
+- Outbound definitions support OAuth client credentials with symbolic secrets,
+  discovery of the declared token flow and one refresh on an unauthorized reply.
+- Public card/token URLs follow the incoming origin unless an explicit origin
+  is configured for a proxy.
+- Preparation reports in-flight aliases and follows host cancellation, preserving
+  real failures while joining cleanup on shutdown.
+
+This release does not claim complete A2A conformance.
+
 ## 3.1.1
 
 ### Patch Changes
