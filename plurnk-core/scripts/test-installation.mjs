@@ -507,9 +507,7 @@ def target():
 \`\`\`\``,
     }, anchorWorkspace.name);
     const sourceLookup = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${sourceTarget})
-//function_definition
-\`\`\`\``,
+        text: `\`\`\`\`READ (${sourceTarget}) //function_definition\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const sourceRead = (await aguiAction(address, "op.parse", {
         text: `\`\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\`\``,
@@ -790,10 +788,10 @@ const searchBoot = await bootStart({
         text: "````EDIT (worker:///search.md)\nA reliable connection supports native search.\n````",
     }, workspace.name);
     const found = await aguiAction(address, "op.parse", {
-        text: "````FIND (worker:///*.md)\n~\"reliable connection\"\n````",
+        text: "````FIND (worker:///*.md) ~\"reliable connection\"````",
     }, workspace.name);
     const locations = await aguiAction(address, "op.parse", {
-        text: "````FIND (worker:///search.md)\n~\"reliable connection\"\n````",
+        text: "````FIND (worker:///search.md) ~\"reliable connection\"````",
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
 });
