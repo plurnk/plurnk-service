@@ -14,3 +14,6 @@ Executor heading JSON is always input; metadata uses its bracketed slot. Remove
 the MIME-dependent `jsonBodyExecutors` parser option and
 `ApplicationPort.executorJsonBodyTags` plumbing. Native-operation option recovery
 is unchanged.
+
+Cancellation stops the remaining program, including unresolved glob targets,
+without discarding completed effects or provider accounting.

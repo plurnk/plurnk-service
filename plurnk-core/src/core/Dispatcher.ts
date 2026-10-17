@@ -488,6 +488,8 @@ export default class Dispatcher {
     }
 
     async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchExecution> {
+        // {§op-execution-order}: resolved glob targets cross the same cancellation boundary.
+        this.#loopSignal(context.loopId)?.throwIfAborted();
         const execution = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
         let { result } = execution;

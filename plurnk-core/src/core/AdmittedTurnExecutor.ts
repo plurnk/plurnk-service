@@ -226,6 +226,7 @@ export default class AdmittedTurnExecutor {
         };
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
+            signal?.throwIfAborted();
             if (!TurnDisposition.is(scheduledStatement) && realCommands >= maxCommands) {
                 droppedCount++;
                 continue;
@@ -356,6 +357,7 @@ export default class AdmittedTurnExecutor {
             }
             if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);
         }
+        signal?.throwIfAborted();
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         const completionEligible = completionAllowed && droppedCount === 0 && recoverableParseErrors.length === 0;
