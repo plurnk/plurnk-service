@@ -46,13 +46,13 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.deepEqual(rows(afterRepeat, "KILL").map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
                 { target: "log:///1/**/EDIT", status: 204 },
-                { target: "worker:///note", status: 200 },
+                { target: "worker:///note", status: undefined },
             ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
             assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/2/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
             assert.deepEqual(rows(afterNext, "KILL").map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
-                { target: "worker:///note", status: 200 },
+                { target: "worker:///note", status: undefined },
             ], "shown once: a turn later the mismatch has retired, and the failure and resource deletion stay");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;

@@ -105,7 +105,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
             const log = packetSection(packet, "log");
             const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
             assert.ok(receipt);
-            assert.equal(receipt.status, 200);
+            assert.equal(Object.hasOwn(receipt, "status"), false, "routine success is implicit for whole-entry deletion too");
             assert.equal(receipt.path, "worker:///doomed");
             for (const field of ["body", "extent", "change", "removed", "range"]) {
                 assert.equal(receipt[field], undefined, `whole-entry deletion has no ${field}`);

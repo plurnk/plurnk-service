@@ -1,4 +1,3 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Packet → wire markdown projection. Single source of truth for how the
 // Packet's ordered list of sections renders to ChatMessage.content
 // strings the LLM receives. Engine imports this for the wire payload; the
@@ -742,10 +741,8 @@ export default class PacketWire {
             }
             meta.git = git;
         }
-        // SEND, lifecycle verbs, destructive KILL, and non-200 statuses stay explicit.
-        // Successful log-KILL rows never reach this projection
-        // ({§log-kill-meta-operation}).
-        if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
+        // {§log-wire-format}: routine success is implicit, independently of the operation.
+        if (typeof e.status === "number" && e.status !== 200) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
         if (typeof tx?.aside === "string") meta.aside = tx.aside;
         const authored = tx?.target as ParsedPath | null | undefined;

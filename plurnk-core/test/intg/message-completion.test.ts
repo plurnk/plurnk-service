@@ -7,6 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 
 const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const setup = async () => {
@@ -39,6 +40,37 @@ test("{§message-completion}: progress delivers without resolving; explicit comp
     assert.equal(await f.remaining(), 0);
     assert.deepEqual(await f.replies(), ["Working.", "Finished."]);
 });
+
+for (const code of [null, 200, 499]) {
+    test(`{§log-wire-format} {§message-completion}: SEND ${code ?? "progress"} omits delivery success without changing message state`, async (t) => {
+        const f = await setup(); t.after(() => f.db.close());
+        await f.add("second");
+        const body = code === null ? "Sign-in is required." : "The request is settled.";
+        const result = await f.turn(frame(code === null ? "SEND" : `SEND [${code}]`, body));
+        assert.equal(result.outcomes.find(({ op }) => op === "SEND")?.status, 200, "delivery still reports success");
+        assert.equal(await f.remaining(), code === null ? 2 : 1);
+
+        const observation = await f.turn(frame("NOTE", "The second request remains open."));
+        const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: observation.turnId });
+        const packet = JSON.parse(storedPacket!.packet);
+        const receipts = logEntries(packet);
+        const reply = receipts.find(({ answers }) => Array.isArray(answers) && answers.includes(f.message("first")));
+        assert.ok(reply, "the delivered reply is present in the next packet");
+        assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
+        assert.equal(Object.hasOwn(reply, "metadata"), code !== null, "the existing metadata slot survives projection");
+        assert.equal(reply.body, `1:${body}\n`);
+        const arrivals = receipts.filter(({ origin }) => origin === "user");
+        assert.equal(arrivals.length, 2);
+        for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
+        const open = JSON.parse(packetSection(packet, "messages")) as Array<{ path: string }>;
+        assert.deepEqual(open.map(({ path }) => path), (code === null ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
+
+        const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnId });
+        const durable = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
+        assert.equal(durable?.status_rx, 200);
+        assert.equal(JSON.parse(durable!.rx).status, 200);
+    });
+}
 
 test("{§message-completion}: two independent final replies execute in one turn", async (t) => {
     const f = await setup(); t.after(() => f.db.close());

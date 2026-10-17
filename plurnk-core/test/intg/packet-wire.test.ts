@@ -391,20 +391,32 @@ test("log entry: a no-body row omits body, display, model origin, and routine st
     assert.deepEqual(facts(row!), ["logPath", "modifiers", "path", "tokens"], "the canonical path does not duplicate its operation in metadata");
 });
 
-test("a successful KILL receipt retains status 200 because destructive completion must be decisive", () => {
-    const out = PacketWire.renderLog([{
-        coordinate: "1/2/3",
-        origin: "model",
-        op: "KILL",
-        status: 200,
-        target: { scheme: "worker", hostname: "", pathname: "/obsolete.md" },
-        rx: { status: 200 },
-    }], tok);
-    const [row] = parseLogRecords(out);
-    assert.equal(row?.logPath, "log:///1/2/3/KILL");
-    assert.equal(row?.status, 200);
-    assert.equal(row?.path, "worker:///obsolete.md");
-    assert.equal(typeof row?.tokens, "number");
+test("{§log-wire-format}: all operations omit routine status 200 and preserve other outcomes", async (t) => {
+    for (const op of ["NOTE", "READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "SEND", "WORK", "FORK", "WAIT", "BARE", "sh", "gitea"]) {
+        for (const status of [102, 200, 201, 202, 204, 206, 304, 400, 409, 499, 500]) {
+            await t.test(`${op} ${status}`, () => {
+                const target = { scheme: "worker", pathname: "/subject.md" };
+                const entry = {
+                    coordinate: "1/2/3", origin: "model", op, status, target,
+                    tx: op === "COPY" || op === "MOVE" ? {
+                        source: { target }, destination: { target: { scheme: "worker", pathname: "/destination.md" } },
+                    } : { body: "" },
+                    rx: { status, ...(status < 400 ? {} : {
+                        problem: { type: "about:blank", status, title: "Operation failed", detail: "The operation was refused." },
+                    }) },
+                };
+                const before = structuredClone(entry);
+                const out = PacketWire.renderLog([entry], tok);
+                const row = parseLogRecords(out)[0]!;
+                assert.equal(row.logPath, `log:///1/2/3/${op}`);
+                assert.equal(Object.hasOwn(row, "status"), status !== 200);
+                assert.equal(row.status, status === 200 ? undefined : status);
+                assert.equal(row.tokens, tok(out), "the charge reflects the projected facts");
+                if (status >= 400) assert.equal((row.problem as { detail: string }).detail, entry.rx.problem!.detail);
+                assert.deepEqual(entry, before, "the stored result remains unchanged");
+            });
+        }
+    }
 });
 
 test("{§log-wire-format}: a present operation aside materializes and absence costs no metadata", () => {
@@ -1939,7 +1951,7 @@ test("{§log-wire-format}: a suppressed bounded body does not claim to display a
         tx: { body: long },
     }], tok);
 
-    assert.deepEqual(parseLogRecords(rendered).map(facts), [["lines", "logPath", "status", "tokens"]]);
+    assert.deepEqual(parseLogRecords(rendered).map(facts), [["lines", "logPath", "tokens"]]);
     const [row] = parseLogRecords(rendered);
     assert.equal(row?.tokens, tok(rendered), "the retained metadata is the only charge");
     assert.equal(row?.body, undefined, "the suppressed body is absent");

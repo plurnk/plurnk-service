@@ -2539,9 +2539,9 @@ complete non-retrieval body retains `lines` where no other field supplies its
 navigable extent. None of these spellings changes acquisition, delivery,
 curation, admission, or immutable evidence.
 
-Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. An emission row renders its author, the turn's producer, as its `origin` ({§emission-row}). Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
+Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200, regardless of operation. Every non-200 stays explicit. This presentation rule does not alter message completion, durable results or protocol responses. An emission row renders its author, the turn's producer, as its `origin` ({§emission-row}). A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
 
-Authored `metadata` retains its opaque ordered block strings under {§scheme-metadata-modifier}; COPY/MOVE pair them as `{from,to}`. Packet rendering does not interpret scheme options or discard malformed input from a failed operation.
+Authored `metadata` retains its opaque ordered block strings under {§scheme-metadata-modifier}, as stored under {§log-sensitive-request-evidence}; COPY/MOVE pair them as `{from,to}`. Packet rendering does not interpret scheme options or discard malformed input from a failed operation.
 
 - §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `path` and `stream`. It identifies returned material without replacing the addressed operand or injecting that material into context; ordinary READ acquires it.
 - §packet-attachment-parts A successful READ of an attachable resource carries projection facts with its
