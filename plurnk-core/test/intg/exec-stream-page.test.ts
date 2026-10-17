@@ -78,16 +78,15 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
             const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3]! }))!.packet);
-            const explicit = logEntries(nextPacket).find((row) => row.path === terminal.path && row.origin === undefined);
+            const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(String(row.logPath)) && row.origin === undefined);
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
             assert.equal(explicit.range, "<38,40> of 40 lines");
             const request = provider.received.at(-1)!;
-            // {§emission-history}: a turn replays as its NOTEs, so each turn's NOTE stands for its program here.
-            const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("launched the count"));
+            const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("reading the tail"));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`READ (${String(terminal.path)}) <38,40>`));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {

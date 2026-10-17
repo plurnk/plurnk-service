@@ -1799,6 +1799,7 @@ export default class TurnRunner {
             source: split.sourceBacked ? split.packetAssistant.content : null,
             emission: split.emissionStatements === null ? null : {
                 content: TurnOps.renderEmission(split.emissionStatements),
+                statements: split.emissionStatements,
                 ...coordinates,
             },
             reasoning: split.packetAssistant.reasoning ? { content: split.packetAssistant.reasoning, ...coordinates } : null,

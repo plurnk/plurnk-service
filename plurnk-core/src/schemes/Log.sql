@@ -311,12 +311,3 @@ BEGIN
     SET attrs = json_remove(attrs, '$.__plurnk_curation')
     WHERE id = NEW.id;
 END;
-
--- PREP: log_turn_note_rows
--- Trial (#1073): an emission row's legend, the turn's visible model NOTE rows in order, so a line
--- scope aimed at the row retires the NOTEs on those lines.
-SELECT le.id, le.folded
-FROM active_log_entries le
-WHERE le.turn_id = (SELECT turn_id FROM log_entries WHERE id = $id)
-  AND le.op = 'NOTE' AND le.origin = 'model'
-ORDER BY le.sequence;

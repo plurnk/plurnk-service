@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Mock, type InputModality } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, type InputModality } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import { viableWindow } from "./_provider.ts";
@@ -55,7 +55,7 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const requests = await runLoop(["pdf"]);
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
     const user = second[3];
     assert.ok(user !== undefined && Array.isArray(user.content), `the log message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
@@ -65,12 +65,13 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
     assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
     assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
-    assert.match(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /## Worker/u, "the footer follows the PDF");
-    assert.doesNotMatch(user.content.slice(3).flatMap((part) => part.type === "text" ? [part.text] : []).join(""), /1:looking/u, "{§emission-history}: the NOTE's text is in the replay, its row a legend line");
+    assert.match(chatMessageText(second[5]!), /## Worker/u, "the footer follows the operations and PDF");
+    assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
     assert.deepEqual(second[2], {
         role: "assistant",
-        content: PlurnkParser.frame("NOTE", "looking"),
-    }, "the turn replays as its NOTE, before its native result; the READ is omitted and its receipt is its record");
+        content: PlurnkParser.frame("READ (contract.pdf)", null),
+    }, "the READ precedes its native result");
+    assert.deepEqual(second[4], { role: "assistant", content: PlurnkParser.frame("NOTE", "looking") });
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

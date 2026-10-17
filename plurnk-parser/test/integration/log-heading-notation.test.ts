@@ -83,9 +83,9 @@ test("{§bare-target} {§diagnostic-observation} a target written without parent
     ]);
     // {§parse-recovery} — the recovery is the operation's working form, never the input rewritten.
     assert.deepEqual(refusal("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"),
-        ["`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. `READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body."]);
+        ["`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. `READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line."]);
     assert.deepEqual(refusal("```FIND tests/migrations/test_writer.py /gettext_lazy|^import|^from/\n```"),
-        ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. `FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line; FIND takes no body."]);
+        ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. `FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line."]);
     assert.deepEqual(refusal("```EDIT a.py <1,4>\nnew\n```"),
         ["`EDIT` has no target: `a.py` stands where the target goes. `EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence."]);
     const [send] = statements("```SEND The answer is 42.\n```");

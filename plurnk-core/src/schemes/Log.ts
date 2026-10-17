@@ -854,38 +854,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 if (!Array.isArray(rawAnchors)) {
                     throw new TypeError("A READ log body carries malformed published line anchors.");
                 }
-                // {§emission-row}: an emission row's lines are its legend, its turn's NOTEs. A line scope aimed
-                // at the row retires the NOTEs on the lines it selects and leaves the row; the unscoped KILL
-                // alone retires the row.
-                const marks = statement.lineMarker?.marks ?? null;
-                if (exact && marks !== null && LogEntryProjection.isEmission(row)) {
-                    const legend = await ctx.db.log_turn_note_rows.all<{ id: number; folded: string }>({ id: row.id });
-                    if (legend.length > 0) {
-                        const count = legend.length;
-                        const legendScope = LogVisibility.resolveScope(
-                            statement.lineMarker, identity, legend.map((_, index) => String(index + 1)).join("\n"),
-                        );
-                        if (!legendScope.ok) {
-                            return {
-                                result: Results.failure("scheme:log", legendScope.code, legendScope.status, legendScope.detail, {}, {
-                                    target: identity, recovery: legendScope.recovery, retryable: false,
-                                }) as OpenFoldResult,
-                                plan: null,
-                            };
-                        }
-                        const visible = new Set(LogVisibility.visibleLineOrdinals(
-                            LogVisibility.apply(LogVisibility.OPEN, legendScope.range, count), count,
-                        ));
-                        for (const [index, note] of legend.entries()) {
-                            if (visible.has(index + 1)) continue;
-                            const noteFolded = LogVisibility.parse(note.folded);
-                            targets.push({ id: note.id, activeBefore: 1, activeAfter: 0, foldedBefore: noteFolded, foldedAfter: noteFolded });
-                        }
-                        const rowFolded = LogVisibility.parse(row.folded);
-                        targets.push({ id: row.id, activeBefore: 1, activeAfter: 1, foldedBefore: rowFolded, foldedAfter: rowFolded });
-                        continue;
-                    }
-                }
                 const scope = LogVisibility.resolveScope(
                     statement.lineMarker,
                     identity,
@@ -910,8 +878,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     };
                 }
                 const before = LogVisibility.parse(row.folded);
-                // {§emission-row} — an emission is curated whole, and a line scope addresses only its legend.
-                // Here the row has no legend lines: an exact scope is refused, and a sweep leaves it intact.
+                // {§emission-row}: source announcements are curated whole; ordinary rows own their bodies.
                 if (LogEntryProjection.isEmission(row)) {
                     if (exact) {
                         return {
@@ -919,7 +886,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                                 "scheme:log",
                                 "emission-curated-whole",
                                 422,
-                                `${identity} is an emission with no legend lines: a line scope selects nothing on it.`,
+                                `${identity} is an emission; curate it without a line scope.`,
                                 {},
                                 {
                                     target: identity,

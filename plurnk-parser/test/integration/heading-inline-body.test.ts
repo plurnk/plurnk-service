@@ -14,7 +14,7 @@ const PLACES = {
     below: (heading: string, text: string) => `${fence}${heading}\n${text}\n${fence}`,
 } as const;
 
-type Reading = { matcher?: string; body?: string; metadata?: string[]; advisory?: string };
+type Reading = { matcher?: string; body?: string; metadata?: string[]; advisory?: string; annotation?: string };
 type Read = (kind: Kind, text: string, inline: boolean) => Reading;
 
 const inlineBody = (name: string) => `\`${name}\` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line.`;
@@ -24,10 +24,10 @@ const objectMatcher = "`{…}` was read as the matcher.";
 const optionObject = (name: string) => `\`${name}\` took a bare option object; the taught form is \`[{…}]\`.`;
 const PATTERN = ' [{"pattern": "/p/"}]';
 
-// The heading line is the matcher's; beneath it, only one sigil line lifts and anything else is ignored.
+// Selectors belong to the heading; retrieval annotations become separate NOTEs.
 const matcherOp = (name: string): Read => (kind, text, inline) => inline
     ? { matcher: text, ...(kind === "object" ? { advisory: objectMatcher } : {}) }
-    : kind === "sigil" ? { matcher: text } : { advisory: ignored(name, false) };
+    : name === "READ" || name === "FIND" ? { annotation: text } : { advisory: ignored(name, false) };
 // Heading text is the body's first line, named; text beneath is the body.
 const bodied = (name: string): Read => (_kind, text, inline) => ({ body: text, ...(inline ? { advisory: inlineBody(name) } : {}) });
 // One JSON object on the heading line is the option block; any other heading text is the body.
@@ -57,8 +57,8 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["WAIT", "WAIT", bodied("WAIT")],
     ["SEND [200]", "SEND", (kind, text, inline) => ({ ...bodied("SEND")(kind, text, inline), metadata: ["200"] })],
     // Beside an option block's pattern the heading text is not the matcher.
-    [`FIND (a.md)${PATTERN}`, "FIND", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("FIND", inline) })],
-    [`READ (a.md)${PATTERN}`, "READ", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("READ", inline) })],
+    [`FIND (a.md)${PATTERN}`, "FIND", (_kind, text, inline) => ({ matcher: "/p/", ...(inline ? { advisory: ignored("FIND", true) } : { annotation: text }) })],
+    [`READ (a.md)${PATTERN}`, "READ", (_kind, text, inline) => ({ matcher: "/p/", ...(inline ? { advisory: ignored("READ", true) } : { annotation: text }) })],
     [`KILL (a.md)${PATTERN}`, "KILL", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("This KILL", inline) })],
     [`KILL (log:///1/2/3)${PATTERN}`, "KILL", (kind, text, inline) => ({ matcher: "/p/", ...bodied("KILL")(kind, text, inline) })],
     [`EDIT (a.md) <1>${PATTERN}`, "EDIT", (kind, text, inline) => ({ matcher: "/p/", ...bodied("EDIT")(kind, text, inline) })],
@@ -87,20 +87,22 @@ for (const [heading, op, read] of SHAPES) {
                 assert.equal(result.unparsedTail, undefined, label);
                 assert.deepEqual(result.items.filter((item) => item.kind === "error" && item.error.severity === "error").map((item) => item.kind === "error" && item.error.message), [], label);
                 const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement as unknown as Record<string, unknown>] : []);
-                assert.deepEqual(statements.map(nameOf), [op], `${label} — the operation is never lost`);
-                const { advisory, ...expected } = read(kind, text, place !== "below");
-                assert.deepEqual(reading(statements[0]!), expected, label);
+                const { advisory, annotation, ...expected } = read(kind, text, place !== "below");
+                const expectedOps = annotation === undefined ? [op] : ["NOTE", op];
+                assert.deepEqual(statements.map(nameOf), expectedOps, `${label} — the operation is never lost`);
+                if (annotation !== undefined) assert.deepEqual(reading(statements[0]!), { body: annotation });
+                assert.deepEqual(reading(statements.at(-1)!), expected, label);
                 assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), advisory === undefined ? [] : [advisory], `${label} — a reading other than the canonical one is named once`);
 
                 const tail = `\n\n${fence}READ (z.md)\n${fence}`;
                 const followed = parse(`${source}${tail}`);
                 const following = followed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-                assert.deepEqual(following.map(nameOf), [op, "READ"], `${label} — the operation after it still runs`);
+                assert.deepEqual(following.map(nameOf), [...expectedOps, "READ"], `${label} — the operation after it still runs`);
 
-                const canonical = PlurnkParser.stringify([statements[0] as never]);
+                const canonical = PlurnkParser.stringify(statements as never[]);
                 const again = parse(canonical);
                 assert.deepEqual(again.items.filter((item) => item.kind === "error"), [], `${label} — the canonical form ${canonical} reads clean`);
-                assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [reading(item.statement as unknown as Record<string, unknown>)] : []), [reading(statements[0]!)], `${label} — and reads the same`);
+                assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [reading(item.statement as unknown as Record<string, unknown>)] : []), statements.map(reading), `${label} — and reads the same`);
             }
         }
     });

@@ -57,8 +57,9 @@ for (const code of [null, 200, 499]) {
         const reply = receipts.find(({ answers }) => Array.isArray(answers) && answers.includes(f.message("first")));
         assert.ok(reply, "the delivered reply is present in the next packet");
         assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
-        assert.equal(Object.hasOwn(reply, "metadata"), code !== null, "the existing metadata slot survives projection");
-        assert.equal(reply.body, `1:${body}\n`);
+        assert.equal(Object.hasOwn(reply, "metadata"), false, "the paired operation supplies authored metadata");
+        assert.equal(reply.body, undefined, "the answer appears once, in the complete operation");
+        assert.equal(packetSection(packet, "emission-history"), frame(code === null ? "SEND" : `SEND [${code}]`, body));
         const arrivals = receipts.filter(({ origin }) => origin === "user");
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);

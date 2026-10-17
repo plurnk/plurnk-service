@@ -1,12 +1,12 @@
 import type { KillStatement, PlurnkOp } from "@plurnk/plurnk-contracts";
 
-type BodyShape = "none" | "text" | "prose" | "mutation" | "distillation";
+type BodyShape = "none" | "text" | "prose" | "mutation" | "distillation" | "annotation";
 type Selection = Pick<KillStatement, "target" | "lineMarker" | "metadata">;
 
 // {§op-shapes} {§kill-scope}: semantic shape after the grammar has bound the slots.
 export default class StatementShape {
     static readonly #BODIES = {
-        FIND: "none", READ: "none", EDIT: "mutation", COPY: "none", MOVE: "none",
+        FIND: "annotation", READ: "annotation", EDIT: "mutation", COPY: "none", MOVE: "none",
         SEND: "prose", BARE: "prose", WORK: "prose", FORK: "prose",
         NOTE: "text", WAIT: "text", KILL: "text",
     } as const satisfies Record<PlurnkOp, BodyShape>;
@@ -27,8 +27,8 @@ export default class StatementShape {
     static workingForm(op: string, exec: boolean): string | undefined {
         if (exec) return `\`${op} (program)? [{"cwd": "…"}]?\` on the opening fence line, the input on the lines below, then the closing fence.`;
         const forms: Readonly<Record<string, string>> = {
-            FIND: "`FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line; FIND takes no body.",
-            READ: "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line; READ takes no body.",
+            FIND: "`FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line.",
+            READ: "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line.",
             EDIT: "`EDIT (path) <scope>` on the opening fence line, the replacement text on the lines below, then the closing fence.",
             COPY: "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body.",
             MOVE: "`MOVE (from) <scope>? (to) <scope>?` on the opening fence line; MOVE takes no body.",

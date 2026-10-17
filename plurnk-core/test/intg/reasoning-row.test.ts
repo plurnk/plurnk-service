@@ -63,15 +63,16 @@ test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log
             assert.ok(heading >= 0, `the packet names the row by its own leaf and address: ${log.slice(0, 400)}`);
             assert.ok(emissionHeading > heading, "the reasoning row precedes the emission row in the packet");
             assert.match(log, /converter raises before the view is named/u, "the reasoning is in the packet, not a page of it");
-            assert.deepEqual(envelope.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+            assert.deepEqual(envelope.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
             const before = chatMessageText(envelope[1]!);
             const previous = chatMessageText(envelope[2]!);
             assert.match(before!, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before!, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, frame("NOTE", "Bearing one."), "{§emission-history}: the assistant message is the turn's NOTE; the READ is omitted and reasoning is never copied");
-            assert.match(before, /\n1:log:\/\/\/1\/2\/\d+\/NOTE · \d+$/u, "the emission row's lines are the legend of the replayed NOTE");
+            assert.equal(previous, frame("READ (worker:///fact.txt)", null), "the READ immediately precedes its result");
+            assert.equal(chatMessageText(envelope[4]!), frame("NOTE", "Bearing one."));
+            assert.match(before, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*$/u, "the source announcement precedes the operations");
             assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE's text does not precede its program");
-            assert.doesNotMatch(chatMessageText(envelope[3]!), /Bearing one\./u, "the content NOTE's row renders nowhere but the legend");
+            assert.doesNotMatch(log, /Bearing one\./u, "the NOTE body appears only in assistant replay");
             assert.equal(JSON.parse(emissionRow.rx!).content, program, "the frozen emission still contains every admitted operation");
         } finally { await db.close(); }
     });

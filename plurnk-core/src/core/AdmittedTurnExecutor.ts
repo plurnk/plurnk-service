@@ -83,7 +83,7 @@ export default class AdmittedTurnExecutor {
         source: string | null;
         // {§emission-row} — the admitted emission this turn announces, or null when nothing was admitted
         // from a recorded source. Every caller states it.
-        emission: AdmittedTextSource | null;
+        emission: (AdmittedTextSource & { statements: readonly PlurnkStatement[] }) | null;
         reasoning?: AdmittedTextSource | null;
         sourceModelCallId?: number | null;
         origin: WriterTier;
@@ -225,7 +225,9 @@ export default class AdmittedTurnExecutor {
             );
         };
 
+        const emissionIndices = new Map(emission?.statements.map((statement, index) => [statement, index]));
         for (const [index, scheduledStatement] of scheduled.entries()) {
+            const emissionIndex = emissionIndices.get(scheduledStatement);
             signal?.throwIfAborted();
             if (!TurnDisposition.is(scheduledStatement) && realCommands >= maxCommands) {
                 droppedCount++;
@@ -292,6 +294,7 @@ export default class AdmittedTurnExecutor {
                         }
                         dispatchResult = await this.#dispatcher.recordBareResult({
                             statement,
+                            emissionIndex,
                             workspaceId,
                             workerId,
                             loopId,
@@ -304,6 +307,7 @@ export default class AdmittedTurnExecutor {
                     } else {
                         const execution = await this.#dispatcher.dispatch({
                             statement,
+                            emissionIndex,
                             workspaceId,
                             workerId,
                             loopId,

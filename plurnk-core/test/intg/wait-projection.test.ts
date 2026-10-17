@@ -52,7 +52,7 @@ for (const [header, warning] of [
         assert.equal(notices.match(/\[parse_advisory\]/gu)?.length, 1);
         const wait = logEntries(resumedPacket).find(({ logPath }) => String(logPath).endsWith("/WAIT"));
         assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
-        if (header === "WAIT 15") assert.match(String(wait?.body), /15/u, "the authored prose is retained");
+        if (header === "WAIT 15") assert.ok(packetSection(resumedPacket, "emission-history").includes(PlurnkParser.frame("WAIT", "15")), "the authored prose is retained in its operation");
 
         const next = await resume();
         assert.equal(next.result.status, 202);

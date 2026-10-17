@@ -434,12 +434,13 @@ export default class NativeToolCalls {
         return { from, to, calls: calls.length === 0 ? null : calls };
     }
 
-    // A call's text: the body, except that an operation which takes no body and names no target yet reads a
+    // A call without an executable body and naming no target yet reads a
     // first line of plurnk slots, `(path) <scope>`, as its heading (`<function=READ>(a.py) <1,30></function>`).
     static #content(name: string, slots: Slots, text: string): void {
         if (text.length === 0) return;
         const lines = text.split("\n");
-        if (StatementShape.body(name) === "none" && slots.path === undefined && slots.extra === ""
+        const shape = StatementShape.body(name);
+        if ((shape === "none" || shape === "annotation") && slots.path === undefined && slots.extra === ""
             && NativeToolCalls.#headingHasTarget(name, lines[0]!.trim())) {
             slots.extra = lines.shift()!.trim();
             if (lines.every((entry) => entry.trim() === "")) return;

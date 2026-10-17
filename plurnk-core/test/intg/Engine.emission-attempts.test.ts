@@ -505,7 +505,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
 });
 
 // {§turn-shape} {§parse-diagnostics}
-test("a literal nested NOTE remains data and the next packet receives only the authored operation's receipt", async () => {
+test("a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
@@ -533,7 +533,8 @@ test("a literal nested NOTE remains data and the next packet receives only the a
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
-        assert.match(log, /example\.md/u, "the next model turn receives the EDIT receipt");
+        assert.match(log, /### log:\/\/\/1\/2\/\d+\/EDIT/u, "the next model turn receives the EDIT receipt");
+        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /EDIT \(worker:\/\/\/example\.md\)/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
     }
@@ -760,7 +761,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
     }
 });
 
-test("#409: a READ carrying pasted READ lines as a body dispatches without it; one advisory names the option form, echoing nothing", async () => {
+test("{§retrieval-annotation}: a READ carrying pasted lines keeps them as a NOTE without treating them as selection", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const renderedRead = [
@@ -800,9 +801,10 @@ ${renderedRead}
         assert.equal(
             rows.some(({ origin, op }) => origin === "model" && op === "READ"),
             true,
-            "the body-bearing READ dispatches without its body ({§matcher-body-redirect})",
+            "the retrieval dispatches bodyless after its annotation",
         );
-        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "error"), false, "an ignored body is an advisory, never an error row");
+        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "error"), false);
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").length, 2, "the annotation and explicit NOTE are separate memories");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
         assert.ok(turnOps, "the admitted source remains durable independently of result rows");
@@ -822,11 +824,12 @@ ${renderedRead}
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(JSON.stringify(packet), /READ takes no body; lines? \d+(–\d+)? (was|were) not used\./u, "the advisory reaches the next packet");
+        assert.match(packetSection(packet, "emission-history"), /```NOTE\n2286<@et6xE>/u, "pasted text is literal memory");
+        assert.doesNotMatch(packetSection(packet, "notices"), /takes no body|not used/u, "normalization adds no repair lecture");
         assert.doesNotMatch(
             log,
             /@et6xE/,
-            "the terse advisory does not echo the body-suppressed submitted program",
+            "the annotation body is not duplicated in its paired receipt",
         );
     } finally {
         await db.close();
@@ -959,8 +962,7 @@ for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.
 
             const next = await engine.runTurn({ ...context, provider, messages: [] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const observations = logEntries(packet).filter(({ path, logPath }) =>
-                path === "worker:///trim.md" && String(logPath).endsWith("/READ"));
+            const observations = logEntries(packet).filter(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(logPath)));
             assert.equal(observations.length, 1, "the following turn receives the recovered READ's result");
             assert.match(String(observations[0].body), /^1<@[0-9A-Za-z]{5}>two\n2<@[0-9A-Za-z]{5}>three\n$/);
         } finally { await db.close(); }
@@ -1795,7 +1797,8 @@ test("a valid turn with a failed operation remains recoverable and model-visible
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
-        assert.match(packetSection(packet, "log"), /sealed:\/\/\/x/, "the failed operation remains in model-visible history");
+        assert.match(packetSection(packet, "emission-history"), /EDIT \(sealed:\/\/\/x\)/u, "the failed operation remains in model-visible history");
+        assert.match(packetSection(packet, "log"), /### log:\/\/\/1\/2\/\d+\/EDIT[^\n]*\n[^\n]*"status":403/u, "the failure stays beside it");
     } finally {
         await db.close();
     }

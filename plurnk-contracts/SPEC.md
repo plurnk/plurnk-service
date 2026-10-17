@@ -410,7 +410,7 @@ repaired reading: a complete nested interpretation takes precedence. Each class 
 | Counted | Complete readings | Repaired readings | Why |
 |---|---|---|---|
 | Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with the next row | 1 | Every operation the author wrote should run |
-| Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, non-log targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
+| Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (COPY, MOVE, non-log targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
 | Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL, or an executor heading inside a SEND, WORK, FORK or BARE body ({§prose-code-blocks}); a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
 | Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
 | Other fences read as text | 3 | 5 | The least departure from the fences as written |
@@ -747,8 +747,7 @@ matcher." ({§diagnostic-observation}).
 §operation-aside The final header modifier may be one single-line HTML
 comment. AstBuilder removes its delimiters and surrounding whitespace into
 `aside: string | null`. It is durable descriptive text, not authority,
-routing, timing, or body input. Comments inside a body remain literal except
-for the narrowly owned {§misplaced-aside-advisory}.
+routing, timing, or body input. Comments inside a body remain literal.
 
 §scheme-metadata-modifier A target may carry one single-line `[metadata]`
 block, placed under {§slot-order}; executor and SEND fences also admit it without a target.
@@ -786,13 +785,10 @@ the owner verbatim, and the owner's reader treats `pattern` as reserved. The
 language lifts only from one block that parses as a JSON array of objects;
 anything else lifts nothing and reaches the owner's `400` untouched. A
 `pattern` that is present but not a string is the language's own positioned
-diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
-READ, and targeted KILL take no body: a body beneath their heading is not used and
-the operation still runs, with one warning-severity advisory naming the lines not
-used (`FIND takes no body; lines 4–6 were not used.`); it is never silently read as a
-matcher, and it never strikes ({§matcher-body-redirect}). The heading line itself
-is the matcher's home ({§naked-pattern}). A body that is only an HTML comment is
-still the aside under {§misplaced-aside-advisory}. EDIT keeps its literal body:
+diagnostic, as is a matcher of a claimed dialect that fails admission. FIND and
+READ bodies become memory under {§retrieval-annotation}; a non-log KILL's body is
+unused and receives the advisory under {§matcher-body-redirect}. The heading line
+is the matcher's home ({§naked-pattern}). EDIT keeps its literal body:
 with a matcher it is the replacement for every selected span ({§edit-pattern}),
 and an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
 whose block left no metadata back bare when the bare form reads back identically
@@ -817,8 +813,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 
 | OP   | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|----------------------------------------------|---------------------------------|--------------------------------|
-| FIND | required target or glob                      | optional result range           | empty                          |
-| READ | required target                              | optional text region            | empty                          |
+| FIND | required target or glob                      | optional result range           | annotation normalized to NOTE |
+| READ | required target                              | optional text region            | annotation normalized to NOTE |
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
@@ -830,6 +826,16 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
 | WAIT | optional label ({§send-wait-scope}) | none; duration is `[seconds]` metadata | explanation of the wait |
+
+§retrieval-annotation **A retrieval's authored body is memory, not selection or output.**
+A nonblank body beneath FIND or READ becomes one ordinary NOTE immediately before
+the retrieval, including a body consisting of a pattern or an HTML comment. A
+grouped READ contributes one NOTE before its expanded statements. The retrieval
+itself has no body; its selector comes only from its header. Normalization is the
+same in content and exposed reasoning and never executes quoted body text. The
+canonical rendering is NOTE followed by bodyless retrieval; exact submitted text
+remains source evidence. The NOTE persists independently of retrieval success and
+is curated normally. Explicit NOTE remains the taught form.
 
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
@@ -1779,7 +1785,7 @@ not infer it from diagnostic wording. It does not independently prescribe a stri
 §parse-recovery **Every hard diagnostic carries its working form.** A `severity: "error"`
 diagnostic names, in `recovery`, the form of the construct it refused, in the model's terms: a
 refused heading carries the operation's canonical line (`` `READ (path) <L,M>? pattern? <!-- aside -->?`
-on the opening fence line; READ takes no body. ``), a refused scope the scope's form, and a refused
+on the opening fence line. ``), a refused scope the scope's form, and a refused
 matcher its dialect's form with an example (`` A pattern is a regex written `/pattern/flags`, such
 as `/timeout/i`. ``). The working form is the language's, never a reconstruction of the input
 ({§diagnostic-observation}). The runtime projects `recovery` as the Problem's `recovery` beside the
@@ -1868,7 +1874,7 @@ diagnostics are:
   that already names a channel keeps such a token as its pattern. Those
   matchers remain independent of owner options: a block without `pattern` never
   erases the heading matcher, and invalid blocks still reach the owning validator.
-  These operations take no body, so heading-line text can mean nothing else. On EDIT only
+  Their heading-line text owns selection independently of annotation or distillation bodies. On EDIT only
   a sigil lifts, because plain heading-line text is the replacement body it always
   was; the lines beneath the heading are then the replacement, and none deletes each
   match ({§edit-pattern}). A trailing `<!-- aside -->` on the same line stays the
@@ -1929,15 +1935,12 @@ diagnostics are:
   body instead, the anchor would be written into the file, or the EDIT refused for want of a line
   marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
   since `@patch` is a search a model means.
-- §matcher-body-redirect **Unread body text on bodyless operations.** FIND, READ and bodyless
-  KILL keep the statement but do not use text the matcher did not consume, with one warning
-  naming where it stands: `READ takes no body; lines 4–38 were not used.`, or `the text after its
-  heading on line 3` when it shares the heading's line. KILL's advisory says `This KILL`, limiting the claim to that invocation:
-  log distillation bodies remain valid. Delivered like
-  {§misplaced-aside-advisory} as a `parse_advisory` notice (a warning, never an error).
-  One sigil line beneath a bodyless heading is the bare form written a line low and still lifts;
-  nothing else is promoted into a matcher from below the heading. An option block's `pattern`
-  prevents that lift, and the advisory never echoes the discarded text.
+- §matcher-body-redirect **Unread selector text.** An option block's `pattern` owns the
+  selector; surplus heading text is unused with one warning naming its location.
+  A non-log KILL's body is likewise unused: `This KILL takes no body; line 2 was not used.`
+  Neither warning echoes discarded text. No operation recovers a matcher from below
+  its header. READ/FIND bodies follow {§retrieval-annotation}; log KILL bodies follow
+  {§log-kill-distillation}.
 - §combined-anchor-tolerance **Combined line number and anchor in a scope.** A
   text-coordinate scope written `L<@hash>` — digits immediately before the opener — is the
   displayed `42<@abcde>` row prefix copied whole: the scope is the anchor, the number is dropped, and one
@@ -1953,15 +1956,6 @@ diagnostics are:
   states the anchor rule instead, with the scope marked: `` every line anchor carries
   its `@`: `<@abcde,@fghij>` ``. Spacing and boundary-loss diagnostics retain their own
   contracts.
-- §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose
-  body is solely an HTML comment (`<!-- … -->`) can never carry a matcher: it is
-  the aside the model put on the line below the heading. The builder takes
-  the comment as the aside when the heading has none, builds the operation
-  with no body, and raises one warning-severity advisory stating that observed
-  normalization; the parser places the advisory right after its statement and
-  the service delivers it as a `parse_advisory` notice with its position. A body
-  with any other content is ignored under the same advisory path
-  ({§matcher-body-redirect}).
 
 §error-shape The diagnostic class determines the parts of a message; every class says what
 happened, never why ({§diagnostic-observation}). Advisories belong to one successfully built statement. A rejected

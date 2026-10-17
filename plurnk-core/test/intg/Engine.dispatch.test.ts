@@ -240,7 +240,7 @@ for (const op of ["READ", "FIND"] as const) {
         const { db, engine, env } = await setup();
         try {
             const parsed = PlurnkParser.parse(`\`\`\`\`${op}\n*\n\`\`\`\``);
-            const item = parsed.items.find((candidate) => candidate.kind === "statement");
+            const item = parsed.items.find((candidate) => candidate.kind === "statement" && candidate.statement.op === op);
             assert.ok(item?.kind === "statement");
             assert.ok(item.statement.op === "READ" || item.statement.op === "FIND");
             const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });

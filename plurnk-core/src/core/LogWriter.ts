@@ -53,19 +53,20 @@ export default class LogWriter {
     }
 
     async writeLog({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId, emissionIndex,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
+        emissionIndex?: number;
     }): Promise<number> {
         if (isExecution(statement) && result.status === 202 && result.attrs !== undefined) {
             const attrs = result.attrs as Record<string, unknown>;
             if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
             attrs.pathname = await ExecutionOutputs.claim(this.#db, workspaceId, execRouteOf(statement).runtime);
         }
-        const record = await this.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId });
+        const record = await this.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId, emissionIndex });
         await this.#canonColumns(record, workspaceId);
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>(record);
         if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
@@ -75,12 +76,13 @@ export default class LogWriter {
     // The row a dispatch would write, before it is written: the fit test renders it to weigh it
     // ({§context-fit}) and writeLog inserts it. A failed result gets its instance here.
     async record({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId, emissionIndex,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
         modelCallId: number | null;
+        emissionIndex?: number;
     }): Promise<LogRecord> {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(primaryTargetOf(durableStatement), workspaceId);
@@ -97,6 +99,8 @@ export default class LogWriter {
         const attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
+        if (Object.hasOwn(attrsObj, "emissionIndex")) throw new Error("Result attrs collide with content-operation provenance.");
+        if (emissionIndex !== undefined) attrsObj.emissionIndex = emissionIndex;
         if (curationPlan !== null) {
             if (Object.hasOwn(attrsObj, "__plurnk_curation")) {
                 throw new Error("Dispatcher.#writeLog: result attrs collide with private log curation state");

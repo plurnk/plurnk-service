@@ -261,7 +261,7 @@ lineMarker: (LineMarker | null)
  */
 matcher: (MatcherBody | null)
 /**
- * FIND takes no body; its matcher is the `pattern` option.
+ * Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§retrieval-annotation}).
  */
 body: null
 position: Position

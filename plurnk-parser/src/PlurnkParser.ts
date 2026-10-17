@@ -460,7 +460,7 @@ export default class PlurnkParser {
                     try {
                         const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(c));
                         for (const statement of statements) items.push({ kind: "statement", statement });
-                        // {§misplaced-aside-advisory} — the builder's advisories follow their statement.
+                        // {§error-shape} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a

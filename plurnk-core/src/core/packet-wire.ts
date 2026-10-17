@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, type ParsedPath, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ParsedPath, type PlurnkStatement, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
 import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
@@ -124,6 +124,10 @@ interface SectionView { name?: unknown; slot?: unknown; header?: unknown; conten
 interface Packet { sections?: SectionView[] }
 interface MessageSections { role: PacketSectionDraft["slot"]; sections: SectionView[] }
 type WeighContent = (text: string) => number;
+export interface ReplayedOperation {
+    readonly statement: PlurnkStatement;
+    readonly tokens: number;
+}
 interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
@@ -131,8 +135,8 @@ interface RenderLogOptions {
     // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id: each renders
     // bodiless, its size and address in place of its body.
     readonly bodiless?: ReadonlySet<number>;
-    // Trial (#1073): the model's NOTEs of a replayed turn, indexed on its emission row by path and weight.
-    readonly legend?: ReadonlyMap<string, ReadonlyArray<{ path: string; tokens: number }>>;
+    // {§paired-receipt}: operation weight on its first receipt, zero on subsequent fan-out receipts.
+    readonly paired?: ReadonlyMap<string, ReplayedOperation>;
 }
 
 interface ReclaimableLogItem {
@@ -638,9 +642,9 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
             const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]!);
-            const legend = LogEntryProjection.isEmission(e) ? options.legend?.get(String(e.coordinate).split("/").slice(0, 2).join("/")) : undefined;
-            const projected = legend !== undefined && legend.length > 0
-                ? { body: PacketWire.#frameBody(legend.map(({ path, tokens }, index) => `${index + 1}:${path} · ${tokens}`).join("\n")), projectedLineCount: legend.length, display: "open" as const }
+            const paired = options.paired?.has(String(e.coordinate)) ?? false;
+            const projected = paired && bodies[index]!.provenance === "authored"
+                ? { body: "", projectedLineCount: 0, display: "folded" as const }
                 : PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts);
             return PacketWire.#rowAccounting(identity, e, visibility[index]!, projected, weighContent, options);
         });
@@ -744,7 +748,9 @@ export default class PacketWire {
         // {§log-wire-format}: routine success is implicit, independently of the operation.
         if (typeof e.status === "number" && e.status !== 200) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
-        if (typeof tx?.aside === "string") meta.aside = tx.aside;
+        const replay = options.paired?.get(String(e.coordinate));
+        const paired = replay !== undefined;
+        if (!paired && typeof tx?.aside === "string") meta.aside = tx.aside;
         const authored = tx?.target as ParsedPath | null | undefined;
         const target = PacketWire.#operandPath(e.target ?? authored, options.projectRoot ?? null, authored ?? null);
         const pair = op === "COPY" || op === "MOVE";
@@ -756,6 +762,7 @@ export default class PacketWire {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
         for (const field of ["scope", "metadata"] as const) {
+            if (paired) continue;
             const values = selections.map((selection) => field === "scope"
                 ? PacketWire.#requestScope(selection?.lineMarker)
                 : selection?.metadata?.length ? selection.metadata : null);
@@ -773,7 +780,16 @@ export default class PacketWire {
                     : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
             ];
         });
-        const description = op === "error" || op === "extension" || parts.length === 0 ? null : parts.join(" ");
+        const request = replay?.statement;
+        const requestedSelections = request === undefined ? [] : request.op === "COPY" || request.op === "MOVE"
+            ? [request.source, request.destination] : [request];
+        const resolved = paired && paths.some((path, index) => {
+            const selection = requestedSelections[index];
+            const requested = selection !== undefined && "target" in selection ? selection.target : null;
+            return path !== PacketWire.#operandPath(requested, options.projectRoot ?? null, requested);
+        });
+        const description = op === "error" || op === "extension" || parts.length === 0 ? null
+            : !paired ? parts.join(" ") : resolved ? paths.filter((path) => path !== null).map((path) => `→ ${path}`).join(" ") : null;
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
             && typeof (e.attrs as { worker?: unknown }).worker === "string") {
@@ -1091,7 +1107,7 @@ export default class PacketWire {
             else delete meta.tokensAttachment;
             let tokens = 0;
             for (let pass = 0; pass < 8; pass += 1) {
-                const next = weighContent(render(open, tokens)) + (part?.weight ?? 0);
+                const next = weighContent(render(open, tokens)) + (part?.weight ?? 0) + (options.paired?.get(String(e.coordinate))?.tokens ?? 0);
                 if (next === tokens) return { content: render(open, tokens), tokens };
                 tokens = next;
             }

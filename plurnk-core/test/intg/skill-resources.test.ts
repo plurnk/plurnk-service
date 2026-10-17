@@ -242,7 +242,9 @@ test("{§skills-functionality} a model discovers a skill and reads its original 
         assert.match(provider.packets[1]!, /references\/guide\.md/, "source-relative links survive unchanged");
         assert.match(provider.packets[2]!, /REFERENCE_SENTINEL/);
         assert.match(provider.packets[2]!, /NESTED_SENTINEL/);
-        const binaryReceipt = provider.packets[2]!.split(/\n\n(?=### log:\/\/\/)/).find((section) => /^### log:\/\/\/\S+\/READ → skill:\/\/sample\/assets\/sample\.bin · \d+$/m.test(section));
+        const binaryRequest = provider.packets[2]!.indexOf("```READ (skill://sample/assets/sample.bin) <1,-1>\n```");
+        assert.ok(binaryRequest >= 0, "the complete binary READ immediately precedes its result");
+        const binaryReceipt = provider.packets[2]!.slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).find((section) => /^### log:\/\/\/\S+\/READ · \d+$/m.test(section));
         assert.ok(binaryReceipt, "binary READ has a receipt");
         assert.match(binaryReceipt, /\n1:00\n2:ff\n3:81/, "binary assets use the ordinary byte projection");
     });

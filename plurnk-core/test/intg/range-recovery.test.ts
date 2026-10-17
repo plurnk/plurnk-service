@@ -34,7 +34,10 @@ for (const channel of ["content", "reasoning"] as const) {
             assert.equal(first.status, 102);
             assert.equal(second.status, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            const read = logEntries(packet).find((row) => row.path === "worker:///range.txt");
+            const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath)));
+            assert.ok(read, "the explicit READ has its own receipt");
+            if (channel === "content") assert.equal(packetSection(packet, "emission-history"), PlurnkParser.frame(`READ (worker:///range.txt) <395,${end}>`, null));
+            else assert.equal(read.path, "worker:///range.txt", "an unpaired reasoning READ remains self-describing");
             const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
             assert.deepEqual(shown, lines.slice(394, end));
             const notice = packetSection(packet, "notices");

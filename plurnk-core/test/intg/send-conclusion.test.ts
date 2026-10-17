@@ -298,7 +298,7 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         assert.doesNotMatch(packetSection(packet, "notices"), /outside_text/u);
         assert.match(packetSection(packet, "emission-history"), /Let me check the input first\.[\s\S]*That settles it\./u, "{§emission-history}: the NOTEs replay in the model's own voice");
-        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "their rows are legend lines, not a second copy of the text");
+        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "their paired receipts have no duplicate bodies, not a second copy of the text");
     } finally { await db.close(); }
 });
 

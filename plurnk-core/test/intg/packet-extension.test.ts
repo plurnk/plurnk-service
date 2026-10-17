@@ -43,7 +43,7 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
             },
         });
         const engine = new Engine({ db, schemes });
-        // {§emission-history}: a turn replays as its NOTEs, so each program carries one for the history to interpolate.
+        // {§emission-history}: the transform receives operations interleaved with their results.
         const programs = [
             `${PlurnkParser.frame("EDIT (worker:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
             `${PlurnkParser.frame("READ (worker:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
@@ -65,19 +65,19 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
         for (let turn = 0; turn < 2; turn++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 2);
+        const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 4);
         assert.ok(chronological, "the transform receives the complete interpolated history");
-        assert.deepEqual(chronological.filter(({ slot }) => slot === "assistant").map(({ content }) => content),
-            [PlurnkParser.frame("NOTE", "Wrote the memo."), PlurnkParser.frame("NOTE", "Read it back.")], "{§emission-history}: each turn's history is its NOTEs");
+        const expected = programs.slice(0, 2).flatMap((program) => program.split("\n\n"));
+        assert.deepEqual(chronological.filter(({ slot }) => slot === "assistant").map(({ content }) => content), expected);
         for (const [index, section] of chronological.entries()) {
             if (section.slot !== "assistant") continue;
-            const prior: PacketSectionDraft = chronological[index - 1]!;
-            assert.equal(prior.slot, "user");
-            assert.match(prior.content, /### log:\/\/\/\d+\/\d+\/\d+\/emission[^\n]*\n1:log:\/\/\/\d+\/\d+\/\d+\/NOTE · \d+$/u, "each replay follows its emission row, whose lines are the legend of its NOTEs");
+            const receipt: PacketSectionDraft = chronological[index + 1]!;
+            assert.equal(receipt.slot, "user");
+            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ|NOTE) · \d+/u, "every operation is followed by its receipt");
         }
         assert.equal(provider.received.length, 3);
         const last = provider.received[2]!;
-        assert.deepEqual(last.filter(({ role }) => role === "assistant").map(chatMessageText), [PlurnkParser.frame("NOTE", "Wrote the memo."), PlurnkParser.frame("NOTE", "Read it back.")]);
+        assert.deepEqual(last.filter(({ role }) => role === "assistant").map(chatMessageText), expected);
         assert.match(chatMessageText(last[3]!), /^### log:\/\/\/1\/2\/\d+\/EDIT/u, "transformed packets retain the chronological result boundary");
         assert.doesNotMatch(last.map(chatMessageText).join("\n"), /## Context\n/u, "the transform still removes the requested section");
     } finally { await db.close(); }

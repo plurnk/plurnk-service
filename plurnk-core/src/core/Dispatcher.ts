@@ -61,6 +61,8 @@ const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MO
 
 export type DispatchContext = {
     statement: PlurnkStatement;
+    // {§emission-history}: ordinal in this turn's frozen content program, preserved through fan-out.
+    emissionIndex?: number;
     workspaceId: number;
     workerId: number;
     loopId: number;
@@ -510,6 +512,7 @@ export default class Dispatcher {
             this.#distillations.set(note, (context.statement as KillStatement).target!.raw);
             const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
             delete noteContext.fanout;
+            delete noteContext.emissionIndex;
             await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
             result = Results.assert({ ...result, rowsWritten: ((result.rowsWritten as number | undefined) ?? 1) + 1 });
         }
@@ -757,6 +760,7 @@ export default class Dispatcher {
         // {§join-blocking-collect}
         const logEntryId = await this.#logWriter.writeLog({
             statement,
+            emissionIndex: context.emissionIndex,
             result,
             workspaceId,
             workerId,

@@ -34,25 +34,25 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index]! }))!.packet);
             const afterCuration = await packetOf(3);
             const kills = rows(afterCuration, "KILL");
-            assert.deepEqual(kills.map(({ path: target, status }) => ({ target, status })), [
-                { target: "log:///9/9/9", status: 404 },
+            assert.deepEqual(kills.map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/KILL", status: 404 },
             ], "the first packet after curation contains the failed KILL, not successful receipts");
             assert.ok(kills[0].problem, "the failed KILL retains its corrective Problem");
             assert.equal(row(afterCuration, "EDIT"), undefined, "the killed EDIT row is retired from the projection");
-            const trimmed = rows(afterCuration, "READ").find(({ path: target }) => target === "worker:///note");
+            const trimmed = rows(afterCuration, "READ").find(({ logPath }) => logPath === "log:///1/2/4/READ");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
-            assert.deepEqual(rows(afterRepeat, "KILL").map(({ path: target, status }) => ({ target, status })), [
-                { target: "log:///9/9/9", status: 404 },
-                { target: "log:///1/**/EDIT", status: 204 },
-                { target: "worker:///note", status: undefined },
+            assert.deepEqual(rows(afterRepeat, "KILL").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/KILL", status: 404 },
+                { logPath: "log:///1/4/2/KILL", status: 204 },
+                { logPath: "log:///1/4/5/KILL", status: undefined },
             ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
-            assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/2/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            assert.ok(rows(afterRepeat, "READ").some(({ logPath }) => logPath === "log:///1/4/3/READ"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
-            assert.deepEqual(rows(afterNext, "KILL").map(({ path: target, status }) => ({ target, status })), [
-                { target: "log:///9/9/9", status: 404 },
-                { target: "worker:///note", status: undefined },
+            assert.deepEqual(rows(afterNext, "KILL").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/KILL", status: 404 },
+                { logPath: "log:///1/4/5/KILL", status: undefined },
             ], "shown once: a turn later the mismatch has retired, and the failure and resource deletion stay");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;

@@ -5,7 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
 import { clientRead } from "./_client-read.ts";
@@ -51,9 +51,11 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         assert.equal(next.status, 102);
         assert.equal(next.createdTurnIds.length, 1);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const record = logEntries(packet).find(({ path: target }) => target === "reasoning://alice/1/2")!;
+        const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(logPath)))!;
         assert.ok(record);
-        assert.equal(record.aside, "retain reasoning");
+        assert.equal(record.aside, undefined);
+        assert.ok(packetSection(packet, "emission-history").includes(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)),
+            "the paired operation retains the requested source, scope and aside");
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
             assert.equal(record.preview, undefined);
@@ -72,7 +74,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         const later = await engine.runTurn({ ...context, provider });
         assert.equal(later.status, 102);
         const laterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: later.turnId }))!.packet);
-        const laterRecord = logEntries(laterPacket).find(({ path: target }) => target === "reasoning://alice/1/2")!;
+        const laterRecord = logEntries(laterPacket).find(({ logPath }) => logPath === record.logPath)!;
         assert.equal(laterRecord.body, record.body, "no automatic re-READ or restoration follows a receipt");
         const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);

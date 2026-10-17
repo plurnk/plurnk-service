@@ -245,7 +245,6 @@ export class SqlRiteSync {
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
-	log_turn_note_rows: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
 	log_entries_recent: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -862,7 +861,6 @@ export default class SqlRite {
 	log_find_candidates: SqlRitePreparedStatements;
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
-	log_turn_note_rows: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
 	log_entries_recent: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;

@@ -14,8 +14,8 @@ const turn = (...blocks: string[]) => [...blocks, task()].join("\n");
 // {§error-shape}: a failed statement cannot lend its normalization warnings to another.
 for (const [name, header, body] of [
     ["scope", "READ (data.json) <@12> $[", null],
-    ["aside", "READ (data.json) $[", "<!-- misplaced aside -->"],
-    ["body", "READ (data.json) $[", "ignored content"],
+    ["comment annotation", "READ (data.json) $[", "<!-- literal comment -->"],
+    ["annotation", "READ (data.json) $[", "retained content"],
 ] as const) {
     for (const separate of [false, true]) {
         test(`failed ${name} normalization does not leak advisories into ${separate ? "another parse" : "the next statement"}`, () => {
@@ -28,8 +28,10 @@ for (const [name, header, body] of [
             // normalization drew stays on that statement's line, and the valid sibling is untouched.
             const diagnostics = results.flatMap(errors);
             assert.ok(diagnostics.every((diagnostic) => diagnostic.severity === "warning" && diagnostic.line === 1), name);
-            const ops = results.flatMap(statements);
-            assert.equal(ops.length, 2);
+            const admitted = results.flatMap(statements);
+            assert.deepEqual(admitted.map(({ op }) => op), body === null ? ["READ", "READ"] : ["NOTE", "READ", "READ"]);
+            if (body !== null) assert.equal(admitted[0].op === "NOTE" && admitted[0].body, body);
+            const ops = admitted.filter((statement) => statement.op === "READ");
             assert.equal(ops[0].op, "READ");
             const refused = "matcher" in ops[0] ? ops[0].matcher : null;
             if (refused === null || refused === undefined || refused.dialect !== "unreadable") assert.fail(name);

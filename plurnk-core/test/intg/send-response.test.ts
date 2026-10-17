@@ -46,7 +46,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§forgotten-tag}: operations on the line after a bare fence run; a bare executor name stays quoted text", async (approvalContext) => {
+test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
@@ -62,7 +62,9 @@ test("{§forgotten-tag}: operations on the line after a bare fence run; a bare e
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
             assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
-            assert.ok(model.some(({ op }) => op === "WAIT"), "the WAIT under a bare fence ran");
+            assert.ok(model.every(({ op }) => op !== "WAIT"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
+            assert.ok(model.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === "````\n\n````\nWAIT\nResearch positioning."),
+                "the complete annotation survives rather than executing its quoted WAIT");
             assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
             assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");

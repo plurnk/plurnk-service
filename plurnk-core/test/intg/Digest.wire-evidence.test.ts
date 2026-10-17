@@ -46,7 +46,7 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
             cursor = at + message.content.length;
         }
     }
-    assert.deepEqual(provider.received[2]!.map(({ role }) => role), ["system", "user"], "{§emission-history}: programs without NOTEs interpolate no assistant message");
+    assert.deepEqual(provider.received[2]!.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"], "EDIT and READ each retain their own assistant/result boundary");
 });
 
 test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {

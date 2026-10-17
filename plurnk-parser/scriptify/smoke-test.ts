@@ -105,6 +105,22 @@ if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(sel
 
 // The model tier also records free text as text items; the program is its statements.
 const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
+for (const op of ["READ", "FIND"]) {
+    const source = PlurnkParser.frame(op + " (worker:///fact.txt)", "/annotation-not-selection/");
+    for (const parsed of [PlurnkParser.parse(source), PlurnkParser.parseStatements(source)]) {
+        assertClean("retrieval annotation", parsed);
+        const statements = statementsOf(parsed);
+        if (statements.length !== 2 || statements[0]?.op !== "NOTE"
+            || statements[0]?.body !== "/annotation-not-selection/" || statements[1]?.op !== op
+            || statements[1]?.body !== null || statements[1]?.matcher !== null) {
+            throw new Error("packed retrieval annotation was lost or became a selector");
+        }
+    }
+    const reasoning = PlurnkParser.parseReasoningOperations(source);
+    if (reasoning.length !== 2 || reasoning[0]?.op !== "NOTE" || reasoning[1]?.op !== op) {
+        throw new Error("packed reasoning annotation differs from ordinary admission");
+    }
+}
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
     const input = '{"query":"unchanged"}';
     const invocation = PlurnkParser.frame("Fresh (inspect)", input);

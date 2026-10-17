@@ -29,7 +29,7 @@ import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plu
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
-import TurnOps from "./TurnOps.ts";
+import OperationHistory, { type EmissionProgram } from "./OperationHistory.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -281,53 +281,22 @@ export default class PacketBuilder {
         const owner = await WorkerOwners.forLoop(this.#db, loopId);
         // {§fs-namespace} Receipt directories are relative to the workspace project root.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-        // {§emission-history}: the durable emission row, not its turn's first observation,
-        // anchors content replay without moving incoming observations or reasoning receipts.
+        // {§emission-history}: the emission row selects the program; durable receipt ordinals
+        // locate its operations without moving incoming observations or reasoning receipts.
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
-        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<{ id: number; content: string; executors: string }>({
+        const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<EmissionProgram>({
             loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
         });
-        const programsById = new Map(programs.map((program) => [program.id, program]));
-        // Trial (#1073): a replayed turn is the home of its NOTEs. Their rows render as the emission row's
-        // legend, path and weight each, so the model keeps a handle to retire one; a NOTE of a turn that is
-        // not replayed (an earlier loop, a shed history, a reasoning NOTE) renders as an ordinary row.
-        const turnKey = (entry: { coordinate?: unknown }): string => String(entry.coordinate).split("/").slice(0, 2).join("/");
-        const ownNote = (entry: { op?: unknown; origin?: unknown }): boolean => entry.op === "NOTE" && entry.origin === "model";
-        const noteBody = (entry: { tx?: unknown }): string => {
-            const tx = entry.tx;
-            return tx !== null && typeof tx === "object" && typeof (tx as { body?: unknown }).body === "string" ? (tx as { body: string }).body : "";
-        };
-        // A NOTE row joins the legend only when the replayed program carries its body; a NOTE admitted from
-        // reasoning is not in the program and stays an ordinary row.
-        const programNotes = new Map<string, string[]>();
-        for (const entry of log) {
-            const program = typeof entry.id === "number" ? programsById.get(entry.id) : undefined;
-            if (program !== undefined) programNotes.set(turnKey(entry), TurnOps.noteBodies(program.content, JSON.parse(program.executors) as string[]));
-        }
-        const legendNotes = new Set<(typeof log)[number]>();
-        for (const entry of log) {
-            if (!ownNote(entry)) continue;
-            const pool = programNotes.get(turnKey(entry));
-            const at = pool?.indexOf(noteBody(entry)) ?? -1;
-            if (pool === undefined || at === -1) continue;
-            pool.splice(at, 1);
-            legendNotes.add(entry);
-        }
-        const legend = new Map<string, Array<{ path: string; tokens: number }>>();
-        for (const entry of legendNotes) {
-            const key = turnKey(entry);
-            if (!legend.has(key)) legend.set(key, []);
-            legend.get(key)!.push({ path: `log:///${entry.coordinate}/NOTE`, tokens: weighContent(TurnOps.noteFence(noteBody(entry))) });
-        }
-        const shown = log.filter((entry) => !legendNotes.has(entry));
+        const { operations, paired } = OperationHistory.project(log, programs);
+        for (const [coordinate, operation] of operations) paired.set(coordinate, { ...paired.get(coordinate)!, tokens: weighContent(operation) });
         const renderedLog = PacketWire.renderLogWithAccounting(
-            shown,
+            log,
             weighContent,
             {
                 projectRoot: workspaceRow?.project_root ?? null,
                 acceptedAttachmentKinds: new Set(acceptedKinds(provider.inputModalities)),
                 ...(bodiless === undefined ? {} : { bodiless }),
-                legend,
+                paired,
             },
         );
         const nativeRows = new Map(renderedLog.attachments.map((attachment) => [attachment.coordinate, attachment]));
@@ -342,19 +311,18 @@ export default class PacketBuilder {
             sectionItems.set(name, items);
             items = [];
         };
-        for (const [index, row] of shown.entries()) {
+        for (const [index, row] of log.entries()) {
+            const emission = operations.get(String(row.coordinate));
+            if (emission !== undefined) {
+                flush();
+                logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });
+            }
             if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
             items.push(renderedLog.records[index]!);
             const native = nativeRows.get(String(row.coordinate));
-            const program = typeof row.id === "number" ? programsById.get(row.id) : undefined;
-            const emission = program === undefined ? undefined : TurnOps.renderHistory(
-                program.content, JSON.parse(program.executors) as string[],
-                [...legendNotes].filter((entry) => turnKey(entry) === turnKey(row)).map(noteBody),
-            );
-            if (native !== undefined || emission) {
+            if (native !== undefined) {
                 flush();
-                if (native !== undefined) nativeParts.push({ ...native, section: name });
-                if (emission) logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });
+                nativeParts.push({ ...native, section: name });
             }
         }
         flush();

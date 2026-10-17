@@ -31,7 +31,8 @@ test("prose before, between and after fences lands as NOTEs in order and is repl
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final! }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
         assert.equal(packetSection(packet, "notices"), "", "no outside-text and no missing-NOTE notice");
         const user = PacketWire.renderSlot(packet.sections, "user");
-        assert.match(user, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*\n1:log:\/\/\/1\/2\/\d+\/NOTE · \d+\n2:log:\/\/\/1\/2\/\d+\/NOTE · \d+\n3:log:\/\/\/1\/2\/\d+\/NOTE · \d+/u, `the legend lists the three:\n${user}`);
+        assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/NOTE · \d+/gmu)].length, 3, "each annotation retains its own receipt");
+        assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
         assert.match(assistant, /```NOTE\nThinking out loud first\.\n```[\s\S]*```NOTE\nBetween the two\.\n```[\s\S]*```NOTE\nAnd a trailing remark\.\n```/u, `the replay carries them as NOTE fences:\n${assistant}`);
     } finally { await db.close(); }

@@ -73,7 +73,7 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
         assert.equal(stored.range.total, 600, "the whole is named beside the page");
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const row = logEntries(packet).find((entry) => entry.path === "worker:///large.md")!;
+        const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(entry.logPath)))!;
         assert.equal(row.range, `<1,${to}> of 600 lines`, "{§packet-extent-metadata}: one fact, one notation");
         assert.equal(String(row.body).trimEnd().split("\n").length, to, "the row shows exactly the page");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
@@ -116,7 +116,7 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.ok(packet.weight <= room, "the receipt and its prefix fit where the page could not");
-        const row = logEntries(packet).find((entry) => entry.status === 413 && entry.path === "worker:///large.md")!;
+        const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(entry.logPath)))!;
         assert.ok(row, "the receipt is a row of the next packet");
         assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
         const facts = receipt(row);
@@ -284,7 +284,7 @@ const overTheWall = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
     const settledTurn = (await db.test_get_turn.get<{ packet: string; sequence: number }>({ id: third.turnId }))!;
     const settled = JSON.parse(settledTurn.packet) as { weight: number };
     assert.equal(logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))), undefined,
-        "{§emission-history}: replayed, the newest large NOTE's text is in the replay and its row is a legend line");
+        "{§emission-history}: replayed, the newest large NOTE's text is in the replay and its paired receipt has no duplicate body");
     // {§emission-history}: pin the wall below this request even without its optional replay, so fitting
     // still requires a result body. Without the replay the NOTE stands as a bodied row again.
     const baseline = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
@@ -329,7 +329,7 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
     assert.equal(after.filter((row) => row.size !== undefined).length, 0, "with the room restored, nothing is taken: each packet decides afresh");
     const afterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet);
     assert.match(packetSection(afterPacket, "emission-history"), /alpha alpha/u, "{§emission-history}: with the room restored the replay returns, and the older NOTE's text stands whole in it");
-    assert.equal(after.some((row) => /alpha alpha/u.test(String(row.body))), false, "its row is a legend line again, never a second copy");
+    assert.equal(after.some((row) => /alpha alpha/u.test(String(row.body))), false, "its paired receipt has no duplicate body again, never a second copy");
 }));
 
 test("{§context-own-rows-fit}: a body the wall took stays readable at its address", () => restoringBudgets(async (db) => {

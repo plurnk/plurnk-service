@@ -630,7 +630,6 @@ stdin
 
 test("duplicate slots are rejected", () => {
     for (const input of [
-        "````FIND [+b] (p)\nm\n````",
         "````FIND (p1) (p2)\nm\n````",
         "````FIND <1> <2> (p)\nm\n````",
     ]) {
@@ -657,27 +656,16 @@ test("body text on the heading line runs as the body and raises one advisory nam
 });
 
 // {§matcher-option}
-test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a bare word beneath the heading stays an ignored body with one advisory", () => {
-    for (const [op, body, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
-        const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("WAIT", "", "n")));
-        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
-        const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(ops.map(({ op: name }) => name), [op, "WAIT"]);
-        const matcher = (ops[0] as { matcher?: { dialect?: string; raw?: string } | null }).matcher;
-        assert.equal(matcher?.dialect, dialect, `${op}: the sigil names the dialect`);
-        assert.equal(matcher?.raw, body);
+test("{§naked-pattern}: a sigil matcher is selected only on the heading", () => {
+    for (const [op, pattern, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
+        const source = PlurnkParser.frame(op + " (Engine.ts) " + pattern, null);
+        const result = PlurnkParser.parse(source);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+        const statement = result.items.find((item) => item.kind === "statement");
+        const matcher = statement?.kind === "statement" && "matcher" in statement.statement ? statement.statement.matcher : null;
+        assert.equal(matcher?.dialect, dialect);
+        assert.equal(matcher?.raw, pattern);
     }
-    const word = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("WAIT", "", "n")));
-    const advisories = word.items.filter((item) => item.kind === "error");
-    assert.equal(advisories.length, 1);
-    assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
-    assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /^READ takes no body; line \d+ was not used\.$/u);
-    assert.deepEqual(word.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
-    // The inline-heading spelling is the grep spelling and lifts the same way.
-    const inline = PlurnkParser.parse("\n````FIND (Engine.ts) /resolveWorkerPrimary/\n````\n\n````NOTE\nnext\n````");
-    assert.deepEqual(inline.items.filter((item) => item.kind === "error"), []);
-    const find = inline.items.find((item) => item.kind === "statement");
-    assert.equal(find?.kind === "statement" ? (find.statement as { matcher?: { raw?: string } | null }).matcher?.raw : null, "/resolveWorkerPrimary/");
 });
 
 test("{§regex-trailing-text} {§matcher-refusal} a malformed regex pattern refuses its matcher with a bounded dialect message that echoes nothing", () => {
@@ -728,35 +716,6 @@ test("a pattern with flags parses; an invalid one refuses only its own matcher (
     assert.equal(statements[0]!.op === "FIND" ? statements[0]!.matcher?.dialect : null, "unreadable");
 });
 
-// {§misplaced-aside-advisory}
-test("a READ or FIND whose body is only an HTML comment takes it as the aside and says so", () => {
-    for (const op of ["READ", "FIND"] as const) {
-        const turn = sections(
-            section(op, " (Engine.ts) <520,530>", "<!-- Read context around the two matches. -->"),
-            section("WAIT", "", "next"),
-        );
-        const result = PlurnkParser.parse(turn);
-        const statement = result.items.find((item) => item.kind === "statement" && item.statement.op === op);
-        assert.equal(statement?.kind, "statement", `${op} still dispatches as ${op}`);
-        if (statement?.kind !== "statement") return;
-        assert.equal(statement.statement.aside, "Read context around the two matches.", "the comment became the aside");
-        assert.equal("body" in statement.statement ? statement.statement.body : undefined, null, "no matcher was manufactured from the comment");
-        const warning = result.items.find((item) => item.kind === "error" && item.error.severity === "warning");
-        assert.equal(warning?.kind, "error", "one advisory follows the statement");
-        if (warning?.kind !== "error") return;
-        assert.equal(
-            warning.error.message,
-            `The ${op} body contained only an HTML comment; it was applied as the operation aside.`,
-        );
-    }
-    // a heading aside wins; a body with any other content is ignored with an advisory ({§matcher-option})
-    const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("WAIT", "", "n")));
-    const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
-    assert.equal(read?.kind === "statement" ? read.statement.aside : null, "heading");
-    const ignored = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("WAIT", "", "n")));
-    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /READ takes no body/u.test(item.error.message)), "a body that is not a comment is ignored with an advisory");
-    assert.ok(ignored.items.some((item) => item.kind === "statement" && item.statement.op === "READ"), "the READ still parses");
-});
 
 test("scope spellings normalize to ordered numeric marks", () => {
     for (const [scope, marks] of [

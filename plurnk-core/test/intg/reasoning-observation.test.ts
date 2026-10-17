@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 
@@ -77,9 +77,10 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-        const receipt = logEntries(packet).find((row) => row.path === "reasoning://alice/1/2");
+        const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath)));
         assert.ok(receipt);
-        assert.equal(receipt.aside, "retain this determination");
+        assert.equal(receipt.aside, undefined);
+        assert.ok(packetSection(packet, "emission-history").includes(read), "the paired operation retains the source, scope and aside");
         assert.match(String(receipt.body), /selected reasoning/);
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), before, "later inference neither adds nor updates reasoning READs");
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet, firstPacket);

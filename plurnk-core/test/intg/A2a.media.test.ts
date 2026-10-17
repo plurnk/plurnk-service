@@ -108,8 +108,9 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             const log = /(?:^|\n)(### log:\/\/\/[\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1];
             return log === undefined ? [] : parseLogRecords(log.trim());
         });
-        const restoredRead = restoredRows.find((row) => row.path === `${resource}#bytes`);
+        const restoredRead = restoredRows.find((row) => /^log:\/\/\/1\/7\/\d+\/READ$/u.test(String(row.logPath)));
         assert.ok(restoredRead, "the reacquired source has an ordinary byte READ receipt");
+        assert.ok(provider.received[6]!.some(({ role, content }) => role === "assistant" && typeof content === "string" && content.includes(`READ (${resource}#bytes)`)), "the paired operation supplies its exact source address");
         assert.equal(restoredRead.body, Array.from(media.bytes.subarray(0, 3), (byte, index) =>
             `${index + 1}:${byte.toString(16).padStart(2, "0")}\n`).join(""), "text-only and native routes expose the same exact selected octets");
         assert.ok(provider.received.every((messages) => !messages.map(chatMessageText).join("\n").includes(media.bytes.toString("base64"))), "base64 stays out of ordinary model text");
