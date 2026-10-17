@@ -30,7 +30,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         const primedTurn = await s.db.test_get_turn.get<{ loop_id: number }>({ id: primedTurnId! });
         assert.ok(primedTurn);
         const priorPrograms = await s.db.test_turn_sources.all<{
-            turn_id: number; kind: string; content: string; producer: string;
+            turn_id: number; kind: string; sequence: number; content: string; producer: string;
         }>({ worker_id: primed.modelWorkerId });
         // {§worker-initialization-entry} — initialization records its survey program and authors no reasoning.
         assert.ok(priorPrograms.some(({ kind, producer }) => kind === "ops" && producer === "_plurnk"),
@@ -82,10 +82,11 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         );
         assert.equal(killOperations.size, 1, "one broad KILL owns the complete retired target set");
         const retainedSources = await s.db.test_turn_sources.all<{
-            turn_id: number; kind: string; content: string;
+            turn_id: number; kind: string; sequence: number; content: string;
         }>({ worker_id: modelWorkerId });
         for (const source of priorPrograms) {
-            const retained = retainedSources.find(({ turn_id, kind }) => turn_id === source.turn_id && kind === source.kind);
+            const retained = retainedSources.find(({ turn_id, kind, sequence }) =>
+                turn_id === source.turn_id && kind === source.kind && sequence === source.sequence);
             assert.equal(retained?.content, source.content, `immutable ${source.kind} source survives curation`);
         }
 

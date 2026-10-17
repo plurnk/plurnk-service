@@ -613,11 +613,11 @@ WHERE worker_id = $worker_id
 ORDER BY id;
 
 -- PREP: test_turn_sources
-SELECT s.turn_id, s.kind, s.content, s.model_call_id, s.deep_hash,
+SELECT s.turn_id, s.kind, s.sequence, s.content, s.model_call_id, s.deep_hash,
        t.producer, l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
-ORDER BY l.sequence, t.sequence, s.kind;
+ORDER BY l.sequence, t.sequence, s.kind, s.sequence;
 
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
