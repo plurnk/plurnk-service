@@ -32,11 +32,11 @@ SELECT DISTINCT status AS closeStatus
 FROM unobserved_worker_completions
 WHERE worker_id = $worker_id AND kind = 'stream';
 
--- PREP: engine_turn_failures
+-- PREP: engine_turn_failure_count
 -- {§send-premature-terminate}: model-authored failures require observation before
 -- ordinary completion. This includes bounded grammar failures in admitted programs;
 -- actionless runtime evidence is handled by its owning recovery rail.
-SELECT id FROM log_entries
+SELECT COUNT(*) AS count FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
   AND status_rx >= 400

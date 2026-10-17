@@ -1752,6 +1752,9 @@ cross-scheme SQL transaction. Core's create-only publication claims the same
 identity atomically: an existing identity returns 409 without changing its
 metadata or channels.
 
+Removing a channel preserves its siblings. Pruning the resulting entry requires
+it to be empty at the deletion boundary, not merely at an earlier observation.
+
 ### Op methods
 
 §op-methods-op-dispatch Engine operation ownership follows the public scheme contract:

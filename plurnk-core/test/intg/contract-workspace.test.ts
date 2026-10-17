@@ -453,7 +453,7 @@ test("overlapping startup and turn membership requests coalesce into one workspa
             pathname: trackedPath,
         });
         assert.ok(entry !== undefined);
-        const channels = await db.crud_read_channels.all<{ name: string }>({ entry_id: entry.id });
+        const channels = await db.test_list_channels_for_entry.all<{ name: string }>({ entry_id: entry.id });
         assert.deepEqual(channels.map((row) => row.name), ["body"]);
         assert.equal(calls, 1, "both callers share one materialization pass instead of queueing a redundant forest scan");
     });

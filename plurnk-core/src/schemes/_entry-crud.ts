@@ -230,8 +230,7 @@ export default class EntryCrud {
                 },
             ) as DeleteEntryResult;
         }
-        const remaining = await db.crud_read_channels.all<{ name: string }>({ entry_id: existing.id });
-        if (remaining.length === 0) await db.crud_delete_entry.run({ entry_id: existing.id });
+        await db.crud_delete_empty_entry.run({ entry_id: existing.id });
         return { status: 200 };
     }
 }

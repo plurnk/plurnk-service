@@ -9,9 +9,6 @@ FROM entries e
 WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
--- PREP: crud_read_channels
-SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE entry_id = $entry_id;
-
 -- PREP: crud_read_entry
 -- {§crud} One read snapshot covers metadata and every channel.
 -- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).
@@ -136,6 +133,11 @@ WHERE entry_id = $entry_id
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;
+
+-- PREP: crud_delete_empty_entry
+-- {§crud}: channel pruning cannot delete a sibling published before this write.
+DELETE FROM entries WHERE id = $entry_id
+  AND NOT EXISTS (SELECT 1 FROM entry_channel_rows WHERE entry_id = $entry_id);
 
 -- PREP: crud_insert_generated_workspace_constraint
 -- {§fs-create-record}: an accepted creation is incorporated by an exact record row; a projected

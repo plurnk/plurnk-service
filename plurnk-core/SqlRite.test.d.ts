@@ -75,7 +75,6 @@ export class SqlRiteSync {
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
 	recovery_settle_process_owners(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
-	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_entry: SqlRiteSyncPreparedStatements;
 	crud_publish_entry: SqlRiteSyncPreparedStatements;
 	crud_register_workspace_member: SqlRiteSyncPreparedStatements;
@@ -88,6 +87,7 @@ export class SqlRiteSync {
 	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
 	crud_attach_channel_derivation_by_hash: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
+	crud_delete_empty_entry: SqlRiteSyncPreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRiteSyncPreparedStatements;
 	crud_list_workspace_constraints: SqlRiteSyncPreparedStatements;
 	crud_constraint_excluding: SqlRiteSyncPreparedStatements;
@@ -178,7 +178,7 @@ export class SqlRiteSync {
 	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
-	engine_turn_failures: SqlRiteSyncPreparedStatements;
+	engine_turn_failure_count: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
 	model_route_lookup: SqlRiteSyncPreparedStatements;
 	model_route_create: SqlRiteSyncPreparedStatements;
@@ -195,7 +195,7 @@ export class SqlRiteSync {
 	drain_enqueue_message: SqlRiteSyncPreparedStatements;
 	drain_message_path: SqlRiteSyncPreparedStatements;
 	drain_unpublished_messages_for_loop: SqlRiteSyncPreparedStatements;
-	drain_unpublished_arrivals_for_loop: SqlRiteSyncPreparedStatements;
+	drain_has_unpublished_messages: SqlRiteSyncPreparedStatements;
 	drain_publish_message: SqlRiteSyncPreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRiteSyncPreparedStatements;
 	drain_rehome_orphaned_messages: SqlRiteSyncPreparedStatements;
@@ -692,7 +692,6 @@ export default class SqlRite {
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	recovery_settle_process_owners(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
-	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_entry: SqlRitePreparedStatements;
 	crud_publish_entry: SqlRitePreparedStatements;
 	crud_register_workspace_member: SqlRitePreparedStatements;
@@ -705,6 +704,7 @@ export default class SqlRite {
 	crud_attach_channel_derivation: SqlRitePreparedStatements;
 	crud_attach_channel_derivation_by_hash: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
+	crud_delete_empty_entry: SqlRitePreparedStatements;
 	crud_insert_generated_workspace_constraint: SqlRitePreparedStatements;
 	crud_list_workspace_constraints: SqlRitePreparedStatements;
 	crud_constraint_excluding: SqlRitePreparedStatements;
@@ -795,7 +795,7 @@ export default class SqlRite {
 	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
-	engine_turn_failures: SqlRitePreparedStatements;
+	engine_turn_failure_count: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
 	model_route_lookup: SqlRitePreparedStatements;
 	model_route_create: SqlRitePreparedStatements;
@@ -812,7 +812,7 @@ export default class SqlRite {
 	drain_enqueue_message: SqlRitePreparedStatements;
 	drain_message_path: SqlRitePreparedStatements;
 	drain_unpublished_messages_for_loop: SqlRitePreparedStatements;
-	drain_unpublished_arrivals_for_loop: SqlRitePreparedStatements;
+	drain_has_unpublished_messages: SqlRitePreparedStatements;
 	drain_publish_message: SqlRitePreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRitePreparedStatements;
 	drain_rehome_orphaned_messages: SqlRitePreparedStatements;

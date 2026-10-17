@@ -1569,8 +1569,8 @@ export default class Dispatcher {
 
     // {§wait-obligation-matrix}: fresh failures precede automatic parking and completion.
     async #unobservedFailureCount(turnId: number): Promise<number> {
-        const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
-        return failedRows.length;
+        const row = await this.#db.engine_turn_failure_count.get<{ count: number }>({ turn_id: turnId });
+        return row!.count;
     }
 
     // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.

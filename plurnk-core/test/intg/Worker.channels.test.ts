@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
@@ -13,6 +14,53 @@ const setup = async () => {
     const workerId = await insertWorker(db, workspaceId);
     return { db, workspaceId, workerId };
 };
+
+test("{§crud}: channel removal preserves siblings and removes only an empty entry", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const coordinate = { authority: "", pathname: "/channels" };
+        const written = await EntryCrud.writeEntry(coordinate, {
+            channels: {
+                body: { content: "body", mimetype: "text/plain" },
+                notes: { content: "retained", mimetype: "text/plain" },
+            },
+        }, ctx, "worker");
+        assert.equal(written.status, 201);
+        assert.equal((await EntryCrud.deleteChannel(coordinate, "body", ctx, "worker")).status, 200);
+        const remaining = await EntryCrud.readEntry(coordinate, ctx, "worker");
+        assert.equal(remaining.status, 200);
+        assert.deepEqual(Object.keys(remaining.entry!.channels), ["notes"]);
+        assert.equal(remaining.entry!.channels.notes!.content, "retained");
+        const missing = await EntryCrud.deleteChannel(coordinate, "body", ctx, "worker");
+        assert.equal(missing.status, 404);
+        assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
+        assert.equal((await EntryCrud.deleteChannel(coordinate, "notes", ctx, "worker")).status, 200);
+        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker")).status, 404);
+    } finally { await db.close(); }
+});
+
+test("{§crud}: empty-entry pruning preserves a channel published after an empty observation", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const coordinate = { authority: "", pathname: "/concurrent" };
+        const written = await EntryCrud.writeEntry(coordinate, {
+            channels: { body: { content: "original", mimetype: "text/plain" } },
+        }, ctx, "worker");
+        assert.equal(written.status, 201);
+        await db.crud_delete_channel.get({ entry_id: written.entryId!, name: "body" });
+        assert.deepEqual((await EntryCrud.readEntry(coordinate, ctx, "worker")).entry!.channels, {});
+        await db.test_seed_channel.run({
+            entry_id: written.entryId!, name: "body", content: "new publication",
+            mimetype: "text/plain", state: "static",
+        });
+        await db.crud_delete_empty_entry.run({ entry_id: written.entryId! });
+        const retained = await EntryCrud.readEntry(coordinate, ctx, "worker");
+        assert.equal(retained.status, 200);
+        assert.equal(retained.entry!.channels.body!.content, "new publication");
+    } finally { await db.close(); }
+});
 
 test("{§manifest} Worker declares a dynamic body beside its typed readable projection", () => {
     assert.deepEqual(Worker.manifest.channels, { readable: "text/markdown" });

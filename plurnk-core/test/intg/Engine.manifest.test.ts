@@ -93,6 +93,13 @@ test("catalog projection selects by literal authority, or the whole workspace wh
             ["worker://alice/private.md"],
             "an explicit authority selects that literal namespace",
         );
+        assert.deepEqual(
+            (await EntryManifest.catalogRowsFor(ctx, "worker", "")).map(([channel]) => channel.path),
+            ["worker:///shared.md"],
+            "an empty authority is the commons, not an omitted filter",
+        );
+        assert.deepEqual(await EntryManifest.catalogRowsFor(ctx, "https", "alice"), [],
+            "scheme and authority filters intersect");
     } finally { await db.close(); }
 });
 

@@ -98,14 +98,13 @@ FROM message_sources
 WHERE loop_id = $loop_id AND log_entry_id IS NULL
 ORDER BY ordinal ASC;
 
--- PREP: drain_unpublished_arrivals_for_loop
--- {§completion-defers-to-messages}: the messages that arrived after the loop began and are not
--- yet published. Ordinal 1 is the loop's assignment, published by the first turn boundary before
--- any model disposition can exist, so it never defers a completion.
-SELECT id, ordinal
+-- PREP: drain_has_unpublished_messages
+-- {§completion-defers-to-messages}: existence is enough to defer conclusion;
+-- publication alone needs the bodies and their ordering.
+SELECT 1 AS pending
 FROM loop_messages
-WHERE loop_id = $loop_id AND ordinal > 1 AND log_entry_id IS NULL
-ORDER BY ordinal ASC;
+WHERE loop_id = $loop_id AND log_entry_id IS NULL
+LIMIT 1;
 
 -- PREP: drain_publish_message
 -- The inbox row's one publication: the inbound SEND row it became.
@@ -153,8 +152,9 @@ WITH orphaned(id, ordinal) AS MATERIALIZED (
 )
 UPDATE loop_messages
 SET loop_id = $target_loop_id,
-    ordinal = (SELECT ordinal FROM orphaned WHERE orphaned.id = loop_messages.id)
-WHERE id IN (SELECT id FROM orphaned);
+    ordinal = orphaned.ordinal
+FROM orphaned
+WHERE loop_messages.id = orphaned.id;
 -- PREP: drain_find_slept_loop
 -- Existence/arrival selection only; completion wakes use all eligible waits.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence ASC LIMIT 1;

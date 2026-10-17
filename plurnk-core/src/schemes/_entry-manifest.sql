@@ -23,4 +23,6 @@ LEFT JOIN subscriptions s ON s.id = (
     LIMIT 1
 )
 WHERE e.workspace_id = $workspace_id
+  AND ($scheme IS NULL OR e.scheme = $scheme)
+  AND ($authority IS NULL OR e.authority = $authority)
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;

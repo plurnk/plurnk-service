@@ -82,12 +82,11 @@ export default class EntryManifest {
         const { db, workspaceId } = ctx;
         // Weight and extent are stored beside the content ({§tokenomics-weight-stored-at-write}):
         // the listing never hydrates a body.
-        const all = await db.engine_list_catalog_entries.all<ManifestRow>({
+        const rows = await db.engine_list_catalog_entries.all<ManifestRow>({
             workspace_id: workspaceId,
+            scheme: schemeFilter ?? null,
+            authority: authorityFilter ?? null,
         });
-        const rows = all.filter((row) =>
-            (schemeFilter === undefined || row.scheme === schemeFilter)
-            && (authorityFilter === undefined || row.authority === authorityFilter));
         const byEntry = new Map<string, CatalogEntryState>();
         const projectRoot = rows.some(({ scheme }) => scheme === "file") ? await FileAddress.projectRoot(ctx) : null;
         for (const row of rows) {

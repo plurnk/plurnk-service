@@ -81,8 +81,8 @@ export default class TurnDispositionHandler {
         if (![100, 102, 202].includes(status)) return { status: 102, detail: "This loop is already concluded." };
         // Administrative programs do not conclude the worker's model loop (including turn0).
         if (origin !== "model") return { status: 200 };
-        const arrivals = await this.#db.drain_unpublished_messages_for_loop.all({ loop_id: loopId });
-        if (arrivals.length > 0) return { status: 102 };
+        const arrival = await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId });
+        if (arrival !== undefined) return { status: 102 };
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if ((recovery || !completionAllowed) && !wait) return { status: 102 };
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
