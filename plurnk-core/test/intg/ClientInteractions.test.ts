@@ -203,7 +203,7 @@ test("{§client-interactions}: boot recovery removes a request whose process-loc
     });
     assert.ok(inserted !== undefined);
 
-    await db.recovery_remove_ownerless_client_interactions.run();
+    await db.recovery_settle_process_owners({});
 
     assert.deepEqual(await db.client_interaction_list.all({ workspace_id: ids.workspaceId }), []);
 });

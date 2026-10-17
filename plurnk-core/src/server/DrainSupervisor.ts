@@ -690,36 +690,18 @@ export default class DrainSupervisor {
     }
 
     async #reconcileMessages(workerId: number, endedLoopId: number): Promise<void> {
-        const messages = await this.#db.drain_orphaned_messages_for_loop.all<{
-            body: string;
-            source: string | null;
-            model_route_id: number | null;
-            spawn_model_route_id: number | null;
-            effort: Effort | null;
-            max_turns: number;
-        }>({ loop_id: endedLoopId });
-        const first = messages[0];
-        if (first === undefined) return;
         const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
             id: number;
-            sequence: number;
-            status: number;
+            message_count: number;
         }>({
             worker_id: workerId,
-            prompt: first.body,
-            prompt_source: first.source,
-            model_route_id: first.model_route_id,
-            spawn_model_route_id: first.spawn_model_route_id,
-            effort: first.effort,
-            max_turns: first.max_turns,
             orphan_source_loop_id: endedLoopId });
-        if (recovery === undefined) throw new Error("reconcileOrphanedMessages: enqueue returned no row");
-        if (recovery.status !== 100) return;
-        const moved = await this.#db.drain_rehome_orphaned_messages.all<{ id: number; ordinal: number }>({
+        if (recovery === undefined) return;
+        const moved = await this.#db.drain_rehome_orphaned_messages.run({
             source_loop_id: endedLoopId,
             target_loop_id: recovery.id });
-        if (moved.length !== messages.length) {
-            throw new Error(`reconcileOrphanedMessages: expected to re-home ${messages.length} messages, moved ${moved.length}`);
+        if (moved.changes !== recovery.message_count) {
+            throw new Error(`reconcileOrphanedMessages: expected to re-home ${recovery.message_count} messages, moved ${moved.changes}`);
         }
     }
 

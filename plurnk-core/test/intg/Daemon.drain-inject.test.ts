@@ -537,10 +537,10 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
             const promoted = ts.find((event) => event.loopId !== firstLoopId);
             assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
             const sourcePosture = await db.test_get_loop_posture.get<{
-                flags: string; model_route_id: number | null; max_turns: number;
+                model_route_id: number | null; spawn_model_route_id: number | null; effort: string; max_turns: number;
             }>({ id: firstLoopId });
             const promotedPosture = await db.test_get_loop_posture.get<{
-                flags: string; model_route_id: number | null; max_turns: number; orphan_source_loop_id: number | null;
+                model_route_id: number | null; spawn_model_route_id: number | null; effort: string; max_turns: number; orphan_source_loop_id: number | null;
             }>({ id: promoted.loopId });
             assert.deepEqual(
                 promotedPosture,

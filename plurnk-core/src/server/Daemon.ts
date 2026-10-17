@@ -1907,15 +1907,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async #recoverLifecycle(): Promise<void> {
-        await this.#db.recovery_fail_active_loops.run({});
-        await this.#db.recovery_settle_open_provider_requests.run({});
-        await this.#db.recovery_fail_open_model_calls.run({});
-        await this.#db.recovery_fail_open_turns.run({});
-        await this.#db.recovery_fail_ownerless_proposals.run({});
-        await this.#db.recovery_remove_ownerless_client_interactions.run({});
-        await this.#db.recovery_error_orphan_subscription_channels.run({});
-        await this.#db.recovery_fail_orphan_subscriptions.run({});
-        await this.#db.recovery_resume_unblocked_parks.run({});
+        await this.#db.recovery_settle_process_owners({});
 
         const orphanSources = await this.#db.recovery_orphan_message_sources.all<{
             loop_id: number;

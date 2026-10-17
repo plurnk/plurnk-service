@@ -63,6 +63,7 @@ export class SqlRiteSync {
 	[Symbol.dispose](): void;
 	retention_convert_incremental(params?: Record<string, unknown>): SqlRiteResult;
 	retention_convert_none(params?: Record<string, unknown>): SqlRiteResult;
+	recovery_settle_process_owners(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_read_entry: SqlRiteSyncPreparedStatements;
@@ -186,7 +187,6 @@ export class SqlRiteSync {
 	drain_unpublished_messages_for_loop: SqlRiteSyncPreparedStatements;
 	drain_unpublished_arrivals_for_loop: SqlRiteSyncPreparedStatements;
 	drain_publish_message: SqlRiteSyncPreparedStatements;
-	drain_orphaned_messages_for_loop: SqlRiteSyncPreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRiteSyncPreparedStatements;
 	drain_rehome_orphaned_messages: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
@@ -221,15 +221,6 @@ export class SqlRiteSync {
 	execution_record_env: SqlRiteSyncPreparedStatements;
 	engine_open_provider_request: SqlRiteSyncPreparedStatements;
 	engine_settle_provider_request: SqlRiteSyncPreparedStatements;
-	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
-	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
-	recovery_fail_open_model_calls: SqlRiteSyncPreparedStatements;
-	recovery_fail_open_turns: SqlRiteSyncPreparedStatements;
-	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
-	recovery_remove_ownerless_client_interactions: SqlRiteSyncPreparedStatements;
-	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
-	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
-	recovery_resume_unblocked_parks: SqlRiteSyncPreparedStatements;
 	recovery_orphan_message_sources: SqlRiteSyncPreparedStatements;
 	recovery_queued_workers: SqlRiteSyncPreparedStatements;
 	recovery_parked_workers: SqlRiteSyncPreparedStatements;
@@ -372,6 +363,7 @@ export default class SqlRite {
 	[Symbol.asyncDispose](): Promise<void>;
 	retention_convert_incremental(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	retention_convert_none(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	recovery_settle_process_owners(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_read_entry: SqlRitePreparedStatements;
@@ -495,7 +487,6 @@ export default class SqlRite {
 	drain_unpublished_messages_for_loop: SqlRitePreparedStatements;
 	drain_unpublished_arrivals_for_loop: SqlRitePreparedStatements;
 	drain_publish_message: SqlRitePreparedStatements;
-	drain_orphaned_messages_for_loop: SqlRitePreparedStatements;
 	drain_enqueue_orphan_recovery_loop: SqlRitePreparedStatements;
 	drain_rehome_orphaned_messages: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
@@ -530,15 +521,6 @@ export default class SqlRite {
 	execution_record_env: SqlRitePreparedStatements;
 	engine_open_provider_request: SqlRitePreparedStatements;
 	engine_settle_provider_request: SqlRitePreparedStatements;
-	recovery_fail_active_loops: SqlRitePreparedStatements;
-	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
-	recovery_fail_open_model_calls: SqlRitePreparedStatements;
-	recovery_fail_open_turns: SqlRitePreparedStatements;
-	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
-	recovery_remove_ownerless_client_interactions: SqlRitePreparedStatements;
-	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
-	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;
-	recovery_resume_unblocked_parks: SqlRitePreparedStatements;
 	recovery_orphan_message_sources: SqlRitePreparedStatements;
 	recovery_queued_workers: SqlRitePreparedStatements;
 	recovery_parked_workers: SqlRitePreparedStatements;

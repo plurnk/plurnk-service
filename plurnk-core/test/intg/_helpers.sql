@@ -103,7 +103,7 @@ SELECT status FROM loops WHERE id = $id;
 SELECT execution_budget_ms, execution_elapsed_ms FROM loops WHERE id = $id;
 
 -- PREP: test_get_loop_posture
-SELECT model_route_id, spawn_model_route_id, max_turns, orphan_source_loop_id
+SELECT model_route_id, spawn_model_route_id, effort, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
 -- PREP: test_messages_by_loop
@@ -880,3 +880,12 @@ JOIN message_sources m ON m.id = c.message_id
 JOIN log_entries le ON le.id = c.response_id
 WHERE m.workspace_id = $workspace_id AND m.source = $source
 ORDER BY c.message_id ASC;
+
+-- EXEC: test_refuse_recovery_turn_settlement
+-- {§worker-lifecycle-restart-recovery}: fail after the loop transition, inside durable settlement.
+CREATE TRIGGER test_refuse_recovery_turn_settlement
+BEFORE UPDATE OF completed_at ON turns
+WHEN NEW.status = 500
+BEGIN
+    SELECT RAISE(ABORT, 'recovery settlement fixture');
+END;

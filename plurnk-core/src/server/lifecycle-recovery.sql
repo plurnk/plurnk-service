@@ -1,8 +1,7 @@
--- Process-bound lifecycle recovery. These statements run once at daemon boot,
--- before client transports open. Each is idempotent so a crash during recovery
--- can be followed by the same sequence.
+-- Process-bound lifecycle recovery, before client transports open or drains resume.
+-- {§worker-lifecycle-restart-recovery}: database settlement is one idempotent transaction.
 
--- PREP: recovery_fail_active_loops
+-- TX: recovery_settle_process_owners
 -- 102 is a claim held by a process-local drain. After restart that owner is gone;
 -- replaying its provider turn could duplicate effects whose commit boundary is unknown.
 UPDATE loops
@@ -19,7 +18,6 @@ SET status = 500,
     )
 WHERE status = 102;
 
--- PREP: recovery_settle_open_provider_requests
 -- A physical request identity was opened immediately before I/O, so a crash can
 -- leave its outcome and provider evidence unknowable. Preserve the occurrence
 -- and settle that uncertainty explicitly before closing its logical attempt.
@@ -32,7 +30,6 @@ SET state = 'settled',
 WHERE state = 'pending'
 ;
 
--- PREP: recovery_fail_open_model_calls
 -- The process-local model-call owner vanished. Physical requests have already
 -- been settled above, preserving unknown evidence without fabricating zero use.
 INSERT INTO model_call_observation (id, failure)
@@ -48,7 +45,6 @@ SELECT mc.id, json_object(
 FROM model_calls mc
 WHERE (SELECT state FROM inference_calls WHERE id = mc.id) = 'pending';
 
--- PREP: recovery_fail_open_turns
 -- Every open turn has lost its process-local producer, including a narrow crash
 -- window after its loop parked or queued. Provider evidence settles first; then
 -- the producer-neutral lifecycle closes every unfinished container without
@@ -58,7 +54,6 @@ SET status = 500,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE completed_at IS NULL;
 
--- PREP: recovery_fail_ownerless_proposals
 -- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so
 -- terminalize the occurrence before {§proposal-list} can open to clients.
@@ -91,16 +86,13 @@ SET state = 'failed',
     deep_hash = NULL
 WHERE state = 'proposed';
 
--- PREP: recovery_remove_ownerless_client_interactions
 -- The durable request can be re-presented only while its exact process-local
 -- awaiting owner exists. No response was recorded, so recovery removes the
 -- orphan instead of fabricating a cancellation or replaying its operation.
 DELETE FROM client_interactions;
 
--- PREP: recovery_error_orphan_subscription_channels
 -- Every open subscription belonged to a callable in the prior process. Mark its
--- active content terminal before closing the durable row, so an interruption
--- between these statements remains recoverable on the next boot.
+-- active content terminal before closing the durable row.
 UPDATE entry_channels
 SET state = 'errored'
 WHERE state = 'active'
@@ -108,7 +100,6 @@ WHERE state = 'active'
       SELECT entry_id FROM subscriptions WHERE closed_at IS NULL
   );
 
--- PREP: recovery_fail_orphan_subscriptions
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
     close_status = 500,
@@ -124,7 +115,6 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
     channel_results = '{}'
 WHERE closed_at IS NULL;
 
--- PREP: recovery_resume_unblocked_parks
 -- {§loop-wake-identity}: a persisted completion beats a future observation. Otherwise
 -- only a now-empty join wakes here; observation ownership is restored below
 -- through the same scheduler used after a live park.
@@ -134,7 +124,7 @@ SET status = 100,
 WHERE status = 202
   AND (observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
   OR EXISTS (SELECT 1 FROM loop_obligations held WHERE held.loop_id = loops.id
-      AND held.streams = 0 AND held.workers = 0));
+      AND held.streams = 0 AND held.workers = 0 AND held.messages = 0));
 
 -- PREP: recovery_orphan_message_sources
 -- {§message-loop-containment}: finish an absent or partially staged orphan

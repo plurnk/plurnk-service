@@ -113,41 +113,34 @@ UPDATE loop_messages SET log_entry_id = $log_entry_id
 WHERE id = $id AND log_entry_id IS NULL
 RETURNING id;
 
--- PREP: drain_orphaned_messages_for_loop
--- A loop can conclude before publishing a message injected into it (a wake-on-completion, or a
--- runLoop-while-active arrival that landed on a turn the loop never reached). Return the complete
--- unpublished set oldest-first with the ended loop's posture so one recovery loop preserves
--- cardinality and order ({§message-loop-containment}). Ordinal 1 is the loop's own assignment:
--- its fate is the loop's, never replayed into fresh work.
-SELECT m.body AS body, m.source AS source, m.open_paths AS open_paths,
-       l.model_route_id AS model_route_id,
-       l.spawn_model_route_id AS spawn_model_route_id,
-       l.effort AS effort,
-       l.max_turns AS max_turns
-FROM loop_messages m
-JOIN loops l ON l.id = m.loop_id
-WHERE m.loop_id = $loop_id
-  AND m.ordinal > 1
-  AND m.log_entry_id IS NULL
-  AND l.status IN (200, 413, 429, 499, 500, 504, 508)
-  AND l.terminated_by IS NOT 'cancel'
-  AND l.sequence > (SELECT cancelled_through_sequence FROM workers WHERE id = l.worker_id)
-ORDER BY m.ordinal ASC;
 -- PREP: drain_enqueue_orphan_recovery_loop
 -- {§message-loop-containment}: recovery identity is the concluded source loop.
--- Retrying returns that same queued loop instead of minting duplicate work.
+-- The database copies its posture and first unpublished arrival directly; the caller needs only
+-- the recovery identity and expected cardinality, never the stored message bodies or policy.
 INSERT INTO loops (
     worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns,
     orphan_source_loop_id
 )
-VALUES (
-    $worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id),
-    100, $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns,
-    $orphan_source_loop_id
+SELECT l.worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = l.worker_id),
+       100, m.body, m.source, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns, l.id
+FROM loops l
+JOIN workers w ON w.id = l.worker_id
+JOIN loop_messages m ON m.id = (
+    SELECT id FROM loop_messages
+    WHERE loop_id = l.id AND ordinal > 1 AND log_entry_id IS NULL
+    ORDER BY ordinal LIMIT 1
 )
+WHERE l.id = $orphan_source_loop_id AND l.worker_id = $worker_id
+  AND l.status IN (200, 413, 429, 499, 500, 504, 508)
+  AND l.terminated_by IS NOT 'cancel'
+  AND l.sequence > w.cancelled_through_sequence
 ON CONFLICT (orphan_source_loop_id) DO UPDATE
 SET orphan_source_loop_id = excluded.orphan_source_loop_id
-RETURNING id, sequence, status;
+WHERE loops.status = 100
+RETURNING id, sequence, (
+    SELECT COUNT(*) FROM loop_messages
+    WHERE loop_id = $orphan_source_loop_id AND ordinal > 1 AND log_entry_id IS NULL
+) AS message_count;
 
 -- PREP: drain_rehome_orphaned_messages
 -- Move, rather than copy, the source loop's unpublished messages into the recovery loop,
@@ -161,8 +154,7 @@ WITH orphaned(id, ordinal) AS MATERIALIZED (
 UPDATE loop_messages
 SET loop_id = $target_loop_id,
     ordinal = (SELECT ordinal FROM orphaned WHERE orphaned.id = loop_messages.id)
-WHERE id IN (SELECT id FROM orphaned)
-RETURNING id, ordinal;
+WHERE id IN (SELECT id FROM orphaned);
 -- PREP: drain_find_slept_loop
 -- Existence/arrival selection only; completion wakes use all eligible waits.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence ASC LIMIT 1;

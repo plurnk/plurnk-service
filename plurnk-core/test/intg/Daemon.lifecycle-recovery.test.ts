@@ -195,6 +195,58 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
     }
 });
 
+test("{§worker-lifecycle-restart-recovery}: failed database settlement rolls back before any work resumes", async () => {
+    const db = await openMigrated();
+    const mock = new Mock({ contextWindow: 16384, responses: [] });
+    const daemon = new Daemon({ db, provider: mock });
+    try {
+        const workspaceId = await insertWorkspace(db, "recovery-atomic-settlement");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await enqueueLoop(db, workerId, "Interrupted work.");
+        await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        await db.test_refuse_recovery_turn_settlement({});
+
+        await assert.rejects(() => daemon.start(), /recovery settlement fixture/);
+
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 102,
+            "a later settlement failure rolls back the loop's earlier owner-loss transition");
+        assert.equal((await db.test_get_turn.get<{ completed_at: string | null }>({ id: turn.id }))?.completed_at, null);
+        assert.equal(mock.received.length, 0, "failed settlement starts no inference");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+for (const pending of [false, true]) {
+    test(`{§worker-lifecycle-restart-recovery} {§worker-obligations}: database recovery respects pending messages (${pending})`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `recovery-message-${pending}`);
+            const sender = await insertWorker(db, workspaceId, null, "sender");
+            const receiver = await insertWorker(db, workspaceId, null, "receiver");
+            const senderLoop = await enqueueLoop(db, sender, "Wait for a reply.");
+            const receiverLoop = await enqueueLoop(db, receiver, "Other work.");
+            await db.engine_reclaim_queued_loop.run({ loop_id: senderLoop });
+            const turn = await Turn.open(db, { loopId: senderLoop, producer: "model", kind: "inference" });
+            if (pending) {
+                await db.drain_enqueue_message.get({
+                    loop_id: receiverLoop, source: "worker://sender", body: "A question.",
+                    open_paths: "[]", evidence: "{}", address: null,
+                    opened_turn_id: turn.id, opened_sequence: 1,
+                });
+            }
+            assert.equal(await new LoopLifecycle(db).park(senderLoop, { wakenBy: "test-fixture" }), true);
+            for (let attempt = 0; attempt < 2; attempt++) {
+                await db.recovery_settle_process_owners({});
+                assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: senderLoop }))?.status,
+                    pending ? 202 : 100, "only an empty obligation set requeues without a completion");
+            }
+        } finally { await db.close(); }
+    });
+}
+
 test("boot closes an open operation turn even when its loop already parked", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
@@ -244,25 +296,19 @@ for (const staged of ["loop", "messages"] as const) {
             });
 
             const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
-                id: number; sequence: number; status: number;
+                id: number; sequence: number; message_count: number;
             }>({
                 worker_id: workerId,
-                prompt: "first orphan",
-                prompt_source: "worker://sender-1",
-                model_route_id: await routeForSpec(db, providerSpec),
-                spawn_model_route_id: null,
-                effort: "adaptive",
-                max_turns: 50,
                 orphan_source_loop_id: sourceLoopId,
             });
             assert.ok(recovery !== undefined);
             assert.equal(recovery.sequence, 2);
             if (staged === "messages") {
-                const moved = await db.drain_rehome_orphaned_messages.all({
+                const moved = await db.drain_rehome_orphaned_messages.run({
                     source_loop_id: sourceLoopId,
                     target_loop_id: recovery.id,
                 });
-                assert.equal(moved.length, 2, "the prior process moved both messages before disappearing");
+                assert.equal(moved.changes, 2, "the prior process moved both messages before disappearing");
             }
 
             await firstDaemon.start();
