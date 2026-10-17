@@ -23,9 +23,11 @@ fields under `forwardedProps.plurnk`. `SPEC.md` defines those extensions.
 
 ## Event projection
 
-Each Run observes its bound Worker and, once known, its exact Loop. Sibling
-events do not become chat messages; child activity arrives only when Core
-delivers it into the parent's log ({§agui-topology-scope}).
+Each Run observes its bound worker and, once known, its exact loop. Delegated
+children have standard subagent identities rather than speaking as the parent;
+Core owns delivery of their replies and results into the parent's log
+({§agui-topology-scope}, {§agui-subagents}). Unrelated siblings stay outside the
+conversation.
 
 | Daemon evidence | Client projection |
 | --- | --- |
@@ -37,7 +39,8 @@ delivers it into the parent's log ({§agui-topology-scope}).
 | A message to the worker | A user message, named by its source unless this client sent it. |
 | Other model operations | Standard tool calls and results. |
 | A row's facts | `metadata.plurnk` on the message, tool call or result the row builds, live and on snapshot. |
-| Harness activity, other workers' rows | `CUSTOM plurnk.ambient`, the whole row, without invented model speech. |
+| Delegated child activity | Standard `SUBAGENT_*` lifecycle and attributed messages/tool calls; its conclusion answers the parent's delegation call. |
+| Non-conversation harness activity | `CUSTOM plurnk.ambient`, without invented model speech. |
 | Loop end | `RUN_FINISHED` completed with its result or cancelled, or `RUN_ERROR` for a failure; the end carries its token `usage`. |
 | Packet and terminal usage | State updates, and the loop's terminal record as the end's `metadata.plurnk.terminal`: the complete accounting with cost; daemon quantities pass through unchanged. |
 
