@@ -1,5 +1,25 @@
 # @plurnk/plurnk-parser
 
+## 4.1.0
+
+### Minor Changes
+
+- 84c0d49: Replay each turn's complete admitted content operations together, in program
+  order, as one assistant message immediately before that turn's receipts,
+  retaining result bodies and resolved targets without duplicating authored
+  requests. Curation removes replay with its owning receipt; immutable source and
+  historical packets remain intact.
+  
+  Preserve READ/FIND body text as an ordinary NOTE before retrieval. Patterns belong
+  on the header; below-header pattern and aside recovery are removed. Replace the
+  NOTE legend with ordinary addressable NOTE receipts.
+
+### Patch Changes
+
+- Updated dependencies [84c0d49]
+- Updated dependencies [1c19a58]
+  - @plurnk/plurnk-contracts@4.1.0
+
 ## 4.0.0
 
 - **Breaking:** remove LOOK and the client-only parser tier. Use

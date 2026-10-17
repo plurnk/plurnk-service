@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "4.0.0",
+    "version": "4.1.0",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-contracts contract.",
     "keywords": [
         "plurnk",
@@ -93,8 +93,8 @@
         "@opentelemetry/sdk-trace-base": "^2.12.0",
         "@plurnk/plurnk-a2a": "4.0.0",
         "@plurnk/plurnk-agui": "4.0.0",
-        "@plurnk/plurnk-contracts": "4.0.0",
-        "@plurnk/plurnk-parser": "4.0.0",
+        "@plurnk/plurnk-contracts": "4.1.0",
+        "@plurnk/plurnk-parser": "4.1.0",
         "@plurnk/plurnk-schedule": "3.0.3",
         "@plurnk/plurnk-skills": "3.0.2",
         "@plurnk/plurnk-execs": "4.0.0",

@@ -1,5 +1,28 @@
 # @plurnk/plurnk-contracts
 
+## 4.1.0
+
+### Minor Changes
+
+- 84c0d49: Replay each turn's complete admitted content operations together, in program
+  order, as one assistant message immediately before that turn's receipts,
+  retaining result bodies and resolved targets without duplicating authored
+  requests. Curation removes replay with its owning receipt; immutable source and
+  historical packets remain intact.
+  
+  Preserve READ/FIND body text as an ordinary NOTE before retrieval. Patterns belong
+  on the header; below-header pattern and aside recovery are removed. Replace the
+  NOTE legend with ordinary addressable NOTE receipts.
+
+### Patch Changes
+
+- 1c19a58: Teach the loop as Recall, Record, React: review Open Work and Open Messages
+  against prior NOTEs and log items, save new plans, findings, and decisions as
+  NOTEs, and emit them with the operations they lead to in one batch. The card
+  also teaches operation batches, fence nesting, and scopes before its examples,
+  and gives membership its own section. The daemon no longer reminds the model to
+  NOTE each turn; NOTE storage, curation, and loop completion are unchanged.
+
 ## 4.0.0
 
 ### Breaking changes
