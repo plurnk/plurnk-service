@@ -14,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Record all new plans, findings, and decisions for later turns.
+* NOTE: Save all new plans, findings, and decisions for later turns.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
