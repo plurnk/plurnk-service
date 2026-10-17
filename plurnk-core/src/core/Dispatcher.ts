@@ -1,5 +1,6 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
@@ -1118,6 +1119,14 @@ export default class Dispatcher {
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, context.workspaceId),
             settleDerivations: () => this.#settleDerivations(context),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+            // {§membership-auto-add} — the model's reads reach the untracked universe and admit what they read.
+            ...(origin === "model" && this.#notify.admitMembers !== undefined && AmbientMembers.enabled() && AmbientMembers.unattended() ? {
+                ambientMembers: AmbientMembers.seam({
+                    db: this.#db, workspaceId, signal: this.#loopSignal(loopId), mimetypes: this.#mimetypes,
+                    admit: (files) => this.#notify.admitMembers!({ workspaceId, workerId }, files),
+                    notice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+                }),
+            } : {}),
             requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
                 { workspaceId, workerId, loopId, turnId },

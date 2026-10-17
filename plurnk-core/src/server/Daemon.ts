@@ -379,6 +379,17 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
             cancelWorker: async (workerId, reason) => this.#drains.cancelWorkerTree(workerId, reason),
+            // {§membership-auto-add} — a READ or FIND admits what it reached for as the Worker's own
+            // definition; the members scope's refusal admits nothing and is not a failure of the read.
+            admitMembers: async (identity, files) => {
+                try {
+                    const result = await this.#functionality.invoke("members", "add", { files }, identity, "operation");
+                    return result.status < 400 ? files : [];
+                } catch (cause) {
+                    if (cause instanceof OperationFailureError && cause.result.status < 500) return [];
+                    throw cause;
+                }
+            },
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
             loopPacketNotify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "loop/packet", payload);

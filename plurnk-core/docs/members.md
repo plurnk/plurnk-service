@@ -2,10 +2,16 @@
 
 Membership is the only door to the project's files. A project file is exactly
 one of three things to this workspace: **tracked by git**, **added** by a
-definition, or **invisible**. Nothing is a member because it exists on disk or
-because git happens not to ignore it. What you can `READ`, `FIND`, and `EDIT`
-is `(tracked ∪ include ∪ created) − exclude`, and the catalog at turn 0 shows exactly
-that set.
+definition, or **invisible**. What you can `EDIT` is `(tracked ∪ include ∪ created)
+− exclude`, and the catalog at turn 0 shows exactly that set. Your `READ` and
+`FIND` reach one step further when the operator leaves `PLURNK_MEMBERS_AUTO_ADD=1`
+(the default): an untracked file the repository does not ignore, inside the
+project root and not excluded, is listed by `FIND` as `untracked`, and the
+moment you `READ` it, or a `FIND` pattern matches inside it, it is admitted as
+your own definition of that exact path and a `member_added` notice says so.
+Listing admits nothing; `~` full-text and `&` graph patterns search members only.
+Where your `members (add)` would be reviewed by a person, a read admits nothing
+either: the refusal names the `add`, and that proposal is the reviewed path.
 
 ## What makes a file visible
 
@@ -47,15 +53,16 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 | `ignored` | `` not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot `` |
 | `absent` | `` absent — no such file under the project root `` |
 
-- **Untracked, scope `root` or `namespace`**: an accepted `add` makes it a member
-  before the next operation.
+- **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on it is
+  admitted and read in one operation. With auto-add off, an accepted `add` makes
+  it a member before the next operation.
 
   ```members (add) <!-- include the generated reports; each glob is one definition -->
   {"files": ["build/*.json"]}
   ```
 
-- **Untracked, scope `none`** (an operator narrowed it): the refusal names the
-  recovery, which is git tracking. Staging is enough; no commit is needed, and
+- **Untracked, scope `none`** (an operator narrowed it): neither auto-add nor your
+  `add` admits it; the refusal names the recovery, which is git tracking. Staging is enough; no commit is needed, and
   membership refreshes at the next turn. The scope is fixed for the turn, so a
   refused `add` is refused again; a client's `/members add` or a raised scope
   is the user's to give.

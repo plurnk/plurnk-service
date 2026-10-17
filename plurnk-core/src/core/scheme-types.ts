@@ -26,8 +26,20 @@ export type {
 // projects it into the public capability contract before invoking an extension.
 // Core-owned adapters receive their daemon dependencies separately; this type
 // must not escape as an extension API.
+// {§membership-auto-add} — the model's universe beyond membership, and the admission a read earns.
+export interface AmbientMembers {
+    // Untracked, unignored, unexcluded files under a literal root-relative prefix; none is a member yet.
+    candidates(prefix: string | null): Promise<string[]>;
+    // Admit these as the Worker's own member definitions; the keys admitted come back, with a notice each.
+    admit(keys: readonly string[]): Promise<string[]>;
+    // A candidate's text for matching and listing only, never stored; `content` is null when it is
+    // binary or larger than the matching ceiling.
+    text(key: string): Promise<{ content: string | null; mimetype: string } | null>;
+}
+
 export interface PlurnkSchemeContext {
     readonly db: Db;
+    readonly ambientMembers?: AmbientMembers;
     readonly workspaceId: number;
     readonly workerId: number;
     readonly resourceBindings?: ResourceBindings;

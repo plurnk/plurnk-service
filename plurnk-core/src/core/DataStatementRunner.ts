@@ -297,6 +297,18 @@ export default class DataStatementRunner {
                 : (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
         ));
         if (projected.status !== 404 || statement.target === null) return projected;
+        // {§membership-auto-add} — a READ admits the untracked file it reached for, then reads it.
+        if (resolved !== null && storageScheme === "file" && ctx.ambientMembers !== undefined
+            && (await ctx.ambientMembers.admit([resolved.pathname])).length > 0) {
+            return Results.assertReadResult(await EntryOps.readWorkspaceEntry(
+                statement,
+                ctx,
+                { ...manifest, name: storageScheme, storedScheme: storageScheme },
+                { authority: resolved.authority, pathname: resolved.pathname },
+                publishesLineAnchors,
+                (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
+            ));
+        }
         return await this.#missRefusal(handler, resolved, ctx) ?? projected;
     }
 
@@ -350,6 +362,8 @@ export default class DataStatementRunner {
             {
                 authority: prepared.address.authority,
                 pathname: prepared.address.pathname,
+                // {§membership-auto-add} — an exact FIND of an untracked candidate lists or matches it.
+                ...(storageScheme === "file" && ctx.ambientMembers !== undefined ? { ambient: ctx.ambientMembers } : {}),
             },
         ));
     }

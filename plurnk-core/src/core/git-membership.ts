@@ -482,6 +482,56 @@ export default class GitMembership {
         return { members: desired, removed, ...(refusedFilter === null ? {} : { refusedFilter }) };
     }
 
+    static workspaceRoot(db: Db, workspaceId: number): Promise<string | null> {
+        return GitMembership.#loadWorkspaceRoot(db, workspaceId);
+    }
+
+    // {§membership-auto-add} — the model's universe beyond membership: files inside the root that the
+    // repository neither tracks nor ignores (every file, when no repository governs the root), minus
+    // every exclusion, under a literal path prefix. None is a member; nothing here is materialized.
+    static async ambientCandidates(db: Db, workspaceId: number, prefix: string | null, signal: AbortSignal | undefined): Promise<string[]> {
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) return [];
+        const literal = prefix === null || prefix === "" ? "" : prefix;
+        if (literal.startsWith("../") || literal === "..") return [];
+        const directory = literal.includes("/") ? literal.slice(0, literal.lastIndexOf("/")) : "";
+        const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
+        const excludeGlobs = constraints.filter((c) => c.effect === "exclude").map((c) => c.glob);
+        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const files = repository === null
+            ? await GitMembership.#scanIncluded(root, [directory === "" ? "**" : `${directory}/**`], signal)
+            : await GitMembership.#gitUntrackedFiles(root, directory, signal);
+        return files
+            .filter((pathname) => pathname.startsWith(literal) && !excludeGlobs.some((glob) => PathGlob.matches(pathname, glob)))
+            .toSorted();
+    }
+
+    // {§membership-auto-add} — whether one key is in that universe: inside the root, a file, unexcluded,
+    // and not ignored by the governing repository.
+    static async isAmbientCandidate(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<boolean> {
+        if (key === "" || key === ".." || key.startsWith("../") || isAbsolute(key)) return false;
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) return false;
+        try {
+            if (!(await stat(resolve(root, key))).isFile()) return false;
+        } catch {
+            return false;
+        }
+        const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
+        if (constraints.some((c) => c.effect === "exclude" && PathGlob.matches(key, c.glob))) return false;
+        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        return repository === null || (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) !== true;
+    }
+
+    // Untracked, unignored files under one directory of the root: `git ls-files --others
+    // --exclude-standard`, cwd-relative like the tracked listing. A nested repository is a boundary
+    // (listed as a directory) and is dropped.
+    static async #gitUntrackedFiles(root: string, directory: string, signal: AbortSignal | undefined): Promise<string[]> {
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z", "--", directory === "" ? "." : directory],
+            { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(root) });
+        return stdout.split("\0").filter((entry) => entry.length > 0 && !entry.endsWith("/"));
+    }
+
     static async resolveGitMembership(
         db: Db,
         workspaceId: number,

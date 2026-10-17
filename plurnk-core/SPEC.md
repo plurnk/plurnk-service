@@ -782,7 +782,9 @@ and never re-fetch a match.
   in a home directory or a monorepo exposes exactly what was committed or added (the
   non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
   exception is a named clause in the register ({§membership-model-universe}), admits
-  files by an exact creation record with recorded provenance, and never by `git add`.
+  files by an exact record with recorded provenance, and never by `git add`; the one
+  exception that admits on a read is the operator's own ruling, `PLURNK_MEMBERS_AUTO_ADD`
+  ({§membership-auto-add}, #1154), and its knob is the guard.
   Changing this clause, the register, or the composition is an operator ruling recorded
   on the issue that lands it — never an implementation convenience, never a side effect
   of making a file visible to solve the problem at hand.
@@ -799,8 +801,10 @@ and never re-fetch a match.
   is not projected. (4) A definition the model proposes through the `members`
   family ({§members-functionality}), admitted only under the operator's ceiling
   `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}), projected with source
-  `model`, and never admitted past the repository's ignore rules or an exclusion.
-  Nothing else.
+  `model`, and never admitted past the repository's ignore rules or an exclusion. (5) Under
+  `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND
+  pattern matches, admitted as that same model definition of the exact path
+  ({§membership-auto-add}). Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
   `project_root`. Its tracked files (`git ls-files` semantics) are members with
   no explicit overlay; when the root is a package inside a monorepo, the
@@ -832,7 +836,34 @@ and never re-fetch a match.
 
 **The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
 
-- §membership-auto-add **Auto-add** — the project repository's ambient membership is its tracked `ls-files`, with `git` origin; an untracked file is never an ambient member ({§membership-baseline}). An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
+- §membership-auto-add **Auto-add: the model's reads admit what they reach.** With
+  `PLURNK_MEMBERS_AUTO_ADD=1` (the shipped default), a model dispatch's READ and FIND see one
+  universe beyond membership: the files inside the root that the governing repository neither
+  tracks nor ignores (`git ls-files --others --exclude-standard`; every file under the root when no
+  repository governs it), minus every exclusion. Nothing in it is a member or is materialized
+  until a read admits it.
+
+  | Operation | Effect on a universe file |
+  |---|---|
+  | READ of its exact path, or a READ glob that selects it | Admitted, then read in the same operation |
+  | FIND listing it, by exact path or glob | Listed with the catalog row read from disk, marked `untracked`; not admitted |
+  | FIND whose text pattern matches inside it | Admitted; the selection runs again over members, so only an admitted match shows its evidence |
+  | FIND by an indexed dialect (`~`, `&`) | Members only: nothing unadmitted is indexed |
+  | A binary or oversized candidate | Listed; matched from disk by no dialect; admitted by READ |
+
+  Tracked files are ambient members with `git` origin; an untracked file is never an ambient member — it enters
+  membership only by this admission, with `constraint` origin and `model` source. An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
+  Admission is the Worker's own `members (add)` of the exact path — provenance `model-proposal`,
+  under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so
+  scope `none` admits nothing and the read is refused as it is with the knob off — settled before
+  the operation continues ({§functionality-model-mutation}), and announced by one `member_added`
+  notice per file ({§notice-directive}). An admission a read earns settles without a person, so it
+  exists only where the Worker's own `members (add)`, a host effect, would: `PLURNK_SERVICE_EFFECT_HOST=auto`
+  or `PLURNK_SERVICE_PROPOSALS=accept`. Under `review` or `reject` no read admits; the refusal's
+  recovery names `members (add)`, and that proposal is the reviewed path ({§proposal-disposition}). A path the repository ignores, a path an exclusion matches, a
+  directory and anything beyond the root are not in the universe: their refusals are unchanged
+  ({§membership-read-refusal}, {§file-directory-target}). A person's client operation reads
+  members only. `PLURNK_MEMBERS_AUTO_ADD=0` restores the baseline exactly.
 - §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
 - §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches ({§path-glob-matching}) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
 - §membership-reconcile-sets **Reconciliation is two set statements.** Once the desired set is composed — `(git ls-files ∪ include) − exclude`, glob evaluation and Git shell-outs being the process's own — it lands as one `INSERT … SELECT FROM json_each` with the same idempotent provenance update as a single registration, and every overlay-owned member outside it leaves in one `DELETE … WHERE pathname NOT IN (json_each) RETURNING`, its prior body riding out of the statement. A path that also left disk truth (no longer a candidate at all) becomes a divergence from that prior content; an exclusion is silent. No per-path statement, no set difference outside the database.
@@ -1727,7 +1758,7 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}). Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. `` The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery; a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
+§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, its target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}). Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. `` The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo, and their recovery speaks of the address too, true under every members scope: `'<key>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery — unless the model's read admits it first ({§membership-auto-add}); a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
 
 §file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.`; a READ or KILL carries the listing as its recovery, `` `FIND (<key>/)` lists its files. ``, and an EDIT carries none. Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
@@ -5982,6 +6013,7 @@ retain distinct contracts and lifetimes.
 | `provider_retry` | a provider stream that failed after output began and was answered by a complete retry; `level: warn` | none | none |
 | `provider_unavailable` | engine provider — a provider failure retried within its recovery budget | none | none |
 | `path_normalized` | file scheme — a path resolved to its canonical spelling; `level: warn` | YOU SHOULD address the resolved path. | none |
+| `member_added` | file scheme — an untracked file the model's READ or FIND reached was admitted as its own member definition ({§membership-auto-add}); `level: warn` | none | none |
 | `read_fanout_bounded` | engine dispatcher — a READ whose glob matched more paths than its resource page selected; `level: warn` | YOU SHOULD narrow the glob, or FIND first. | none |
 | `parse_issues_unavailable` | engine mimetype — parser recovery evidence unavailable for a mimetype; `level: warn` | none | none |
 | `metadata_ignored` | engine dispatcher — `[metadata]` on an operation whose scheme takes none, run without it; `level: warn` | YOU SHOULD NOT write [metadata] on an operation that takes none. | none |
@@ -6153,7 +6185,8 @@ members/functionality/model-scope`, naming `git add` and the operator's `/member
 the paths that remain; `root` admits patterns inside the root; `namespace` admits `../` too.
 `auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
-so the family bounds the model without a second grammar.
+so the family bounds the model without a second grammar; an admission a read earns
+({§membership-auto-add}) is that same `operation` add and meets the same ceiling.
 
 §members-projection *One overlay.* Definitions are desired state per workspace
 ({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its

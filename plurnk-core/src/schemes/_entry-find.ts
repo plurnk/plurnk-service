@@ -17,12 +17,12 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import BodyPreview from "../content/body-preview.ts";
 import ScopeFormat from "../content/scope-format.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
-import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
+import type { AmbientMembers, PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import { entryCoordinateOf, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
-import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
+import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel, type CatalogEntry } from "./_entry-manifest.ts";
 import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import FileAddress from "../core/FileAddress.ts";
@@ -89,6 +89,8 @@ interface FindAddress {
     // {§find-bytes} — the scheme's byte supplier, so a binary channel without a readable
     // projection is searched as bytes rather than skipped.
     readonly bytes?: (pathname: string, authority: string) => ByteSource;
+    // {§membership-auto-add} — the model's universe beyond membership; file scheme, model dispatches only.
+    readonly ambient?: AmbientMembers;
 }
 
 export const emptyFindFields = (): FindFields => ({
@@ -262,6 +264,8 @@ export default class EntryFind {
         channel?: string;
         scope?: PathScope;
         folders?: PathFolderSummary[];
+        // {§membership-auto-add} — listed candidates that are not members: no catalog row, no admission.
+        ambient?: ReadonlySet<string>;
         code?: string;
         error?: string;
         problem?: ProblemDetails;
@@ -343,7 +347,10 @@ export default class EntryFind {
                 workspace_id: ctx.workspaceId,
                 scheme, authority, pathname: scope.pathname,
             });
-            if (exact === undefined) {
+            // {§membership-auto-add} — an exact miss on a candidate is a listing or a match, not a 404.
+            const ambientExact = exact === undefined && address.ambient !== undefined && scheme === "file"
+                && !scope.pathname.startsWith("../") && (await address.ambient.candidates(scope.pathname)).includes(scope.pathname);
+            if (exact === undefined && !ambientExact) {
                 const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
                 return {
                     status: 404,
@@ -384,8 +391,22 @@ export default class EntryFind {
             multipleAuthorities ? EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) : candidate.pathname,
             { authority: candidate.authority, pathname: candidate.pathname },
         ]));
+        // {§membership-auto-add} — the universe beyond membership joins the listing and the text match;
+        // the indexed dialects (`~`, `&`) see members only, since nothing unadmitted is indexed.
+        let ambientKeys: string[] = [];
+        if (address.ambient !== undefined && scheme === "file" && !multipleAuthorities
+            && !(statement.matcher !== null && (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph"))
+            && !(scope?.candidatePrefix?.startsWith("../") ?? false)) {
+            const known = new Set(candidates.map((candidate) => candidate.pathname));
+            try {
+                ambientKeys = (await address.ambient.candidates(scope?.candidatePrefix ?? null))
+                    .filter((key) => !known.has(key) && (scope === null || pathScopeMatches(scope, key, address.pathBase)));
+            } catch {
+                ambientKeys = [];   // a malformed glob is reported below, by the members' own filter
+            }
+        }
         const folders = statement.matcher === null && scope !== null
-            ? [...Map.groupBy([...coordinateByKey.entries()], ([, coordinate]) => coordinate.authority)]
+            ? [...Map.groupBy([...coordinateByKey.entries(), ...ambientKeys.map((key) => [key, { authority, pathname: key }] as const)], ([, coordinate]) => coordinate.authority)]
                 .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname), address.pathBase)
                     .map((folder) => ({
                         selector: multipleAuthorities ? EntryManifest.toPath(scheme, authority, folder.selector) : folder.selector,
@@ -409,7 +430,7 @@ export default class EntryFind {
                 };
             }
         }
-        if (!multipleAuthorities && scope?.kind === "exact" && candidates.length === 0) {
+        if (!multipleAuthorities && scope?.kind === "exact" && candidates.length === 0 && ambientKeys.length === 0) {
             const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
             return {
                 status: 404,
@@ -462,7 +483,7 @@ export default class EntryFind {
             if (ranked.status !== 200) return { status: ranked.status, matches: [], problem: ranked.problem };
             matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
         } else if (statement.matcher === null) {
-            matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
+            matches = [...candidates.map((c) => ({ pathname: c.pathname, matches: [] })), ...ambientKeys.map((pathname) => ({ pathname, matches: [] }))];
         } else if (statement.matcher.dialect === "graph") {
             // {§relation-indexed-dialects} Parser admission owns graph syntax;
             // this remains a defensive boundary for typed/programmatic callers.
@@ -553,6 +574,13 @@ export default class EntryFind {
                     }
                 } else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
             }
+            // {§membership-auto-add} — a candidate's text is matched from disk; a match admits it, and the
+            // selection runs again over members, so an unadmitted candidate never shows its content.
+            const ambientSet = new Set(ambientKeys);
+            for (const key of ambientKeys) {
+                const text = await address.ambient!.text(key);
+                if (text?.content != null) textCandidates.push({ key, content: text.content, mimetype: text.mimetype });
+            }
             const byteSupplier = effectiveBytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
             const r = textCandidates.length === 0
                 ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
@@ -562,6 +590,11 @@ export default class EntryFind {
                 matches: [],
                 problem: r.problem,
             };
+            const ambientMatched = r.matches.filter((match) => ambientSet.has(match.key)).map((match) => match.key);
+            if (ambientMatched.length > 0 && (await address.ambient!.admit(ambientMatched)).length > 0) {
+                return EntryFind.#matchPathnames(statement, ctx, manifest, { ...address, ambient: undefined });
+            }
+            r.matches = r.matches.filter((match) => !ambientSet.has(match.key));
             const bytesMatched = byteCandidates.length === 0
                 ? { status: 200, matches: [] as Match[] }
                 : await EntryFind.#matchBytes(statement.matcher, byteCandidates, byteSupplier, mimetypes, channelOf);
@@ -582,7 +615,23 @@ export default class EntryFind {
         const projectedScope = multipleAuthorities && scopePathname !== null
             ? pathScope(EntryManifest.toPath(scheme, authority, scopePathname), manifest.folderScopes === true)
             : scope;
-        return { status: 200, matches, channel: fragment ?? candidates[0]?.channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders };
+        return { status: 200, matches, channel: fragment ?? candidates[0]?.channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders,
+            ...(ambientKeys.length === 0 ? {} : { ambient: new Set(ambientKeys) }) };
+    }
+
+    // {§membership-auto-add} — a candidate's listing row: its type, weight and extent from disk, marked
+    // untracked; a binary or oversized candidate lists with no weight until a READ admits it.
+    static async #ambientItem(ambient: AmbientMembers, key: string, path: string, weigh: PlurnkSchemeContext["weigh"]): Promise<CatalogEntry | null> {
+        const text = await ambient.text(key);
+        if (text === null) return null;
+        const content = text.content;
+        return [{
+            path,
+            mimetype: text.mimetype,
+            weight: content === null || weigh === undefined ? 0 : weigh(content),
+            lines: content === null ? 0 : content.split("\n").length,
+            aside: "untracked",
+        }];
     }
 
     // {§find-bytes} — the matcher runs over the bytes as one character each, so a text pattern
@@ -669,8 +718,15 @@ export default class EntryFind {
         const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
             const row = byPath.get(addressOf(m.pathname));
-            if (row === undefined) continue;
-            resources.push({ item: row, match: m });
+            if (row !== undefined) {
+                resources.push({ item: row, match: m });
+                continue;
+            }
+            // {§membership-auto-add} — a listed candidate has no catalog row; its row is read from disk.
+            if (match.ambient?.has(m.pathname) && address.ambient !== undefined) {
+                const item = await EntryFind.#ambientItem(address.ambient, m.pathname, addressOf(m.pathname), ctx.weigh);
+                if (item !== null) resources.push({ item, match: m });
+            }
         }
         // A terminal single-star catalog is a one-level map. Keep real entries
         // at that level and collapse deeper descendants into exact, actionable
@@ -683,7 +739,10 @@ export default class EntryFind {
                 let items = 0;
                 for (const pathname of folder.pathnames) {
                     const row = byPath.get(addressOf(pathname));
-                    if (row === undefined) continue;
+                    if (row === undefined) {
+                        if (match.ambient?.has(pathname)) items++;
+                        continue;
+                    }
                     items++;
                     weight += row.reduce((sum, channel) => sum + channel.weight, 0);
                 }
@@ -694,7 +753,8 @@ export default class EntryFind {
         }
         if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
         const projected = projectFindResult(statement, match.scope, resources, scopes, manifest.defaultChannel);
-        if (address.pathname === undefined) return projected;
+        // {§membership-auto-add} — a listed candidate has no stored representation to consume.
+        if (address.pathname === undefined || match.ambient?.has(address.pathname)) return projected;
 
         // Exact FIND consumes the same selected canonical producer as exact
         // READ. Query projection remains core-owned, while the durable selected-

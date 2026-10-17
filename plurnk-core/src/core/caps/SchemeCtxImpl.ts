@@ -26,6 +26,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly #fileRevision: string | undefined;
     readonly #client: PlurnkSchemeContext["client"];
     readonly #sequence: number | undefined;
+    readonly #ambientMembers: PlurnkSchemeContext["ambientMembers"];
     readonly workspaceId: number;
     readonly workerId: number;
     readonly loopId: number;
@@ -59,6 +60,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.#fileRevision = ctx.fileRevision;
         this.#client = ctx.client;
         this.#sequence = ctx.sequence;
+        this.#ambientMembers = ctx.ambientMembers;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -102,6 +104,11 @@ export default class SchemeCtxImpl implements SchemeCtx {
 
     static fileRevisionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): string | undefined {
         return ctx instanceof SchemeCtxImpl ? ctx.#fileRevision : "db" in ctx ? ctx.fileRevision : undefined;
+    }
+
+    // {§membership-auto-add} — a model dispatch's universe beyond membership reaches core schemes.
+    static ambientMembersOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["ambientMembers"] {
+        return ctx instanceof SchemeCtxImpl ? ctx.#ambientMembers : "db" in ctx ? ctx.ambientMembers : undefined;
     }
 
     // {§actor-boundary-client-operations} — a person's operation carries the worker it acts for to core adapters.

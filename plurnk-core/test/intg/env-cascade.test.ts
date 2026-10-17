@@ -258,6 +258,7 @@ test("{§operator-config-discovery} config check validates capability definition
         { PLURNK_SKILLS_分析_ENABLED: "yes" },
         { PLURNK_SKILLS_3d_tools: '{"name":"wrong","source":"/srv/3d-tools"}' },
         { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "invalid" },
+        { PLURNK_MEMBERS_AUTO_ADD: "yes" },
         { PLURNK_SERVICE_ROOTS: "invalid" },
         { PLURNK_HOOKS_COMMAND: "", PLURNK_HOOKS_ARGS: "[]" },
     ];

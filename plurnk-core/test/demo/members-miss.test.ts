@@ -1,8 +1,8 @@
-// A file miss and its recovery with a real model ({§membership-read-refusal}, {§members-functionality}):
-// the model is asked about a generated file git does not track, meets exactly one miss whose recovery
-// names the `members (add)` body the family accepts, admits the file by its glob, reads it, and
-// answers. Read friction first: a second miss is a failure, including a same-turn read that
-// outruns successful admission ({§functionality-model-mutation}), even when the final number is right.
+// Auto-add with a real model ({§membership-auto-add}, {§members-functionality}): the model is asked about
+// a generated file git does not track, READs it, and the read admits it as the model's own definition
+// of that path, announced by one member_added notice; it answers from what it read. Read friction
+// first: any refused operation is a failure, a shell detour around membership is a failure, and the
+// admission must carry the model's provenance, even when the final number is right.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ interface Definition { alias: string; origin: string; state: string; definition?
 
 const REPORT = "build/report.json";
 
-test("members: a miss on an untracked file names the working add body; the model admits the file by its glob and reads it", { timeout: 600_000 }, async (t) => {
+test("members: a READ of an untracked file admits it as the model's own definition, with a notice, and the model answers from it", { timeout: 600_000 }, async (t) => {
     const fixture = await seedDemoFixture("members-miss");
     const lifetime = new AsyncDisposableStack();
     lifetime.defer(fixture.cleanup);
@@ -37,22 +37,25 @@ test("members: a miss on an untracked file names the working add body; the model
         const targetOf = (row: LogRow): string => { try { return (JSON.parse(row.tx) as { target?: { raw?: string } }).target?.raw ?? ""; } catch { return ""; } };
         const problemOf = (row: LogRow): { type?: string; recovery?: string } => { try { return (JSON.parse(row.rx) as { problem?: { type?: string; recovery?: string } }).problem ?? {}; } catch { return {}; } };
 
-        // Friction first: the one refused operation is the miss the story is about.
+        // Friction first: nothing is refused, and the file is read through membership, not around it.
         const refused = rows.filter((row) => row.origin === "model" && row.status_rx >= 400);
-        assert.deepEqual(refused.map((row) => `${row.op} ${row.status_rx} ${targetOf(row)}`), [`READ 404 ${REPORT}`],
-            `exactly one miss, on the generated file; saw ${JSON.stringify(refused.map((row) => `${row.op} ${row.status_rx} ${targetOf(row)} ${problemOf(row).type ?? ""}`))}`);
-        assert.equal(problemOf(refused[0]!).recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "the miss names the body the family accepts");
+        assert.deepEqual(refused.map((row) => `${row.op} ${row.status_rx} ${targetOf(row)} ${problemOf(row).type ?? ""}`), [], "no operation was refused");
+        const operations = rows.filter((row) => row.origin === "model").map((row) => `${row.op} ${targetOf(row)}`);
+        assert.ok(operations.some((operation) => operation.startsWith("READ ") && operation.endsWith(REPORT)), `the model READ ${REPORT}; operations ${JSON.stringify(operations)}`);
+        assert.ok(!operations.some((operation) => operation.startsWith("sh ")), `the model did not detour around membership through the shell; operations ${JSON.stringify(operations)}`);
         assert.deepEqual(await ResourceState.check(s.db), [], "the workspace stays lawful");
 
-        // The recovery was followed: the file is a workspace definition of the model's own, and a member.
+        // The read admitted it: a workspace definition of the model's own, and a member, announced once.
         const { definitions } = await s.invokeWorkspaceAction("workspace.members.list", {}) as { definitions: Definition[] };
         const admitted = definitions.find(({ alias }) => alias === REPORT);
-        assert.ok(admitted, `the model admitted ${REPORT} by its glob; definitions ${JSON.stringify(definitions.map(({ alias }) => alias))}`);
+        assert.ok(admitted, `the READ admitted ${REPORT}; definitions ${JSON.stringify(definitions.map(({ alias }) => alias))}`);
         assert.equal(admitted.origin, "workspace");
-        assert.equal(admitted.definition?.provenance?.kind, "model-proposal", "a model's add carries its provenance");
+        assert.equal(admitted.definition?.provenance?.kind, "model-proposal", "the admission carries the model's provenance");
         assert.equal(admitted.state, "active");
         const member = await s.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: s.workspaceId, scheme: "file", authority: "", pathname: REPORT });
         assert.ok(member, "the generated file became a member");
+        const packets = await Promise.all(loop.turnIds.map((id) => s.db.test_get_packet.get<{ packet: string }>({ id })));
+        assert.ok(packets.some((row) => row?.packet.includes("[member_added]") === true), "the member_added notice reached a packet");
 
         assert.equal(loop.finalStatus, 200, "the loop concluded");
         assert.match(loop.lastContent, /\b87\b/u, "the answer is the number the file records");

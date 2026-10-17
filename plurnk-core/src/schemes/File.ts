@@ -160,6 +160,7 @@ export default class File extends CoreSchemeAdapterBase {
             ...(scope === undefined ? {} : { scope }),
             ...(root === null ? {} : { pathBase: root }),
             bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
+            ...(core.ambientMembers === undefined ? {} : { ambient: core.ambientMembers }),
         });
     }
 
