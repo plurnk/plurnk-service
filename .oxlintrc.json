@@ -15,6 +15,11 @@
     ],
     "rules": {
         "eslint/no-unused-private-class-members": "error",
+        "eslint/no-var": "error",
+        "eslint/prefer-const": ["error", { "ignoreReadBeforeAssign": true }],
+        "unicorn/prefer-node-protocol": "error",
+        "typescript/no-deprecated": "error",
+        "typescript/no-explicit-any": "error",
         "eslint/no-unused-vars": [
             "error",
             {
@@ -54,7 +59,8 @@
                 "**/test/**"
             ],
             "rules": {
-                "typescript/no-floating-promises": "off"
+                "typescript/no-floating-promises": "off",
+                "eslint/prefer-const": "off"
             }
         }
     ]

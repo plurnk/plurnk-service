@@ -1,5 +1,19 @@
 # Repository tooling
 
+## §native-source-toolchain Native ECMAScript source
+
+| Surface | Contract |
+| --- | --- |
+| Runtime | Node 26 or newer; source execution uses native type stripping, and published execution uses built ESM. ESNext is a compiler target, not permission to require an API absent from the supported runtime. |
+| Compiler | TypeScript 7, ESNext target and libraries, NodeNext module semantics. Workspaces inherit the shared base; browser checks add DOM libraries without Node globals. |
+| Source | Verbatim imports and erasable-only syntax keep direct and built execution aligned. Preserve useful type abstractions; do not require transformation-only TypeScript syntax. |
+| Lint | No `var`, explicit `any`, deprecated APIs, or unprefixed Node built-ins in handwritten source. Prefer `const` in runtime code and scripts; test setup may retain staged initialization. Generated/vendor code remains outside source-style enforcement. |
+| Resources | Use native resource management where the owned resource implements disposal and the lexical lifetime fits. Callbacks, process-local handles, and asynchronous lifetimes need not become `using` declarations. |
+
+The ordinary gate checks source and built behavior. A stylistic sweep is not an
+invitation to replace sound types, invent compatibility code, or change external
+protocol support.
+
 ## §package-release-contract Independent versions
 
 | Surface | Contract |

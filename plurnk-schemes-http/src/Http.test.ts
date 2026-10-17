@@ -1861,7 +1861,7 @@ test("KILL of a live acquisition cancels it in place, and the owner settles 499"
     const { ctx, inspect } = makeCtx();
     const http = new Http();
     const target = urlTarget("https://api.x/slow", "/slow");
-    let methods: string[] = [];
+    const methods: string[] = [];
     const pending = { fetch: null as Promise<Response> | null };
     await withFetch(((_url: string | URL | Request, init?: RequestInit) => {
         methods.push(init?.method ?? "GET");

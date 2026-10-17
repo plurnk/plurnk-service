@@ -94,7 +94,7 @@ export default class LogWriter {
         // for review and the scheme consumes on accept. A WAIT is
         // parked, not proposed (#isProposal) → state='resolved'.
         const isProposed = this.#isProposal(statement, result);
-        let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
+        const attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
         if (curationPlan !== null) {

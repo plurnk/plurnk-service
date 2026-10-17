@@ -1,7 +1,7 @@
 // usage: SPEC=<spec.json> node scripts/anatomy/carry-or-share.mjs <sharedModulePath> <doc> <name>...  — consts used only inside the spec's members are carried; the rest move to the shared module
 import { readFileSync, writeFileSync } from "node:fs";
 const [sharedPath, doc, ...names] = process.argv.slice(2); const spec = JSON.parse(readFileSync(process.env.SPEC, "utf8"));
-let text = readFileSync(spec.file, "utf8").split("\n");
+const text = readFileSync(spec.file, "utf8").split("\n");
 const spans = spec.members.map((m) => { const head = text.findIndex((l) => new RegExp(`^    (static )?(async )?#?${m}\\(`).test(l)); if (head < 0) throw new Error(`member ${m}`); let end = head, d = 0, seen = false; for (let i = head; i < text.length; i++) { for (const ch of text[i]) { if (ch === "{") { d++; seen = true; } if (ch === "}") d--; } if (seen && d === 0) { end = i; break; } } return [head, end]; });
 const inside = (i) => spans.some(([a, b]) => i >= a && i <= b);
 const blockRange = (n) => { const defIdx = text.findIndex((l) => new RegExp(`^(export )?const ${n}\\b`).test(l)); if (defIdx < 0) throw new Error(`const ${n}`); let to = defIdx, d = 0; for (;;) { for (const ch of text[to]) { if ("([{".includes(ch)) d++; if (")]}".includes(ch)) d--; } if (d === 0 && /;\s*$/.test(text[to])) break; to++; } return [defIdx, to]; };

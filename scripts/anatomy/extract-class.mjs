@@ -81,7 +81,7 @@ const newFile = staticOnly ? `${spec.doc}\n${imports}${originTypeImport}\n\n${ca
 const removed = new Set(); for (const m of spec.members) for (let n = byName.get(m).start; n <= byName.get(m).end; n++) removed.add(n);
 for (const fld of movedInitFields) for (let n = fld.n; n <= fld.end; n++) removed.add(n);
 for (const b of constBlocks) for (let n = b.from; n <= b.to; n++) removed.add(n);
-let out = src.map((l, i) => { const t = refTypes.find((t) => t.n === i + 1 && !t.exported); return t ? `export ${l}` : l; }).filter((l, i) => !removed.has(i + 1));
+const out = src.map((l, i) => { const t = refTypes.find((t) => t.n === i + 1 && !t.exported); return t ? `export ${l}` : l; }).filter((l, i) => !removed.has(i + 1));
 const constructionArgs = injected.map((i) => i.thunk ? `${i.name}: () => this.#${i.name}` : i.fromStatic ? `${i.name}: ${spec.origin}.${i.name}` : i.shared ? `${i.name}: this.#${i.name}` : callbacks.some((c) => c.name === i.name && c.isStatic) ? `${i.name}: ${spec.origin}.#${i.name}` : callbacks.some((c) => c.name === i.name) ? `${i.name}: this.${calledPublic.includes(i.name) ? "" : "#"}${i.name}.bind(this)` : `${i.name}: this.#${i.name}`).join(", ");
 const ctorEndIdx = ctor ? (() => { const startIdx = out.findIndex((l) => l === L(ctor.n)); for (let i = startIdx + 1; i < out.length; i++) if (out[i] === "    }") return i; throw new Error("ctor end"); })() : -1;
 const movedPublic = spec.members.filter((m) => !byName.get(m).priv);

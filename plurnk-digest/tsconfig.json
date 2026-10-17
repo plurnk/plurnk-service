@@ -1,5 +1,5 @@
 {
     "extends": "../tsconfig.base.json",
-    "compilerOptions": { "verbatimModuleSyntax": true, "skipLibCheck": true },
+    "compilerOptions": { "skipLibCheck": true },
     "include": ["src/**/*.ts"]
 }

@@ -10,6 +10,11 @@ Report vulnerabilities through [SECURITY.md](./SECURITY.md), not a public issue.
 
 Use the Node 26 line and the pinned npm version.
 
+Source is modern ESM with erasable TypeScript, checked against ESNext using
+NodeNext resolution ({§native-source-toolchain}). Prefer native ECMAScript
+mechanisms without replacing useful type abstractions or assuming APIs beyond
+the supported Node runtime.
+
 ```sh
 npm ci
 npm test

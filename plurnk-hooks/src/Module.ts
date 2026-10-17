@@ -86,8 +86,7 @@ export default class Module implements DaemonModule<ModuleSetupSeam, StartSeam> 
                 this.#failed(delivery.method, new Error("Hook delivery deadline expired in queue; event not delivered."));
                 continue;
             }
-            let observed: Promise<void>;
-            observed = this.#deliver(delivery.input, remaining)
+            const observed: Promise<void> = this.#deliver(delivery.input, remaining)
                 .catch((cause: unknown) => { this.#failed(delivery.method, cause); })
                 .finally(() => { this.#active.delete(observed); this.#pump(); });
             this.#active.add(observed);

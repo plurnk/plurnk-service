@@ -5,11 +5,7 @@
         "skipLibCheck": true,
         "resolveJsonModule": true,
         "isolatedModules": true,
-        "verbatimModuleSyntax": false,
         "allowJs": true,
-        "lib": [
-            "ES2024"
-        ],
         "paths": {
             "@possumtech/sqlrite": [
                 "./SqlRite.d.ts"
