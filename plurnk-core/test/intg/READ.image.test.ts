@@ -102,8 +102,8 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     const requests = await runLoop(["image"]);
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
-    assert.equal(second[2]!.content, "```READ (logo.png)\n```");
+    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+    assert.equal(second[2]!.content, "```READ (logo.png)\n```\n\n```NOTE\nlooking\n```", "the READ replays with its turn, before the native result");
     const user = second[3];
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
@@ -302,7 +302,7 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     assert.ok(requests[2]!.every((message) => typeof message.content === "string"));
     const content = userText(requests[2]!);
     assert.match(content, /### log:\/\/\/1\/2\/3\/READ · \d+\n/);
-    assert.ok(requests[2]!.some((message) => message.role === "assistant" && message.content === "```READ (logo.png#bytes) <1,16>\n```"));
+    assert.ok(requests[2]!.some((message) => message.role === "assistant" && message.content === "```READ (logo.png#bytes) <1,16>\n```\n\n```NOTE\nInspect bytes.\n```"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });

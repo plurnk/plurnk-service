@@ -26,7 +26,7 @@ const withHistory = async (mode: string, fn: () => Promise<void>): Promise<void>
     try { await fn(); } finally { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; }
 };
 
-test("{§emission-history} {§packet-cache-monotone}: each operation precedes its results and settled history stays a prefix", async (t) => {
+test("{§emission-history} {§packet-cache-monotone}: each turn's operations precede their results and settled history stays a prefix", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "interpolated-history");
@@ -42,19 +42,19 @@ test("{§emission-history} {§packet-cache-monotone}: each operation precedes it
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
     const [opening, afterEdit, afterRead] = provider.received;
     assert.ok(opening && afterEdit && afterRead);
-    assert.deepEqual(afterRead.map(({ role }) => role), ["system", "user", ...Array.from({ length: 4 }, () => ["assistant", "user"]).flat()]);
-    assert.deepEqual(afterRead.filter(({ role }) => role === "assistant").map(chatMessageText), [note("Memory before writing."), edit, read, note("Checking what landed.")]);
-    for (const [index, operation] of [[2, "NOTE"], [4, "EDIT"], [6, "READ"], [8, "NOTE"]] as const) {
-        assert.match(chatMessageText(afterRead[index + 1]!), new RegExp(`^### log:///1/\\d+/\\d+/${operation} · \\d+`, "u"));
+    assert.deepEqual(afterRead.map(({ role }) => role), ["system", "user", ...Array.from({ length: 2 }, () => ["assistant", "user"]).flat()]);
+    assert.deepEqual(afterRead.filter(({ role }) => role === "assistant").map(chatMessageText), [`${note("Memory before writing.")}\n\n${edit}`, `${read}\n\n${note("Checking what landed.")}`]);
+    for (const [index, operations] of [[2, ["NOTE", "EDIT"]], [4, ["READ", "NOTE"]]] as const) {
+        assert.match(chatMessageText(afterRead[index + 1]!), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order");
     }
     const log = observations(afterRead);
     assert.match(log, /Reasoning memory\./u, "a reasoning NOTE is not in the program and keeps its ordinary row");
     assert.doesNotMatch(log, /Memory before writing\.|Checking what landed\./u, "authored memory appears only in assistant operations");
     assert.doesNotMatch(previousProgram(afterRead), /Reasoning memory\./u, "reasoning operations never enter content replay");
-    assert.deepEqual(afterRead.slice(0, 5), afterEdit.slice(0, 5), "the earlier roles and bytes stay identical");
+    assert.deepEqual(afterRead.slice(0, 3), afterEdit.slice(0, 3), "the earlier roles and bytes stay identical");
     // The retained results end where the status clump begins ({§packet-cache-monotone}).
-    const oldResults = chatMessageText(afterEdit[5]!).split(/\n\n## (?:Git Status|Context|Worker)\n/u)[0]!;
-    assert.ok(chatMessageText(afterRead[5]!).startsWith(oldResults), "new observations append after retained results");
+    const oldResults = chatMessageText(afterEdit[3]!).split(/\n\n## (?:Git Status|Context|Worker)\n/u)[0]!;
+    assert.ok(chatMessageText(afterRead[3]!).startsWith(oldResults), "new observations append after retained results");
 });
 
 for (const mode of ["none", "latest", "all"]) {
@@ -193,7 +193,7 @@ test("{§emission-history} {§operator-config-shipped-defaults}: complete operat
     assert.equal(provider.received.length, 3);
     assert.deepEqual(provider.received[0]!.map(({ role }) => role), ["system", "user"]);
     for (const [index, request] of provider.received.slice(1).entries()) {
-        assert.deepEqual(request.map(({ role }) => role), ["system", "user", ...Array.from({ length: index === 0 ? 3 : 5 }, () => ["assistant", "user"]).flat()]);
+        assert.deepEqual(request.map(({ role }) => role), ["system", "user", ...Array.from({ length: index + 1 }, () => ["assistant", "user"]).flat()], "each replayed turn is one assistant message before its receipts");
         assert.match(chatMessageText(request[1]!), /^## Log\n/u);
         assert.match(chatMessageText(request.at(-1)!), /\n\n## Worker\n/u);
     }

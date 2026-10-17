@@ -85,9 +85,9 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             const mediaRead = PlurnkParser.frame(`READ (${provider.resource}#bytes) <1,3>`, null);
             const previousPrograms = [
                 [],
-                [promptRead, noted],
-                [promptRead, noted, mediaRead, noted],
-                [promptRead, noted, mediaRead, noted, noted],
+                [`${promptRead}\n\n${noted}`],
+                [`${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`],
+                [`${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`, noted],
             ];
             for (const [index, messages] of provider.received.entries()) {
                 const expected = previousPrograms[index]!;

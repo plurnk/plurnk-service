@@ -10,7 +10,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 const frame = PlurnkParser.frame;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
 
-test("{§emission-history} {§paired-receipt}: each content operation precedes its result without duplicating its request", async (t) => {
+test("{§emission-history} {§paired-receipt}: a turn's content operations precede their results without duplicating their requests", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "paired-operations");
@@ -25,17 +25,20 @@ test("{§emission-history} {§paired-receipt}: each content operation precedes i
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1]!;
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [edit, read, note]);
-    for (const [index, message] of request.entries()) {
-        if (message.role !== "assistant") continue;
-        assert.equal(request[index + 1]!.role, "user");
-        const receipt = chatMessageText(request[index + 1]!);
-        assert.match(receipt, /^### log:\/\/\/1\/2\/\d+\/(?:EDIT|READ|NOTE) · \d+/u);
-        assert.doesNotMatch(receipt, /"aside"|→ worker:\/\/\/memo.txt/u);
-        if (chatMessageText(message) === note) assert.doesNotMatch(receipt, /An authored memory/u);
-        if (chatMessageText(message) === edit || chatMessageText(message) === read) assert.match(receipt, /Unique replacement\./u, "landed edit windows and READ output are returned evidence, not suppressed request bodies");
-        const record = receipt.split("\n\n")[0]!;
-        assert.equal(Number(/ · (\d+)/u.exec(record)![1]), contentWeight(record) + contentWeight(chatMessageText(message)), "the curation charge owns the complete operation and receipt once");
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [[edit, read, note].join("\n\n")],
+        "the turn's operations replay together, in program order, as one assistant message");
+    const at = request.findIndex(({ role }) => role === "assistant");
+    assert.equal(request[at + 1]!.role, "user");
+    const records = chatMessageText(request[at + 1]!).split(/\n\n(?=### log:)/u).filter((record) => /^### log:\/\/\/1\/2\/\d+\/(?:EDIT|READ|NOTE) /u.test(record));
+    const operations = { EDIT: edit, READ: read, NOTE: note } as const;
+    assert.deepEqual(records.map((record) => /\/(EDIT|READ|NOTE) /u.exec(record)![1]), ["EDIT", "READ", "NOTE"], "the turn's receipts follow it, in order");
+    for (const record of records) {
+        const op = /\/(EDIT|READ|NOTE) /u.exec(record)![1] as keyof typeof operations;
+        assert.doesNotMatch(record, /"aside"|→ worker:\/\/\/memo.txt/u);
+        if (op === "NOTE") assert.doesNotMatch(record, /An authored memory/u);
+        else assert.match(record, /Unique replacement\./u, "landed edit windows and READ output are returned evidence, not suppressed request bodies");
+        const head = record.split("\n\n")[0]!;
+        assert.equal(Number(/ · (\d+)/u.exec(head)![1]), contentWeight(head) + contentWeight(operations[op]), "the curation charge owns the complete operation and receipt once");
     }
     assert.match(request.filter(({ role }) => role === "user").map(chatMessageText).join("\n"), /Reasoning is not content\./u);
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
@@ -55,7 +58,7 @@ test("{§retrieval-annotation}: failed retrievals retain their annotations indep
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1]!;
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [frame("NOTE", "/not-a-pattern/"), frame("READ (worker:///absent.txt)", null)]);
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [[frame("NOTE", "/not-a-pattern/"), frame("READ (worker:///absent.txt)", null)].join("\n\n")]);
     const user = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
     assert.match(user, /Reasoning annotation\./u);
     assert.match(user, /also-absent\.txt/u);
@@ -80,14 +83,11 @@ test("{§emission-history} {§bulk-resource-targeting}: one glob replay owns con
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
     const request = provider.received[2]!;
-    const index = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === glob);
-    assert.notEqual(index, -1);
-    assert.equal(request.filter((message) => message.role === "assistant" && chatMessageText(message) === glob).length, 1);
-    assert.match(chatMessageText(request[index + 1]!), /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u);
-    const failed = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === missing);
-    assert.notEqual(failed, -1);
-    assert.match(chatMessageText(request[failed + 1]!), /"status":404/u);
-    const copied = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === copy);
-    assert.notEqual(copied, -1);
-    assert.match(chatMessageText(request[copied + 1]!), /^### log:\/\/\/1\/3\/\d+\/COPY → worker:\/\/\/case-a\.txt → worker:\/\/\/copy\.txt/u, "resolved transfer operands are new result facts");
+    const index = request.findIndex((message) => message.role === "assistant" && chatMessageText(message) === [glob, missing, copy].join("\n\n"));
+    assert.notEqual(index, -1, "the turn replays as one message");
+    assert.equal(request.filter((message) => message.role === "assistant" && chatMessageText(message).includes(glob)).length, 1, "the glob replays once");
+    const receipts = chatMessageText(request[index + 1]!);
+    assert.match(receipts, /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u, "the glob owns its concrete receipts");
+    assert.match(receipts, /"status":404/u, "the failed READ's receipt follows with the turn's others");
+    assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/COPY → worker:\/\/\/case-a\.txt → worker:\/\/\/copy\.txt/mu, "resolved transfer operands are new result facts");
 });

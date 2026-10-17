@@ -5538,7 +5538,7 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
-|   4–5 | user / assistant | `log` and `emission-history` segments | Append-mostly chronological history: each selected operation immediately precedes its results ({§emission-history}). |
+|   4–5 | user / assistant | `log` and `emission-history` segments | Append-mostly chronological history: each replayed turn's operations immediately precede that turn's results ({§emission-history}). |
 |     6 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
 |     7 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
 |     8 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |

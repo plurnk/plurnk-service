@@ -79,9 +79,9 @@ test("{§emission-row}: initialization has no replay; canonical content carries 
     assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
     assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
     const request = provider.received[1]!;
-    assert.deepEqual(request.map(({ role }) => role), ["system", "user", ...Array.from({ length: 4 }, () => ["assistant", "user"]).flat()]);
+    assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"], "the turn replays as one assistant message");
     assert.match(chatMessageText(request[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
-    assert.match(chatMessageText(request[5]!), /^### log:\/\/\/1\/2\/4\/READ/u, "each result follows the operation that caused it");
+    assert.match(chatMessageText(request[3]!), /^### log:\/\/\/1\/2\/3\/NOTE[\s\S]*### log:\/\/\/1\/2\/4\/READ/u, "the turn's results follow the operations that caused them");
 });
 
 test("{§emission-row}: curation retires the immediately preceding emission without reviving an older one", async (t) => {

@@ -43,7 +43,7 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
             },
         });
         const engine = new Engine({ db, schemes });
-        // {§emission-history}: the transform receives operations interleaved with their results.
+        // {§emission-history}: the transform receives each turn's operations before their results.
         const programs = [
             `${PlurnkParser.frame("EDIT (worker:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
             `${PlurnkParser.frame("READ (worker:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
@@ -65,15 +65,15 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
         for (let turn = 0; turn < 2; turn++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 4);
+        const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 2);
         assert.ok(chronological, "the transform receives the complete interpolated history");
-        const expected = programs.slice(0, 2).flatMap((program) => program.split("\n\n"));
+        const expected = programs.slice(0, 2);
         assert.deepEqual(chronological.filter(({ slot }) => slot === "assistant").map(({ content }) => content), expected);
         for (const [index, section] of chronological.entries()) {
             if (section.slot !== "assistant") continue;
             const receipt: PacketSectionDraft = chronological[index + 1]!;
             assert.equal(receipt.slot, "user");
-            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ|NOTE) · \d+/u, "every operation is followed by its receipt");
+            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ) · \d+/u, "every turn is followed by its receipts");
         }
         assert.equal(provider.received.length, 3);
         const last = provider.received[2]!;
