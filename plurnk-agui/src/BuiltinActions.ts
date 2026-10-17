@@ -86,20 +86,20 @@ export default class BuiltinActions {
 
     readonly #seam: () => BuiltinActionsPort;
     readonly #capabilities: () => Promise<AguiDiscovery>;
-    readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+    readonly #namedWorkspace: (name: string, options?: Readonly<Record<string, unknown>>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #threadWorker: (threadId: string, workspaceId: number, forwarded?: Record<string, unknown>) => Promise<number | undefined>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
 
-    constructor({ seam, capabilities, envelope, threadWorker, requireWorkspace }: {
+    constructor({ seam, capabilities, namedWorkspace, threadWorker, requireWorkspace }: {
         seam: () => BuiltinActionsPort;
         capabilities: () => Promise<AguiDiscovery>;
-        envelope: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
+        namedWorkspace: (name: string, options?: Readonly<Record<string, unknown>>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         threadWorker: (threadId: string, workspaceId: number, forwarded?: Record<string, unknown>) => Promise<number | undefined>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
     }) {
         this.#seam = seam;
         this.#capabilities = capabilities;
-        this.#envelope = envelope;
+        this.#namedWorkspace = namedWorkspace;
         this.#threadWorker = threadWorker;
         this.#requireWorkspace = requireWorkspace;
     }
@@ -157,8 +157,7 @@ export default class BuiltinActions {
                         );
                     }
                     if (typeof p.name === "string") {
-                        // Creation parameters carry `name`, while binding receives `workspace`.
-                        const { env: created } = await this.#envelope(p.name, { ...p, workspace: p.name });
+                        const { env: created } = await this.#namedWorkspace(p.name, p);
                         return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                     }
                     const created = await this.#seam().createWorkspace({
@@ -175,8 +174,7 @@ export default class BuiltinActions {
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                 }
                 case "workspace.attach": {
-                    // A REAL attach: rebind the thread map to the chosen workspace and hand
-                    // back its envelope — the picker does what it says.
+                    // Select by immutable workspace identity; no thread is rebound.
                     if (typeof p.id !== "number") {
                         return actionFailure(
                             "invalid-action-parameters",

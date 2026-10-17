@@ -7,6 +7,7 @@ import { wireRow } from "../test/log-fixture.ts";
 import assert from "node:assert/strict";
 import { host } from "../test/host.ts";
 import Translator from "./Translator.ts";
+import MessageAddress from "./MessageAddress.ts";
 import { AGUI_BUILTIN_ACTIONS } from "./AguiSurface.ts";
 import type {
     ApplicationActionContext,
@@ -3121,6 +3122,35 @@ test("workspace.create WITH a name is daemon and does NOT demand a pre-bound wor
     } finally { await mod.close(); }
 });
 
+for (const name of ["42#alice", "01#x", "folder#name", "42#one#two"]) {
+    for (const present of [false, true]) {
+        test(`{§agui-thread-address} workspace.create ${present ? "selects" : "creates"} the literal name ${JSON.stringify(name)}`, async () => {
+            const { seam } = mockSeam();
+            const created: string[] = [];
+            const attached: number[] = [];
+            seam.listWorkspaces = async () => present ? [workspaceRow(12, name)] : [];
+            seam.createWorkspace = async (args) => {
+                created.push(args.name!);
+                return { workspaceId: 12, workspaceName: args.name!, projectRoot: null, projectLabel: null };
+            };
+            seam.attachWorkspace = async ({ workspaceId }) => {
+                attached.push(workspaceId);
+                return { workspaceId, workspaceName: name, projectRoot: null, projectLabel: null };
+            };
+            const mod = await host(seam);
+            try {
+                const events = await post(mod.address().port, {
+                    threadId: "bootstrap",
+                    forwardedProps: { plurnk: { action: { kind: "workspace.create", name } } },
+                });
+                assert.deepEqual(actionOutcome(events), { kind: "workspace.create", ok: true, result: { id: 12, name } });
+                assert.deepEqual(created, present ? [] : [name]);
+                assert.deepEqual(attached, present ? [12] : []);
+            } finally { await mod.close(); }
+        });
+    }
+}
+
 test("loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
     const cancelled: Array<{ workerId: number; reason?: string }> = [];
     const { seam } = mockSeam();
@@ -3262,6 +3292,40 @@ const OWNER_OBSERVATIONS: Readonly<Record<string, RunForm>> = {
     "a sync control observation": { plurnk: { control: true } },
     "a connect control observation": { path: "/agui/connect", plurnk: { control: true } },
 };
+
+for (const { label, principal, threadId, recognized } of [
+    { label: "opaque reference", principal: "anonymous", threadId: "sdk-reference", recognized: true },
+    { label: "native name", principal: "anonymous", threadId: "page", recognized: true },
+    { label: "qualified address", principal: "anonymous", threadId: "3#page", recognized: true },
+    { label: "another principal", principal: "someone-else", threadId: "sdk-reference", recognized: false },
+    { label: "parent worker", principal: "anonymous", threadId: "3#parent", recognized: false },
+    { label: "unrelated opaque reference", principal: "anonymous", threadId: "another-reference", recognized: false },
+]) {
+    test(`{§agui-worker-owner} qualified control ${recognized ? "recognizes" : "does not adopt"} its ${label} owner`, async () => {
+        const { seam, owners } = mockSeam();
+        existingWorkspace(seam, "workspace");
+        const owner = MessageAddress.owner(principal, threadId);
+        directory(seam, [{ ...workerRow(44, "page", "model", 20), owner }, workerRow(20, "parent")]);
+        seam.listWorkerReferences = async ({ workspaceId, workerId, namespace }) => {
+            assert.deepEqual({ workspaceId, workerId, namespace }, { workspaceId: 3, workerId: 44, namespace: "agui" });
+            return ["sdk-reference"];
+        };
+        seam.readLog = async () => [];
+        const claims: string[] = [];
+        const claim = seam.claimWorkerOwner;
+        seam.claimWorkerOwner = async (args) => { claims.push(args.owner); return await claim(args); };
+        const mod = await host(seam);
+        try {
+            const events = await post(mod.address().port, {
+                threadId: "3#page", forwardedProps: { plurnk: { control: true } },
+            });
+            assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+            const expected = recognized ? owner : MessageAddress.owner("anonymous", "3#page");
+            assert.deepEqual([...owners.keys()], [expected]);
+            assert.deepEqual(claims, [expected]);
+        } finally { await mod.close(); }
+    });
+}
 
 for (const [form, input] of Object.entries(OWNER_OBSERVATIONS)) {
     for (const present of [false, true]) {

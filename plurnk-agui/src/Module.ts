@@ -99,13 +99,13 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #portal!: Portal;
     #oauth: OAuthServer | null = null;
     #offRevoked: (() => void) | null = null;
-    #threadEnvelopes = new Map<string, ClientEnvelope>();
+    #workspaceEnvelopes = new Map<string, ClientEnvelope>();
     #threadWorkers = new Map<string, Promise<number>>();
     #workspaceAcquisitions = new Map<string, Promise<void>>();
     #actions = new Map<string, RegisteredAction>();
     #activated = false;
     #stopped = false;
-    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
 
     private constructor(opts: ModuleOptions) {
@@ -182,10 +182,6 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     static #requireWorkspace(kind: string, env: ClientEnvelope | null): ClientEnvelope {
         if (env === null) throw new Error(`action '${kind}' operates within a workspace, but none is bound`);
         return env;
-    }
-
-    static #threadKey(workspace: string, threadId: string): string {
-        return JSON.stringify([workspace, threadId]);
     }
 
     async setup(seam: AguiSetupSeam): Promise<void> {
@@ -342,18 +338,22 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                 },
             ));
         }
-        const key = Module.#threadKey(workspace, threadId);
-        const cached = await this.#currentEnvelope(key, workspace);
+        return await this.#namedWorkspace(workspace, forwarded, options);
+    }
+
+    // {§agui-thread-binding} Workspace labels are selected literally, never parsed as thread addresses.
+    async #namedWorkspace(workspace: string, forwarded?: Readonly<Record<string, unknown>>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const cached = await this.#currentEnvelope(workspace);
         if (cached !== undefined) return { env: cached, reattached: true };
         const previous = this.#workspaceAcquisitions.get(workspace);
         const acquisition = Promise.withResolvers<void>();
         this.#workspaceAcquisitions.set(workspace, acquisition.promise);
         try {
             await previous;
-            const acquired = await this.#currentEnvelope(key, workspace);
+            const acquired = await this.#currentEnvelope(workspace);
             if (acquired !== undefined) return { env: acquired, reattached: true };
             const result = await this.#openWorkspace(workspace, forwarded, options);
-            this.#threadEnvelopes.set(key, result.env);
+            this.#workspaceEnvelopes.set(workspace, result.env);
             return result;
         } finally {
             acquisition.resolve();
@@ -361,18 +361,17 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
     }
 
-    // {§agui-thread-binding} — a cached binding serves only while its workspace still carries the name the
-    // request selects: a rename by any client retires it, and the name resolves afresh.
-    async #currentEnvelope(key: string, workspace: string): Promise<ClientEnvelope | undefined> {
-        const cached = this.#threadEnvelopes.get(key);
+    // {§agui-thread-binding} A rename retires name selection; stable thread addresses do not use this cache.
+    async #currentEnvelope(workspace: string): Promise<ClientEnvelope | undefined> {
+        const cached = this.#workspaceEnvelopes.get(workspace);
         if (cached === undefined) return undefined;
         const current = (await this.#seam.listWorkspaces()).find(({ id }) => id === cached.workspaceId);
         if (current?.name === workspace) return cached;
-        this.#threadEnvelopes.delete(key);
+        this.#workspaceEnvelopes.delete(workspace);
         return undefined;
     }
 
-    async #openWorkspace(workspace: string, forwarded: Record<string, unknown> | undefined, options: { readonly create?: boolean }): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+    async #openWorkspace(workspace: string, forwarded: Readonly<Record<string, unknown>> | undefined, options: { readonly create?: boolean }): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const known = (await this.#seam.listWorkspaces()).find((s) => s.name === workspace);
         let env: ClientEnvelope;
         let reattached = false;

@@ -160,15 +160,17 @@ export default class RunHandler {
             : input.resume === undefined ? undefined : this.#portal().resumedWorker(workspaceId, input.threadId, input.resume);
         // {§agui-thread-address} Routing identity and the spelling a client used are separate from reply delivery.
         const replyThreads = [input.threadId];
+        let address = MessageAddress.owner(principal, input.threadId);
         if (workerId !== undefined) {
             const worker = await this.#seam().readWorker({ workspaceId, identity: { id: workerId } });
             if (worker === null) throw new Error("The bound worker is absent.");
             replyThreads.push(worker.name, `${workspaceId}#${worker.name}`,
                 ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" }));
+            // {§agui-worker-owner} An address alias for this worker is not a different owner.
+            if (replyThreads.some((threadId) => MessageAddress.owner(principal, threadId) === worker.owner)) address = worker.owner;
         }
         // {§agui-sync} A passive observation claims nothing; an owner's control connection claims as a message Run does.
         // Either presents the gates addressed to its thread ({§agui-proposal-resolve}).
-        const address = MessageAddress.owner(principal, input.threadId);
         const control = forwarded?.control === true || (!synchronize && action === null);
         const owner = control ? address : undefined;
         if (owner !== undefined) {

@@ -218,3 +218,31 @@ test("{§agui-official-client-conformance} ordinary clients observe a tool gate 
     await reopened.runAgent();
     assert.deepEqual(reopened.messages, pending.messages, "the resumed and reconstructed standard conversations agree");
 });
+
+test("{§agui-thread-address} a qualified spelling retains the same principal's pending approval", { timeout: 60_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const policy = process.env.PLURNK_SERVICE_PROPOSALS;
+    process.env.PLURNK_SERVICE_PROPOSALS = "review";
+    t.after(() => {
+        if (policy === undefined) delete process.env.PLURNK_SERVICE_PROPOSALS;
+        else process.env.PLURNK_SERVICE_PROPOSALS = policy;
+    });
+    const { daemon, provider, url } = await host(t, [], { emissions: [
+        "````sh\nprintf 'approved\\n'\n````\n````WAIT\n````",
+        "````SEND [200]\nApproved through the same worker's qualified address.\n````",
+    ] });
+    const original = client(t, url);
+    original.addMessage({ id: "request", role: "user", content: "Run the command." });
+    await original.runAgent();
+    assert.equal(original.pendingInterrupts.length, 1);
+    const [workspace] = await daemon.listWorkspaces();
+    const [worker] = await daemon.listWorkers(workspace.id, { origin: "model" });
+    const qualified = client(t, url, `${workspace.id}#${worker.name}`);
+    await qualified.runAgent();
+    assert.equal((await daemon.readWorker({ workspaceId: workspace.id, identity: { id: worker.id } }))?.owner, worker.owner,
+        "resolving the same conversation does not reassign its owner");
+    assert.equal(qualified.pendingInterrupts.length, 1, "changing only the thread spelling must not hide its pending approval");
+    await qualified.runAgent({ resume: [{ interruptId: qualified.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }] });
+    assert.equal(provider.received.length, 2);
+    assert.equal(conversation(qualified.messages).at(-1)?.content, "Approved through the same worker's qualified address.");
+});

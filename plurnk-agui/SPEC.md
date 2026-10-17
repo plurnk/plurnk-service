@@ -50,6 +50,8 @@ does not recompute them.
   the per-thread worker binding.
   Process-local bindings key on the workspace's identity and the `threadId`; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
+  `workspace.create` selects its `name` literally under the same acquisition rule; a workspace
+  label resembling a qualified thread address is still a label, not an instruction to attach by ID.
   Concurrent first requests acquire one envelope and worker binding. Workspace
   acquisition is serialized across threads, retaining each request's create/attach contract;
   the creating request supplies settings, and other threads attach that workspace. Failed acquisitions retain their cause and leave no failed
@@ -83,7 +85,10 @@ an absent worker may be created only by a worker-creating Run ({§agui-action-bi
 ## §agui-worker-owner Approval ownership
 
 An owner is its thread's address, `agui://<principal>/threads/<encoded threadId>` ({§agui-run-source}),
-scoped by workspace. It is not a socket, a Run, or a worker. `RunAgentInput.tools`
+scoped by workspace. Resolving another thread spelling to the same worker recognizes its retained
+owner only when the principal is identical and the owner's thread is a reference to that worker
+({§agui-thread-address}). It neither rewrites ownership nor grants a different principal or another
+worker's observer its approvals. An owner is not a socket, a Run, or a worker. `RunAgentInput.tools`
 declares the client tools it implements, and `forwardedProps.plurnk.interactive` (a boolean)
 states whether a person attends it; unstated, nobody does. Every AG-UI owner reviews, because a gate
 is answered by a standard interrupt resume ({§agui-proposal-resolve}): the module registers core's
