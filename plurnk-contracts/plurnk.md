@@ -1,13 +1,16 @@
 # Plurnk Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.
+> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line. No tool calls.
 
 ## Syntax
 
 ```exampleOperation (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
 body?
 ```
+
+> [!TIP]
+> You may use more than three backticks in your opening and closing outer fences to wrap, nest, and disambiguate.
 
 ## Core Operations
 
@@ -41,13 +44,13 @@ a decision and its reasons
 the next action and what it needs
 ```
 
-```SEND
+````SEND
 a continuing progress update response
-```
+````
 
-```SEND [200]
+````SEND [200]
 a final deliverable response
-```
+````
 
 > [!CAUTION]
 > The loop continues until all Open Messages receive a `[200]` or `[499]` response and all Open Work is completed.
@@ -69,12 +72,25 @@ Describe the child's complete task in the body.
 | `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
 | none   | literal or glob/extglob     | `?(export )?(async )function *` |
 
+## `<scope|range>`
+
+> [!TIP]
+> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
+
+| form            | endpoint rule                  |
+|-----------------|--------------------------------|
+| `<L>`, `<@hash>` | one line |
+| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
+| `<SL,SC,EL,EC>` | start included, end excluded — `<@abcde,5,@abcde,8>` is `bar` in line 42 `foo bar baz` |
+| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
+| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
+
 ## Workspace Navigation
 
-```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
+```FIND (src/**/*.ts) <1,-1> /TODO/ <!-- paths with matches -->
 ```
 
-```READ (src/**/*.ts) /TODO/ <!-- the matching lines in every file -->
+```READ (src/**/*.ts) <1,-1> /TODO/ <!-- the matching lines in every file -->
 ```
 
 ```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
@@ -88,19 +104,6 @@ Describe the child's complete task in the body.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/OP.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
-
-## `<scope|range>`
-
-> [!TIP]
-> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
-
-| form            | endpoint rule                  |
-|-----------------|--------------------------------|
-| `<L>`, `<@hash>` | one line |
-| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
-| `<SL,SC,EL,EC>` | start included, end excluded — `<@abcde,5,@abcde,8>` is `bar` in line 42 `foo bar baz` |
-| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
-| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
 ## Editing
 
@@ -130,12 +133,6 @@ bar
 
 ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
 ```
-
-````EDIT (edit-example.md)
-```EDIT (create-example.md)
-Nesting can be resolved with increased outer fences.
-```
-````
 
 > [!TIP]
 > YOU SHOULD address lines by `<@hash>` or `<@start,@end>` to protect against stale targets.
