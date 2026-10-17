@@ -14,7 +14,7 @@ export type ProviderErrorKind =
     | "grammar_invalid"
     | "capacity_exceeded"
     | "resource_interrupted"
-    | "output_dropped";
+    | "generation_failed";
 
 const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
@@ -26,7 +26,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "model_refused":
         case "grammar_invalid": return 422;
         case "invalid_response":
-        case "output_dropped": return 502;
+        case "generation_failed": return 502;
         case "deadline_exceeded": return 504;
         case "network_failure":
         case "resource_interrupted": return 503;
@@ -41,7 +41,6 @@ export const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set<
     "network_failure",
     "deadline_exceeded",
     "resource_interrupted",
-    "output_dropped",
 ]);
 
 const buildProblem = (
@@ -63,7 +62,7 @@ const buildProblem = (
         grammar_invalid: "grammar-invalid",
         capacity_exceeded: "capacity-exceeded",
         resource_interrupted: "resource-interrupted",
-        output_dropped: "output-dropped",
+        generation_failed: "generation-failed",
     };
     return Problems.create(source, code[kind], status, message, {
         providerKind: kind,

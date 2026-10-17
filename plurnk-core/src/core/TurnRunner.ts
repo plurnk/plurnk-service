@@ -1618,10 +1618,11 @@ export default class TurnRunner {
         if (capacityFailure) {
             return turnResult(request, recorded.result.status, { capacityHardStop: true, capacityFailure: recorded.result, emissionAttempts });
         }
-        if (err instanceof ProviderError && err.kind === "invalid_response") {
-            // {§engine-rails} Contract Strikes: the provider violated its response
-            // contract. The failure is durable and the turn is complete; the strike
-            // rail — never an instant loop death — rules whether the streak ends it.
+        if (err instanceof ProviderError && (err.kind === "invalid_response" || err.kind === "generation_failed")) {
+            // {§engine-rails} Contract Strikes: the provider violated its response contract, or
+            // ended generation with an error ({§provider-generation-failed}). The failure is durable
+            // and the turn is complete; the strike rail — never an instant loop death — rules whether
+            // the streak ends it.
             return turnResult(request, recorded.result.status, {
                 outcomes: [{ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null }],
                 fingerprint: `provider-contract-violation:${turnId}`,

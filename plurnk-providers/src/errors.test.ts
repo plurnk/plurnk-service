@@ -86,12 +86,13 @@ test("{§provider-retryable-truth} a transport's no-replay directive does not ch
 });
 
 test("{§provider-retryable-truth} retryable is exactly the consumer-recoverable kind set", () => {
-    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "output_dropped"] as const;
+    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "generation_failed"] as const;
     assert.deepEqual(
         kinds.filter((kind) => new ProviderError("provider:test", kind, "fixture").problem.retryable === true),
-        ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted", "output_dropped"],
+        ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"],
     );
-    assert.deepEqual([...RETRYABLE_PROVIDER_KINDS], ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted", "output_dropped"]);
+    assert.deepEqual([...RETRYABLE_PROVIDER_KINDS], ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"]);
+    assert.equal(new ProviderError("provider:test", "generation_failed", "fixture").status, 502, "{§provider-generation-failed} a declared generation error is not re-issued");
 });
 
 test("classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {

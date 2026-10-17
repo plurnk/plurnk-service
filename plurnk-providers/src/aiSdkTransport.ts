@@ -4,7 +4,6 @@ import { APICallError, generateText, streamText, type CallWarning, type JSONValu
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
-import { emitWarningOnce } from "./warnings.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 
 const errorSchema = z.object({
@@ -132,36 +131,18 @@ const wireChargeEvidenceOf = (values: readonly unknown[]): unknown => {
     return undefined;
 };
 
-const finishReasonOf = (reason: string | undefined): ProviderAttemptFinishReason => {
-    switch (reason?.toLowerCase()) {
-        case "stop":
-        case "completed":
-        case "end_turn":
-        case "stop_sequence":
-        case "eos_token":
-            return "stop";
-        case "length":
-        case "max_tokens":
-        case "model_length":
-        case "max_completion_tokens":
-            return "length";
-        case "tool_calls":
-        case "tool_use":
-            return "tool_calls";
-        case "content_filter":
-        case "safety":
-        case "recitation":
-            return "content_filter";
-        case "insufficient_system_resource":
-            return "resource_interrupted";
-        default:
-            if (reason !== undefined && reason.length > 0) {
-                emitWarningOnce(
-                    `unrecognized finish_reason "${reason}"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core's length-cap detection will miss it.`,
-                    "PLURNK_FINISH_REASON_UNKNOWN",
-                );
-            }
-            return null;
+// {§provider-finish-reason} The AI SDK's unified classification is the finish reason; the raw vendor
+// value is evidence beside it. One upstream semantic the SDK folds into `other` stays distinct: an exact
+// `insufficient_system_resource` is a resource interruption ({§provider-interrupted-attempt}).
+const finishReasonOf = (unified: string | undefined, raw: string | undefined): ProviderAttemptFinishReason => {
+    if (raw === "insufficient_system_resource") return "resource_interrupted";
+    switch (unified) {
+        case "stop": return "stop";
+        case "length": return "length";
+        case "tool-calls": return "tool_calls";
+        case "content-filter": return "content_filter";
+        case "error": return "error";
+        default: return null;
     }
 };
 
@@ -441,7 +422,7 @@ const executeModelOnce = async (
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
             wire: wireEmissionOf(values),
-            finishReason: finishReasonOf(rawFinishReason),
+            finishReason: finishReasonOf(result.finishReason, rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
             ...settledUsage(values, result.usage),
             metadata: metadataOf(values),
@@ -502,6 +483,7 @@ const executeModelOnce = async (
         const content = await result.text;
         const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
         const rawFinishReason = await result.rawFinishReason;
+        const unifiedFinishReason = await result.finishReason;
         const [response, providerMetadata, warnings] = await Promise.all([
             result.response,
             result.providerMetadata,
@@ -513,7 +495,7 @@ const executeModelOnce = async (
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
             wire: wireEmissionOf(rawChunks),
-            finishReason: finishReasonOf(rawFinishReason),
+            finishReason: finishReasonOf(unifiedFinishReason, rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
             ...settledUsage(rawChunks, await result.usage),
             metadata: metadataOf(rawChunks),

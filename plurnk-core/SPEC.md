@@ -1391,7 +1391,7 @@ The contracts, and the violation of each that strikes:
 | review contract | none: an eligible final response joins live obligations ({§completion-joins-live-work}) or continues to observe results ({§completion-defers-to-results}) |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
-| provider response contract | the provider returned an invalid response |
+| provider response contract | the provider returned an invalid response, or ended generation with an error ({§provider-generation-failed}) |
 
 Errors and issues are NOT contract violations. Each keeps its own disposition
 and never strikes: exploration misses (404, 416) and unsupported capability

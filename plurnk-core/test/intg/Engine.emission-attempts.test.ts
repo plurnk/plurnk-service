@@ -1185,9 +1185,11 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
 
 class GarbageProvider extends AttemptWitness {
     garbage: number;
-    constructor(garbage: number, responses: ConstructorParameters<typeof AttemptWitness>[0]["responses"]) {
+    readonly #kind: "invalid_response" | "generation_failed";
+    constructor(garbage: number, responses: ConstructorParameters<typeof AttemptWitness>[0]["responses"], kind: "invalid_response" | "generation_failed" = "invalid_response") {
         super({ contextWindow: 100_000, responses });
         this.garbage = garbage;
+        this.#kind = kind;
     }
     override async generate(...args: Parameters<AttemptWitness["generate"]>): ReturnType<AttemptWitness["generate"]> {
         if (this.garbage > 0) {
@@ -1195,11 +1197,52 @@ class GarbageProvider extends AttemptWitness {
             const accounting = { provider: "provider:mock", model: this.model, outcome: "error" as const, cost: { kind: "unknown" as const, reason: "torn frame" } };
             const settle = await args[0].observeRequest?.({ provider: "provider:mock", model: this.model });
             await settle?.(accounting);
-            throw new ProviderError("mock", "invalid_response", "Failed to process successful response", { accounting: [accounting] });
+            throw this.#kind === "invalid_response"
+                ? new ProviderError("mock", "invalid_response", "Failed to process successful response", { accounting: [accounting] })
+                : new ProviderError("mock", "generation_failed", "The provider ended generation with an error (MALFORMED_FUNCTION_CALL).", {
+                    accounting: [accounting], extensions: { stage: "provider-response", finishReason: "error", rawFinishReason: "MALFORMED_FUNCTION_CALL" },
+                });
         }
         return super.generate(...args);
     }
 }
+
+test("{§provider-generation-failed} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new GarbageProvider(1, [
+            { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null } },
+        ], "generation_failed");
+        const started = Date.now();
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.result.status, 200, "one generation error is one strike, never a loop death");
+        assert.equal(result.reason, "external");
+        assert.ok(Date.now() - started < 4_000, "no provider recovery wait: the next turn asks again at once");
+        const problems = await db.test_log_entries_by_worker_op_full.all<{ rx: string }>({ worker_id: workerId, op: "error" });
+        assert.ok(problems.some(({ rx }) => rx.includes("generation-failed") && rx.includes("MALFORMED_FUNCTION_CALL")), "the failed attempt is durable with its raw finish reason");
+    } finally { await db.close(); }
+});
+
+test("{§provider-generation-failed} {§engine-rails} three consecutive generation errors strike out through the rail", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new GarbageProvider(3, [
+            { assistant: { content: "\n````SEND [200]\nnever reached\n````", reasoning: null } },
+        ], "generation_failed");
+        const result = await engine.runLoop({
+            provider, workspaceId, workerId, loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+        assert.equal(result.reason, "strike_threshold");
+        assert.equal(result.result.status, 500);
+        assert.equal(provider.garbage, 0);
+    } finally { await db.close(); }
+});
 
 test("{§engine-rails} Contract Strikes: one invalid provider response strikes; the loop continues", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();

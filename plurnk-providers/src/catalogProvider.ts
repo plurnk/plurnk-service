@@ -278,7 +278,6 @@ export const providerFromSdkModel = ({
             : { additiveReasoningProvider }),
         fetchTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name),
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", name),
-        droppedOutputTokens: parseRequiredInt(env.PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS, "PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS", name),
         effort,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, name),
         ...samplingFromEnv(env, name),

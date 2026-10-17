@@ -1040,22 +1040,19 @@ test("{§provider-inference-admission} a transport ignoring cancellation retains
     assert.equal(calls, 2);
 });
 
-test("generate surfaces and normalizes an out-of-set finish_reason", async () => {
-    const warnings: Array<{ message: string; code?: string }> = [];
-    mock.method(process, "emitWarning", (message: string | Error, options?: string | { code?: string }) => {
-        warnings.push({
-            message: String(message),
-            ...(typeof options === "object" && options.code !== undefined ? { code: options.code } : {}),
-        });
-    });
+test("{§provider-finish-reason} the finish reason is the SDK's classification of the vendor string, with the raw value beside it", async () => {
+    const warnings: string[] = [];
+    mock.method(process, "emitWarning", (message: string | Error) => { warnings.push(String(message)); });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(assistant.finishReason, null);
-    assert.deepEqual(warnings, [{
-        message: 'unrecognized finish_reason "function_call"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core\'s length-cap detection will miss it.',
-        code: "PLURNK_FINISH_REASON_UNKNOWN",
-    }]);
+    const { assistant, assistantRaw } = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(assistant.finishReason, "tool_calls", "the SDK classifies function_call as tool-calls; no second reading of the string");
+    assert.match(JSON.stringify(assistantRaw), /"function_call"/u, "the raw vendor value stays evidence");
+    assert.deepEqual(warnings, [], "a classified finish warns about nothing");
+    installFetch([{ choices: [{ delta: { content: "y" }, finish_reason: "some_vendor_novelty" }] }]);
+    const other = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(other.assistant.finishReason, null, "the SDK's `other` is no signal");
+    assert.deepEqual(warnings, []);
 });
 
 test("#161: a streamed resource interruption is a failed exchange with complete attempt evidence", async () => {
@@ -1135,29 +1132,6 @@ test("#161: a buffered resource interruption preserves the successful wire respo
         },
     );
     assert.equal(calls.length, 1);
-});
-
-test("generate translates a backend cap synonym to canonical length", async () => {
-    // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
-    // "length" so its truncation check (=== "length") is a cross-backend invariant.
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
-    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "MAX_TOKENS" }] }]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(assistant.finishReason, "length");
-});
-
-test("generate translates end_turn to canonical stop", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
-    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "end_turn" }] }]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(assistant.finishReason, "stop");
-});
-
-test("generate translates xAI completed to canonical stop", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
-    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "completed" }] }]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(assistant.finishReason, "stop");
 });
 
 test("generate aggregates reasoning deltas under multiple field names", async () => {
@@ -2940,46 +2914,31 @@ test("{§provider-connectivity} generation does not inherit the discovery/tokeni
     }
 });
 
-// {§provider-output-dropped} Recorded shapes (#853): Fireworks GLM run133 turn 1 ended `tool_calls` with the
+// {§provider-completed-admission} Recorded shapes: Fireworks GLM run133 turn 1 ended `tool_calls` with the
 // operation carried as a native tool-call name; run134 billed 187 output tokens and streamed 115 characters of
 // reasoning and no text; run121 turn 26 billed 7,007 output tokens and streamed a 328-character first sentence
-// over 1,554 characters of reasoning. Granite over OpenRouter bills reasoning inside its text count and must
-// not trip: 8,855 output tokens against 29,123 streamed characters.
-const droppedFetch = (chunks: unknown[]): typeof globalThis.fetch => async () => new Response(sseStream(chunks), { status: 200 });
+// over 1,554 characters of reasoning; Granite over OpenRouter bills reasoning inside its text count (8,855
+// output tokens against 29,123 streamed characters). Every one is admitted as delivered: token counts are
+// accounting, and what a response says is the consumer's to judge.
+const glmFetch = (chunks: unknown[]): typeof globalThis.fetch => async () => new Response(sseStream(chunks), { status: 200 });
 const glmUsage = (completion: number, reasoning: number, prompt = 4138) => ({
     prompt_tokens: prompt,
     completion_tokens: completion,
     total_tokens: prompt + completion,
     completion_tokens_details: { reasoning_tokens: reasoning },
 });
-const droppedGenerate = (chunks: unknown[], droppedOutputTokens = 32) => testProvider({
+const glmGenerate = (chunks: unknown[]) => testProvider({
     ...injectedBase,
     source: "provider:fireworks-ai",
-    droppedOutputTokens,
-    fetch: droppedFetch(chunks),
+    fetch: glmFetch(chunks),
 }).generate({ workerId: "glm", messages: [{ role: "user", content: "task" }] });
-const assertDropped = async (generated: Promise<unknown>, detail: string, facts: Record<string, unknown>) => {
-    await assert.rejects(generated, (error: unknown) => {
-        assert.ok(error instanceof ProviderError);
-        assert.equal(error.kind, "output_dropped");
-        assert.equal(error.status, 502);
-        assert.equal(error.problem.type, "https://problems.plurnk.xyz/provider/fireworks-ai/output-dropped");
-        assert.equal(error.problem.detail, detail);
-        assert.equal(error.problem.retryable, true, "the consumer re-issues the emission");
-        assert.equal(error.problem.stage, "provider-response");
-        for (const [key, value] of Object.entries(facts)) assert.equal(error.problem[key], value, key);
-        assert.ok(error.attempt !== undefined, "the dropped response stays durable evidence");
-        assert.equal(error.accounting.length, 1);
-        return true;
-    });
-};
 
 test("{§provider-native-tool-calls}: a tool_calls finish retains its evidence and warns without provider recovery", async () => {
-    const result = await droppedGenerate([
+    const result = await glmGenerate([
         { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "Look at widgets.py Media merge logic." }, finish_reason: null }] },
         { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "chatcmpl-tool-af6fe7b410a1d7c5", type: "function", function: { name: "READ (django/forms/widgets.py) /def merge/<tool_call>READ (django/forms/widgets.py) /MediaOrderConflictWarning/</arg_value>", arguments: "{}" } }] }, finish_reason: null }] },
         { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage: glmUsage(39, 8) },
-    ], 0);
+    ]);
     assert.equal(result.assistant.finishReason, "tool_calls");
     assert.equal(result.assistant.content, "");
     assert.equal(result.accounting.length, 1);
@@ -3001,8 +2960,8 @@ for (const streaming of [true, false]) {
                 { choices: [{ index: 0, delta: { content, tool_calls: [{ index: 0, ...tool }] } }] },
                 { choices: [{ index: 0, delta: {}, finish_reason: finish }], usage },
             ];
-            const result = await testProvider({ ...injectedBase, streaming, droppedOutputTokens: 32,
-                fetch: streaming ? droppedFetch(chunks) : async () => new Response(JSON.stringify({
+            const result = await testProvider({ ...injectedBase, streaming,
+                fetch: streaming ? glmFetch(chunks) : async () => new Response(JSON.stringify({
                     model: "fixture", choices: [{ index: 0, message, finish_reason: finish }], usage,
                 }), { headers: { "content-type": "application/json" } }),
             }).generate({ workerId: "fixture", messages: [{ role: "user", content: "Read the fact." }] });
@@ -3016,54 +2975,104 @@ for (const streaming of [true, false]) {
     }
 }
 
-test("{§provider-output-dropped} run134: 187 billed output tokens against 115 streamed characters and no text is output_dropped", async () => {
-    const reasoning = "Find the WCS wrapper that returns empty arrays for empty inputs instead of raising in transform.".padEnd(115, ".");
-    assert.equal([...reasoning].length, 115);
-    await assertDropped(droppedGenerate([
-        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: reasoning }, finish_reason: null }] },
+test("{§provider-completed-admission} billed output tokens never void a completed response: the recorded GLM and Granite shapes are admitted as delivered", async () => {
+    const reasoning134 = "Find the WCS wrapper that returns empty arrays for empty inputs instead of raising in transform.".padEnd(115, ".");
+    const run134 = await glmGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: reasoning134 }, finish_reason: null }] },
         { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(187, 29, 4454) },
-    ]), "The provider billed 187 output tokens but streamed 115 characters of text and reasoning; at least 72 tokens of output never arrived.", { billedOutputTokens: 187, streamedCharacters: 115, droppedOutputTokens: 32, finishReason: "stop" });
-});
+    ]);
+    assert.equal(run134.assistant.content, "", "no text streamed is an empty completion, the consumer's to judge");
+    assert.equal(run134.assistant.reasoning, reasoning134);
+    assert.equal(run134.assistant.finishReason, "stop");
+    assert.deepEqual(run134.accounting[0]?.usage?.outputTokens, 187, "the billed count is accounting, retained whole");
 
-test("{§provider-output-dropped} run121: a first sentence under 7,007 billed output tokens is output_dropped", async () => {
-    const reasoning = "r".repeat(1554);
-    const sentence = "I need to reassess: the current working tree has only a comment in `resolvers.py` (no functional change), the regression test still expects `Resolver404`, and the end-to-end check showed raw `Http404` — so the fix is not in place. I must apply the actual change and re-run both checks before declaring anything done here.".padEnd(328, ".");
-    assert.equal([...sentence].length, 328);
-    await assertDropped(droppedGenerate([
-        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: reasoning }, finish_reason: null }] },
+    const sentence = "I need to reassess: the fix is not in place.".padEnd(328, ".");
+    const run121 = await glmGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "r".repeat(1554) }, finish_reason: null }] },
         { choices: [{ index: 0, delta: { content: sentence }, finish_reason: null }] },
         { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(7007, 393, 40354) },
-    ]), "The provider billed 7007 output tokens but streamed 1882 characters of text and reasoning; at least 5125 tokens of output never arrived.", { billedOutputTokens: 7007, streamedCharacters: 1882 });
-});
+    ]);
+    assert.equal(run121.assistant.content, sentence, "a short text under a large bill is the text the provider sent");
 
-test("{§provider-output-dropped} granite: reasoning billed inside the text count is not a drop when the characters account for the output", async () => {
     const content = "```\n````EDIT (Engine.ts) <452,453>\n    // worker has none.\n````\n```";
-    const admitted = await droppedGenerate([
+    const granite = await glmGenerate([
         { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "t".repeat(28921) }, finish_reason: null }] },
         { choices: [{ index: 0, delta: { content }, finish_reason: "stop" }], usage: glmUsage(8855, 7422, 23050) },
     ]);
-    assert.equal(admitted.assistant.content, content, "8,855 tokens over 28,921 + 66 characters is an ordinary response");
-});
+    assert.equal(granite.assistant.content, content);
 
-test("{§provider-output-dropped} hidden reasoning is exempt: billed reasoning tokens streamed in no channel do not count as dropped output", async () => {
-    const content = "```READ (django/forms/widgets.py) /class Media/\n```";
-    const admitted = await droppedGenerate([
+    const hidden = await glmGenerate([
         { choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: "stop" }], usage: glmUsage(2000, 1950) },
     ]);
-    assert.equal(admitted.assistant.content, content);
-    assert.equal(admitted.assistant.reasoning, null);
+    assert.equal(hidden.assistant.content, content, "hidden reasoning billed in no channel is not missing text");
+    assert.equal(hidden.assistant.reasoning, null);
 });
 
-test("{§provider-output-dropped} the margin is the knob: 31 unmatched tokens are admitted at 32, and 0 turns the token rule off", async () => {
-    const content = "```READ (django/forms/widgets.py) /class Media/\n```";
-    const within = await droppedGenerate([
-        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] },
-        { choices: [{ index: 0, delta: { content }, finish_reason: "stop" }], usage: glmUsage([...content].length + 8 + 31, 7) },
-    ]);
-    assert.equal(within.assistant.content, content);
-    const off = await droppedGenerate([
-        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] },
-        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(187, 29) },
-    ], 0);
-    assert.equal(off.assistant.content, "");
+// Google reports thoughts as billed tokens (`thoughtsTokenCount`) and, when asked, returns a summary of
+// them, never the full text (ai.google.dev/gemini-api/docs/generate-content/thinking#summaries).
+const googleModel = async (model: string) => {
+    const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+    return createGoogleGenerativeAI({ apiKey: "fixture", baseURL: "https://example.test/v1beta" })(model);
+};
+const googleCompletion = (parts: unknown[], finishReason: string) => ({
+    candidates: [{ content: { role: "model", parts }, finishReason, index: 0 }],
+    usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 500, totalTokenCount: 620 },
 });
+const installGoogleStream = (payloads: unknown[]) => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        const lines = payloads.map((payload) => `data: ${JSON.stringify(payload)}`).join("\n\n") + "\n\n";
+        return new Response(new ReadableStream({
+            start(controller) { controller.enqueue(new TextEncoder().encode(lines)); controller.close(); },
+        }), { status: 200, headers: { "content-type": "text/event-stream" } });
+    });
+    return calls;
+};
+const answer = "```SEND [200]\nThe total is 42.\n```";
+
+for (const streaming of [false, true]) {
+    for (const [reasoning, parts] of [
+        ["absent", [{ text: answer }]],
+        ["summarized", [{ thought: true, text: "I checked the arithmetic." }, { text: answer }]],
+        ["verbatim", [{ thought: true, text: "Let me add 40 and 2. ".repeat(40) }, { text: answer }]],
+    ] as const) {
+        test(`{§provider-completed-admission} streaming=${streaming}: a completed Google answer with ${reasoning} thoughts is admitted, billed thoughts and all`, async () => {
+            const completion = googleCompletion([...parts], "STOP");
+            const calls = streaming ? installGoogleStream([completion]) : installFetchJson(completion);
+            const result = await testProvider({
+                model: "gemini-fixture", languageModel: await googleModel("gemini-fixture"), fetchTimeoutMs: 5000,
+                temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming,
+            }).generate({ workerId: "g", messages: [{ role: "user", content: "add" }] });
+            assert.equal(calls.length, 1, "one request, no retry");
+            assert.equal(result.assistant.content, answer);
+            assert.equal(result.assistant.finishReason, "stop");
+            assert.equal(result.assistant.reasoning, reasoning === "absent" ? null : parts[0]!.text);
+            assert.equal(result.accounting[0]?.usage?.outputTokens, 520, "billed thoughts stay in the output count");
+            assert.equal(result.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 500);
+        });
+    }
+
+    test(`{§provider-generation-failed} streaming=${streaming}: Google's MALFORMED_FUNCTION_CALL is the SDK's error finish — a failed attempt with its evidence, not an outage`, async () => {
+        const completion = googleCompletion([{ text: "partial" }], "MALFORMED_FUNCTION_CALL");
+        const calls = streaming ? installGoogleStream([completion]) : installFetchJson(completion);
+        await assert.rejects(testProvider({
+            model: "gemini-fixture", languageModel: await googleModel("gemini-fixture"), fetchTimeoutMs: 5000,
+            temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming,
+        }).generate({ workerId: "g", messages: [{ role: "user", content: "add" }] }), (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "generation_failed");
+            assert.equal(error.status, 502);
+            assert.equal(error.problem.retryable, false, "not re-issued by provider recovery");
+            assert.equal(error.problem.stage, "provider-response");
+            assert.equal(error.problem.finishReason, "error");
+            assert.equal(error.problem.rawFinishReason, "MALFORMED_FUNCTION_CALL");
+            assert.equal(error.attempt?.assistant.content, "partial", "the attempt keeps its content");
+            assert.equal(error.attempt?.assistant.finishReason, "error");
+            assert.equal(error.accounting.length, 1, "accounting is retained");
+            assert.equal(error.accounting[0]?.usage?.outputTokens, 520);
+            return true;
+        });
+        assert.equal(calls.length, 1);
+    });
+}

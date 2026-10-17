@@ -80,7 +80,6 @@ export type AiSdkProviderConfig = {
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
-    droppedOutputTokens?: number;             // {§provider-output-dropped} billed output tokens beyond streamed characters that void a response; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
@@ -277,7 +276,6 @@ export default class AiSdkProvider implements Provider {
     #languageModel: LanguageModelSource | undefined;
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
-    #droppedOutputTokens: number;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
     #hasApiKey = false;
@@ -351,7 +349,6 @@ export default class AiSdkProvider implements Provider {
         }
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#operationTimeoutMs = config.operationTimeoutMs;
-        this.#droppedOutputTokens = config.droppedOutputTokens ?? 0;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
@@ -955,8 +952,6 @@ export default class AiSdkProvider implements Provider {
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
         const grammarInput = raw.content;
-        // {§provider-output-dropped} — what the wire carried, every channel, before projection moves any of it.
-        const streamedCharacters = [...raw.content].length + [...raw.reasoning].length;
         const projectedReasoning = LeadingReasoning.project(raw.content, raw.reasoning,
             preserveGrammarSentence && !raw.reasoningProjected ? LeadingReasoning.TEMPLATE
                 : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : []);
@@ -1114,6 +1109,28 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
+        // {§provider-generation-failed} The SDK classified the finish as an error: the attempt failed with
+        // its evidence, and nothing here is a completed exchange or a transport outage.
+        if (raw.finishReason === "error") {
+            const attempt: ProviderResponse<"error"> = {
+                assistant: { ...assistant, finishReason: raw.finishReason },
+                ...evidence,
+            };
+            throw new ProviderError(
+                this.#source,
+                "generation_failed",
+                `The provider ended generation with an error${raw.rawFinishReason === undefined ? "" : ` (${raw.rawFinishReason})`}.`,
+                {
+                    attempt,
+                    accounting,
+                    extensions: {
+                        stage: "provider-response",
+                        finishReason: "error",
+                        ...(raw.rawFinishReason === undefined ? {} : { rawFinishReason: raw.rawFinishReason }),
+                    },
+                },
+            );
+        }
         if (raw.finishReason === "resource_interrupted") {
             const attempt: ProviderResponse<"resource_interrupted"> = {
                 assistant: { ...assistant, finishReason: raw.finishReason },
@@ -1136,47 +1153,10 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
-        // {§provider-native-tool-calls} Structured output is not missing text.
-        const dropped = nativeCalls ? null : this.#droppedOutput(raw, streamedCharacters);
-        if (dropped !== null) {
-            const attempt: ProviderAttempt = {
-                assistant: { ...assistant, finishReason: raw.finishReason },
-                ...evidence,
-            };
-            throw new ProviderError(this.#source, "output_dropped", dropped.message, {
-                attempt,
-                accounting,
-                extensions: {
-                    stage: "provider-response",
-                    finishReason: raw.finishReason,
-                    ...(raw.rawFinishReason === undefined ? {} : { rawFinishReason: raw.rawFinishReason }),
-                    ...dropped.facts,
-                },
-            });
-        }
         return {
             assistant: { ...assistant, finishReason: raw.finishReason },
             ...evidence,
         };
     }
 
-    // {§provider-output-dropped} A completed exchange whose own evidence proves its output never arrived:
-    // billed output tokens exceeding every streamed character (text and reasoning together) by the
-    // configured margin — an output token decodes
-    // to at least one character. Reasoning billed but streamed nowhere is hidden reasoning, not a drop.
-    #droppedOutput(
-        raw: { usage?: ProviderUsage; reasoning: string },
-        streamedCharacters: number,
-    ): { message: string; facts: Record<string, number> } | null {
-        const billedOutputTokens = raw.usage?.outputTokens;
-        if (this.#droppedOutputTokens === 0 || billedOutputTokens === undefined) return null;
-        const billedReasoningTokens = raw.usage?.outputTokenDetails?.reasoningTokens ?? 0;
-        if (billedReasoningTokens > 0 && raw.reasoning.length === 0) return null;
-        const missing = billedOutputTokens - streamedCharacters;
-        if (missing < this.#droppedOutputTokens) return null;
-        return {
-            message: `The provider billed ${billedOutputTokens} output tokens but streamed ${streamedCharacters} characters of text and reasoning; at least ${missing} tokens of output never arrived.`,
-            facts: { billedOutputTokens, streamedCharacters, droppedOutputTokens: this.#droppedOutputTokens },
-        };
-    }
 }

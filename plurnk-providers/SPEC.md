@@ -258,10 +258,15 @@ cacheReadTokens, cacheWriteTokens ⊆ inputTokens
 reasoningTokens ⊆ outputTokens
 ```
 
-Unknown fields remain absent. Ordinary vendor finish reasons normalize to
-`stop`, `length`, `tool_calls`, or `content_filter`; an unknown value becomes
-`null` and emits a warning. `resource_interrupted` is the distinct failed-attempt
-disposition defined by {§provider-interrupted-attempt}.
+Unknown fields remain absent.
+
+§provider-finish-reason **The finish reason is the AI SDK's unified classification**, never a
+second reading of the vendor's string: `stop`, `length`,
+`tool-calls` → `tool_calls`, `content-filter` → `content_filter`; `error` fails the attempt
+({§provider-generation-failed}); `other` is `null`. The raw vendor value rides beside it as
+`rawFinishReason`. One upstream semantic the SDK folds into `other` stays distinct: the exact
+`insufficient_system_resource` is `resource_interrupted`, the failed-attempt disposition defined by
+{§provider-interrupted-attempt}.
 
 ### Tagged reasoning responses
 
@@ -764,7 +769,7 @@ normal value. Retry exhaustion is preserved as `attempts` and
 §provider-retryable-truth **`retryable` states what happens next.** A Problem's
 `retryable` is exactly membership of its kind in the exported
 `RETRYABLE_PROVIDER_KINDS` — `rate_limit`, `network_failure`, `deadline_exceeded`,
-`resource_interrupted`, `output_dropped` — and Core's provider recovery re-issues
+`resource_interrupted` — and Core's provider recovery re-issues
 exactly those kinds by reading the same set. It never copies the transport's own
 retry policy: a 502 or 524 that the transport will not replay is still re-issued by
 the consumer, so it reports `retryable: true`. Every other kind reports `false`.
@@ -890,22 +895,14 @@ transport failure and does not trigger provider recovery. The adapter executes
 no call and invents no textual operation; the consumer owns admission and
 no-operation handling. The normalized assistant exposes `nativeToolCalls: true`
 when either wire calls or a `tool_calls` finish is present, independently of the
-preserved finish reason; consumers need not mine wire evidence. Text-only missing-output checks do not apply because
-the billed output includes structured calls.
+preserved finish reason; consumers need not mine wire evidence.
 
-§provider-output-dropped **A completed exchange whose own evidence proves its
-text never arrived is `output_dropped`**, a 502 carrying the complete response as
-`error.attempt` and `stage: "provider-response"`; it is never admitted as an empty or
-truncated turn, and the consumer re-issues it ({§provider-retryable-truth}):
-
-| Evidence | Detail | Facts |
-| --- | --- | --- |
-| Billed output tokens exceed the code points streamed across every channel — text and reasoning, before projection — by at least `PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS` (`0` disables; an output token decodes to at least one character) | `The provider billed T output tokens but streamed C characters of text and reasoning; at least T−C tokens of output never arrived.` | `billedOutputTokens`, `streamedCharacters`, `droppedOutputTokens` |
-
-The token rule needs a billed output count, and it does not apply when the response bills
-reasoning tokens but streamed no reasoning in any channel: that is hidden or summarized
-reasoning, which the characters cannot account for. Text-only comparisons are not made —
-a route may bill reasoning inside its text count.
+§provider-completed-admission **A completed exchange is admitted as the provider delivered it.**
+Billed output tokens are accounting, never evidence of missing text: a provider may bill hidden or
+summarized reasoning, bill reasoning inside its text count, or tokenize differently from what it
+streams, so no comparison of token counts with streamed characters voids a response. What the
+provider reports as its finish ({§provider-finish-reason}) decides the attempt's disposition; what
+the response says is the consumer's to judge ({§emission-admission}).
 
 §provider-request-rejection An HTTP 4xx rejection not classified as authorization,
 quota, capacity, grammar, rate limit, or transient transport failure is
@@ -928,6 +925,16 @@ completed exchange.
 | Automatic replay           | None inside the provider; AI SDK retry scheduling has already completed. The Problem has `retryable: true`: the consumer re-issues it ({§provider-retryable-truth}). |
 | Capacity-pool overflow     | None under the existing routing policy; when other overflow-eligible failures do reach a sibling, the pool concatenates their request accounting. |
 | Consumer admission         | Persist the evidence as an unaccepted attempt; never parse it into executable work, even when its frame looks complete.      |
+
+### §provider-generation-failed Provider-declared generation error
+
+A finish the SDK classifies as `error` (Google's `MALFORMED_FUNCTION_CALL`, for one) is a failed
+attempt, `ProviderError(kind="generation_failed")` at local status 502 with the normalized attempt
+on `error.attempt` and its accounting on `error.accounting`: content, reasoning, usage, model, the
+raw finish reason and any raw body stay evidence, never a completed exchange. It is not a transport
+outage: `retryable: false`, so the consumer's provider recovery does not re-issue it; Core settles
+it on the provider response contract — the turn is complete, the strike rail rules, and the next
+turn asks again ({§provider-retryable-truth}).
 
 ## §10 Grammar
 
