@@ -2635,7 +2635,7 @@ Eligible programs supply {§emission-history}; every source remains readable reg
 | Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of the admitted content statements, each whole in a closed fence, text beside them as the NOTEs it became ({§outside-text}). All heading operands, scopes, metadata, patterns and asides remain. Unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
 | Wire | The record appears in the log; its complete program supplies the readback projection in {§emission-history}. The frozen body and immutable `ops://` source keep every operation and body ({§turn-source-resources}); an explicit READ returns them. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
-| Presentation | Born folded: its log record shows its header. Individual operations replay beside their receipts under {§emission-history}; NOTE has its ordinary receipt coordinate, not a legend entry. |
+| Presentation | Born folded: its log record shows its header. Its operations replay together before their receipts under {§emission-history}; NOTE has its ordinary receipt coordinate, not a legend entry. |
 | Accounting | The row's `tokens` charges only its own record. Each operation's first surviving receipt owns its replay charge ({§paired-receipt}). An explicit source READ has its own ordinary charge. |
 | Curation | Curated whole ({§log-kill-scope}): an unscoped KILL retires it. A line scope on its exact coordinate is 422 `emission-curated-whole`, whose recovery names the unscoped KILL; a sweep whose scope would only trim it leaves it intact. |
 | Schema | Migration 12 admits `kind="emission"` only on this shape: one per turn, the turn's newest row when written, frozen, and curated whole; it backfills no announcement for earlier turns. FORK copies it with the inherited turns, still naming its writer. |
@@ -5483,12 +5483,12 @@ adjacent nonempty sections of the same remaining role form one message. With an 
 | Message | Role | Content |
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
-| 2 | `user` | initial retained log records through the first selected emission record |
-| 3… | alternating `assistant`, `user` | each selected complete content program, then the following log records through the next selected emission record; native parts remain beside their READ records ({§packet-attachment-parts}) |
+| 2 | `user` | initial retained log records, up to the first replayed turn's first surviving receipt |
+| 3… | alternating `assistant`, `user` | a replayed turn's operations, then that turn's receipts and the records that follow, up to the next replayed turn; native parts remain beside their READ records ({§packet-attachment-parts}) |
 | last | `user` | remaining log records and the current-status footer, from Worker through Open Messages and optional Recap |
 
 Without selected programs, the log and footer coalesce into one user message: system + user.
-Each program follows its own emission record and precedes its subsequent results.
+Each turn's operations precede its first surviving receipt.
 Log records retain their order; interpolation never groups or relocates their bodies.
 Stored sections retain their original roles and order: reading evidence
 never converts an earlier request into a different envelope.
@@ -5496,7 +5496,7 @@ never converts an earlier request into a different envelope.
 The digest's packet artifacts record the sections, and `.wire.json` reconstructs their text-message
 envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 
-### §emission-history Operations beside their results
+### §emission-history A turn's operations, then its results
 
 | Concern | Contract |
 |---|---|
@@ -5505,8 +5505,8 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 | Eligibility | An admitted content program with no syntax errors and an active emission row. Rejected attempts, syntactically partial emissions, empty or reasoning-only turns, initialization and other loops supply none. Runtime failures do not disqualify an admitted program. |
 | Vocabulary | Executor identities come from that turn's admitted operation evidence ({§packet-stored-shape}), not the current registry. Disabling or removing a runtime never changes its admitted history. |
 | Association | Each dispatched content operation records its ordinal in the turn's frozen canonical program. Resource fan-out retains that ordinal on every concrete receipt. Reasoning operations, arrivals and runtime observations have no content ordinal. Never infer association from matching bodies, paths, or row proximity; older rows without this provenance remain self-describing. |
-| Content | Replay the associated canonical operation, including its complete body, in one closed fence. No placeholders, body redaction, preview, or inspection of body text for nested operations. A log-curation KILL's distilled body belongs to its independent NOTE, not to its replay. Reasoning operations remain in their own source and receipts. |
-| Placement | Put one assistant operation immediately before its first surviving receipt; its fan-out receipts follow together in the user role. Preserve receipt chronology and concrete fan-out targets. No history is collected at the end. `none` adds no assistant section; filtering never makes `latest` fall back. |
+| Content | Replay each associated canonical operation, including its complete body, in its own closed fence; a turn's fences are separated by one blank line. No placeholders, body redaction, preview, or inspection of body text for nested operations. A log-curation KILL's distilled body belongs to its independent NOTE, not to its replay. Reasoning operations remain in their own source and receipts. |
+| Placement | Put one assistant message holding the turn's surviving operations, in program order, immediately before the turn's first surviving receipt; that turn's receipts, fan-out included, and the records between them follow together in the user role, so the model sees each past response as the batch it wrote. Preserve receipt chronology and concrete fan-out targets. No history is collected at the end. `none` adds no assistant section; filtering never makes `latest` fall back. |
 | Curation | A retired operation row loses its replay; retiring one fan-out receipt leaves the operation with its surviving receipts. A body-trimmed authored row is not replayed: its ordinary receipt shows the remaining body. Retiring the emission row removes that turn's replay, not its operation results or immutable source. No legend or separate NOTE-curation path exists. |
 | Authority | Core assembles these chronological sections before the trusted whole-list transform ({§packet-extension-transform}); this is presentation of admitted work, not additional execution or inference. |
 | Capacity | At the hard context wall, omit the selected history whole before suppressing result bodies or native parts ({§context-own-rows-fit}). Unpaired receipts regain their ordinary request facts and authored bodies. Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet changes. |
