@@ -47,8 +47,8 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 | `ignored` | `` not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot `` |
 | `absent` | `` absent — no such file under the project root `` |
 
-- **Untracked, scope `root` or `namespace`**: a definition makes it a member
-  from the next turn.
+- **Untracked, scope `root` or `namespace`**: an accepted `add` makes it a member
+  before the next operation.
 
   ```members (add) <!-- include the generated reports; each glob is one definition -->
   {"files": ["build/*.json"]}
