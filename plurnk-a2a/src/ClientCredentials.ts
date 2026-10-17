@@ -22,8 +22,8 @@ export default class ClientCredentials {
     }
 
     /** Obtains the first token now, so a refusal is a preparation outcome rather than a mid-request surprise. */
-    async prime(): Promise<void> {
-        await this.#access();
+    async prime(signal?: AbortSignal): Promise<void> {
+        await this.#access(signal);
     }
 
     /** The SDK's authentication handler face ({@link createAuthenticatingFetchWithRetry}). */
@@ -41,27 +41,31 @@ export default class ClientCredentials {
         };
     }
 
-    async #access(): Promise<string> {
+    async #access(signal?: AbortSignal): Promise<string> {
+        signal?.throwIfAborted();
         if (this.#token !== null) return this.#token;
-        this.#acquiring ??= this.#acquire().finally(() => { this.#acquiring = null; });
+        this.#acquiring ??= this.#acquire(signal).finally(() => { this.#acquiring = null; });
         return this.#acquiring;
     }
 
-    async #acquire(): Promise<string> {
+    async #acquire(signal?: AbortSignal): Promise<string> {
         const { tokenUrl, clientId, clientSecret, scope, refuse, fetchImpl = fetch } = this.#options;
         const body = new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret });
         if (scope.length > 0) body.set("scope", scope);
         let response: Response;
         try {
             response = await fetchImpl(tokenUrl, {
+                signal,
                 method: "POST",
                 headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
                 body: body.toString(),
             });
         } catch (cause) {
+            signal?.throwIfAborted();
             throw refuse(cause instanceof Error ? cause.message : String(cause));
         }
         const answer = await response.json().catch(() => null) as { access_token?: unknown; error?: unknown; error_description?: unknown } | null;
+        signal?.throwIfAborted();
         if (!response.ok || answer === null || typeof answer.access_token !== "string" || answer.access_token.length === 0) {
             const error = typeof answer?.error === "string" ? answer.error : String(response.status);
             const description = typeof answer?.error_description === "string" ? answer.error_description : "";

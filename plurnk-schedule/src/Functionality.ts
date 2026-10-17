@@ -168,6 +168,7 @@ export default class ScheduleFunctionality {
     }
 
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+        preparation.signal.throwIfAborted();
         const { workspaceId } = preparation;
         const previous = preparation.previous as Snapshot | null;
         let admission: { alias: string; at: number } | undefined;

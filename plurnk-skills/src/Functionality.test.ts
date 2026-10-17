@@ -7,6 +7,36 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SkillsFunctionality, { serviceSkills } from "./Functionality.ts";
 import { SkillsActionError } from "./problems.ts";
+import SkillSource from "./SkillSource.ts";
+
+test("{§functionality-preparation-cancellation} skill staging cleanup preserves the cancellation it follows", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skill-stop-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const lifetime = new AbortController();
+    const reason = new DOMException("fixture stopping", "AbortError");
+    const cleanup = new Error("fixture staging cleanup failed");
+    const family = new SkillsFunctionality({
+        workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots: [] }),
+        readWorkspacePlugins: async () => ({ plugins: [], reports: [], roots: {}, signature: "empty" }),
+        readProvidedSkills: async () => new Map(),
+        workspaceStateDirectory: async () => root,
+        operatorEnvironment: () => ({}),
+    });
+    t.mock.method(SkillSource.prototype, "open", async () => {
+        lifetime.abort(reason);
+        return { skills: [], invalid: [], close: async () => { throw cleanup; } };
+    });
+    await assert.rejects(family.prepare({
+        signal: lifetime.signal, workspaceId: 1,
+        enabled: new Map([["review", { definition: { name: "review", source: "https://forge.example/skills.git" } }]]),
+        previous: null, failure: "publish-unavailable", admissions: [], progress: () => {}, retain: () => () => {},
+    }), (cause) => {
+        assert.ok(cause instanceof SuppressedError, String(cause));
+        assert.equal(cause.suppressed, reason);
+        assert.equal(cause.error, cleanup);
+        return true;
+    });
+});
 
 test("{§module-workspace-paths} skills use the host's opaque source scopes and precedence without private services", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-seam-"));
@@ -56,6 +86,7 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
         operatorEnvironment: () => ({}),
     });
     const prepare = (source: string, previous: unknown | null, failure: "reject" | "publish-unavailable") => family.prepare({
+        signal: new AbortController().signal,
         workspaceId: 1, enabled: new Map([["review", { definition: { name: "review", source } }]]),
         previous, failure, admissions: [], progress: () => {}, retain: () => () => {},
     });

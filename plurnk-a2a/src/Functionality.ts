@@ -238,7 +238,8 @@ export default class A2aFunctionality {
         return { alias, definition };
     }
 
-    async #attach(alias: string, definition: A2aAgentDefinition): Promise<Attachment> {
+    async #attach(alias: string, definition: A2aAgentDefinition, signal: AbortSignal): Promise<Attachment> {
+        signal.throwIfAborted();
         const headers: Record<string, string> = {};
         for (const [name, value] of Object.entries(definition.headers ?? {})) {
             headers[name] = resolveReference(value, this.#env, alias, `headers.${name}`);
@@ -248,8 +249,12 @@ export default class A2aFunctionality {
         }
         let card: AgentCard;
         try {
-            card = await discoverAgentCard(definition.url, definition.cardPath, { headers });
+            card = await discoverAgentCard(definition.url, definition.cardPath, {
+                headers,
+                fetchImpl: (input, init) => fetch(input, { ...init, signal }),
+            });
         } catch (cause) {
+            signal.throwIfAborted();
             throw failure("card-unreachable", 502, "Agent Card discovery failed for the A2A agent.", {
                 agent: alias,
                 url: definition.url,
@@ -257,6 +262,7 @@ export default class A2aFunctionality {
                 retryable: true,
             }, cause);
         }
+        signal.throwIfAborted();
         // {§a2a-outbound-credentials} — client credentials at the agent's token endpoint, the card's
         // declared flow unless the definition names one; the card itself was discovered without them.
         let fetchImpl: typeof fetch | undefined;
@@ -277,10 +283,11 @@ export default class A2aFunctionality {
                     agent: alias, tokenUrl: endpoint, diagnostic: ErrorDetail.preview(diagnostic), retryable: true,
                 }),
             });
-            await credentials.prime();
+            await credentials.prime(signal);
             fetchImpl = createAuthenticatingFetchWithRetry(fetch, credentials.handler);
         }
         let client: Client;
+        signal.throwIfAborted();
         try {
             client = await connectHttpJsonAgentFromCard(card, { headers, ...(fetchImpl === undefined ? {} : { fetchImpl }) });
         } catch (cause) {
@@ -296,11 +303,13 @@ export default class A2aFunctionality {
     }
 
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+        preparation.signal.throwIfAborted();
         const previous = preparation.previous as Snapshot | null;
         const attachments = new Map<string, Attachment>();
         const unavailable = new Map<string, { definition: A2aAgentDefinition; problem: ProblemDetails }>();
         const outcomes = new Map<string, FunctionalityOutcome>();
         for (const [alias, { definition: raw }] of preparation.enabled) {
+            preparation.signal.throwIfAborted();
             preparation.progress([alias]);
             const definition = raw as A2aAgentDefinition;
             const kept = previous?.attachments.get(alias);
@@ -310,7 +319,7 @@ export default class A2aFunctionality {
                 const carried = previous?.unavailable.get(alias);
                 const fresh = carried === undefined || !sameDefinition(carried.definition, definition) || preparation.force === alias;
                 try {
-                    attachments.set(alias, await this.#attach(alias, definition));
+                    attachments.set(alias, await this.#attach(alias, definition, preparation.signal));
                 } catch (cause) {
                     if (!(cause instanceof A2aFunctionalityError)) throw cause;
                     if (preparation.failure === "reject" && fresh) throw cause;

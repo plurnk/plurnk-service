@@ -63,8 +63,10 @@ export default class WorkspaceResidency {
     }
 
     get published(): boolean { return this.#published; }
+    get signal(): AbortSignal { return this.#capabilities.signal; }
     publish(): void { this.#published = true; }
     beginStop(): void { this.#capabilities.beginStop(); }
+    settle(): Promise<void> { return this.#capabilities.settle(); }
     activeWorkspaceIds(): number[] { return this.#capabilities.activeWorkspaceIds(); }
     isActive(workspaceId: number): boolean { return this.#capabilities.isActive(workspaceId); }
     retain(workspaceId: number): WorkspaceCapabilityRelease { return this.#capabilities.retain(workspaceId); }
@@ -89,15 +91,20 @@ export default class WorkspaceResidency {
     }
 
     async acquire(workspaceId: number): Promise<WorkspaceCapabilityRelease> {
-        const identity = await this.identity(workspaceId);
-        return this.#capabilities.acquire(identity.workspaceId);
+        // Admission precedes the first database read; validation is part of the owned activation.
+        return this.#capabilities.acquire(ClientInput.assertId("workspace Functionality", "workspaceId", workspaceId));
     }
 
     async #activate(workspaceId: number): Promise<void> {
+        this.signal.throwIfAborted();
         const identity = await this.identity(workspaceId);
         try {
             const context = { ...identity, retain: () => this.#capabilities.retain(workspaceId) };
-            for (const provider of this.#providers.values()) await provider.activate(context);
+            for (const provider of this.#providers.values()) {
+                this.signal.throwIfAborted();
+                await provider.activate(context);
+            }
+            this.signal.throwIfAborted();
             await this.#rematerialize(workspaceId);
         } catch (cause) {
             try {

@@ -136,6 +136,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     // there is no snapshot to tear down. The environment is read at the spawn that uses it
     // ({§exec-env-scoped}), never held resident — which is why this family publishes no runtimes.
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+        preparation.signal.throwIfAborted();
         const outcomes = new Map([...preparation.enabled.keys()].map((alias) => [alias, { state: "active" as const }]));
         return {
             documents: [], outcomes, snapshot: null,

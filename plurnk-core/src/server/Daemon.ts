@@ -259,6 +259,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§functionality-coordinator} — the one owner above every family
         // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
+            signal: this.#residency.signal,
             registerModuleAction: (registration) => this.registerModuleAction(registration),
             registerWorkspaceCapabilityProvider: (owner, provider) => this.registerWorkspaceCapabilityProvider(owner, provider),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
@@ -2024,6 +2025,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const clientResult = await shutdown.settle("client operations idle", async () => {
             await Promise.all([...this.#clientLoops.values()].map(({ settled }) => settled));
         });
+        const residencyResult = await shutdown.settle("workspace Functionality transitions", () => this.#residency.settle());
         // A boundary publication queued behind the last turn settles before
         // modules close and before the DB goes away ({§functionality-publication}).
         const functionalityResult = await shutdown.settle("functionality publications", () => this.#functionality.settle());
@@ -2047,6 +2049,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const closeErrors = [
             moduleStopResult,
             moduleCloseResult,
+            residencyResult,
             functionalityResult,
             drainResult,
             clientResult,

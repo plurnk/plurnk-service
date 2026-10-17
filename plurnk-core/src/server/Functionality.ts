@@ -27,6 +27,7 @@ import type {
     FunctionalityIdentity,
     FunctionalityOptions,
     FunctionalityOutcome,
+    FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityPreparedDefinition,
     WorkspaceCapabilityIdentity,
@@ -49,6 +50,7 @@ import Results, { OperationFailureError } from "../core/results.ts";
 import { generatedPathname } from "../core/plurnk-uri.ts";
 
 export interface FunctionalityHost {
+    readonly signal: AbortSignal;
     registerModuleAction(registration: ModuleActionRegistration): void;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
@@ -304,10 +306,12 @@ export default class Functionality {
         identity: WorkspaceCapabilityIdentity,
         options: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean } = {},
     ): Promise<void> {
+        this.#host.signal.throwIfAborted();
         const adapter = this.#adapter(family);
         await this.#withWorkspaceGate(
             identity.workspaceId, adapter.namespaceOwner, options.gate ?? "wait",
             () => this.#serialize(this.#key(identity.workspaceId, family), async () => {
+                this.#host.signal.throwIfAborted();
                 const current = this.#families.get(this.#key(identity.workspaceId, family));
                 if (current === undefined) return;
                 if (options.ifChanged === true && current.configurationFailure === null) {
@@ -410,11 +414,16 @@ export default class Functionality {
         caller: FunctionalityCaller,
         options: FunctionalityOptions = {},
     ): Promise<FunctionalityInvocation> {
+        this.#host.signal.throwIfAborted();
+        const pending = this.#invoke(family, verb, params, identity, caller, options);
+        this.#admissions.set(pending, identity.workspaceId);
         try {
-            return await this.#invoke(family, verb, params, identity, caller, options);
+            return await pending;
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             throw Functionality.#configurationFailure(family, cause);
+        } finally {
+            this.#admissions.delete(pending);
         }
     }
 
@@ -514,6 +523,7 @@ export default class Functionality {
     async #activate(adapter: HostFunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
         const identity = { workspaceId: context.workspaceId };
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
+            this.#host.signal.throwIfAborted();
             const state = await this.#loadState(adapter, identity.workspaceId);
             await this.#publish(adapter, identity, state, { failure: "publish-unavailable", configurationFailure: "contain", retain: context.retain });
         });
@@ -793,6 +803,8 @@ export default class Functionality {
         const effective = await this.#effective(adapter, identity, state);
         if (verb === "list") {
             const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable");
+            try { this.#host.signal.throwIfAborted(); }
+            catch (cause) { return Functionality.#abort(prepared, cause); }
             await prepared.commit();
             return { status: 200, body: Validator.assertFunctionalityListResult({
                 family: adapter.family,
@@ -804,6 +816,7 @@ export default class Functionality {
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions);
         try {
+            this.#host.signal.throwIfAborted();
             await this.#host.replaceWorkerModuleState(workerId, adapter.namespaceOwner, Functionality.#persisted(nextState));
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
@@ -823,7 +836,7 @@ export default class Functionality {
         admissions: readonly FunctionalityAdmission[] = [],
     ): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         const enabled = Functionality.#enabled(effective);
-        const prepared = await adapter.prepare({
+        const prepared = await this.#prepare(adapter, {
             workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode, admissions,
             progress: () => undefined,
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
@@ -893,6 +906,7 @@ export default class Functionality {
             readonly admissions?: readonly FunctionalityAdmission[];
         },
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
+        this.#host.signal.throwIfAborted();
         const { workspaceId } = identity;
         const current = this.#preparations.get(workspaceId) ?? new Map<string, FunctionalityPreparationActivity>();
         this.#preparations.set(workspaceId, current);
@@ -945,13 +959,14 @@ export default class Functionality {
         try {
             enabled = await this.#publishable(adapter, identity, nextState);
             phase = "preparation";
-            prepared = await adapter.prepare({
+            prepared = await this.#prepare(adapter, {
                 workspaceId: identity.workspaceId,
                 enabled,
                 previous: previous?.snapshot ?? null,
                 failure: options.failure,
                 admissions: options.admissions ?? [],
                 progress: (aliases) => {
+                    this.#host.signal.throwIfAborted();
                     for (const alias of aliases) {
                         if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
                     }
@@ -965,9 +980,10 @@ export default class Functionality {
             configurationFailure = { phase, error: cause };
             enabled = new Map();
         }
-        report([], "publishing");
         let runtimes: RuntimeRegistration[];
         try {
+            this.#host.signal.throwIfAborted();
+            report([], "publishing");
             if (prepared !== null) Functionality.#checkOutcomes(adapter, enabled, prepared);
             for (const runtime of prepared?.runtimes ?? []) {
                 if (runtime.namespaceOwner !== adapter.namespaceOwner) {
@@ -995,6 +1011,7 @@ export default class Functionality {
         const commit = async (): Promise<void> => {
             const before = this.#families.get(key);
             try {
+                this.#host.signal.throwIfAborted();
                 await this.#host.replaceWorkspaceCapabilities({
                     workspaceId: identity.workspaceId,
                     namespaceOwner: adapter.namespaceOwner,
@@ -1018,6 +1035,16 @@ export default class Functionality {
         };
         await commit();
         return { outcomes: prepared?.outcomes ?? new Map() };
+    }
+
+    // {§functionality-preparation-cancellation} Join the adapter; abort a returned candidate before publication.
+    async #prepare(adapter: HostFunctionalityAdapter, preparation: Omit<FunctionalityPreparation, "signal">): Promise<FunctionalityPrepared<RuntimeRegistration>> {
+        const { signal } = this.#host;
+        signal.throwIfAborted();
+        const prepared = await adapter.prepare({ ...preparation, signal });
+        try { signal.throwIfAborted(); }
+        catch (cause) { return Functionality.#abort(prepared, cause); }
+        return prepared;
     }
 
     static async #abort(prepared: FunctionalityPrepared<RuntimeRegistration> | null, cause: unknown): Promise<never> {

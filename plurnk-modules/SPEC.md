@@ -130,6 +130,24 @@ expose; both default to none, and the frameworks that own those types name them 
 An adapter may expose current partial-source `configurationNotices`; these join the ordinary
 workspace diagnostics without preventing independently valid definitions from preparing.
 
+§functionality-preparation-cancellation **Preparation belongs to the host's lifetime.**
+The host supplies `preparation.signal`, aborted when workspace Functionality stops.
+Adapters pass it to cancellable preparation I/O and check it before starting further work.
+Cancellation is not an unavailable definition: it rejects with the signal's reason, after
+releasing candidate resources. Cleanup failures remain failures, including alongside cancellation.
+The host never abandons a preparation promise merely because its signal was aborted.
+
+| Shutdown reaches the attempt | Settlement |
+| --- | --- |
+| Before preparation | Do not call the adapter. |
+| During preparation | Signal cancellation and join preparation, including candidate cleanup. |
+| Candidate returned, publication not begun | Abort the candidate; preserve the preceding publication. |
+| Publication begun | Finish commit or rollback and its cleanup; do not interrupt atomic settlement. |
+
+Module producer stop may run concurrently with cancelled preparation. Resource and database
+disposal follows joined preparation and cooling under {§module-shutdown-order}; the existing
+absolute deadline ({§crash-only-stop}) bounds non-cooperative work.
+
 §functionality-admission-preparation **Admission data belongs to one attempt.**
 `admit` returns `{ alias, definition, preparation? }`, or one such admission per definition an
 addressing family's `add` names ({§functionality-addressing}); the coordinator passes them to

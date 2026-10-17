@@ -106,7 +106,9 @@ disconnection and a later declaration replaces them for future requests.
 §agui-owner-activation **An owner's arrival activates its workspace.** A control attachment starts the
 workspace's Functionality activation ({§methods-workspace-activate}) and does not wait for it: the Run
 proceeds, and a first prompt waits only for what remains of that activation. Observation activates
-nothing.
+nothing. Shutdown cancellation of that background demand is expected; other activation and
+cleanup failures remain diagnostics. Core owns and joins the preparation, not the connected Run
+({§functionality-preparation-cancellation}).
 
 Approval delivery matches the recorded owner; interaction delivery matches its recorded
 recipient. No connected-ancestor fallback or topology-based authority exists. An owner may

@@ -664,7 +664,12 @@ owning operation result; a non-success preserves its original Problem.
 §mcp-connection-shutdown Module `stop()` prevents new work and aborts each connection's
 active requests, including client-input waits. Discovery and preparation recheck
 admission after asynchronous environment resolution, before owning a new connection;
-connection startup rechecks after asynchronous directory resolution before opening
+Functionality preparation also carries its host's cancellation signal into catalog requests,
+checks it after state-directory resolution, and preserves cancellation rather than publishing
+an unavailable definition ({§functionality-preparation-cancellation}). Candidate cleanup is joined;
+its failures are preserved alongside cancellation, including failures from other concurrently
+prepared aliases.
+Connection startup rechecks after asynchronous directory resolution before opening
 its transport. Their protocol cleanup settles
 before the extension channel or connected transport closes, so a created Task
 can receive `tasks/cancel`. Concurrent closers await the same settlement.

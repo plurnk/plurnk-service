@@ -347,9 +347,11 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     // human-authored row outranks a model-proposed row for the same pattern. Each definition's
     // outcome carries what it resolved to, so the model sees what its glob did.
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+        preparation.signal.throwIfAborted();
         const { workspaceId, enabled } = preparation;
         const rows = this.#projection(enabled);
         const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
+        preparation.signal.throwIfAborted();
         const outcomes = new Map<string, FunctionalityOutcome>();
         const documents: Array<{ pathname: string; content: string }> = [];
         for (const [alias, { definition }] of enabled) {

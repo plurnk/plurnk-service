@@ -4499,11 +4499,12 @@ An invalid module object, factory result or lifecycle member is an implementatio
 not configuration, and fails loudly. What a module contributes registers through its owning public
 interfaces and is released during {§module-lifecycle} resource teardown.
 
-§module-shutdown-order `Daemon.stop()` first rejects new capability demand and
+§module-shutdown-order `Daemon.stop()` first rejects new capability demand, cancels preparation
+under {§functionality-preparation-cancellation}, and
 aborts proposals, branches, derivations, and worker scopes. It begins module
 `stop()` calls in reverse registration order without serially awaiting them,
 so every producer is asked to stop even if another stalls. Core settles drains,
-capability publications, module producers, streaming producers, derivations,
+whole workspace activation and cooling transitions, capability publications, module producers, streaming producers, derivations,
 mimetypes, schemes, and the final worker-settlement barrier while observers
 remain subscribed. Only then does it begin and join module `close()` calls in
 reverse order. Failures do not skip later phases and join one shutdown aggregate.
@@ -4514,6 +4515,9 @@ After asynchronous selection, the supervisor rechecks shutdown before creating
 a drain or installing a timer; parked-loop wake mutations also recheck worker
 cancellation under {§worker-lifecycle-durable-disposition}.
 The database remains available through observer closure and final maintenance.
+Residency transitions are retained from stop admission through settlement, including failed
+transitions; one failure does not stop the join of other workspaces. Expected preparation
+cancellation is not a shutdown failure; genuine preparation and cleanup failures are.
 The shared deadline bounds every phase, including observer delivery; forced
 shutdown may therefore lose notifications and reports the unfinished phase.
 
@@ -4534,7 +4538,8 @@ flowchart LR
     stop[Begin stop] --> abort[Abort core producers]
     stop --> moduleStop[Begin reverse module stop]
     abort --> drains[Settle worker drains]
-    drains --> joined[Settle module producers]
+    drains --> residency[Join workspace transitions<br/>and capability publications]
+    residency --> joined[Settle module producers]
     moduleStop --> joined
     joined --> producers[Settle streaming producers]
     producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
@@ -4617,8 +4622,11 @@ bound. Concurrent demand coalesces; cooling never closes a leased connection.
 
 Cooling withdraws live capability and releases process resources at the
 workspace boundary. Durable configuration, history, and saved entries remain.
-New demand reconstructs the one shared snapshot. Shutdown cancels warm timers
-and closes module resources through their owning provider.
+New demand reconstructs the one shared snapshot. Shutdown cancels warm timers and preparation,
+refuses new leases before database access, and joins whole activation and cooling transitions
+before releasing resources. An interrupted acquisition rejects with `AbortError`, never a usable
+lease. Cooling and activation cleanup remain joined, not cancelled.
+Cooling failures are reported; demand awaiting that transition receives its failure, not a lease.
 
 §module-workspace-residency-facet **Residency is the workspace's; processes are
 one family's facet.** The workspace is the lease unit, and every family's

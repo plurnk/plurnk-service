@@ -18,7 +18,7 @@ import {
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FunctionalityAdmission, FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityPreparation, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
@@ -68,12 +68,7 @@ interface Adapter {
     discover?(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
     admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
-    prepare(preparation: {
-        workspaceId: number;
-        enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>; previous: unknown | null;
-        failure: "publish-unavailable" | "reject"; force?: string; admissions: readonly FunctionalityAdmission[]; retain(): () => void;
-        progress(alias: string): void;
-    }): Promise<Prepared>;
+    prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
 }
 
@@ -100,10 +95,11 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
     let leases = 0;
     const retain = () => { leases++; let released = false; return () => { if (released) return; released = true; leases--; }; };
     const identity = (workspaceId: number) => ({ workspaceId });
-    const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string } = {}): Promise<Prepared> => {
+    const lane = async (workspaceId: number, enabled: Map<string, object>, options: { failure?: "publish-unavailable" | "reject"; force?: string; signal?: AbortSignal } = {}): Promise<Prepared> => {
         if (adapter === undefined) throw new Error("adapter not registered");
         const current = snapshots.get(workspaceId);
         const prepared = await adapter.prepare({
+            signal: options.signal ?? new AbortController().signal,
             ...identity(workspaceId), enabled: new Map([...enabled].map(([alias, definition]) => [alias, { definition }])), previous: current?.prepared?.snapshot ?? null,
             failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), admissions: [], retain,
             progress: () => undefined,
@@ -277,6 +273,116 @@ test("{§mcp-connection-shutdown} environment resolution cannot open a connectio
         });
     }
 });
+
+for (const phase of ["environment", "directory", "catalog"] as const) {
+    test(`{§functionality-preparation-cancellation} MCP cancellation during ${phase} retains no candidate`, async (t) => {
+        const h = harness();
+        const lifetime = new AbortController();
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const reason = new DOMException("fixture stopping", "AbortError");
+        let requests = 0;
+        const hold = async () => { entered.resolve(); await release.promise; };
+        if (phase === "environment") {
+            t.mock.method(h.seam, "readWorkspaceEnvironment", async () => { await hold(); return () => ({}); });
+        } else if (phase === "directory") {
+            const directory = h.seam.workspaceStateDirectory;
+            t.mock.method(h.seam, "workspaceStateDirectory", async (...args: Parameters<typeof directory>) => { await hold(); return directory(...args); });
+        }
+        t.mock.method(ServerConnection.prototype, "catalog", async (signal?: AbortSignal) => {
+            requests++;
+            assert.equal(phase, "catalog", "cancellation before transport creation never requests a catalog");
+            assert.equal(signal, lifetime.signal, "the request receives the host's signal");
+            await hold();
+            signal!.throwIfAborted();
+            throw new Error("fixture request was not cancelled");
+        });
+        const close = t.mock.method(ServerConnection.prototype, "close");
+        await h.setup();
+        const { cwd: _cwd, ...definition } = stdio("fixture");
+        const work = assert.rejects(h.lane(1, new Map([["fixture", definition]]), { signal: lifetime.signal }), (cause) => cause === reason);
+        try {
+            await entered.promise;
+            lifetime.abort(reason);
+        } finally { release.resolve(); }
+        await work;
+        assert.equal(requests, phase === "catalog" ? 1 : 0);
+        assert.equal(close.mock.callCount(), phase === "catalog" ? 1 : 0);
+        assert.equal(h.snapshots.size, 0, "cancellation is not an unavailable publication");
+        assert.equal(h.leases(), 0);
+    });
+}
+
+test("{§functionality-preparation-cancellation} MCP cancellation preserves candidate cleanup failure", async (t) => {
+    const h = harness();
+    const lifetime = new AbortController();
+    const reason = new DOMException("fixture stopping", "AbortError");
+    const cleanup = new Error("fixture close failed");
+    t.mock.method(ServerConnection.prototype, "catalog", async () => { lifetime.abort(reason); throw reason; });
+    const originalClose = ServerConnection.prototype.close;
+    t.mock.method(ServerConnection.prototype, "close", async function (this: ServerConnection) {
+        await originalClose.call(this);
+        throw cleanup;
+    }, { times: 1 });
+    await h.setup();
+    await assert.rejects(h.lane(1, new Map([["fixture", stdio("fixture")]]), { signal: lifetime.signal }), (cause) => {
+        assert.ok(cause instanceof AggregateError);
+        assert.equal(cause.errors[0], reason);
+        assert.ok(cause.errors[1] instanceof AggregateError);
+        assert.deepEqual(cause.errors[1].errors, [cleanup]);
+        return true;
+    });
+    assert.equal(h.snapshots.size, 0);
+});
+
+for (const cleanupFails of [false, true]) {
+    test(`{§functionality-preparation-cancellation} parallel cancellation joins every candidate and preserves later cleanup failures (${cleanupFails})`, async (t) => {
+        const h = harness();
+        const lifetime = new AbortController();
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const closing = Promise.withResolvers<void>();
+        const finish = Promise.withResolvers<void>();
+        const reason = new DOMException("fixture stopping", "AbortError");
+        const cleanup = new Error("fixture second candidate close failed");
+        let requests = 0;
+        let cleanupFailed = false;
+        t.mock.method(ServerConnection.prototype, "catalog", async (signal?: AbortSignal) => {
+            if (++requests === 3) entered.resolve();
+            await release.promise;
+            signal!.throwIfAborted();
+            throw new Error("fixture request was not cancelled");
+        });
+        const close = ServerConnection.prototype.close;
+        t.mock.method(ServerConnection.prototype, "close", async function (this: ServerConnection) {
+            await close.call(this);
+            if (this.definition.name === "c") { closing.resolve(); await finish.promise; }
+            if (this.definition.name === "b" && cleanupFails && !cleanupFailed) {
+                cleanupFailed = true;
+                throw cleanup;
+            }
+        });
+        await h.setup();
+        let settled = false;
+        const failures = (cause: unknown): unknown[] => cause instanceof AggregateError ? cause.errors.flatMap(failures) : [cause];
+        const work = assert.rejects(h.lane(1, new Map(["a", "b", "c"].map((name) => [name, stdio(name)])), { signal: lifetime.signal }), (cause) => {
+            settled = true;
+            if (!cleanupFails) return cause === reason;
+            assert.ok(failures(cause).includes(reason));
+            assert.ok(failures(cause).includes(cleanup), "the first alias's cancellation must not hide another alias's cleanup failure");
+            return true;
+        });
+        try {
+            await entered.promise;
+            lifetime.abort(reason);
+            release.resolve();
+            await closing.promise;
+            assert.equal(settled, false, "preparation owns the last candidate's cleanup even after another failed");
+        } finally { release.resolve(); finish.resolve(); }
+        await work;
+        assert.equal(h.snapshots.size, 0);
+    });
+}
 
 test("{§mcp-definitions} configured servers are inspectable without installation or connection", async () => {
     const echo = stdio("echo");
@@ -491,6 +597,7 @@ test("{§mcp-setup} servers that need connections are prepared at once: a worksp
     await h.setup();
     try {
         const attempt = await h.adapter().prepare({
+            signal: new AbortController().signal,
             ...h.identity(1), enabled: new Map([["a", { definition: slow("a") }], ["b", { definition: slow("b") }]]), previous: null,
             failure: "publish-unavailable", admissions: [], retain: () => () => {}, progress: (aliases) => { reports.push([...aliases]); },
         });
@@ -524,7 +631,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         assert.deepEqual(h.runtimeTags(1), ["a"], "the removed server's connection closed after the replacement committed");
 
         // abort: a fresh connection is opened, then discarded; the committed one survives.
-        const attempt = await h.adapter().prepare({ ...h.identity(1), enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", admissions: [], retain: () => () => undefined, progress: () => undefined });
+        const attempt = await h.adapter().prepare({ ...h.identity(1), signal: new AbortController().signal, enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", admissions: [], retain: () => () => undefined, progress: () => undefined });
         assert.equal(attempt.outcomes.get("c")?.state, "active");
         await attempt.abort();
         await waitForFile(marker("c"));
@@ -809,6 +916,7 @@ test("{§oauth-continuation} aborting publication retains the accepted grant for
         const accepted = { status: 202, alias: "oauth" };
         assert.deepEqual(await h.action(1, "workspace.mcp.oauth.complete", params), accepted);
         const attempt = await h.adapter().prepare({
+            signal: new AbortController().signal,
             ...h.identity(1), enabled: new Map([["oauth", { definition }]]), previous: initial.snapshot,
             failure: "publish-unavailable", admissions: [], retain: () => () => {}, progress: () => {},
         });

@@ -67,9 +67,11 @@ export default class SkillSource {
         this.#operatorEnvironment = operatorEnvironment;
     }
 
-    async #tool(command: string, args: readonly string[]): Promise<string> {
+    async #tool(command: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
+        signal?.throwIfAborted();
         const env = this.#operatorEnvironment();
-        const { stdout } = await execFileP(command, [...args], {
+        const work = execFileP(command, [...args], {
+            signal,
             // {§skills-sources} The host supplies the admitted operator environment; fetching never prompts.
             env: {
                 ...env,
@@ -79,7 +81,10 @@ export default class SkillSource {
             timeout: Knob.integer("PLURNK_SKILLS_FETCH_TIMEOUT_MS", 1),
             maxBuffer: TOOL_OUTPUT_BYTES,
         });
-        return stdout;
+        // execFile rejects on abort before the child necessarily closes; its staging is still in use.
+        const closed = new Promise<void>((resolve) => work.child.once("close", () => resolve()));
+        try { return (await work).stdout; }
+        finally { await closed; }
     }
 
     // URL admission is independent of filesystem and network availability.
@@ -154,7 +159,9 @@ export default class SkillSource {
     }
 
     // Local trees stay in place; fetched sources own private staging released by close().
-    async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string } = {}): Promise<OpenedSource> {
+    async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string; readonly signal?: AbortSignal } = {}): Promise<OpenedSource> {
+        const { signal } = pin;
+        signal?.throwIfAborted();
         if (located.kind === "folder" || located.kind === "skill-file") {
             const root = located.kind === "folder" ? located.location : dirname(located.location);
             await SkillSource.#assertSkillSource(root, located.location);
@@ -171,9 +178,10 @@ export default class SkillSource {
                     try {
                         // No hook runs on the checkout: an operator's global post-checkout would run fetched content.
                         await this.#tool("git", ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
-                            ...(pin.ref === undefined ? [] : ["--branch", pin.ref]), "--", located.location, root]);
-                        commit = (await this.#tool("git", ["-C", root, "rev-parse", "HEAD"])).trim();
+                            ...(pin.ref === undefined ? [] : ["--branch", pin.ref]), "--", located.location, root], signal);
+                        commit = (await this.#tool("git", ["-C", root, "rev-parse", "HEAD"], signal)).trim();
                     } catch (cause) {
+                        signal?.throwIfAborted();
                         const at = pin.ref === undefined ? "" : ` at '${pin.ref}'`;
                         throw actionError("source-unreachable", 502, `git could not fetch '${located.location}'${at}: ${reason(cause)}`, {
                             source: located.location, ...(pin.ref === undefined ? {} : { ref: pin.ref }), retryable: true,
@@ -193,9 +201,10 @@ export default class SkillSource {
                     try {
                         // Both tools strip absolute and parent-relative member names and create an
                         // archive's links only after its files, so no member lands outside staging.
-                        if (/\.zip$/iu.test(located.location)) await this.#tool("unzip", ["-qq", "-n", located.location, "-d", into]);
-                        else await this.#tool("tar", ["-x", "-f", located.location, "-C", into]);
+                        if (/\.zip$/iu.test(located.location)) await this.#tool("unzip", ["-qq", "-n", located.location, "-d", into], signal);
+                        else await this.#tool("tar", ["-x", "-f", located.location, "-C", into], signal);
                     } catch (cause) {
+                        signal?.throwIfAborted();
                         throw actionError("source-unreadable", 422, `'${located.location}' could not be unpacked: ${reason(cause)}`, { path: located.location, retryable: false }, cause);
                     }
                     const entries = await readdir(into, { withFileTypes: true });
@@ -203,11 +212,13 @@ export default class SkillSource {
                     break;
                 }
             }
+            signal?.throwIfAborted();
             await SkillSource.#assertSkillSource(root, located.location);
             const { skills, invalid } = await SkillSource.#find(root, true);
             return { skills, invalid, ...(commit === undefined ? {} : { commit }), close };
         } catch (error) {
-            await close();
+            try { await close(); }
+            catch (cleanup) { throw new AggregateError([error, cleanup], "Skill source preparation and cleanup failed."); }
             throw error;
         }
     }

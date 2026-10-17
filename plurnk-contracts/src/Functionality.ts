@@ -63,6 +63,8 @@ export interface FunctionalityDocument {
 }
 
 export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
+    // {§functionality-preparation-cancellation} The host's lifetime; cancellation still joins cleanup.
+    readonly signal: AbortSignal;
     // The enabled definitions to prepare, in alias order.
     readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     // The adapter's previous process snapshot for this workspace, when one exists.

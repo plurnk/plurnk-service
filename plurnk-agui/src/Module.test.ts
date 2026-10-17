@@ -2318,6 +2318,28 @@ test("{§agui-owner-activation} an owner's attachment starts its workspace's act
     } finally { await mod.close(); }
 });
 
+for (const stopping of [false, true]) {
+    for (const cancelled of [false, true]) {
+        test(`{§agui-owner-activation} background diagnostics distinguish shutdown cancellation (stopping=${stopping}, cancelled=${cancelled})`, async (t) => {
+            const { seam } = mockSeam();
+            existingWorkspace(seam, "owned");
+            const activation = Promise.withResolvers<void>();
+            seam.activateWorkspace = () => activation.promise;
+            const diagnostics = t.mock.method(console, "error");
+            const mod = await host(seam);
+            t.after(() => mod.close());
+            await post(mod.address().port, { threadId: "owned", runId: "own", forwardedProps: { plurnk: { workspace: "owned", control: true } } });
+            if (stopping) mod.stop();
+            const cause = cancelled ? new DOMException("fixture cancellation", "AbortError") : new Error("fixture activation failure");
+            activation.reject(cause);
+            await assert.rejects(activation.promise, (error) => error === cause);
+            assert.deepEqual(diagnostics.mock.calls.map(({ arguments: args }) => args),
+                stopping && cancelled ? [] : [["AG-UI: activating workspace 3 for its owner failed:", cause]],
+                "only cancellation during shutdown is expected; other activation failures remain visible");
+        });
+    }
+}
+
 test("{§agui-sync} rows that reach a sync Run while its log is read follow its snapshot, and one the snapshot holds as it arrived is not built twice", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "busy")];

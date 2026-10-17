@@ -131,6 +131,7 @@ test("{§env-functionality} available projects what the ceiling admits, enabled,
 // runtimes: the field is the resident family's facet ({§module-workspace-residency-facet}).
 test("{§env-functionality} prepare publishes no runtime and marks every enabled definition active", async () => {
     const prepared = await adapter.prepare({
+        signal: new AbortController().signal,
         workspaceId: 1,
         enabled: new Map([["PAGER", { definition: { value: "cat" } }], ["CI", { definition: { value: "1" } }]]),
         previous: null,

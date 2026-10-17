@@ -26,6 +26,7 @@ export default class RunHandler {
     readonly #seam: () => RunPort;
     readonly #opts: () => ResolvedModuleOptions;
     readonly #portal: () => Portal;
+    readonly #stopping: () => boolean;
     readonly #requiresWorkspace: (action: ActionRequest) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
@@ -35,10 +36,11 @@ export default class RunHandler {
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
 
-    constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerStatus, action }: {
+    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerStatus, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
+        stopping: () => boolean;
         requiresWorkspace: (action: ActionRequest) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
@@ -51,6 +53,7 @@ export default class RunHandler {
         this.#seam = seam;
         this.#opts = opts;
         this.#portal = portal;
+        this.#stopping = stopping;
         this.#requiresWorkspace = requiresWorkspace;
         this.#controlRun = controlRun;
         this.#envelope = envelope;
@@ -185,6 +188,8 @@ export default class RunHandler {
             // {§agui-owner-activation} — an owner's arrival is the workspace's demand: activation starts now,
             // so a first prompt finds it under way or done, and nothing waits for it here.
             void this.#seam().activateWorkspace({ workspaceId }).catch((cause: unknown) => {
+                // {§functionality-preparation-cancellation} Shutdown owns and joins this cancellation.
+                if (this.#stopping() && cause instanceof DOMException && cause.name === "AbortError") return;
                 console.error(`AG-UI: activating workspace ${workspaceId} for its owner failed:`, cause);
             });
         }

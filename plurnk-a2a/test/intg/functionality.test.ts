@@ -11,6 +11,7 @@ const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512", PLURNK_A2A_ENABLED: "1" };
 
 const preparation = (workspaceId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
     workspaceId,
+    signal: new AbortController().signal,
     enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
@@ -27,6 +28,34 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
     }
     assert.fail("expected a Problem");
 };
+
+for (const phase of ["card", "token"] as const) {
+    test(`{§functionality-preparation-cancellation} A2A cancels ${phase} requests without publishing an unavailable agent`, async (t) => {
+        const agent = await startDemoAgent("complete", undefined, { clientId: "plurnk", clientSecret: "agent-secret" });
+        t.after(() => agent.close());
+        const family = new A2aFunctionality({ ...diagnosticEnv, SECRET: "agent-secret" });
+        const lifetime = new AbortController();
+        const reason = new DOMException("fixture stopping", "AbortError");
+        const entered = Promise.withResolvers<void>();
+        const original = globalThis.fetch;
+        let held = 0;
+        t.mock.method(globalThis, "fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+            const url = input instanceof Request ? input.url : String(input);
+            if (phase === "token" && !url.endsWith("/oauth/token")) return original(input, init);
+            assert.equal(init?.signal, lifetime.signal);
+            held++;
+            entered.resolve();
+            return new Promise<Response>((_resolve, reject) => lifetime.signal.addEventListener("abort", () => reject(lifetime.signal.reason), { once: true }));
+        });
+        const definition = { name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret: "${SECRET}" } };
+        const work = assert.rejects(family.prepare({ ...preparation(1, { peer: definition, later: { ...definition, name: "later" } }), signal: lifetime.signal }), (cause) => cause === reason);
+        try { await entered.promise; }
+        finally { lifetime.abort(reason); }
+        await work;
+        assert.equal(held, 1, "the next agent is not prepared after shutdown");
+        assert.equal(family.resolve("peer", 1), null);
+    });
+}
 
 test("{§a2a-environment-projection} environment definitions are the service baseline with PLURNK_A2A_ENABLED as the newborn default", async () => {
     const family = new A2aFunctionality({

@@ -79,6 +79,7 @@ const preparation = (
     options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string; admissions?: readonly FunctionalityAdmission[] } = {},
 ) => ({
     workspaceId,
+    signal: new AbortController().signal,
     enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",

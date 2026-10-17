@@ -25,6 +25,7 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
         } finally { hold?.release(); }
     };
     const coordinator = new Functionality({
+        signal: new AbortController().signal,
         registerModuleAction: () => {},
         registerWorkspaceCapabilityProvider: (_owner, value) => { provider = value; },
         readWorkspaceModuleState: async () => state,
@@ -80,6 +81,7 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
 const recording = (): { coordinator: Functionality; actions: Map<string, ModuleActionRegistration> } => {
     const actions = new Map<string, ModuleActionRegistration>();
     const coordinator = new Functionality({
+        signal: new AbortController().signal,
         registerModuleAction: (registration) => { actions.set(registration.name, registration); },
         registerWorkspaceCapabilityProvider: () => {},
         readWorkspaceModuleState: async () => null,
@@ -105,6 +107,79 @@ const family = (name: string, overrides: Partial<HostFunctionalityAdapter> = {})
     ...overrides,
 });
 
+for (const phase of ["resolution", "preparation", "publication"] as const) {
+    for (const cleanupFails of phase === "preparation" ? [false, true] : [false]) {
+        test(`{§functionality-preparation-cancellation} stop during ${phase}, cleanup fails=${cleanupFails}`, async () => {
+            const lifetime = new AbortController();
+            const entered = Promise.withResolvers<void>();
+            const release = Promise.withResolvers<void>();
+            const aborted = Promise.withResolvers<void>();
+            const cleanup = Promise.withResolvers<void>();
+            const reason = new DOMException("fixture stopping", "AbortError");
+            const cleanupError = new Error("fixture candidate cleanup failed");
+            const events: string[] = [];
+            let provider!: WorkspaceCapabilityProvider;
+            const hold = async (at: typeof phase) => {
+                if (phase === at) { entered.resolve(); await release.promise; }
+            };
+            const coordinator = new Functionality({
+                signal: lifetime.signal,
+                registerModuleAction: () => {},
+                registerWorkspaceCapabilityProvider: (_owner, value) => { provider = value; },
+                readWorkspaceModuleState: async () => null,
+                replaceWorkspaceCapabilities: async (_replacement, options) => {
+                    events.push("publication");
+                    await hold("publication");
+                    options?.publish?.();
+                },
+                readWorkerModuleState: async () => null,
+                replaceWorkerModuleState: async () => {},
+                withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
+                retainWorkspace: () => () => {},
+                preparationChanged: () => {},
+            });
+            coordinator.register(family("fixture", {
+                available: async () => { await hold("resolution"); return []; },
+                prepare: async ({ signal }) => {
+                    events.push("preparation");
+                    assert.equal(signal, lifetime.signal, "the adapter receives the owning lifetime");
+                    await hold("preparation");
+                    return {
+                        documents: [], outcomes: new Map(), snapshot: {},
+                        commit: async () => { events.push("commit"); },
+                        abort: async () => {
+                            events.push("abort");
+                            aborted.resolve();
+                            await cleanup.promise;
+                            if (cleanupFails) throw cleanupError;
+                        },
+                    };
+                },
+            }));
+            let settled = false;
+            const pending = Promise.resolve(provider.activate({ workspaceId: 1, retain: () => () => {} }));
+            const work = (phase === "publication" ? pending : assert.rejects(pending, (cause) => {
+                if (!cleanupFails) return cause === reason;
+                assert.ok(cause instanceof AggregateError);
+                assert.deepEqual(cause.errors, [reason, cleanupError]);
+                return true;
+            })).then(() => { settled = true; });
+            try {
+                await entered.promise;
+                lifetime.abort(reason);
+                release.resolve();
+                if (phase === "preparation") {
+                    await aborted.promise;
+                    assert.equal(settled, false, "cancellation joins candidate cleanup");
+                }
+            } finally { release.resolve(); cleanup.resolve(); }
+            await work;
+            assert.deepEqual(events, phase === "resolution" ? []
+                : phase === "preparation" ? ["preparation", "abort"] : ["preparation", "publication", "commit"]);
+        });
+    }
+}
+
 for (const scope of ["workspace", "worker"] as const) {
     test(`{§functionality-admission-preparation} ${scope} admission data reaches only its candidate preparation`, async () => {
         let provider!: WorkspaceCapabilityProvider;
@@ -118,6 +193,7 @@ for (const scope of ["workspace", "worker"] as const) {
             state = structuredClone(next);
         };
         const coordinator = new Functionality({
+            signal: new AbortController().signal,
             registerModuleAction: () => {},
             registerWorkspaceCapabilityProvider: (_owner, value) => { provider = value; },
             readWorkspaceModuleState: async () => state,

@@ -2,9 +2,10 @@
 // git and archive fetches are witnessed in plurnk-core/test/intg/Skills.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import SkillSource from "./SkillSource.ts";
 
 const skill = (name: string, description = `Use ${name}.`): string => `---\nname: ${name}\ndescription: ${description}\n---\nBody of ${name}.\n`;
@@ -18,6 +19,35 @@ const fixture = async (t: test.TestContext): Promise<string> => {
     t.after(() => rm(base, { recursive: true, force: true }));
     return base;
 };
+
+test("{§functionality-preparation-cancellation} a cancelled skill fetch joins its child before removing staging", async (t) => {
+    const root = await fixture(t);
+    const started = join(root, "started.json");
+    const closed = join(root, "closed");
+    const executable = join(root, "git");
+    await writeFile(executable, `#!${process.execPath}\nimport { writeFileSync } from "node:fs";
+process.on("SIGTERM", () => setTimeout(() => { writeFileSync(${JSON.stringify(closed)}, "closed"); process.exit(0); }, 50));
+setInterval(() => {}, 1000);
+writeFileSync(${JSON.stringify(started)}, JSON.stringify({ checkout: process.argv.at(-1) }));
+`);
+    await chmod(executable, 0o700);
+    const reader = new SkillSource(() => ({ PATH: root }));
+    const lifetime = new AbortController();
+    const reason = new DOMException("fixture stopping", "AbortError");
+    const work = assert.rejects(reader.open({ kind: "git", location: "https://example.test/skills.git" }, { signal: lifetime.signal }), (cause) => cause === reason);
+    let checkout: string | undefined;
+    try {
+        for (let attempt = 0; attempt < 100 && checkout === undefined; attempt++) {
+            try { checkout = (JSON.parse(await readFile(started, "utf8")) as { checkout: string }).checkout; }
+            catch (cause) { if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause; }
+            if (checkout === undefined) await delay(10);
+        }
+        assert.ok(checkout, "the fixture child reaches its held fetch");
+    } finally { lifetime.abort(reason); }
+    await work;
+    assert.equal(await readFile(closed, "utf8"), "closed", "abort did not return while the child still owned staging");
+    await assert.rejects(stat(dirname(checkout)), { code: "ENOENT" }, "cancelled fetch removed its staging only after child close");
+});
 
 test("{§skills-sources} a git remote is a full https or ssh URL; other schemes are refused", async () => {
     const context = { projectRoot: null, home: "/home/ada" };

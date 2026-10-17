@@ -50,7 +50,8 @@ export default class WorkspaceCapabilities {
     readonly #report: WorkspaceCapabilityCallbacks["report"];
     readonly #states = new Map<number, WorkspaceCapabilityState>();
     #idleSequence = 0;
-    #stopping = false;
+    readonly #lifetime = new AbortController();
+    #stopping: Promise<PromiseSettledResult<void>[]> | null = null;
 
     constructor(
         policy: WorkspaceCapabilityPolicy,
@@ -62,15 +63,17 @@ export default class WorkspaceCapabilities {
         this.#report = callbacks.report;
     }
 
+    get signal(): AbortSignal { return this.#lifetime.signal; }
+
     async acquire(workspaceId: number): Promise<WorkspaceCapabilityRelease> {
         WorkspaceCapabilities.#assertWorkspaceId(workspaceId);
-        if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
+        this.signal.throwIfAborted();
 
         for (;;) {
             const current = this.#states.get(workspaceId);
             if (current?.phase === "cooling") {
                 await current.transition;
-                if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
+                this.signal.throwIfAborted();
                 continue;
             }
 
@@ -83,9 +86,9 @@ export default class WorkspaceCapabilities {
                 this.#release(state);
                 throw cause;
             }
-            if (this.#stopping) {
+            if (this.signal.aborted) {
                 this.#release(state);
-                throw new Error("Workspace Functionality is stopping.");
+                this.signal.throwIfAborted();
             }
             return this.#releaseOnce(state);
         }
@@ -93,7 +96,7 @@ export default class WorkspaceCapabilities {
 
     retain(workspaceId: number): WorkspaceCapabilityRelease {
         WorkspaceCapabilities.#assertWorkspaceId(workspaceId);
-        if (this.#stopping) throw new Error("Workspace Functionality is stopping.");
+        this.signal.throwIfAborted();
         const state = this.#states.get(workspaceId);
         if (state === undefined || state.phase === "cooling") {
             throw new Error(`Workspace ${workspaceId} Functionality is not resident.`);
@@ -115,9 +118,19 @@ export default class WorkspaceCapabilities {
     }
 
     beginStop(): void {
-        if (this.#stopping) return;
-        this.#stopping = true;
+        if (this.signal.aborted) return;
+        this.#lifetime.abort(new DOMException("Workspace Functionality is stopping.", "AbortError"));
         for (const state of this.#states.values()) this.#cancelIdle(state);
+        // Capture before completed/failed transitions leave the residency map.
+        this.#stopping = Promise.allSettled([...this.#states.values()].flatMap(({ transition }) => transition === null ? [] : [transition]));
+    }
+
+    // {§module-shutdown-order} A rejected workspace cannot short-circuit another workspace's cleanup.
+    async settle(): Promise<void> {
+        if (this.#stopping === null) throw new Error("Workspace Functionality settlement requires beginStop.");
+        const results = await this.#stopping;
+        const errors = results.flatMap((result) => result.status === "rejected" && result.reason !== this.signal.reason ? [result.reason] : []);
+        if (errors.length > 0) throw new AggregateError(errors, "Workspace Functionality shutdown failed");
     }
 
     static #assertWorkspaceId(workspaceId: number): void {
@@ -170,14 +183,14 @@ export default class WorkspaceCapabilities {
             state.leases === 0
             && state.phase === "active"
             && this.#states.get(state.workspaceId) === state
-            && !this.#stopping
+            && !this.signal.aborted
         ) {
             this.#markIdle(state);
         }
     }
 
     #markIdle(state: WorkspaceCapabilityState): void {
-        if (state.phase !== "active" || state.leases !== 0 || this.#stopping) return;
+        if (state.phase !== "active" || state.leases !== 0 || this.signal.aborted) return;
         this.#cancelIdle(state);
         state.idleOrder = ++this.#idleSequence;
         this.#scheduleCooling(state, this.#policy.warmMs);
@@ -186,7 +199,7 @@ export default class WorkspaceCapabilities {
 
     // {§operator-config-worker-warm} — negative never cools by time, zero cools at once, otherwise after the delay.
     #scheduleCooling(state: WorkspaceCapabilityState, delayMs: number): void {
-        if (delayMs < 0 || state.phase !== "active" || state.leases !== 0 || this.#stopping) return;
+        if (delayMs < 0 || state.phase !== "active" || state.leases !== 0 || this.signal.aborted) return;
         if (delayMs === 0) {
             queueMicrotask(() => { void this.#cool(state); });
             return;
@@ -199,7 +212,7 @@ export default class WorkspaceCapabilities {
     }
 
     #enforceWarmMaximum(): void {
-        if (this.#policy.warmMax < 0 || this.#stopping) return;
+        if (this.#policy.warmMax < 0 || this.signal.aborted) return;
         const idle = [...this.#states.values()]
             .filter((state) => state.phase === "active" && state.leases === 0)
             .toSorted((left, right) => (left.idleOrder ?? 0) - (right.idleOrder ?? 0));
@@ -210,7 +223,7 @@ export default class WorkspaceCapabilities {
 
     async #cool(state: WorkspaceCapabilityState): Promise<void> {
         if (
-            this.#stopping
+            this.signal.aborted
             || state.phase !== "active"
             || state.leases !== 0
             || this.#states.get(state.workspaceId) !== state
@@ -235,11 +248,15 @@ export default class WorkspaceCapabilities {
                 state.phase = "active";
                 state.transition = null;
                 state.idleOrder = ++this.#idleSequence;
-                this.#report(state.workspaceId, cause);
                 this.#scheduleCooling(state, COOLING_RETRY_MS);
+                throw cause;
             });
         state.transition = transition;
-        await transition;
+        try { await transition; }
+        catch (cause) {
+            // During stop the captured transition reports through the shutdown aggregate.
+            if (!this.signal.aborted) this.#report(state.workspaceId, cause);
+        }
     }
 
     #cancelIdle(state: WorkspaceCapabilityState): void {

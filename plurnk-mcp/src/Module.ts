@@ -510,8 +510,10 @@ export default class Module implements DaemonModule<SetupSeam> {
         binding: McpBinding,
         connection?: ServerConnection,
         oauthRedirectUrl?: string,
+        signal?: AbortSignal,
     ): Promise<Attachment> {
         const { definition, context } = binding;
+        signal?.throwIfAborted();
         this.#assertOpen();
         // {§mcp-server-settings} — the operator's settings for this alias; a bad one isolates this server.
         let settings: ToolPolicy;
@@ -526,12 +528,17 @@ export default class Module implements DaemonModule<SetupSeam> {
         const started = performance.now();
         try {
             const environment = await this.#workspaceEnvironment(workspaceId);
+            signal?.throwIfAborted();
             this.#assertOpen();
             // {§mcp-launch-environment} — a configured server inherits the operator's environment beneath the
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
+            const cwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined
+                ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
+            signal?.throwIfAborted();
+            this.#assertOpen();
             candidate ??= new ServerConnection(definition, environment(this.#env), {
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
-                ...(definition.type === "stdio" && definition.cwd === undefined && context === undefined ? { cwd: await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) } : {}),
+                ...(cwd === undefined ? {} : { cwd }),
                 ...(context === undefined ? {} : { plugin: context }),
                 environment: environment(this.#operatorEnvironment()),
                 onCatalogChanged: (error) => {
@@ -554,7 +561,8 @@ export default class Module implements DaemonModule<SetupSeam> {
                 () => this.#retain(workspaceId),
                 { tools: settings.tools },
             );
-            const availability = await executor.requireAvailable();
+            const availability = await executor.requireAvailable(signal);
+            signal?.throwIfAborted();
             return {
                 ...(context === undefined ? {} : { context }),
                 kind: "active",
@@ -576,7 +584,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             };
         } catch (cause) {
             const elapsedMs = Math.round(performance.now() - started);
-            if (cause instanceof AuthorizationRequiredError && candidate !== undefined) {
+            if (!signal?.aborted && cause instanceof AuthorizationRequiredError && candidate !== undefined) {
                 return {
                     ...(context === undefined ? {} : { context }),
                     kind: "authorization-required",
@@ -593,6 +601,10 @@ export default class Module implements DaemonModule<SetupSeam> {
                     closeCause = error;
                 }
             }
+            if (signal?.aborted) {
+                if (closeCause !== undefined) throw new AggregateError([signal.reason, closeCause], "MCP preparation cancellation and cleanup failed.");
+                throw signal.reason;
+            }
             throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
                 elapsedMs,
                 timeoutMs: connectTimeoutMs(this.#env),
@@ -606,8 +618,9 @@ export default class Module implements DaemonModule<SetupSeam> {
     // outcomes; commit adopts the set and closes what it no longer uses, abort
     // closes only what this attempt opened.
     async #prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>> {
+        preparation.signal.throwIfAborted();
         this.#assertOpen();
-        const { workspaceId, enabled, failure, force } = preparation;
+        const { workspaceId, enabled, failure, force, signal } = preparation;
         this.#identities.set(workspaceId, { workspaceId });
         this.#retainWorkspace.set(workspaceId, preparation.retain);
         const previous = (preparation.previous as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
@@ -649,6 +662,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const reportPreparing = (): void => preparation.progress(plans.map(({ name }) => name).filter((name) => preparing.has(name)));
             if (preparing.size > 0) reportPreparing();
             const settled = await Promise.allSettled(plans.map(async (plan): Promise<Attachment> => {
+                signal.throwIfAborted();
                 if (plan.mode === "reuse") return plan.existing!;
                 if (plan.mode === "pending") return plan.pending!.prepared!;
                 try {
@@ -658,16 +672,18 @@ export default class Module implements DaemonModule<SetupSeam> {
                         // spawned, so neither abort nor commit has anything of this alias to close
                         // (#429).
                         try {
-                            return await this.#prepareAttachment(workspaceId, plan.binding, plan.heldConnection);
+                            return await this.#prepareAttachment(workspaceId, plan.binding, plan.heldConnection, undefined, signal);
                         } catch (cause) {
+                            if (signal.aborted) throw cause;
                             this.#assertOpen();
                             console.error(`MCP server '${plan.name}' catalog refresh failed; the current catalog stays in service:`, cause);
                             return plan.existing!;
                         }
                     }
                     try {
-                        return await this.#prepareAttachment(workspaceId, plan.binding, plan.authorized ? plan.pending!.connection : undefined);
+                        return await this.#prepareAttachment(workspaceId, plan.binding, plan.authorized ? plan.pending!.connection : undefined, undefined, signal);
                     } catch (cause) {
+                        if (signal.aborted) throw cause;
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
                         const refusal = cause instanceof ModuleActionError ? cause : preparationError(plan.binding.definition, undefined, cause);
@@ -676,16 +692,15 @@ export default class Module implements DaemonModule<SetupSeam> {
                     }
                 } finally {
                     preparing.delete(plan.name);
-                    if (preparing.size > 0) reportPreparing();
+                    if (preparing.size > 0 && !signal.aborted) reportPreparing();
                 }
             }));
-            // Assembled in alias order; under rejection the first failure in that order is the one thrown,
-            // after every connection the attempt did open is in hand to close.
-            let rejection: { readonly cause: unknown } | null = null;
+            // Preserve each failure after joining all aliases; one cancellation must not hide another's cleanup failure.
+            const rejections = new Set<unknown>();
             for (const [index, plan] of plans.entries()) {
                 const result = settled[index]!;
                 if (result.status === "rejected") {
-                    rejection ??= { cause: result.reason };
+                    rejections.add(result.reason);
                     continue;
                 }
                 const attachment = result.value;
@@ -698,7 +713,8 @@ export default class Module implements DaemonModule<SetupSeam> {
                 next.set(plan.name, attachment);
                 if (attachment !== plan.existing) refreshed.set(plan.key, plan.invalidation);
             }
-            if (rejection !== null) throw rejection.cause;
+            if (rejections.size === 1) throw rejections.values().next().value;
+            if (rejections.size > 1) throw new AggregateError(rejections, "MCP workspace preparation failed.");
         } catch (cause) {
             const cleanup = [...await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection])))];
             const failures = cleanup.flatMap((result) => result.status === "rejected" ? errorsOf(result.reason) : []);

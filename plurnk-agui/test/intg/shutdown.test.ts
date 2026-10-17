@@ -11,8 +11,20 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules"), http });
     const clients = new AbortController();
+    const activations: PromiseSettledResult<void>[] = [];
+    const activate = daemon.activateWorkspace.bind(daemon);
+    t.mock.method(daemon, "activateWorkspace", async (args: { workspaceId: number }) => {
+        try {
+            await activate(args);
+            activations.push({ status: "fulfilled", value: undefined });
+        } catch (reason) {
+            activations.push({ status: "rejected", reason });
+            throw reason;
+        }
+    });
     try {
         await daemon.start();
+        const diagnostics = t.mock.method(console, "error");
         const { host, port } = http.httpAddress();
         // {§agui-action-binding} Each connection binds the worker its thread names, so each exists first.
         const workspaces = new Map<string, number>();
@@ -34,6 +46,13 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
         }));
         const bodies = Promise.all(responses.map((response) => response.text()));
         await daemon.stop();
+        assert.equal(activations.length, 3, "shutdown joins every owner's background activation");
+        for (const outcome of activations) {
+            if (outcome.status === "rejected") {
+                assert.ok(outcome.reason instanceof DOMException);
+                assert.equal(outcome.reason.name, "AbortError", "unfinished activation is cancelled, not a closed module/database failure");
+            }
+        }
         await http.close();
         for (const body of await bodies) {
             const events = body.split("\n\n").filter((frame) => frame.startsWith("data: "))
@@ -49,6 +68,7 @@ test("{§agui-shutdown} daemon and listener settle with idle clients across work
             }
         }
         await daemon.stop();
+        assert.deepEqual(diagnostics.mock.calls.map(({ arguments: args }) => args), [], "clean shutdown has no background activation or database failures");
     } finally {
         clients.abort();
         await daemon.stop();
