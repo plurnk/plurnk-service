@@ -52,7 +52,7 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["WORK (worker://x)", "WORK", optioned("WORK", "")],
     ["FORK", "FORK", bodied("FORK")],
     ["FORK (worker://x)", "FORK", optioned("FORK", "")],
-    ["sh", "sh", optioned("sh", undefined)],
+    ["sh", "sh", bodied("sh")],
     ["NOTE", "NOTE", bodied("NOTE")],
     ["WAIT", "WAIT", bodied("WAIT")],
     ["SEND [200]", "SEND", (kind, text, inline) => ({ ...bodied("SEND")(kind, text, inline), metadata: ["200"] })],

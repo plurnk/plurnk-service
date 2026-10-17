@@ -4,7 +4,7 @@
 // full-context predictions are uncached ({§parser-architecture}). The specification of the search
 // below — its alphabet, its preference order and its repair cost — is {§fence-pairing}.
 
-import { isReasoningOperation } from "./ReasoningOperation.ts";
+import HeadingReader from "./HeadingReader.ts";
 
 export type FenceCharacter = "`" | "~";
 
@@ -91,7 +91,7 @@ export default class FencePairing {
 
     // Line classification mirrors the lexer's line-start rules: at most three spaces of indentation
     // and no tab ({§indented-fences}); a backtick fence whose info string holds a backtick is not a
-    // fence (CommonMark 0.31.2 §4.5); a heading names a native operation or a known executor.
+    // fence (CommonMark 0.31.2 §4.5); heading recognition is shared with the lexer ({§executor-heading}).
     static #classify(input: string, options: PairingOptions): { lines: Line[]; lineStarts: number[] } {
         const raw = input.split("\n");
         const lines: Line[] = [];
@@ -116,25 +116,17 @@ export default class FencePairing {
     }
 
     // {§forgotten-tag}: the line under a bare fence is an operation heading when it names a native operation
-    // alone or with a slot, or a known executor with its operand (sh and env are words); reasoning opens none.
+    // alone or with a slot, or an executor with its operand (sh and env are words); reasoning opens none.
     static #split(fence: string, next: string, options: PairingOptions): Split | null {
         if (options.reasoning) return null;
         const name = NAME.exec(next)?.[0];
         if (name === undefined) return null;
         const native = options.operations.has(name);
-        if (!native && !FencePairing.#known(name, options)) return null;
         const after = next.slice(name.length);
+        if (!HeadingReader.opens(name, after, options.executors, options.reasoning)) return null;
         const rest = after.trimStart();
         if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
         return { ...options.heading(`${fence}${next}`, name), runtime: native ? null : name };
-    }
-
-    static #known(name: string, options: PairingOptions): boolean {
-        if (options.reasoning) return isReasoningOperation(name);
-        if (options.operations.has(name)) return true;
-        const lower = name.toLowerCase();
-        for (const executor of options.executors) if (executor.toLowerCase() === lower) return true;
-        return false;
     }
 
     static #line(text: string, options: PairingOptions): Line {
@@ -150,14 +142,14 @@ export default class FencePairing {
             // A closer glued to the next opener ({§inline-chain}): six backticks then READ is a close
             // then a heading when the run splits into a closer and a known opener.
             const glued = /^[ \t]*(`{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(tail);
-            if (glued !== null && FencePairing.#known(glued[2]!, options)) {
+            if (glued !== null && HeadingReader.opens(glued[2]!, glued[3]!, options.executors, options.reasoning)) {
                 const headingWidth = glued[1]!.length;
                 return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]!) };
             }
-            // {§operation-fences}: the fence run and a known name make the heading, whatever follows the name on
-            // its line; the lexer opens the same line, so the pairing must read it as a heading too (#996).
+            // {§executor-heading}: recognition must agree with OPEN in the lexer, including unknown
+            // names with explicit slots; availability never changes their syntactic shape.
             const name = NAME.exec(tail)?.[0];
-            if (name !== undefined && FencePairing.#known(name, options)) {
+            if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors, options.reasoning)) {
                 return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: options.operations.has(name) ? null : name };
             }
             if (tail.includes("`")) return { kind: "text" };

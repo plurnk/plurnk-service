@@ -54,7 +54,6 @@ export type BuiltinActionsPort = Pick<
     | "cancelDrain"
     | "createWorkspace"
     | "dispatchClientAction"
-    | "executorJsonBodyTags"
     | "executorTags"
     | "forkWorker"
     | "listModels"
@@ -331,7 +330,7 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Provide PLURNK statements to parse." },
                         );
                     }
-                    const parsed = PlurnkParser.parseStatements(p.text, { executors: this.#seam().executorTags(workspace.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(workspace.workspaceId) });
+                    const parsed = PlurnkParser.parseStatements(p.text, { executors: this.#seam().executorTags(workspace.workspaceId) });
                     const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {

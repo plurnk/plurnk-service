@@ -143,7 +143,6 @@ const mockSeam = (operatorSecret: string | null = null) => {
         cancelDrain: () => true,
         cancelWorker: async () => {},
         executorTags: () => ["sh"],
-        executorJsonBodyTags: () => [],
         shareWorkspace: async ({ folder }: { folder: string }) => ({ folder }),
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         cancelLoop: async () => false,
@@ -1045,6 +1044,34 @@ test("{§agui-op-parse} {§target-group}: each compiled target returns its own r
         const outcome = actionOutcome(events) as { ok: boolean; result?: { results?: unknown[] } } | undefined;
         assert.equal(outcome?.ok, true);
         assert.deepEqual(outcome?.result?.results, [{ status: 200, content: "result 0" }, { status: 200, content: "result 1" }]);
+    } finally { await mod.close(); }
+});
+
+test("{§agui-op-parse} {§executor-heading}: raw client programs retain invocations absent from the initial runtime vocabulary", async () => {
+    const { seam } = mockSeam();
+    const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
+    seam.dispatchClientAction = async ({ statements }) => {
+        dispatched.push(statements);
+        return statements.map(() => ({ status: 200 }));
+    };
+    const mod = await host(seam);
+    try {
+        const definition = '{"alias":"fresh","definition":{"name":"fresh","type":"streamable-http","url":"https://example.test/mcp"}}';
+        const input = '{"query":"unchanged"}';
+        const text = [PlurnkParser.frame("mcp (add)", definition), PlurnkParser.frame("fresh (inspect)", input)].join("\n\n");
+        const events = await post(mod.address().port, {
+            threadId: "parse-new-runtime",
+            forwardedProps: { plurnk: { workspace: "parse-new-runtime", action: { kind: "op.parse", text } } },
+        });
+        assert.deepEqual(seam.executorTags(3), ["sh"], "neither name is supplied to the parser");
+        assert.equal(dispatched.length, 1, "one ordered program, not reparsed fragments");
+        assert.deepEqual(dispatched[0].map((statement) => {
+            assert.ok(isExecution(statement));
+            return [statement.runtime, statement.target?.raw, statement.body];
+        }), [["mcp", "add", definition], ["fresh", "inspect", input]]);
+        const outcome = actionOutcome(events) as { ok: boolean; result?: { results?: unknown[] } } | undefined;
+        assert.equal(outcome?.ok, true);
+        assert.deepEqual(outcome?.result?.results, [{ status: 200 }, { status: 200 }]);
     } finally { await mod.close(); }
 });
 

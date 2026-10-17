@@ -591,25 +591,17 @@ export default class AstBuilder {
         const runtime = AstBuilder.#executorOf(ctx);
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, runtime);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        // {§bare-option-object}: the option-array shape is the house convention; an executor whose declared body is
-        // JSON (an MCP tool's arguments) reads a bare heading object as that body.
-        const options = AstBuilder.jsonBodyExecutors.has(runtime)
-            ? { metadata: slots.metadata, lifted: false }
-            : AstBuilder.#liftBareOptionObject(runtime, slots.metadata, split, position);
         return {
             runtime,
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
-            metadata: options.metadata,
-            body: options.lifted ? split.below : AstBuilder.#headingBody(runtime, ctx, split.inline, position),
+            body: AstBuilder.#headingBody(runtime, ctx, split.inline, position),
             position,
         };
     }
 
-    // {§executor-case} — the AST carries the registered spelling; the tag may be written in any case.
+    // {§executor-case} — known spellings are canonicalized; unknown tags use lowercase.
     static executorSpellings: ReadonlyMap<string, string> = new Map();
-    // {§bare-option-object} — per parse: the executors whose declared body is JSON.
-    static jsonBodyExecutors: ReadonlySet<string> = new Set();
 
     static #executorOf(ctx: ExecStatementContext): RuntimeTag {
         const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "").toLowerCase();

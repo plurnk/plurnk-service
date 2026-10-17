@@ -1,8 +1,9 @@
 import { BaseErrorListener, CommonTokenStream, ListTokenSource, type Token } from "antlr4ng";
-import { PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
+import { isReasoningOperation } from "./ReasoningOperation.ts";
 
 export class HeadingErrors extends BaseErrorListener {
     failed = false;
@@ -12,6 +13,17 @@ export class HeadingErrors extends BaseErrorListener {
 // {§parser-architecture}: a heading-only grammar pass supplies shape to fence recovery.
 // It never pairs fences or admits operations; the full parse owns errors and advisories.
 export default class HeadingReader {
+    // {§executor-heading}: the lexer and fence pairing share recognition; the slot grammar validates
+    // what follows. A slot opener suffices even when its slot is malformed, so it receives a diagnostic.
+    static opens(name: string, suffix: string, executors: ReadonlySet<string>, reasoning: boolean): boolean {
+        if (reasoning) return isReasoningOperation(name);
+        if ((PLURNK_OPS as readonly string[]).includes(name)) return true;
+        const lower = name.toLowerCase();
+        for (const executor of executors) if (executor.toLowerCase() === lower) return true;
+        const next = suffix.replace(/^[ \t]*/u, "");
+        return next.startsWith("(") || next.startsWith("[") || next.startsWith("<") && !next.startsWith("<!--");
+    }
+
     static read(tokens: readonly Token[], errors: HeadingErrors): PlurnkStatement | null {
         if (errors.failed) return null;
         const parser = new plurnkParser(new CommonTokenStream(new ListTokenSource(HeadingTokens.normalize(tokens))));

@@ -113,12 +113,8 @@ export interface ApplicationPort extends HttpHost {
     // {§connection-lifecycle} — cancel exactly one client operation: its dispatch while it runs and every execution its
     // rows started that still runs; false when nothing of it was running.
     cancelLoop(args: { readonly workspaceId: number; readonly loopId: number; readonly reason?: string }): Promise<boolean>;
-    // {§fence-heading-in-body} — the executor tags this workspace can run: what a parse of
-    // client-authored text must know for those tags to open blocks ({§interstitial-fence}).
+    // {§executor-heading} — the workspace's available names also permit slotless invocation.
     executorTags(workspaceId: number): readonly string[];
-    // {§bare-option-object} — the executors whose declared body is JSON; a parse of client-authored text reads
-    // their bare heading object as that body instead of the option array.
-    executorJsonBodyTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;
         readonly workerId: number;

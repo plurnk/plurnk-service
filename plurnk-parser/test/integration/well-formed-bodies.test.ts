@@ -34,14 +34,17 @@ test("{§pairing-objective}: a runtime with no declared media type keeps the fen
     assert.ok(body!.includes("git remote -v"), "without a check the call keeps its nested reading");
 });
 
-test("{§bare-option-object}: a bare heading object is the body of an executor whose body is JSON, and options otherwise", () => {
-    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"], jsonBodyExecutors: ["gitea"] }).items;
+test("{§heading-inline-body}: an executor's heading object is input for both a JSON tool and a shell", () => {
+    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] }).items;
     const statement = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement as { metadata: readonly string[] | null; body: unknown }] : [])[0]!;
     const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" ? [item.error.message] : []);
     const mcp = "```gitea (list_issues) {\"owner\":\"plurnk\"}\n```";
     assert.deepEqual([statement(mcp).metadata, statement(mcp).body], [null, "{\"owner\":\"plurnk\"}"], "an MCP tool's heading object is its arguments body");
     assert.deepEqual(warnings(mcp), ["`gitea` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line."]);
     const shell = "```sh {\"cwd\":\"/tmp\"}\nls\n```";
-    assert.deepEqual([statement(shell).metadata, statement(shell).body], [["{\"cwd\":\"/tmp\"}"], "ls"], "the house option array is the shell's option block");
-    assert.deepEqual(warnings(shell), ["`sh` took a bare option object; the taught form is `[{…}]`."]);
+    assert.deepEqual([statement(shell).metadata, statement(shell).body], [null, "{\"cwd\":\"/tmp\"}\nls"], "unbracketed input is not promoted to authority-bearing metadata");
+    assert.deepEqual(warnings(shell), ["`sh` body text was on the OP line and was taken as the body; body content goes immediately beneath the opening fence line."]);
+    const bracketed = "```sh [{\"stdin\":\"open\"}]\ncat\n```";
+    assert.deepEqual([statement(bracketed).metadata, statement(bracketed).body], [["{\"stdin\":\"open\"}"], "cat"]);
+    assert.deepEqual(warnings(bracketed), []);
 });

@@ -295,11 +295,11 @@ wider bare fence nests where closing there would cost the reading more
 ({§fence-pairing}). A nested block ends at its first valid closer, as a CommonMark code block
 does. So a wider outer fence holds any narrower body, finished or not, and equal widths nest
 when every inner block closes. Preserve every nested body byte, including apparent operations
-and known executors, without dispatching them. These rules apply equally to model programs,
+and executor invocations, without dispatching them. These rules apply equally to model programs,
 stored programs, client operations, and reasoning quotations.
 
 §operation-fences **Accept three or more backticks; teach and render three.** A line-start fence
-of three or more backticks naming a native operation or registered executor opens that
+of three or more backticks carrying an operation heading ({§executor-heading}) opens that
 operation ({§indented-fences}), and no width draws a receipt. Three is the taught form and the
 rendered form; a wider fence is the same statement, and it is how a body holding fence lines of
 its own is held: an opener wider than any of them ({§balanced-fences}). Enclosing quotations
@@ -328,7 +328,7 @@ aside, an operand, or other heading text does not qualify and remains the unfenc
 read this way.
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
-line of three or more backticks and a name that is a native operation or a known executor
+line of three or more backticks carrying a heading under {§executor-heading}
 is a heading. Inside an open block it either ends that block without closing it and opens the
 next statement, or it is a literal example held by the block. {§fence-pairing} chooses between
 the two. Fence lines of
@@ -356,8 +356,8 @@ input at once by {§fence-pairing}:
 | Indented four spaces or more, or by a tab | Body ({§indented-fences}) |
 | Fewer backticks than the block's own, or another character | Body, or the opener of a nested block |
 | At least the block's backticks, bare | The block's closer, or the opener of a nested block |
-| Labeled, naming nothing known | The opener of a nested block, or body |
-| Three or more backticks naming a native operation or known executor | A heading that ends the block, or a literal example |
+| Labeled, without an operation heading | The opener of a nested block, or body |
+| Three or more backticks with an operation heading ({§executor-heading}) | A heading that ends the block, or a literal example |
 
 ### §fence-pairing Fence pairing
 
@@ -499,12 +499,11 @@ by the next opener is {§inline-chain}, and by nothing is the ordinary {§fence-
 no ambiguity to resolve: a slot begins with `<` or `[` and an opener with a backtick run, so the
 shapes are disjoint.
 
-§executor-case **An executor tag in any case.** A fence tag that matches a
-registered executor's name case-insensitively opens that executor (`SH` opens
-`sh`), and the statement's `executor` is the registered spelling, so a lookup
-by that name never misses. Operation names stay uppercase by teaching and were
-never written otherwise in 12,000 fences; one `SH` in 1,300 `sh` fences was. An unregistered name without an accepted spelling
-({§executor-js-spelling}) is still prose ({§interstitial-fence}).
+§executor-case **An executor tag in any case.** An executor heading matches a
+known executor's name case-insensitively (`SH` opens `sh`); its AST carries the
+registered spelling when known, otherwise the lowercase name. Native operation
+names remain case-sensitive. Recognition follows {§executor-heading}; availability
+and permission are checked at dispatch, not granted by a recognized spelling.
 
 §executor-js-spelling When `node` is registered and `js` is not, `js` names
 `node` under {§executor-case}. Parsing normalizes the runtime before admission
@@ -529,8 +528,8 @@ line takes the rest of the line as the aside, with one warning-severity advisory
 A closed aside followed by more text is unchanged.
 
 §quotation **A fence that opens no operation quotes.** Outside a body, a line-start fence that
-is not an operation heading — unlabeled, tagged like a code block (`ts`, `json`), or naming
-nothing registered — opens a
+is not an operation heading ({§executor-heading}) — unlabeled or tagged like an unknown
+code language (`ts`, `json`) without invocation slots — opens a
 quotation that runs to its matching closer (same character, width at least the opener's) or to
 the end of the input. Everything inside is data: no operation runs there and native tool-call
 markup is not read ({§native-tool-calls}). An operation fenced inside an unlabeled code block
@@ -552,23 +551,29 @@ belongs in a properly nested body ({§balanced-fences}) or a quotation ({§quota
 So a model may show plurnk's own operations in an answer. Two exceptions keep programs whole:
 CommonMark's own rule that a backtick opener's line carries no further backtick, so
 ```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under
-a line carrying a fence run, which is an orphaned closer and quotes nothing. An unknown tag at
-any width is a code block and draws nothing, unless its line carries a target slot, `(…)`: that
-is an operation the model missed by its tag, and it draws one warning — `` `OP` is not an
-operation or a known executor here. `` An offset example draws nothing either
+a line carrying a fence run, which is an orphaned closer and quotes nothing. An unknown tag
+without invocation slots is a code block and draws nothing. An offset example draws nothing either
 ({§indented-fences}). Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
 
 `plurnk.md` names the tab offset as the form for an example, in the aside of its nesting
 example, and shows its own examples offset; the other quoting fences are untaught: a tilde
-fence, an unlabeled fence and an unknown tag all quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
+fence, an unlabeled fence and an unknown tag without invocation slots all quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
 ({§outside-text} places the scale). The offset is the one form that survives every
 fence style.
 
-§interstitial-fence Only a native operation or a known executor opens a block. A fence naming
-anything else, or nothing at all, opens no operation: outside a block it quotes under
-{§quotation}, inside a body it is body.
+§executor-heading **Syntax identifies an invocation; dispatch resolves its runtime.** A native
+operation or a known executor name opens a heading. An otherwise unknown fence name also opens an
+executor heading when the next non-horizontal-whitespace character starts an invocation slot:
+`(` for the target, `[` for metadata, or `<` for scope (not `<!--`, an aside). The same slot grammar
+then validates and binds it, including malformed-slot diagnostics and permitted slot ordering.
+Availability does not affect that parse. Known executors are the host's supplied vocabulary plus
+`sh`; knowing a name also permits its targetless, slotless form. Enclosing quotations, indented
+examples and reasoning-channel restrictions remain unchanged.
+
+§interstitial-fence Only a heading under {§executor-heading} opens an operation. Any other fence
+opens no operation: outside a block it quotes under {§quotation}, inside a body it is body.
 
 §closer-aside A closing fence followed on its line by one aside and nothing else
 is the closer; the aside is outside text. Read as body, that line would be written
@@ -655,7 +660,7 @@ beside owner metadata, not only a matcher carried inside its `pattern` option.
 
 | Element | Contract |
 |---|---|
-| Fence name | Reserved native OP, otherwise a registered executor or attached MCP service |
+| Fence name | Reserved native OP, otherwise an executor name under {§executor-heading} |
 | `(path)` | Target/program/tool slot; COPY and MOVE each have two resource operands |
 | `[metadata]` | One owner-interpreted block; options, never the op's input |
 | `<scope>` | Operation-specific numeric or anchored coordinates |
@@ -722,20 +727,18 @@ compact empty block or permit unmatched fences.
 | KILL on a log target | The matcher. Beside an option block's `pattern`, the first line of the distillation ({§log-kill-distillation}). |
 | EDIT | A sigil-led matcher ({§edit-pattern}), unless an option block carries the `pattern`; otherwise the body. |
 | COPY, MOVE | Ignored ({§transfer-resource-selections}). |
-| SEND, WORK, FORK, BARE, executors | One JSON object is the option block where the heading admits one ({§bare-option-object}); otherwise the body. |
+| SEND, WORK, FORK, BARE | One JSON object is the option block where the heading admits one ({§bare-option-object}); otherwise the body. |
+| executors | The input body, including an unbracketed JSON object; metadata requires brackets. |
 | NOTE, WAIT, KILL without a target | The body. |
 
 §bare-option-object A bare option object is the option block, where the house option array owns the
-block. On an operation that takes an option block and no bare matcher — SEND, BARE, WORK, FORK and
-every executor fence — heading text after the slots that is exactly one JSON object `{…}`, where the
+block. On SEND, BARE, WORK and FORK, heading text after the slots that is exactly one JSON object `{…}`, where the
 heading admits a block (BARE, WORK and FORK only after their target), is read
 as `[{…}]`: the AST carries the array form, the written heading renders it, and one
 warning-severity receipt names the indulgence in place of the {§heading-inline-body} advisory:
-"`SEND` took a bare option object; the taught form is `[{…}]`." The option array is a house
-convention, not a language rule ({§scheme-metadata-modifier}): an executor whose declared body is
-JSON ({§executor-invocation}), an MCP tool, reads the object as its body instead — its arguments,
-written on the heading line — under {§heading-inline-body}. The host names those executors to the parse
-(`ParseOptions.jsonBodyExecutors`). A heading that already carries a block keeps the object as
+"`SEND` took a bare option object; the taught form is `[{…}]`." Executor headings always read an
+unbracketed object as input under {§heading-inline-body}, regardless of registration or input media
+type; their metadata is only the bracketed slot ({§scheme-metadata-modifier}). A heading that already carries a block keeps the object as
 inline body. On FIND, READ and KILL the same text is the matcher
 ({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
 that parses as a JSON object draws one advisory saying so: "`{…}` was read as the
@@ -856,9 +859,10 @@ reasoning operations contribute neither execution nor normalization notices.
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.
-Reserved native OP names take precedence. Any other name is an executor fence: its
-AST carries the `runtime` tag and no operation keyword, then `target`, metadata, timing and body fields.
-Registration is checked by the runtime, not by the syntax parser. An attached
+Reserved native OP names take precedence. An executor heading's AST ({§executor-heading})
+carries the `runtime` tag and no operation keyword, then `target`, metadata, timing and body fields.
+Registration is checked at the invocation's execution point, after earlier operations settle
+({§op-execution-order}), not by the syntax parser. An attached
 MCP service uses that executor path and its owner validates the named tool and
 input-body JSON against its schema. Unknown names do not fall back to a shell.
 There is no runtime-less form: every execution names its runtime, and canonical
@@ -1767,8 +1771,8 @@ class PlurnkParseError extends Error {
 ```
 
 §parse-admission **A diagnostic's severity does not describe whether an operation ran.**
-`operationOmitted` identifies unexecuted unfenced operations, unknown operation-shaped
-tags and unrecovered native calls. A warning about a retained operation or a quoted
+`operationOmitted` identifies unexecuted unfenced operations and unrecovered native
+calls. A warning about a retained operation or a quoted
 example does not set it. This fact survives serialization when true; consumers do
 not infer it from diagnostic wording. It does not independently prescribe a strike.
 

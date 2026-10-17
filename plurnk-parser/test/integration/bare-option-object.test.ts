@@ -21,14 +21,7 @@ test("{§bare-option-object}: SEND reads one JSON object after the target as its
     assert.equal(PlurnkParser.heading(send), "SEND (node:///40968898) [{\"eof\": true}]", "consumers see the taught shape");
 });
 
-test("{§bare-option-object}: an executor fence, BARE and WORK lift the same way", () => {
-    const sh = PlurnkParser.parse("````sh {\"stdin\": \"open\"}\ncat\n````\n", { executors: ["sh"] });
-    const [run] = statements(sh);
-    assert.ok(run !== undefined && "runtime" in run && run.runtime === "sh", "the executor fence parsed");
-    if (!(run !== undefined && "runtime" in run)) return;
-    assert.deepEqual(run.metadata, ["{\"stdin\": \"open\"}"]);
-    assert.equal(run.body, "cat");
-    assert.deepEqual(warnings(sh), [RECEIPT("sh")]);
+test("{§bare-option-object}: BARE and WORK lift the same way as SEND", () => {
     const bare = PlurnkParser.parse("````BARE (worker:///question.md) {\"model\": \"dumbox\"}\nAnswer briefly.\n````\n");
     const [ask] = statements(bare);
     assert.equal(ask?.op, "BARE");

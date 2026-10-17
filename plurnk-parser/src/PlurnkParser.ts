@@ -32,14 +32,11 @@ const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_modelTurn,
 ]);
 
-// {§fence-heading-in-body} — the host names executors eligible for heading recovery
-// when a complete nested block cannot be established ({§balanced-fences}).
 export interface ParseOptions {
+    // {§executor-heading}: the host's vocabulary also permits slotless headings and canonicalizes spelling.
     readonly executors?: readonly string[];
     // {§pairing-objective}: whether a runtime's body is well-formed in the media type it declares.
     readonly wellFormed?: (runtime: string, body: string) => boolean;
-    // {§bare-option-object}: the executors whose declared body is JSON; their bare heading object is that body.
-    readonly jsonBodyExecutors?: readonly string[];
 }
 
 export default class PlurnkParser {
@@ -256,7 +253,6 @@ export default class PlurnkParser {
             spellings.set("js", node);
         }
         AstBuilder.executorSpellings = spellings;
-        AstBuilder.jsonBodyExecutors = new Set(options.jsonBodyExecutors ?? []);
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
@@ -314,10 +310,6 @@ export default class PlurnkParser {
         // {§quotation} — an operation inside an unlabeled code block was shown, never run; say so once.
         for (const note of lexer.takeQuotedTags()) {
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` inside a code block was shown, not run.`, "warning") });
-        }
-        // {§quotation} — an unknown tag with a target slot is an operation missed by its tag; say so once.
-        for (const note of lexer.takeMissedTags()) {
-            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` is not an operation or a known executor here.`, "warning", undefined, true) });
         }
         // {§forgotten-tag} — the operation ran; its opener spanned two lines, so say how it is written once.
         for (const note of lexer.takeForgottenTags()) {

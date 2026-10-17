@@ -113,9 +113,9 @@ test("{§operation-fences}: three backticks open an operation and draw nothing; 
     assert.deepEqual(warnings("```\n```READ (notes.md)\n```"), ["`READ` inside a code block was shown, not run."], "a same-width wrapper is told the same");
     assert.deepEqual(warnings("    ```READ (notes.md)\n    ```"), [], "the taught offset draws nothing");
     assert.deepEqual(warnings("```plurnk\n```READ (notes.md)\n```\n```"), [], "a labeled code block is an example by declaration");
-    assert.deepEqual(warnings("````typo (x)\n````"), ["`typo` is not an operation or a known executor here."], "an unknown name with a target slot is a missed operation");
+    assert.deepEqual(warnings("````typo (x)\n````"), [], "an explicit invocation is resolved at dispatch");
     assert.deepEqual(warnings("````typo\n````"), [], "an unknown name without a slot is a code block at any width");
-    assert.equal(statements("````typo (x)\n````"), 0);
+    assert.equal(statements("````typo (x)\n````"), 1);
 });
 
 test("{§unfenced-operation}: an executor's name with an operand slot did not run either; inside a sentence it is a word", () => {
@@ -130,14 +130,17 @@ test("{§unfenced-operation}: an executor's name with an operand slot did not ru
     assert.deepEqual(warnings("Use gitea (list_issues) for that."), [], "only at column zero");
 });
 
-test("{§quotation}: an unknown tag with a target slot is a missed operation and says so; a code block is not", () => {
-    const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] }).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    assert.deepEqual(warnings('```OP (gitea) (search_issues)\n{"query": "open"}\n```'), ["`OP` is not an operation or a known executor here."]);
-    assert.deepEqual(warnings("```Read (notes.md)\n```"), ["`Read` is not an operation or a known executor here."], "a misspelled native name is missed by its tag");
-    assert.deepEqual(warnings("```OP (gitea)```"), ["`OP` is not an operation or a known executor here."], "the inline form too");
-    assert.deepEqual(warnings("```python\nprint(1)\n```"), [], "a code block draws nothing");
-    assert.deepEqual(warnings("~~~OP (x)\n~~~"), [], "a tilde fence is markdown");
-    assert.deepEqual(warnings("    ```OP (x)\n    ```"), [], "an offset example draws nothing");
+test("{§executor-heading} {§quotation}: explicit unknown invocations parse; code blocks remain quoted", () => {
+    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] }).items;
+    const runtime = (source: string) => parse(source).flatMap((item) => item.kind === "statement" && "runtime" in item.statement ? [item.statement.runtime] : []);
+    assert.ok(parse('```OP (gitea) (search_issues)\n{"query": "open"}\n```').some((item) =>
+        item.kind === "error" && item.error.message === "op accepts one `(program)` path at most once"));
+    assert.deepEqual(runtime("```Read (notes.md)\n```"), ["read"], "native names remain case-sensitive");
+    assert.deepEqual(runtime("```OP (gitea)```"), ["op"], "the inline form is also an invocation");
+    for (const source of ["```python\nprint(1)\n```", "~~~OP (x)\n~~~", "    ```OP (x)\n    ```"]) {
+        assert.deepEqual(runtime(source), []);
+        assert.deepEqual(parse(source).filter((item) => item.kind === "error" && item.error.severity === "warning"), []);
+    }
 });
 
 test("{§forgotten-tag}: at the top level, an operation heading under a bare fence runs, with one warning", () => {

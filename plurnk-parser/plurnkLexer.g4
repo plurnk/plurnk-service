@@ -10,7 +10,6 @@ tokens {
 
 @lexer::header {
 import FencePairing, { type BlockEnd, type Pairing } from "../FencePairing.ts";
-import { isReasoningOperation } from "../ReasoningOperation.ts";
 import HeadingReader, { HeadingErrors } from "../HeadingReader.ts";
 import StatementShape from "../StatementShape.ts";
 }
@@ -93,7 +92,7 @@ private inlineChain: boolean = false;
 private inlineCloserSeen: boolean = false;
 private unclosedAsides: Array<{ line: number; column: number }> = [];
 
-// After a closer's text, does an opener (backticks, a known name) follow on the same line?
+// After a closer's text, does an operation heading follow on the same line?
 private openerFollows(): boolean {
     let cursor = 1;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
@@ -108,7 +107,7 @@ private openerFollows(): boolean {
         if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
         name += ch; cursor++;
     }
-    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
+    return name !== "" && this.headingName(name, cursor);
 }
 
 private noteUnclosedAside(): void {
@@ -181,12 +180,12 @@ private bareAnchorAhead(): boolean {
 // {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
 public wellFormed: ((runtime: string, body: string) => boolean) | undefined = undefined;
-// {§executor-case} - an executor tag matches its registered name in any case (`SH` is `sh`).
-private knownExecutor(name: string): boolean {
-    if (this.knownExecutors.has(name)) return true;
-    const lower = name.toLowerCase();
-    for (const known of this.knownExecutors) if (known.toLowerCase() === lower) return true;
-    return false;
+// {§executor-heading}: one recognition rule for OPEN, inline chains, recovery and fence pairing.
+private headingName(name: string, offset: number): boolean {
+    const at = this.skipHorizontal(offset);
+    let suffix = "";
+    for (let index = at; index < at + 4 && this.inputStream.LA(index) > 0; index++) suffix += String.fromCodePoint(this.inputStream.LA(index));
+    return HeadingReader.opens(name, suffix, this.knownExecutors, this.reasoning);
 }
 private slotReady: boolean = false;
 // {§scope-on-scopeless}: whether this heading has taken its target; a SEND without one takes no scope.
@@ -203,21 +202,19 @@ private targetDepth: number = 0;
 private metadataDepth: number = 0;
 private inlineBody: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
-private missedTags: Array<{ line: number; column: number; tag: string }> = [];
 private forgottenTags: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
 
-// {§interstitial-fence} - only a native operation or a known executor opens a block.
-private knownHeading(): boolean {
+// {§executor-heading} - explicit slots do not require a registered runtime.
+private operationHeading(): boolean {
     const name = this.text.replace(/^\x60+/, "");
-    if (this.reasoning) return isReasoningOperation(name);
-    return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
+    return this.headingName(name, 1);
 }
 
 // {§quotation} - a fence that opened no operation quotes. Its tag draws nothing: an unknown name
-// is a code block at any width, and a known one indented further than three spaces is the taught
+// without invocation slots is a code block at any width, and one indented further than three spaces is the taught
 // offset ({§indented-fences}). Reasoning quotes freely.
 private quote(): void {
     this.quoteStart = this.tokenStartCharIndex;
@@ -226,7 +223,6 @@ private quote(): void {
     // No literal backtick in this block: the action scanner reads one as a string delimiter.
     this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
-    this.noteMissed();
 }
 
 // {§forgotten-tag} - at the top level, a bare fence and the operation heading on the line under it are one
@@ -243,30 +239,12 @@ public takeForgottenTags(): Array<{ line: number; column: number; tag: string }>
     return taken;
 }
 
-// {§quotation} - an unknown backtick tag whose line carries a target slot is an operation the
-// model missed by its tag, not a code block: it is worth one word. Reasoning draws none.
-private noteMissed(): void {
-    if (this.reasoning || this.text.charCodeAt(0) !== 0x60) return;
-    const tag = this.text.replace(/^\x60+/, "");
-    if (tag === "") return;
-    let cursor = 1;
-    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
-    if (this.inputStream.LA(cursor) !== 0x28) return;
-    this.missedTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag });
-}
-
-public takeMissedTags(): Array<{ line: number; column: number; tag: string }> {
-    const taken = this.missedTags;
-    this.missedTags = [];
-    return taken;
-}
-
 // {§quotation} - an operation inside an unlabeled code block is shown, never run: the model that
 // wrapped it is told so once. Labeled blocks draw nothing here.
 private noteQuoted(): void {
     if (this.reasoning || this.quoteLabeled) return;
     const tag = this.text.replace(/^\x60+/, "");
-    if (!(Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag))) return;
+    if (!this.headingName(tag, 1)) return;
     this.quotedTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag });
 }
 
@@ -461,10 +439,10 @@ private closingAt(offset: number): boolean {
         if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
         name += ch; at++;
     }
-    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
+    return name !== "" && this.headingName(name, at);
 }
 
-// {§fence-heading-in-body} — a known heading of the taught width recovers an unclosed block only
+// {§fence-heading-in-body} — an operation heading of the taught width recovers an unclosed block only
 // after {§balanced-fences} has ruled out complete nesting: a wider block holds narrower headings
 // only while it closes, so no unclosed block swallows the operations after it.
 private headingAt(offset: number): boolean {
@@ -481,8 +459,7 @@ private headingAt(offset: number): boolean {
         name += ch;
         cursor++;
     }
-    // {§operation-fences}: the name alone makes the heading, whatever follows it (#996).
-    return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
+    return name !== "" && this.headingName(name, cursor);
 }
 
 private headingAfterEol(): boolean {
@@ -531,7 +508,7 @@ private closerWithHeadingAhead(): boolean {
     return !this.openerFollowsAt(at);
 }
 
-// Does an opener (backticks, a known name) begin at this offset?
+// Does an operation heading begin at this offset?
 private openerFollowsAt(at: number): boolean {
     let ticks = 0;
     while (this.inputStream.LA(at + ticks) === 0x60) ticks++;
@@ -544,7 +521,7 @@ private openerFollowsAt(at: number): boolean {
         name += String.fromCharCode(c);
         cursor++;
     }
-    return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
+    return name !== "" && this.headingName(name, cursor);
 }
 
 private targetScopeEnd(): boolean {
@@ -590,7 +567,7 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.operationHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§naked-operation} — the name opens; the ordinary heading lexer reads its aside.
 NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
 // {§reasoning-operations} — an enclosing code fence is quotation, including unknown tags and tildes.
@@ -599,10 +576,10 @@ NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(S
 ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
-INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME { this.noteMissed(); } -> type(TEXT), channel(HIDDEN) ;
+INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME -> type(TEXT), channel(HIDDEN) ;
 SPLIT_OPEN : { this.atLineStart() && this.splitHere() }? FENCE [ \t]* EOL NAME { this.splitOpen(); } -> mode(SLOTS) ;
 QUOTE : { this.atLineStart() && this.quotationHere() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
-// {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
+// {§interstitial-fence} - a fence opening no operation is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
 // {§provider-tagged-reasoning} - a route that delivers reasoning inline declares it, and the

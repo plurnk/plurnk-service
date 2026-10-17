@@ -105,6 +105,20 @@ if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(sel
 
 // The model tier also records free text as text items; the program is its statements.
 const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
+for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
+    const input = '{"query":"unchanged"}';
+    const invocation = PlurnkParser.frame("Fresh (inspect)", input);
+    const parsed = parse(invocation);
+    assertClean("unregistered executor heading", parsed);
+    const statement = statementsOf(parsed)[0];
+    if (statement?.runtime !== "fresh" || statement.target?.raw !== "inspect" || statement.body !== input
+        || statement.metadata !== null || statementsOf(parsed).length !== 1) {
+        throw new Error("the packed parser requires registration to admit explicit invocation syntax");
+    }
+    if (statementsOf(parse(PlurnkParser.frame("markdown", invocation))).length !== 0) {
+        throw new Error("a quoted executor heading escaped its enclosing block");
+    }
+}
 const ticks = String.fromCharCode(96).repeat(3);
 const answerTail = "Complete answer.\\n" + ticks + "\\n"
     + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";

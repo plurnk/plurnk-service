@@ -3402,8 +3402,12 @@ unchanged for proposal policy, application, stream registration, and
 effect-qualified hold policy. The post-acceptance materialization path never
 triggers reclassification.
 
-§exec-registry-resolves The runtime slot (`signal`) selects an executor from
-the workspace snapshot. Installed siblings form the immutable base:
+§exec-registry-resolves The execution's `runtime` selects an executor from
+the workspace snapshot at its dispatch point. Explicit invocations parse without requiring
+registration ({§executor-heading}); a preceding accepted subsystem command may publish the
+name they invoke in that same program ({§functionality-model-mutation}). A failed or rejected
+command grants nothing; subsequent invocations resolve the unchanged snapshot, unless the
+producer requested fail-on-error and stopped the program. Installed siblings form the immutable base:
 they are discovered and probed at startup, and availability is cached.
 Workspace Functionality providers may atomically overlay additional names under
 {§module-workspace-capabilities}; a name has one owner within a workspace, while

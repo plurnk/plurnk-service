@@ -1025,10 +1025,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.executorTags(workspaceId);
     }
 
-    executorJsonBodyTags(workspaceId: number): readonly string[] {
-        return this.#engine.executorJsonBodyTags(workspaceId);
-    }
-
     // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
     // worker, attributed to its actor, reading `log:///` in the worker that person acts for
     // ({§actor-boundary-client-operations}).

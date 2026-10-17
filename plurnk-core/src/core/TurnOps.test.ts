@@ -103,7 +103,7 @@ test("{§emission-history}: a NOTE whose log row was retired leaves the replay, 
     assert.equal(TurnOps.renderHistory(source, [], []), "", "no visible rows, nothing replays");
 });
 
-test("{§emission-history}: retained executor identities come from admission, not current registration", () => {
+test("{§emission-history} {§executor-heading}: explicit executor headings remain readable without current registration", () => {
     const calls = [
         PlurnkParser.frame("sh", "printf '%s\\n' finished"),
         PlurnkParser.frame("gitea (list_issues)", '{"query":"all"}'),
@@ -111,7 +111,18 @@ test("{§emission-history}: retained executor identities come from admission, no
     ].join("\n\n");
     const note = PlurnkParser.frame("NOTE", "Log memory.");
     assert.equal(TurnOps.renderHistory(`${calls}\n\n${note}`, ["sh", "gitea", "a-removed-plugin"]), note, "the admitted executors parse the frozen program; its calls are omitted and its NOTE replays");
-    assert.throws(() => TurnOps.renderHistory(`${calls}\n\n${note}`, []), SyntaxError, "without its admitted executors the frozen program does not parse");
+    assert.equal(TurnOps.renderHistory(`${calls}\n\n${note}`, []), note, "explicit invocation syntax does not depend on registration");
+    assert.equal(TurnOps.renderEmission(TurnOps.parseInternal(calls)), calls, "every frozen header and body stays whole");
+});
+
+test("{§emission-history} {§executor-heading}: slotless executors retain their admitted identities after unregistration", () => {
+    const call = PlurnkParser.frame("a-removed-plugin", "The complete tool input.");
+    const note = PlurnkParser.frame("NOTE", "Log memory.");
+    const source = `${call}\n\n${note}`;
+    assert.equal(TurnOps.renderHistory(source, ["a-removed-plugin"]), note);
+    assert.equal(TurnOps.renderEmission(TurnOps.parseInternal(source, { executors: ["a-removed-plugin"] })), source);
+    assert.throws(() => TurnOps.renderHistory(source, []), { name: "SyntaxError", message: /Core programs contain only Operation Syntax OPs/u },
+        "a lost admitted identity makes the slotless call quoted text, not a different executable program");
 });
 
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {

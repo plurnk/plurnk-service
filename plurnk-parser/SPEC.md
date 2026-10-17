@@ -21,7 +21,9 @@ using the same lexer, quotation pairing and AST admission. Nothing executes
 in this package. Its optional advisory callback reports normalization warnings
 only for the operations it admits.
 
-The heading-only lexer feeds `HeadingReader` through the same token normalization,
+`HeadingReader` supplies the lexer and fence pairing with one heading-recognition
+rule ({§executor-heading}); explicit invocation slots do not depend on the runtime registry.
+The heading-only lexer feeds it through the same token normalization,
 grammar and AST builder without fence pairing. `FencePairing` consumes its shape, not a second slot
 grammar. `StatementShape` owns the body-role classification shared by recovery,
 KILL construction and diagnostics; native-call recovery uses the same heading
