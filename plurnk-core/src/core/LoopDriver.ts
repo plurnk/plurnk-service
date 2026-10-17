@@ -16,7 +16,7 @@ import { outputAllowance } from "./turn-signals.ts";
 import { unconcludedEmission } from "./unconcluded-emission.ts";
 import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import type { AcquireWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
+import type { WithWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
 // {§operator-config-only-home} — the rails' values live on the panel.
 // {§operator-config-loop-timeout}
@@ -40,18 +40,18 @@ export default class LoopDriver {
     readonly #schemes: SchemeRegistry;
     readonly #notices: NoticeChannel;
     readonly #strikes: StrikeRail;
-    readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
+    readonly #withWorkspaceTurn: WithWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #runTurn: (args: Parameters<TurnRunner["runTurn"]>[0]) => ReturnType<TurnRunner["runTurn"]>;
 
-    constructor({ loopSignals, db, lifecycle, schemes, notices, strikes, acquireWorkspaceTurn, workspaceTurnStarting, runTurn }: {
+    constructor({ loopSignals, db, lifecycle, schemes, notices, strikes, withWorkspaceTurn, workspaceTurnStarting, runTurn }: {
         loopSignals: Map<number, AbortSignal>;
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
         strikes: StrikeRail;
-        acquireWorkspaceTurn: AcquireWorkspaceTurn;
+        withWorkspaceTurn: WithWorkspaceTurn;
         workspaceTurnStarting: WorkspaceTurnStarting | undefined;
         runTurn: (args: Parameters<TurnRunner["runTurn"]>[0]) => ReturnType<TurnRunner["runTurn"]>;
     }) {
@@ -61,7 +61,7 @@ export default class LoopDriver {
         this.#schemes = schemes;
         this.#notices = notices;
         this.#strikes = strikes;
-        this.#acquireWorkspaceTurn = acquireWorkspaceTurn;
+        this.#withWorkspaceTurn = withWorkspaceTurn;
         this.#workspaceTurnStarting = workspaceTurnStarting;
         this.#runTurn = runTurn;
     }
@@ -212,16 +212,14 @@ export default class LoopDriver {
                         await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
                     }
                 }
-                let turn;
-                const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId, executionSignal);
-                try {
+                const turn = await this.#withWorkspaceTurn(workspaceId, workerId, async () => {
                     executionSignal.throwIfAborted();
                     const notices = await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId }) ?? [];
                     if (!isDeepStrictEqual(notices, workspaceNotices)) {
                         for (const notice of notices) this.#notices.push(workspaceId, workerId, loopId, notice);
                         workspaceNotices = notices;
                     }
-                    turn = await observed( // {§observability-boundary}
+                    return observed( // {§observability-boundary}
                         "loop.turn",
                         { workerId, "loop.id": loopId },
                         async (span) => {
@@ -235,9 +233,7 @@ export default class LoopDriver {
                             return t;
                         },
                     );
-                } finally {
-                    releaseWorkspace();
-                }
+                }, executionSignal);
                 turnIds.push(...turn.createdTurnIds);
 
                 if (turn.curationFailure !== undefined) return await ruleTerminal(turn.curationFailure, "token_budget");

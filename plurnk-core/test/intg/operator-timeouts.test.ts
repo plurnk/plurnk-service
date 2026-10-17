@@ -150,8 +150,8 @@ test("{§loop-execution-allowance}: exhaustion while acquiring the workspace set
         const waiting = Promise.withResolvers<void>();
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            acquireWorkspaceTurn: (workspace, worker, signal) => {
-                const request = gate.acquireTurn(workspace, worker, signal);
+            withWorkspaceTurn: (workspace, worker, run, signal) => {
+                const request = gate.withTurn(workspace, worker, run, signal);
                 waiting.resolve();
                 return request;
             },
@@ -186,7 +186,7 @@ test("{§loop-execution-allowance}: an exceptional exit saves consumption and re
         let executionSignal: AbortSignal | undefined;
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            acquireWorkspaceTurn: async (_workspace, _worker, signal) => {
+            withWorkspaceTurn: async (_workspace, _worker, _run, signal) => {
                 executionSignal = signal;
                 t.mock.timers.tick(40000);
                 throw failure;

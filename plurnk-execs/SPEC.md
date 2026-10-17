@@ -274,10 +274,11 @@ reclassifies the materialized path.
 | `pure` | Has no externally observable side effect.    | Automatically accepted.    |
 
 The classification controls admission policy and may be reused as operational
-metadata; it never changes within the invocation. After acceptance, every execution
+metadata; it never changes within the invocation. After acceptance, an external execution
 uses the same background stream path: output is not returned in the dispatching
 turn. Core owns that composed behavior in {§exec-host-proposes},
-{§exec-readpure-ungated}, and {§exec-stream}.
+{§exec-readpure-ungated}, and {§exec-stream}; its ordered subsystem commands use
+{§functionality-model-mutation}.
 
 ### §executor-probe Availability is per runtime tag
 

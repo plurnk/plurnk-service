@@ -130,14 +130,16 @@ expose; both default to none, and the frameworks that own those types name them 
 An adapter may expose current partial-source `configurationNotices`; these join the ordinary
 workspace diagnostics without preventing independently valid definitions from preparing.
 
-§functionality-preparation-cancellation **Preparation belongs to the host's lifetime.**
-The host supplies `preparation.signal`, aborted when workspace Functionality stops.
+§functionality-preparation-cancellation **Preparation belongs to its invoking lifetime.**
+The host supplies `preparation.signal`, aborted when workspace Functionality stops
+or the invoking operation is cancelled. An accepted operation waiting for workspace
+exclusivity is removed from that queue on cancellation, without publishing later.
 Adapters pass it to cancellable preparation I/O and check it before starting further work.
 Cancellation is not an unavailable definition: it rejects with the signal's reason, after
 releasing candidate resources. Cleanup failures remain failures, including alongside cancellation.
 The host never abandons a preparation promise merely because its signal was aborted.
 
-| Shutdown reaches the attempt | Settlement |
+| Cancellation reaches the attempt | Settlement |
 | --- | --- |
 | Before preparation | Do not call the adapter. |
 | During preparation | Signal cancellation and join preparation, including candidate cleanup. |

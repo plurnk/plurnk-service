@@ -37,6 +37,7 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
         readWorkerModuleState: async () => null,
         replaceWorkerModuleState: async () => {},
         withWorkspaceGate: (_workspaceId, _owner, mode, run) => exclusively(mode, run),
+        atWorkspaceBoundary: (workspaceId, run) => gate.atBoundary(workspaceId, run),
         retainWorkspace: () => () => {},
         preparationChanged: () => {},
     });
@@ -89,6 +90,7 @@ const recording = (): { coordinator: Functionality; actions: Map<string, ModuleA
         readWorkerModuleState: async () => null,
         replaceWorkerModuleState: async () => {},
         withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
+        atWorkspaceBoundary: (_workspaceId, run) => run(),
         retainWorkspace: () => () => {},
         preparationChanged: () => {},
     });
@@ -135,6 +137,7 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
                 readWorkerModuleState: async () => null,
                 replaceWorkerModuleState: async () => {},
                 withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
+                atWorkspaceBoundary: (_workspaceId, run) => run(),
                 retainWorkspace: () => () => {},
                 preparationChanged: () => {},
             });
@@ -204,6 +207,7 @@ for (const scope of ["workspace", "worker"] as const) {
             readWorkerModuleState: async () => state,
             replaceWorkerModuleState: async (_worker, _owner, next) => { publish(next); },
             withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
+            atWorkspaceBoundary: (_workspaceId, run) => run(),
             retainWorkspace: () => () => {},
             preparationChanged: () => {},
         });

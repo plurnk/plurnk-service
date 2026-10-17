@@ -266,7 +266,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
             readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),
             replaceWorkerModuleState: (workerId, owner, state) => this.#residency.replaceWorkerModuleState(workerId, owner, state),
-            withWorkspaceGate: (workspaceId, owner, gate, run) => this.#residency.exclusively(workspaceId, owner, gate, run),
+            withWorkspaceGate: (workspaceId, owner, gate, run, signal) => this.#residency.exclusively(workspaceId, owner, gate, run, signal),
+            atWorkspaceBoundary: (workspaceId, run) => this.#workspaceGate.atBoundary(workspaceId, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
@@ -367,7 +368,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 if (message === undefined) throw new Error(`injectWorker: message ${messageId} has no address`);
                 return { action, loopId, message: message.path };
             },
-            acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
+            withWorkspaceTurn: (workspaceId, workerId, run, signal) => this.#workspaceGate.withTurn(workspaceId, workerId, run, signal),
             // {§functionality-hotload} — skills and plugins change out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
@@ -1118,8 +1119,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement; contextWorkerId: number | null;
     }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, loopId, statement, contextWorkerId } = args;
-        const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
-        try {
+        return this.#workspaceGate.withTurn(workspaceId, workerId, async () => {
             await this.#residency.reconcile(workspaceId);
             const { id: turnId } = await Turn.open(this.#db, {
                 loopId,
@@ -1152,9 +1152,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 }
                 throw cause;
             }
-        } finally {
-            release();
-        }
+        }, this.#clientLoops.get(loopId)?.scope.signal);
     }
 
     // {§methods} — the module's render surface beyond the journal. Thin delegations

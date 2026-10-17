@@ -8,13 +8,15 @@ import { fileURLToPath } from "node:url";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Mock } from "@plurnk/plurnk-providers";
 import { Validator, type FunctionalityListResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { awaitExecOutcome } from "./_execs.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
-import { waitFor } from "./_rpc.ts";
+import { waitFor, waitForDb } from "./_rpc.ts";
 import { modelOperation } from "./_workers.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
@@ -35,6 +37,35 @@ const withOperatorEnvironment = (t: TestContext, values: Readonly<Record<string,
         }
     });
 };
+
+test("{§functionality-model-mutation} MCP replacement precedes a tool invocation in the same raw model program", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeRawMockResponse([
+            PlurnkParser.frame("mcp (replace)", JSON.stringify({ alias: "fixture", definition: { name: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) } })),
+            PlurnkParser.frame("fixture (environment)", "{}"),
+            PlurnkParser.frame("NOTE", "Observe the new server's reply."),
+        ].join("\n\n")),
+        makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+    ] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "mcp-ordered" });
+    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Replace the server and query its environment.", maxTurns: 2 });
+    const lifecycle = new LoopLifecycle(db);
+    await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+    const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "mcp")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
+    const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
+    assert.equal(output.witness, "replacement", "the tool runs on the new attachment, not the old server");
+    assert.equal(await lifecycle.status(loop.loopId), 200);
+});
 
 test("{§mcp-launch-environment} a configured stdio server starts with the operator's environment beneath the workspace layer, never a worker's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
     const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-env-"));
@@ -90,7 +121,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
         const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
-        const run = async (runtime: string, heading: string, body: object, approve: boolean, channel = "results") => {
+        const run = async (runtime: string, heading: string, body: object, approve: boolean, status: number, channel = "results") => {
             const source = PlurnkParser.frame(heading, JSON.stringify(body));
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
@@ -104,15 +135,15 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
                 await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10000 });
                 await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             }
-            assert.equal((await pending).status, 200);
+            assert.equal((await pending).status, status);
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
         };
         try {
-            const changed = await run("env", "env (add)", { scope: "workspace", alias: "REF_VALUE", definition: { value: "workspace-reference" } }, true);
+            const changed = await run("env", "env (add)", { scope: "workspace", alias: "REF_VALUE", definition: { value: "workspace-reference" } }, true, 201);
             assert.equal((changed.definition as { origin: string }).origin, "workspace", "the accepted model verb uses the same workspace layer as client actions");
             await invoke("mcp", "disable", { alias: "explicit" });
             await invoke("mcp", "enable", { alias: "explicit" });
-            const received = await run("explicit", "explicit (environment)", {}, true, "body");
+            const received = await run("explicit", "explicit (environment)", {}, true, 200, "body");
             assert.equal(received.witness, "explicit", "the entry's env applies over the workspace layer");
             assert.equal(received.reference, "workspace-reference", "a workspace value replaces the operator's");
             assert.equal(received.private, null, "the invoking worker never becomes the shared MCP's environment");
@@ -257,7 +288,7 @@ for (const { policy, decision } of [
                 await assert.rejects(readFile(marker), { code: "ENOENT" }, "a rejected launch never starts the server");
                 return;
             }
-            assert.equal(result.status, 200);
+            assert.equal(result.status, 201);
             const added = await awaitExecOutcome(db, { workspaceId, scheme: "mcp", timeoutMs: 10000 });
             assert.equal((added.definition as { state: string }).state, "active");
             const starts = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);

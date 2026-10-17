@@ -62,15 +62,16 @@ export interface FunctionalityHost {
     // Worker, replaced without runtimes and without workspace exclusivity.
     readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void>;
-    withWorkspaceGate<T>(workspaceId: number, namespaceOwner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>): Promise<T>;
+    withWorkspaceGate<T>(workspaceId: number, namespaceOwner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+    atWorkspaceBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
     preparationChanged(workspaceId: number, preparation: readonly FunctionalityPreparationActivity[]): void;
 }
 
 // "action": an explicit client action under user authority — publishes now,
 // rejects a failed preparation, 409 when the workspace is held. "operation": an
-// execution verb inside a turn that holds the workspace — its ordinary execution
-// stream waits for publication. Replacement preserves the preceding publication
+// ordered command inside a turn — publication yields that turn's shared lease.
+// Replacement preserves the preceding publication
 // on refusal for both callers ({§functionality-replacement}).
 export type { FunctionalityCaller };
 
@@ -413,9 +414,11 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
         options: FunctionalityOptions = {},
+        signal = this.#host.signal,
     ): Promise<FunctionalityInvocation> {
-        this.#host.signal.throwIfAborted();
-        const pending = this.#invoke(family, verb, params, identity, caller, options);
+        const lifetime = signal === this.#host.signal ? signal : AbortSignal.any([this.#host.signal, signal]);
+        lifetime.throwIfAborted();
+        const pending = this.#invoke(family, verb, params, identity, caller, options, lifetime);
         this.#admissions.set(pending, identity.workspaceId);
         try {
             return await pending;
@@ -443,6 +446,7 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
         options: FunctionalityOptions,
+        signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
         const schema = this.#schemas.get(family)![verb];
@@ -472,15 +476,16 @@ export default class Functionality {
         // its siblings run.
         if (scope === "worker") {
             const workerId = Functionality.#workerOf(adapter, identity);
-            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options));
+            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options, signal));
         }
         if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
-        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options));
+        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options, signal));
         // A context family (one that declares the worker scope) is read where it is used, so its workspace
         // defaults change nothing resident either: they serialize on the family's lane, as a Worker's own do,
         // and an operation inside its own held turn never waits on itself.
         if (scopesOf(adapter).includes("worker")) return mutate();
-        return this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate);
+        const publish = () => this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate, signal);
+        return caller === "operation" ? this.#host.atWorkspaceBoundary(identity.workspaceId, publish) : publish();
     }
 
     // A worker-scoped verb that names no Worker is a defect at the projection, never a client
@@ -513,8 +518,8 @@ export default class Functionality {
         return next;
     }
 
-    async #withWorkspaceGate<T>(workspaceId: number, owner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>): Promise<T> {
-        const pending = this.#host.withWorkspaceGate(workspaceId, owner, gate, run);
+    async #withWorkspaceGate<T>(workspaceId: number, owner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>, signal = this.#host.signal): Promise<T> {
+        const pending = this.#host.withWorkspaceGate(workspaceId, owner, gate, run, signal);
         this.#admissions.set(pending, workspaceId);
         try { return await pending; }
         finally { this.#admissions.delete(pending); }
@@ -766,7 +771,9 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
         options: FunctionalityOptions,
+        signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
+        signal.throwIfAborted();
         const key = this.#key(identity.workspaceId, adapter.family);
         const family = this.#families.get(key);
         if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
@@ -782,6 +789,7 @@ export default class Functionality {
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
             forceAlias: retry ? transition.aliases[0]! : null,
             admissions: transition.admissions,
+            signal,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         return this.#mutationResult(adapter, verb, transition, effectiveAfter, publication.outcomes);
@@ -798,12 +806,14 @@ export default class Functionality {
         workerId: number,
         caller: FunctionalityCaller,
         options: FunctionalityOptions,
+        signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
+        signal.throwIfAborted();
         const state = await this.#loadWorkerState(adapter, workerId);
         const effective = await this.#effective(adapter, identity, state);
         if (verb === "list") {
-            const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable");
-            try { this.#host.signal.throwIfAborted(); }
+            const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable", [], signal);
+            try { signal.throwIfAborted(); }
             catch (cause) { return Functionality.#abort(prepared, cause); }
             await prepared.commit();
             return { status: 200, body: Validator.assertFunctionalityListResult({
@@ -814,9 +824,9 @@ export default class Functionality {
         const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective, options);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
-        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions);
+        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions, signal);
         try {
-            this.#host.signal.throwIfAborted();
+            signal.throwIfAborted();
             await this.#host.replaceWorkerModuleState(workerId, adapter.namespaceOwner, Functionality.#persisted(nextState));
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
@@ -834,13 +844,14 @@ export default class Functionality {
         effective: ReadonlyMap<string, EffectiveDefinition>,
         failureMode: "publish-unavailable" | "reject",
         admissions: readonly FunctionalityAdmission[] = [],
+        signal = this.#host.signal,
     ): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         const enabled = Functionality.#enabled(effective);
         const prepared = await this.#prepare(adapter, {
             workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode, admissions,
             progress: () => undefined,
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
-        });
+        }, signal);
         try {
             Functionality.#checkOutcomes(adapter, enabled, prepared);
             if ((prepared.runtimes?.length ?? 0) > 0 || prepared.documents.length > 0 || prepared.snapshot !== null) {
@@ -904,9 +915,10 @@ export default class Functionality {
             readonly retain: () => () => void;
             readonly forceAlias?: string | null;
             readonly admissions?: readonly FunctionalityAdmission[];
+            readonly signal?: AbortSignal;
         },
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
-        this.#host.signal.throwIfAborted();
+        (options.signal ?? this.#host.signal).throwIfAborted();
         const { workspaceId } = identity;
         const current = this.#preparations.get(workspaceId) ?? new Map<string, FunctionalityPreparationActivity>();
         this.#preparations.set(workspaceId, current);
@@ -947,10 +959,12 @@ export default class Functionality {
             readonly retain: () => () => void;
             readonly forceAlias?: string | null;
             readonly admissions?: readonly FunctionalityAdmission[];
+            readonly signal?: AbortSignal;
         },
         report: (aliases: readonly string[], phase: FunctionalityPreparationActivity["phase"]) => void,
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
+        const signal = options.signal ?? this.#host.signal;
         const previous = this.#families.get(key)?.prepared ?? null;
         let enabled = new Map<string, FunctionalityPreparedDefinition>();
         let prepared: FunctionalityPrepared<RuntimeRegistration> | null = null;
@@ -966,7 +980,7 @@ export default class Functionality {
                 failure: options.failure,
                 admissions: options.admissions ?? [],
                 progress: (aliases) => {
-                    this.#host.signal.throwIfAborted();
+                    signal.throwIfAborted();
                     for (const alias of aliases) {
                         if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
                     }
@@ -974,7 +988,7 @@ export default class Functionality {
                 },
                 retain: options.retain,
                 ...(options.forceAlias ? { force: options.forceAlias } : {}),
-            });
+            }, signal);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError) || options.configurationFailure === "reject") throw cause;
             configurationFailure = { phase, error: cause };
@@ -982,7 +996,7 @@ export default class Functionality {
         }
         let runtimes: RuntimeRegistration[];
         try {
-            this.#host.signal.throwIfAborted();
+            signal.throwIfAborted();
             report([], "publishing");
             if (prepared !== null) Functionality.#checkOutcomes(adapter, enabled, prepared);
             for (const runtime of prepared?.runtimes ?? []) {
@@ -1011,7 +1025,7 @@ export default class Functionality {
         const commit = async (): Promise<void> => {
             const before = this.#families.get(key);
             try {
-                this.#host.signal.throwIfAborted();
+                signal.throwIfAborted();
                 await this.#host.replaceWorkspaceCapabilities({
                     workspaceId: identity.workspaceId,
                     namespaceOwner: adapter.namespaceOwner,
@@ -1038,8 +1052,7 @@ export default class Functionality {
     }
 
     // {§functionality-preparation-cancellation} Join the adapter; abort a returned candidate before publication.
-    async #prepare(adapter: HostFunctionalityAdapter, preparation: Omit<FunctionalityPreparation, "signal">): Promise<FunctionalityPrepared<RuntimeRegistration>> {
-        const { signal } = this.#host;
+    async #prepare(adapter: HostFunctionalityAdapter, preparation: Omit<FunctionalityPreparation, "signal">, signal = this.#host.signal): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         signal.throwIfAborted();
         const prepared = await adapter.prepare({ ...preparation, signal });
         try { signal.throwIfAborted(); }

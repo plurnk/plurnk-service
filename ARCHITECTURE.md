@@ -404,7 +404,7 @@ interchangeable.
 
 ## How an execution outcome is observed
 
-An execution answers `200 started` — for every executor, gated or not: the
+An external execution answers `200 started`, gated or not: the
 runtime slot resolves the executor ({§exec-registry-resolves}), the spawn
 backgrounds, and its output is *observed, not fetched* ({§exec-stream}). The
 executor streams into the channels of its `<tag>:///<id>` output entry
@@ -419,6 +419,11 @@ POST, PUT or DELETE leaves the machine exactly as a subprocess does
 ({§http-outbound-proposes}). An accepted proposal's settlement replaces the
 202 with the applied operation's result, preserving failures
 ({§proposal-accept-applies}).
+
+Subsystem management is ordered configuration, not background work. Its commands
+retain those proposal and output paths, but settle before the next operation;
+resident publication hands off the turn's shared workspace lease for exclusive
+publication and reacquires it before continuing ({§functionality-model-mutation}).
 
 Executors are Worker-agnostic by contract: `ExecArgs` carries no Worker
 identity. MCP servers and Functionality managers are published per workspace

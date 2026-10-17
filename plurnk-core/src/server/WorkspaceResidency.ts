@@ -247,10 +247,10 @@ export default class WorkspaceResidency {
         });
     }
 
-    async exclusively<T>(workspaceId: number, namespaceOwner: string, mode: WorkspaceCapabilityGate, run: () => Promise<T>): Promise<T> {
+    async exclusively<T>(workspaceId: number, namespaceOwner: string, mode: WorkspaceCapabilityGate, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         await this.identity(workspaceId);
         const gate = mode === "none" ? undefined : mode === "wait"
-            ? this.#workspaceGate.requestExclusive(workspaceId)
+            ? this.#workspaceGate.requestExclusive(workspaceId, signal)
             : this.#workspaceGate.tryExclusive(workspaceId);
         if (gate === null) throw residencyFailure(
             "workspace-busy", 409,
@@ -259,6 +259,7 @@ export default class WorkspaceResidency {
         );
         try {
             await gate?.acquired;
+            signal?.throwIfAborted();
             return await run();
         } finally {
             gate?.release();

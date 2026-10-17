@@ -1786,7 +1786,7 @@ Registration precedes loop affinity:
 | Failure | A source/admission/provider failure affects its own operation, not successful siblings. Accounting or persistence failure is internal and fails hard. |
 | Observation | Responses are unseen retrieval work; completion follows {§send-premature-terminate}. |
 
-- §op-synchronous **Decisive operations settle before the next operation.** The dispatcher awaits each operation and its proposal resolution. Work remains in flight only when the operation's contract deliberately creates concurrency: FORK, WORK, a stream-producing execution, and streaming READ after acquisition. Such a READ first establishes its durable subscription and returns `102`; a later operation may address that live owner. Dispatching an execution before KILL does not wait for the process to finish using a resource. KILL of a worker synchronously ends its live loops before disposition checks the pending set; physical scope cleanup remains asynchronous.
+- §op-synchronous **Decisive operations settle before the next operation.** The dispatcher awaits each operation and its proposal resolution, including subsystem commands ({§functionality-model-mutation}). Work remains in flight only when the operation's contract deliberately creates concurrency: FORK, WORK, external execution, and streaming READ after acquisition. Such a READ first establishes its durable subscription and returns `102`; a later operation may address that live owner. Dispatching an external execution before KILL does not wait for the process to finish using a resource. KILL of a worker synchronously ends its live loops before disposition checks the pending set; physical scope cleanup remains asynchronous.
 - §edit-execution **One resolved EDIT target is one mutation.** Each EDIT resolves against current resource state when dispatch reaches it, owns its proposal when gated, and records its own resulting revision. No later EDIT is prepared or applied in advance. Numeric scopes address current coordinates; an earlier EDIT may change what those numbers select. Rejection applies only to that operation, not its successful siblings.
 - §edit-anchor-continuity **Own EDITs preserve untouched hash targets within one program.** Core carries an anchor through exact, successfully applied EDIT splices when its line survives unchanged, even if its ordinal or neighborhood changes. Scoped entry KILL uses the same deletion path. Target-line replacement or deletion invalidates that binding. Continuity is private to the admitted program and canonical resource/channel; it is not a new published anchor format. The complete normalized line content must match the expected result of the preceding recorded EDIT, otherwise retained bindings are discarded and ordinary current-state validation applies. Reviewer replacement and results without an applied EDIT receipt do not carry bindings forward. A retained binding resolves alone: a twin neighbourhood this program's own splice created elsewhere does not make the carried anchor ambiguous, and an anchor the program never bound resolves against current state. Normalization is the same line-content representation used by READ and line hashing; file-write revision checks remain independent. No approximate text matching is used. Lowered coordinates retain a current-anchor precondition at the mutation owner; ambiguous matches and concurrent changes remain collisions.
 - §anchor-offset **An anchor offset is tolerated, never taught (#749).** A line mark may carry an offset from its anchor (`@abcde+1`, `@abcde-2`), and a bare `+N` after an anchor counts from that anchor (`<@abcde,+1>`). The anchor resolves as usual and the offset is added; a result before line 1 is an invalid mark, and past the end is the ordinary range refusal. Continuity and current-anchor preconditions check the anchor's own line. `plurnk.md` keeps its two anchor forms. Numeric relative endpoints normalize under {§scope-range-recovery}; a reversed range produced by anchor resolution is never reinterpreted as a count.
@@ -3531,7 +3531,7 @@ neither from its own home.
 
 §workspace-auto-name **A workspace with neither name nor project root gets five alphanumeric characters, at least one a letter.** Such a `workspace.create` draws uniformly from the {§line-anchors} alphabet `0-9A-Za-z` using a cryptographic source, redrawing digit-only names and collisions. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from.
 
-§exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
+§exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). Admission does not determine settlement: external executions background and stream, while subsystem commands settle under {§functionality-model-mutation}. Both expose output through ordinary environment observation ({§exec-stream}), not a second inline body path.
 
 §effect-policy-tunable **Effect admission is one knob per effect.**
 `PLURNK_SERVICE_EFFECT_HOST`, `PLURNK_SERVICE_EFFECT_READ` and
@@ -3562,7 +3562,7 @@ publishes only once subscription settlement has installed its terminal result;
 until then the stream is still in flight and publishes on the turn after it settles.
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
-`PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (`-1`
+`PLURNK_SERVICE_EXEC_CONCURRENCY` external executions run at once in one workspace (`-1`
 unbounded); the scope is the workspace, so neither delegation nor later turns
 bypass it and no other workspace can starve it. Every admitted execution still creates its
 entry, channels, and open subscription before its receipt returns, so queued work is
@@ -3574,7 +3574,8 @@ it: an immediate slot is `200 { outcome: "started" }`; delayed work is
 current truth. Admission is FIFO within the workspace; queue residence does not consume
 the execution timeout; a KILL while queued never invokes the executor and concludes the
 stream as any KILL does ({§stream-control}). The scheduler is the exec scheme's; the knob is the
-service's ({§operator-config}), fail-hard on any other value.
+service's ({§operator-config}), fail-hard on any other value. Ordered subsystem
+commands use {§functionality-model-mutation}, not this background-work queue.
 
 §exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
 terminal observation is the same page a markerless READ returns, whatever the
@@ -4603,7 +4604,10 @@ Settling the coordinator includes accepted refreshes waiting for that gate,
 not only work already inside a family lane.
 Explicit client mutations use `try` and fail 409 before effects while the workspace is held.
 Refused mutations reserve no queue position; a client retry is a new admission.
-An accepted model mutation uses `wait`, proceeding after its originating turn. Activation and turn-admission refresh use `none` inside
+An accepted operation mutation uses `wait`: its turn yields the shared lease
+at that operation, awaits exclusive publication, and reacquires its lease before
+dispatching the next operation. Concurrent publishers yield independently; no
+publisher waits while retaining the shared lease it needs released. Activation and turn-admission refresh use `none` inside
 their already-held demand boundary. Providers reject replacement while active
 requests, input exchanges, or Tasks depend on the old snapshot; infrastructure
 watches may be replaced. These are concurrency constraints, not creator privileges.
@@ -5021,20 +5025,27 @@ A family that ships no file has a header-only document. Registration also
 validates the adapter's taught `add` example against the `add` input schema it
 teaches, so a wrong example fails boot rather than the model.
 
-§functionality-model-mutation **An accepted mutation completes through its ordinary
-execution stream.** Preparation and publication share the family's serialized
-lane. Publication acquires workspace exclusivity after current turns release
-their leases; the invoking stream remains pending until publication completes.
+§functionality-model-mutation **Subsystem commands settle in authored order.**
+Every manager verb, including inspection, completes before dispatch proceeds;
+later operations observe earlier successful configuration changes. These
+core-owned commands use ordinary proposals and durable execution outputs, but
+not the background-execution slot pool. Preparation and publication share the
+family's serialized lane. Resident publication uses the lease handoff in
+{§module-workspace-quiescence}; context-only families retain their existing
+scope-local serialization. The invoking operation and its output remain pending
+until settlement; they never acknowledge merely starting a future commit.
 It then reports `active`, `unavailable`, or `authorization-required`, or the exact
 publication failure. Resource readiness is not execution liveness: a mutation's
 `202 authorization-required` body remains exact, while the finished manager
 execution closes with `200`. It does not wait for sign-in. A preparation failure may publish enabled-but-unavailable
-state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Stream polling,
-waiting, and result observation use the ordinary execution lifecycle, without a
+state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Result observation uses the ordinary execution lifecycle, without a
 separate deferred-commit queue. An explicit client action publishes now, rejects
 a failed preparation, and fails 409 while the workspace is held
 ({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and
-publishes nothing.
+publishes nothing. Cancellation removes queued publication and aborts preparation
+before publication; an already-started atomic publication is joined, never
+abandoned partway through. Shell commands, remote tools, WORK/FORK and streaming
+READ retain their deliberately asynchronous contracts ({§op-synchronous}).
 
 ## §methods Application interface
 

@@ -4,6 +4,71 @@ import WorkspaceGate from "./WorkspaceGate.ts";
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+test("{§functionality-model-mutation} concurrent turns yield for publications and resume behind the same gate", async () => {
+    const gate = new WorkspaceGate(async () => false);
+    const entered = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    const events: string[] = [];
+    const run = (worker: number) => gate.withTurn(1, worker, async () => {
+        events.push(`turn:${worker}`);
+        if (worker === 2) entered.resolve();
+        await proceed.promise;
+        await gate.atBoundary(1, async () => {
+            const exclusive = gate.requestExclusive(1);
+            try {
+                await exclusive.acquired;
+                events.push(`publish:${worker}`);
+                assert.equal(gate.tryExclusive(1), null, "publication retains exclusivity");
+            } finally { exclusive.release(); }
+        });
+        assert.equal(gate.tryExclusive(1), null, "the resumed program has its shared lease back");
+        events.push(`resumed:${worker}`);
+    });
+    const first = run(1);
+    const second = run(2);
+    await entered.promise;
+    proceed.resolve();
+    await Promise.all([first, second]);
+    assert.deepEqual(events, ["turn:1", "turn:2", "publish:1", "publish:2", "resumed:1", "resumed:2"]);
+    const available = gate.tryExclusive(1);
+    assert.ok(available);
+    available.release();
+});
+
+test("{§functionality-model-mutation} a failed publication reacquires the turn and no lease escapes its scope", async () => {
+    const gate = new WorkspaceGate(async () => false);
+    const failure = new Error("publication refused");
+    const resume = Promise.withResolvers<void>();
+    let delayed!: Promise<void>;
+    await gate.withTurn(1, 1, async () => {
+        await assert.rejects(gate.atBoundary(1, async () => { throw failure; }), (cause: unknown) => cause === failure);
+        assert.equal(gate.tryExclusive(1), null);
+        delayed = resume.promise.then(() => gate.atBoundary(1, async () => {}));
+    });
+    resume.resolve();
+    await delayed;
+    const available = gate.tryExclusive(1);
+    assert.ok(available);
+    available.release();
+});
+
+test("{§functionality-preparation-cancellation} cancelling a queued publisher neither releases another owner nor publishes later", async () => {
+    const gate = new WorkspaceGate(async () => false);
+    const first = gate.requestExclusive(1);
+    await first.acquired;
+    const controller = new AbortController();
+    const second = gate.requestExclusive(1, controller.signal);
+    const rejected = assert.rejects(second.acquired, (cause: unknown) => cause === controller.signal.reason);
+    controller.abort(new Error("cancelled publication"));
+    await rejected;
+    second.release();
+    assert.equal(gate.tryExclusive(1), null, "the first publisher still owns the workspace");
+    first.release();
+    const available = gate.tryExclusive(1);
+    assert.ok(available, "the cancelled writer leaves no admission behind");
+    available.release();
+});
+
 test("a queued exclusive request blocks later ordinary turns", async () => {
     const gate = new WorkspaceGate(async (workerId, rootWorkerId) => workerId === rootWorkerId);
     const first = await gate.acquireTurn(1, 1);

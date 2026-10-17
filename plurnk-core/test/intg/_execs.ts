@@ -33,8 +33,7 @@ export const executionAddress = async (db: Db, turnId: number, sequence = 1): Pr
     return stream;
 };
 
-// {§exec-stream} — an execution dispatch answers `started`; the verb's outcome
-// settles the channel of its `<tag>:///<loop>/<turn>/<seq>` output entry.
+// {§exec-stream} — the verb's outcome settles its durable output channel.
 // Await the newest settled output for one runtime scheme and parse its JSON.
 // A refusal travels on the operation's log row, never in the channel.
 export const awaitExecOutcome = async (

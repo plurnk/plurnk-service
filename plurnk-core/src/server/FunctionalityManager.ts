@@ -180,7 +180,7 @@ export default class FunctionalityManager extends BaseExecutor {
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {
-            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation", { env: EnvFunctionality.modifier(args.metadata) });
+            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation", { env: EnvFunctionality.modifier(args.metadata) }, args.signal);
         } catch (cause) {
             // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
             // verb's own outcome with its own status, never an executor fault: it streams as the result,

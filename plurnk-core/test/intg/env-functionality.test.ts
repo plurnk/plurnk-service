@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§functionality-scope} {§env-functionality} — the environment family beneath the shared
 // coordinator, registered by Core. Worker-scoped client actions, one durable value per worker, and
 // the model's manager bound to the invoking worker: the shared verbs, acting for one worker.
@@ -8,6 +8,8 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Mock } from "@plurnk/plurnk-providers";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -15,12 +17,38 @@ import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 import { modelOperation } from "./_workers.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
+
+for (const scope of ["worker", "workspace"] as const) {
+    test(`{§functionality-model-mutation} ${scope} env admission precedes the next shell invocation`, { timeout: 15_000 }, async (t) => {
+        serverProposals(t, "accept");
+        const db = await openMigrated();
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [
+            makeRawMockResponse([
+                PlurnkParser.frame("env (add)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", definition: { value: "settled" } })),
+                PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
+                PlurnkParser.frame("NOTE", "Review the shell output."),
+            ].join("\n\n")),
+            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+        ] });
+        const daemon = new Daemon({ db, provider });
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        await daemon.start();
+        const { workspaceId } = await daemon.createWorkspace({ name: `env-ordered-${scope}` });
+        const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+        const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Configure the witness and print it.", maxTurns: 2 });
+        const lifecycle = new LoopLifecycle(db);
+        await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+        const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+        assert.equal(rows.find((row) => row.origin === "model" && row.op === "env")?.status_rx, 201);
+        assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
+    });
+}
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
@@ -220,7 +248,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         try {
             const before = await outputs();
             const added = await accepted(bob, `\`\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
-            assert.equal(added.status, 200, "the accepted add settled inside the operation");
+            assert.equal(added.status, 201, "the accepted add settled inside the operation");
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "worker");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");

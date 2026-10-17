@@ -43,7 +43,7 @@ export type WorkspaceDerivationStatus = {
     message: string;
     level: "info" | "warn" | "error";
 };
-export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number, signal?: AbortSignal) => Promise<() => void>;
+export type WithWorkspaceTurn = <T>(workspaceId: number, workerId: number, run: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
 export type WorkspaceTurnStarting = (args: {
     workspaceId: number;
     workerId: number;
@@ -249,17 +249,17 @@ export default class Engine {
         await this.#workspaceWarms.get(workspaceId)?.promise;
     }
     readonly #notify: EngineNotifications;
-    readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
+    readonly #withWorkspaceTurn: WithWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
     // The daemon's callbacks arrive flat and travel as one bundle ({§engine-notifications}).
-    constructor({ db, lifecycle, schemes, mimetypes, acquireWorkspaceTurn, workspaceTurnStarting, weigh, ...notify }: {
+    constructor({ db, lifecycle, schemes, mimetypes, withWorkspaceTurn, workspaceTurnStarting, weigh, ...notify }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
-        acquireWorkspaceTurn?: AcquireWorkspaceTurn;
+        withWorkspaceTurn?: WithWorkspaceTurn;
         workspaceTurnStarting?: WorkspaceTurnStarting;
         weigh?: (text: string) => number;
     } & EngineNotifications) {
@@ -267,7 +267,7 @@ export default class Engine {
         this.#lifecycle = lifecycle ?? new LoopLifecycle(db);
         this.#schemes = schemes;
         this.#notify = notify;
-        this.#acquireWorkspaceTurn = acquireWorkspaceTurn ?? (async () => () => {});
+        this.#withWorkspaceTurn = withWorkspaceTurn ?? (async (_workspaceId, _workerId, run) => run());
         this.#workspaceTurnStarting = workspaceTurnStarting;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
@@ -343,7 +343,7 @@ export default class Engine {
             referenceVisibility: (ctx) => this.#dispatcher.referenceVisibility(ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions });
-        this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, acquireWorkspaceTurn: this.#acquireWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
+        this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, withWorkspaceTurn: this.#withWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
     }
 
     // Late injection: the executor registry is async-built at daemon start()

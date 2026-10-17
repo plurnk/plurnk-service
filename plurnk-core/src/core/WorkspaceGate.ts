@@ -1,4 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 type Release = () => void;
+type TurnScope = { workspaceId: number; workerId: number; signal?: AbortSignal; release: Release | null; closed: boolean };
 
 type TurnRequest = {
     workerId: number;
@@ -34,9 +37,32 @@ export interface WorkspaceExclusive {
 export default class WorkspaceGate {
     readonly #isDescendant: (workerId: number, rootWorkerId: number) => Promise<boolean>;
     readonly #states = new Map<number, WorkspaceState>();
+    readonly #turnScope = new AsyncLocalStorage<TurnScope | undefined>();
 
     constructor(isDescendant: (workerId: number, rootWorkerId: number) => Promise<boolean>) {
         this.#isDescendant = isDescendant;
+    }
+
+    // {§functionality-model-mutation} The lease belongs to this awaited turn, not
+    // callbacks or background producers that happen to originate inside it.
+    async withTurn<T>(workspaceId: number, workerId: number, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+        const scope: TurnScope = { workspaceId, workerId, signal, release: await this.acquireTurn(workspaceId, workerId, signal), closed: false };
+        try { return await this.#turnScope.run(scope, run); }
+        finally { scope.closed = true; scope.release?.(); scope.release = null; }
+    }
+
+    async atBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T> {
+        const scope = this.#turnScope.getStore();
+        if (scope === undefined || scope.closed) return run();
+        if (scope.workspaceId !== workspaceId) throw new Error("A configuration operation cannot yield another workspace's turn");
+        if (scope.release === null) throw new Error("The workspace turn has already yielded its lease");
+        scope.release();
+        scope.release = null;
+        try { return await this.#turnScope.run(undefined, run); }
+        finally {
+            // Cancellation ends the program; cleanup does not need a new read lease.
+            if (!scope.signal?.aborted) scope.release = await this.acquireTurn(workspaceId, scope.workerId, scope.signal);
+        }
     }
 
     acquireTurn(workspaceId: number, workerId: number, signal?: AbortSignal): Promise<Release> {
@@ -62,7 +88,8 @@ export default class WorkspaceGate {
         });
     }
 
-    requestExclusive(workspaceId: number): WorkspaceExclusive {
+    requestExclusive(workspaceId: number, signal?: AbortSignal): WorkspaceExclusive {
+        signal?.throwIfAborted();
         const state = this.#state(workspaceId);
         let resolve!: () => void;
         let reject!: (error: unknown) => void;
@@ -70,10 +97,23 @@ export default class WorkspaceGate {
             resolve = res;
             reject = rej;
         });
-        const request = { resolve, reject };
+        let held = true;
+        const clear = (): void => signal?.removeEventListener("abort", cancel);
+        const request = {
+            resolve: () => { clear(); resolve(); },
+            reject: (cause: unknown) => { clear(); reject(cause); },
+        };
+        const cancel = (): void => {
+            const index = state.writers.indexOf(request);
+            if (index < 0) return;
+            held = false;
+            state.writers.splice(index, 1);
+            request.reject(signal?.reason);
+            this.#requestPump(workspaceId, state);
+        };
+        signal?.addEventListener("abort", cancel, { once: true });
         state.writers.push(request);
         this.#requestPump(workspaceId, state);
-        let held = true;
         return {
             acquired,
             setRoot: (workerId) => {
@@ -90,14 +130,14 @@ export default class WorkspaceGate {
             release: () => {
                 if (!held) return;
                 held = false;
+                const index = state.writers.indexOf(request);
+                if (index >= 0) {
+                    state.writers.splice(index, 1);
+                    request.reject(new Error("Workspace exclusive request was released before acquisition"));
+                    this.#requestPump(workspaceId, state);
+                    return;
+                }
                 if (!state.exclusive) {
-                    const index = state.writers.indexOf(request);
-                    if (index >= 0) {
-                        state.writers.splice(index, 1);
-                        reject(new Error("Workspace exclusive request was released before acquisition"));
-                        this.#requestPump(workspaceId, state);
-                        return;
-                    }
                     throw new Error("Workspace exclusive gate is not held");
                 }
                 if (state.exclusiveTurns !== 0) {

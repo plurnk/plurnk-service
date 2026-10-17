@@ -1,8 +1,8 @@
 // A file miss and its recovery with a real model ({§membership-read-refusal}, {§members-functionality}):
 // the model is asked about a generated file git does not track, meets exactly one miss whose recovery
 // names the `members (add)` body the family accepts, admits the file by its glob, reads it, and
-// answers. Read friction first: a second miss on the same path means the recovery was not followed,
-// and any other refused operation is a failure here even when the final number is right.
+// answers. Read friction first: a second miss is a failure, including a same-turn read that
+// outruns successful admission ({§functionality-model-mutation}), even when the final number is right.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";

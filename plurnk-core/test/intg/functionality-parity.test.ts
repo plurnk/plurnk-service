@@ -416,7 +416,7 @@ const matrix = async (family: Family): Promise<void> => {
         const viaModel = await proposed(`\`\`\`\`${family.family} (add)
 ${JSON.stringify({ alias: family.unreachable.alias, definition: family.unreachable.definition })}
 \`\`\`\``, "accept");
-        assert.equal(viaModel.status, 200, "the accepted add settled inside the turn");
+        assert.equal(viaModel.status, 201, "the accepted add reports creation, with resource readiness in its body");
         await exec(`\`\`\`\`${family.family} (list)\`\`\`\``);
         const downListed = (await listed()).find((entry) => entry.alias === family.unreachable.alias);
         assert.equal(downListed?.state, "unavailable");

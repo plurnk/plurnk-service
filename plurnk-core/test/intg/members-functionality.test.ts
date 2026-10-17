@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§members-functionality} {§functionality-addressing} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,13 +8,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { Mock } from "@plurnk/plurnk-providers";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { waitForDb } from "./_rpc.ts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_db.ts";
 import { modelOperation } from "./_workers.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -72,6 +75,47 @@ const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<
     (await db.crud_find_workspace_entry.get<{ id: number }>({
         workspace_id: workspaceId, scheme: "file", authority: "", pathname,
     })) !== undefined;
+
+for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-execution-order} members ${decision} settles before a READ in the same model turn`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, decision === "auto" ? "accept" : "review");
+    const root = await gitProject();
+    await withEnv({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_SERVICE_GIT_AUTO: "1" }, async () => {
+        const db = await openMigrated();
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [
+            makeRawMockResponse([
+                PlurnkParser.frame("members (add)", JSON.stringify({ files: ["loose.md"] })),
+                PlurnkParser.frame("READ (loose.md)", ""),
+                PlurnkParser.frame("NOTE", "Review the admitted file."),
+            ].join("\n\n")),
+            makeMockResponse(PlurnkParser.frame("SEND [200]", "Read the file.")),
+        ] });
+        const daemon = new Daemon({ db, provider });
+        const results: Array<{ status: number; body?: string }> = [];
+        try {
+            const workspaceId = await insertWorkspace(db, "ordered-members");
+            await rootWorkspace(db, workspaceId, root);
+            const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+            if (decision !== "auto") await ownWorker(db, workspaceId, workerId);
+            daemon.subscribeToEvents((_id, method, params) => {
+                if (method !== "operation/event") return;
+                const event = params as { phase: string; origin: string; statement: PlurnkStatement; result?: { status: number; body?: string } };
+                if (event.phase === "settled" && event.origin === "model" && event.statement.op === "READ" && event.result !== undefined) results.push(event.result);
+            });
+            await daemon.start();
+            const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Admit loose.md and read it.", maxTurns: 2 });
+            if (decision !== "auto") {
+                const proposals = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
+                assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "nothing publishes before approval");
+                assert.deepEqual(results, [], "the next READ waits for the decision");
+                await daemon.resolveProposal(proposals[0]!.logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
+            }
+            const lifecycle = new LoopLifecycle(db);
+            await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+            assert.deepEqual(results.map(({ status }) => status), [decision === "reject" ? 404 : 200], "the read observes the settled decision, not a merely started manager stream");
+            assert.equal(await memberOf(db, workspaceId, "loose.md"), decision !== "reject");
+        } finally { await daemon.stop(); await db.close(); }
+    }).finally(() => rm(root, { recursive: true, force: true }));
+});
 
 const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
@@ -195,8 +239,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
-        // An accepted verb starts a stream: the dispatch reports `started`; the verb's own JSON
-        // outcome closes the family's results channel — wait for it before settling.
+        // The dispatched result and the completed JSON output report the same settlement.
         const outputs = async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "members", prefix: "/%" })).length;
         const accepted = async (program: string) => {
             const seen = proposals.length;
@@ -296,7 +339,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
 
             // The model's add under the shipped ceiling (none) is refused up front, naming git add.
             const { result: refused, outcome } = await modelAdd("loose2.md");
-            assert.equal(refused.status, 200, "the accepted proposal settled inside the turn; the verb's own outcome rides the results channel");
+            assert.equal(refused.status, 403, "acceptance does not hide the coordinator's refusal");
             assert.equal(outcome.status, 403);
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
             assert.match(String(outcome.problem?.recovery), /git add/u);

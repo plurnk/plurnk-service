@@ -9,7 +9,7 @@ import {
     type WebMaterializedResult,
     type WebMaterializer,
 } from "@plurnk/plurnk-schemes";
-import { isWorkerBound } from "../core/ExecutorRegistry.ts";
+import FunctionalityManager from "../server/FunctionalityManager.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
@@ -823,22 +823,31 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
         });
 
+        const run = async () => {
+            input.started();
+            return this.#runExecutor({
+                executor: resolved.executor,
+                runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
+                entryId, lifecycle, signal: controller.signal, controller, tempPath, input,
+                timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
+            });
+        };
+
+        // {§functionality-model-mutation} Configuration is an ordered core operation,
+        // not a background job competing for an external-execution slot.
+        if (resolved.executor instanceof FunctionalityManager) {
+            const tail = run();
+            this.#activeSpawns.set(subscriptionId, tail);
+            return await tail;
+        }
+
         const admission = execution.scheduler.admit(core.workspaceId, controller.signal);
         const tail = admission.ready.then(async (release) => {
-            input.started();
-            try {
-                return await this.#runExecutor({
-                    executor: resolved.executor,
-                    runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
-                    entryId, lifecycle, signal: controller.signal, controller, tempPath, input,
-                    timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
-                });
-            } finally {
-                release();
-            }
+            try { return await run(); }
+            finally { release(); }
         });
 
-        // Every exec backgrounds + streams ({§exec-stream}): no same-turn receipt — the output
+        // External executions background + stream ({§exec-stream}): the output
         // surfaces as the environment-observation injector's terminal delta (nothing while it runs,
         // one visible READ when it finishes). Pure/read commands still auto-accept
         // from the preserved effect fact; they resolve a turn later, uniformly
@@ -915,7 +924,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
         // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
         // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
-        const executor = isWorkerBound(opts.executor) ? opts.executor.forWorker(ctx.workerId) : opts.executor;
+        const executor = opts.executor instanceof FunctionalityManager ? opts.executor.forWorker(ctx.workerId) : opts.executor;
         const db = ctx.db;
         // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.

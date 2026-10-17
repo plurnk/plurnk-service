@@ -19,7 +19,7 @@ import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/M
 import type { Executor } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
-import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
@@ -172,6 +172,117 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 };
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
+
+test("{§functionality-model-mutation} one raw model program observes each management result in authored order", { timeout: 20_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const frame = (verb: string, params: object = {}) => PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params));
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeRawMockResponse([
+            frame("add", { alias: "candidate", definition: { kind: "doc" } }), frame("list"),
+            PlurnkParser.frame("READ (worker:///_plurnk/fx/candidate.md)", ""),
+            frame("disable", { alias: "candidate" }), frame("list"),
+            frame("enable", { alias: "candidate" }), frame("list"),
+            frame("replace", { alias: "candidate", definition: { kind: "fail" } }), frame("list"),
+            frame("remove", { alias: "candidate" }), frame("list"),
+            frame("discover", { query: "next" }),
+            PlurnkParser.frame("NOTE", "Review the results."),
+        ].join("\n\n")),
+        makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+    ] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter([])); } }, "test-module");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "ordered-program" });
+    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Exercise the fixture lifecycle.", maxTurns: 2 });
+    const lifecycle = new LoopLifecycle(db);
+    await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+    const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+    const operations = rows.filter((row) => row.origin === "model" && row.op === "fx").toReversed();
+    assert.deepEqual(operations.map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200, 502, 200, 200, 200, 200]);
+    const listed = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "fx", prefix: "/%" });
+    const states: Array<string | undefined> = [];
+    for (const { pathname } of listed.toSorted((a, b) => a.id - b.id)) {
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "fx", name: "results" });
+        assert.ok(channel?.state === "closed" || channel?.state === "errored");
+        const body = JSON.parse(channel.content) as Record<string, unknown>;
+        if (Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
+    }
+    assert.deepEqual(states, ["active", "disabled", "active", "active", undefined], "inspection snapshots match their own execution point, including the failed replacement");
+    assert.ok(rows.some((row) => row.origin === "model" && row.op === "READ" && row.status_rx === 200 && JSON.stringify(row.rx).includes("fixture document")), "READ sees the newly published document without another turn");
+    assert.equal(await lifecycle.status(loop.loopId), 200);
+});
+
+test("{§functionality-model-mutation} concurrent configuration bypasses occupied external execution slots", { timeout: 15_000 }, async (t) => {
+    const prior = process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
+    process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = "1";
+    t.after(() => { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_CONCURRENCY; else process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = prior; });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    daemon.registerModule({ setup: async (seam) => {
+        seam.registerFunctionalityAdapter(fixtureAdapter([]));
+        const held = runtime("held", []);
+        held.executor.run = async () => { entered.resolve(); await resume.promise; return { status: 200 }; };
+        await seam.registerRuntimes([held]);
+    } }, "test-module");
+    t.after(async () => { resume.resolve(); await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "ordered-concurrent" });
+    assert.equal((await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("held", "fixture")))).status, 200);
+    await entered.promise;
+    const results = await Promise.all(["first", "second"].map((alias) => clientOperation(daemon, workspaceId,
+        parseOne(PlurnkParser.frame("fx (add)", JSON.stringify({ alias, definition: { kind: "ok" } }))))));
+    assert.deepEqual(results.map(({ status }) => status), [201, 201], "both changes settle while the external tool remains in flight");
+    const listed = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
+    assert.deepEqual(listed.definitions.map(({ alias, state }) => [alias, state]), [["first", "active"], ["second", "active"], ["svc", "active"]]);
+});
+
+test("{§functionality-preparation-cancellation} cancelling an operation joins preparation and leaves no later publication", { timeout: 15_000 }, async (t) => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const preparing = Promise.withResolvers<void>();
+    const log: string[] = [];
+    const adapter = fixtureAdapter(log);
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter({
+        ...adapter,
+        prepare: async (input) => {
+            const prepared = await adapter.prepare(input);
+            if (!input.enabled.has("cancelled")) return prepared;
+            preparing.resolve();
+            await new Promise<void>((resolve) => {
+                if (input.signal.aborted) resolve();
+                else input.signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            return prepared;
+        },
+    }); } }, "test-module");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "cancel-publication" });
+    let loopId!: number;
+    const pending = daemon.dispatchClientAction({
+        workspaceId, actor: TEST_OWNER, onLoop: ({ loopId: id }) => { loopId = id; },
+        statements: [parseOne(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "cancelled", definition: { kind: "doc" } })))],
+    });
+    await preparing.promise;
+    assert.equal(await daemon.cancelLoop({ workspaceId, loopId }), true);
+    await assert.rejects(pending, (cause: unknown) => {
+        assert.ok(cause instanceof OperationFailureError);
+        assert.equal(cause.result.status, 499);
+        assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/daemon/client/operation-cancelled");
+        return true;
+    });
+    assert.equal(log.includes("abort:cancelled,svc"), true, "candidate resources are joined and cleaned up");
+    assert.equal(log.includes("commit:cancelled,svc"), false);
+    const listed = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
+    assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["svc"]);
+    assert.equal(daemon.schemes.has("cancelled", workspaceId), false);
+    assert.equal((await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("fx (list)", "")))).status, 200, "the cancellation leaves the workspace usable");
+});
 
 for (const caller of ["action", "operation"] as const) {
     test(`{§functionality-replacement} ${caller} replacement preserves enabledness and rejects without losing the prior publication`, { timeout: 30_000 }, async (t) => {
@@ -968,9 +1079,10 @@ test("{§functionality-publication} a management stream reports publication refu
     await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
     const refused = Results.failure("fx:fixture", "publication-refused", 409, "Fixture publication refused.", {}, { retryable: true });
     t.mock.method(daemon, "replaceWorkspaceCapabilities", async () => {
-        throw new OperationFailureError(refused);
+        throw new OperationFailureError(structuredClone(refused));
     }, { times: 1 });
-    await clientOperation(daemon, workspaceId, parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````"));
+    const result = await clientOperation(daemon, workspaceId, parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````"));
+    assert.equal(result.status, 409, "the operation itself reports publication failure");
     assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "fx" }), refused,
         "the invoking stream carries the exact refused publication, not an active definition");
     assert.equal(log.filter((line) => line === "abort:candidate,svc").length, 1);
@@ -1044,7 +1156,7 @@ test("{§functionality-model-mutation} authorization-required reaches the model 
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
 
-test("{§functionality-model-mutation} {§proposal-disposition} execution verbs are the same owner: read verbs run ungated, a person's host verb settles as that person's decision, publication lands at the turn boundary", async (t) => {
+test("{§functionality-model-mutation} {§proposal-disposition} management verbs retain ordinary approval and report their settled result", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-exec-${crypto.randomUUID()}`);
@@ -1053,7 +1165,7 @@ test("{§functionality-model-mutation} {§proposal-disposition} execution verbs 
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
     const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
     // A family verb streams its JSON outcome into the Worker's fx:// output
-    // entry; the dispatch itself reports the started stream ({§exec-stream}).
+    // entry; dispatch awaits the management result ({§functionality-model-mutation}).
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "fx" });
     const proposals: Array<{ logEntryId: number; disposition: unknown }> = [];
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
@@ -1078,15 +1190,13 @@ test("{§functionality-model-mutation} {§proposal-disposition} execution verbs 
         // An accepted host verb runs the same coordinator method and the capability is live
         // before the next operation.
         const added = await proposed("````fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````");
-        // An accepted settlement replaces the 202 with 200 ({§proposal-accept-applies});
-        // the verb's own 201 and outcome ride in the results channel.
-        assert.equal(added.status, 200, "the accepted add settled inside the turn");
-        assert.equal((await operate("```viaexec\nfixture\n```")).status, 200, "publication settled at the turn boundary, before the next operation");
+        assert.equal(added.status, 201, "the accepted add reports its completed creation");
+        assert.equal((await operate("```viaexec\nfixture\n```")).status, 200, "publication settled before the next operation");
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
         const down = await proposed("````fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````");
-        assert.equal(down.status, 200);
+        assert.equal(down.status, 201, "the definition is created; its body reports unavailability");
         await operate("````fx (list)````");
         const downState = (await states()).find(({ alias }) => alias === "down");
         assert.equal(downState?.state, "unavailable");
