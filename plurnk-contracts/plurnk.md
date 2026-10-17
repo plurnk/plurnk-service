@@ -14,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Record all plans, findings, and decisions for later turns.
+* NOTE: Record all new plans, findings, and decisions for later turns.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -29,8 +29,8 @@ body?
 ## Loop Protocol
 
 > [!IMPORTANT]
-> YOU MUST Reason, Record, and React:
-> * **Reason**: Review the Open Work and Open Messages against the prior NOTE entries and log items.
+> YOU MUST Recall, Record, and React:
+> * **Recall**: Review the Open Work and Open Messages against the prior NOTE entries and log items.
 > * **Record**: NOTE entries are your ONLY chain of thought. Persist all new plans, findings, and decisions.
 > * **React**: When the necessary operations are identified, stop reflecting and emit the batch of notes and operations.
 
