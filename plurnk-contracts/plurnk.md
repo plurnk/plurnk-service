@@ -14,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Preserve useful findings, decisions, and plans for later turns.
+* NOTE: Preserve useful plans, findings, and decisions for later turns.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -27,6 +27,9 @@ body?
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
+
+> [!IMPORTANT]
+> YOU MUST record all new plans, findings, and decisions as NOTE entries. They are your only chain of thought.
 
 ```NOTE <!-- plan -->
 the steps ahead and why
@@ -96,14 +99,16 @@ Describe the child's complete task in the body.
 ```COPY (sh:///ab3d5678) (build.log) <!-- the command's output lands in a file, never in your context -->
 ```
 
-```members (add) <!-- adding membership tracking for files outside of the project folder -->
-{"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
-```
-
 * `(path)` may be a glob/extglob, permitting bulk operations.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/OP.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
+
+## Membership (worker:///_plurnk/plurnk/members.md)
+
+```members (add) <!-- adding membership tracking for files outside of the project folder -->
+{"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
+```
 
 ## Editing
 
