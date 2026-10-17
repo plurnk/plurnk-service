@@ -11,7 +11,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Internal Working Memory Register recording **every** plan, finding, decision, and next action.
+* NOTE: Preserve useful findings, decisions, and plans for later turns.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -24,9 +24,6 @@ body?
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
-
-> [!TIP]
-> YOU SHOULD record every plan, finding, decision, and next action in detailed NOTEs to avoid permanent loss of information.
 
 ```NOTE <!-- plan -->
 the steps ahead and why

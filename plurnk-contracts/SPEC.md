@@ -840,8 +840,9 @@ is curated normally. Explicit NOTE remains the taught form.
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
 in ordinary log token accounting and model-driven curation; prior notes are not
-automatically hidden. A NOTE-only turn does not request completion; ordinary
-repetition and strike rules still apply.
+automatically hidden. Each turn may contain zero or more NOTEs; their omission
+produces neither a notice nor a failure. A NOTE-only turn does not request
+completion; ordinary repetition and strike rules still apply.
 
 §reasoning-operations The shared fence parser admits complete, line-leading NOTE,
 FIND and READ statements from exposed provider reasoning. Admission is part of

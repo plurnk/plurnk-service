@@ -51,6 +51,8 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
         const closing = rest.pop();
         assert.deepEqual([opening?.op, opening?.origin], ["NOTE", "_plurnk"], "the opening NOTE is the first row");
         assert.match(JSON.parse(opening!.tx).body, /^1\. .+\n2\. .+\n3\. .+$/u, "it is a plan in numbered steps");
+        assert.equal(JSON.parse(opening!.tx).body.split("\n")[2],
+            "3. Do the work, preserving useful findings, decisions, and plans in NOTEs for later turns.");
         assert.deepEqual([closing?.op, closing?.origin, JSON.parse(closing!.tx).body], ["NOTE", "_plurnk", CLOSING_NOTE], "the closing NOTE is the last row");
         assert.ok(rest.length > 0 && rest.every(({ op }) => op === "FIND" || op === "READ"), "the surveys stand between them");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });

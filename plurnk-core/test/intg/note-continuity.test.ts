@@ -2,20 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
-
-// {§continued-without-note} {§notice-directive} — the notice's directive and its rendered callout.
-const COMMAND = "YOU MUST emit at least one NOTE in every turn.";
-const NOTICE = `> [!WARNING]\n> ${COMMAND} The turn continued without a NOTE. [continued_without_note]`;
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
 type Row = { op: string | null; origin: string };
 
-// {§notice-callout}: a notices section is a list of callouts separated by a blank line.
-const noticesOf = async (db: Db, turnId: number): Promise<string[]> =>
-    packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices").split("\n\n");
+const noticesOf = async (db: Db, turnId: number): Promise<string> =>
+    packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
 const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId });
 
 const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {
@@ -28,27 +24,54 @@ const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: st
     });
 };
 
-test("{§continued-without-note}: a continuing turn that carried no NOTE is told so in the next packet, and only then", async () => {
-    const db = await openMigrated();
-    try {
-        const result = await runLoop(db, [
-            { content: "```FIND (worker:///*)\n```", reasoning: null },
-            { content: "```NOTE\nThe worker namespace is listed.\n```\n\n```FIND (worker:///*)\n```", reasoning: null },
-            { content: "```FIND (worker:///*)\n```", reasoning: "Thinking.\n\n```NOTE\nKept from reasoning.\n```\n" },
-            { content: "```SEND [200]\nDone.\n```", reasoning: null },
-        ]);
-        assert.equal(result.result.status, 200);
-        const [, bare, noted, reasoned, final] = result.turnIds;
-        assert.ok(!(await noticesOf(db, bare!)).includes(NOTICE), "the first model turn has no earlier model turn to report");
-        assert.ok((await noticesOf(db, noted!)).includes(NOTICE), "the turn after a continuing turn with no NOTE is told so");
-        assert.ok(!(await noticesOf(db, reasoned!)).includes(NOTICE), "a program NOTE carries the turn forward");
-        assert.ok(!(await noticesOf(db, final!)).includes(NOTICE), "a NOTE admitted from reasoning carries the turn forward");
-        assert.equal((await rowsOf(db, bare!)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), false,
-            "the notice is never a failure row");
-    } finally { await db.close(); }
-});
+for (const parked of [false, true]) for (const location of ["absent", "content", "reasoning", "both"]) {
+    test(`{§note-value} {§reasoning-operations}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `optional-note-${parked}-${location}`);
+            const workerId = await insertWorker(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
+            const context = { workspaceId, workerId, loopId };
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const lifecycle = new LoopLifecycle(db);
+            const childLoopId = parked ? await holdChild(db, workspaceId, workerId) : null;
+            const contentNote = location === "content" || location === "both";
+            const reasoningNote = location === "reasoning" || location === "both";
+            const expectedNotes = [
+                ...(reasoningNote ? ["Kept from reasoning."] : []),
+                ...(contentNote ? ["Kept from content."] : []),
+            ];
+            const operation = parked ? "```WAIT\n```" : "```FIND (worker:///*)\n```";
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: {
+                    content: `${contentNote ? "```NOTE\nKept from content.\n```\n\n" : ""}${operation}`,
+                    reasoning: reasoningNote ? "```NOTE\nKept from reasoning.\n```" : null,
+                } },
+                { assistant: { content: "```SEND [200]\nDone.\n```", reasoning: null } },
+            ] });
+            const first = await engine.runTurn({ ...context, provider, messages: [] });
+            assert.equal(first.status, parked ? 202 : 102, "work determines continuation independently of notes");
+            if (childLoopId !== null) {
+                await lifecycle.finish(childLoopId, { status: 200 });
+                assert.equal(await lifecycle.wake(loopId), true);
+                assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
+            }
+            const final = await engine.runTurn({ ...context, provider, messages: [] });
+            assert.equal(final.status, 200, "the observed work and answered message settle without another note");
+            assert.equal(provider.received.length, 2);
+            assert.equal(await noticesOf(db, first.turnId), "");
+            assert.equal(await noticesOf(db, final.turnId), "", "optional memory produces no corrective feedback");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
+                expectedNotes, "only authored memory persists, in reasoning then content order");
+            for (const turn of [first, final]) {
+                assert.ok((await rowsOf(db, turn.turnId)).every(({ op }) => op !== "error"), "valid work produces no failure receipt");
+            }
+        } finally { await db.close(); }
+    });
+}
 
-test("{§continued-without-note}: an empty turn keeps its own no-operation row and takes no notice", async () => {
+test("{§empty-turn}: an operation-free response retains its failure receipt", async () => {
     const db = await openMigrated();
     try {
         const result = await runLoop(db, [
@@ -58,6 +81,6 @@ test("{§continued-without-note}: an empty turn keeps its own no-operation row a
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
         assert.ok((await rowsOf(db, empty!)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), "the empty turn has its row");
-        assert.ok(!(await noticesOf(db, final!)).includes(NOTICE), "and no NOTE notice beside it");
+        assert.equal(await noticesOf(db, final!), "", "the failure receipt supplies the feedback");
     } finally { await db.close(); }
 });
