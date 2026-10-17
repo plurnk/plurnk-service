@@ -121,7 +121,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
         assert.equal(rows?.n, 1, "one identity under every spelling");
         const outside = await readFileScheme(readStmt("/src/main.js"), ctx);
         assert.equal(outside.status, 404, "an absolute miss never falls back to the in-root member");
-        assert.equal(outside.problem?.target, "../../src/main.js");
+        assert.equal(outside.problem?.target, relative(root, "/src/main.js"));
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
