@@ -24,7 +24,7 @@ const runProbe = (env, options = {}) => probeInstalledDaemon({
     ...options,
 });
 
-test("release probe uses a child-owned ephemeral listener and awaits graceful teardown", async () => {
+test("{§release-candidate-graph} release probe authenticates its child-owned ephemeral listener and awaits graceful teardown", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-"));
     const cleanup = join(dir, "closed");
     const stale = createServer();
@@ -46,6 +46,24 @@ test("release probe uses a child-owned ephemeral listener and awaits graceful te
         await new Promise((resolve) => stale.close(resolve));
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+for (const [mode, failure] of [
+    ["no-auth", /listener returned 404 .*expected 401/u],
+    ["bad-challenge", /listener did not advertise its Bearer credential authority/u],
+    ["token-fails", /token exchange returned 401/u],
+    ["bad-token", /token exchange did not return a Bearer access token/u],
+    ["invalid-access", /listener returned 401 .*expected 404/u],
+]) test(`{§agui-http-authorization} release probe rejects ${mode} without bypassing authentication`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-auth-"));
+    const cleanup = join(dir, "closed");
+    try {
+        await assert.rejects(runProbe({
+            PLURNK_RELEASE_PROBE_FIXTURE: mode,
+            PLURNK_RELEASE_PROBE_CLEANUP: cleanup,
+        }), failure);
+        await access(cleanup);
+    } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("release probe rejects the spawned artifact's wrong version and still reaps it", async () => {

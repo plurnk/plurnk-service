@@ -10,10 +10,37 @@ if (mode === "exit") {
     process.exit(7);
 }
 
-const server = createServer((request, response) => {
+const server = createServer(async (request, response) => {
     if (mode === "bad-http") {
         response.writeHead(200, { "content-type": "text/plain" });
         response.end("not AG-UI");
+        return;
+    }
+    if (request.url === "/oauth/token") {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const form = new URLSearchParams(body);
+        const basic = `Basic ${Buffer.from(`operator:${process.env.PLURNK_SECRET}`).toString("base64")}`;
+        const accepted = mode !== "token-fails"
+            && request.method === "POST"
+            && request.headers.authorization === basic
+            && request.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")
+            && form.get("grant_type") === "client_credentials"
+            && form.get("scope") === "agui"
+            && form.get("resource") === `http://${request.headers.host}/agui`;
+        response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
+        response.end(JSON.stringify(!accepted ? { error: "invalid_client" }
+            : mode === "bad-token" ? { token_type: "Bearer" }
+                : { token_type: "Bearer", access_token: "fixture-access", expires_in: 60 }));
+        return;
+    }
+    if (mode !== "no-auth" && (mode === "invalid-access" || request.headers.authorization !== "Bearer fixture-access")) {
+        response.writeHead(401, {
+            "content-type": "application/problem+json",
+            "www-authenticate": mode === "bad-challenge" ? "Basic realm=\"fixture\""
+                : `Bearer realm="plurnk", resource_metadata="http://${request.headers.host}/.well-known/oauth-protected-resource"`,
+        });
+        response.end(JSON.stringify({ type: "https://problems.plurnk.xyz/agui/http/bearer-token-required" }));
         return;
     }
     response.writeHead(404, { "content-type": "application/problem+json" });

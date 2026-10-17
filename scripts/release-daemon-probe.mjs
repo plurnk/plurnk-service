@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 // The release gate accepts identity only from the child it spawned: that
 // child's build line plus its OS-assigned listener address. An unrelated
@@ -52,6 +53,16 @@ const startupAddress = (stdout) => {
     return match?.[1] ?? null;
 };
 
+const listenerProblem = async (response, status, type) => {
+    if (response.status !== status || !response.headers.get("content-type")?.startsWith("application/problem+json")) {
+        throw new Error(`installed daemon listener returned ${response.status} ${response.headers.get("content-type") ?? "without content type"}; expected ${status} application/problem+json`);
+    }
+    const problem = await response.json();
+    if (problem?.type !== `https://problems.plurnk.xyz/agui/http/${type}`) {
+        throw new Error(`installed daemon listener did not return the AG-UI ${type} Problem`);
+    }
+};
+
 export const probeInstalledDaemon = async ({
     command,
     args = [],
@@ -64,12 +75,14 @@ export const probeInstalledDaemon = async ({
     writeStdout = (chunk) => process.stdout.write(chunk),
     writeStderr = (chunk) => process.stderr.write(chunk),
 }) => {
+    const secret = randomBytes(32).toString("base64url");
     const child = spawn(command, args, {
         cwd,
         env: {
             ...env,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",
+            PLURNK_SECRET: secret,
         },
         stdio: ["ignore", "pipe", "pipe"],
     });
@@ -132,16 +145,36 @@ export const probeInstalledDaemon = async ({
         if (child.exitCode !== null || child.signalCode !== null) {
             throw new Error(`installed daemon exited before its listener probe (${child.exitCode ?? child.signalCode})`);
         }
-        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-        if (response.status !== 404 || !response.headers.get("content-type")?.startsWith("application/problem+json")) {
-            throw new Error(`installed daemon listener returned ${response.status} ${response.headers.get("content-type") ?? "without content type"}`);
+        // {§agui-http-authorization} {§agui-oauth-clients}: the probe exercises the
+        // shipped authentication posture with its own credential, never the operator's.
+        const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
+        await listenerProblem(response, 401, "bearer-token-required");
+        const challenge = response.headers.get("www-authenticate") ?? "";
+        const metadata = new URL("/.well-known/oauth-protected-resource", url);
+        if (!/^Bearer\s/iu.test(challenge) || !challenge.includes(`resource_metadata="${metadata.href}"`)) {
+            throw new Error("installed daemon listener did not advertise its Bearer credential authority");
         }
-        const problem = await response.json();
-        if (typeof problem !== "object"
-            || problem === null
-            || problem.type !== "https://problems.plurnk.xyz/agui/http/route-not-found") {
-            throw new Error("installed daemon listener did not return the AG-UI route-not-found Problem");
+        const tokenResponse = await fetch(new URL("/oauth/token", url), {
+            method: "POST",
+            headers: { authorization: `Basic ${Buffer.from(`operator:${secret}`).toString("base64")}` },
+            body: new URLSearchParams({ grant_type: "client_credentials", scope: "agui", resource: url.href }),
+            redirect: "error",
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (tokenResponse.status !== 200 || !tokenResponse.headers.get("content-type")?.startsWith("application/json")) {
+            throw new Error(`installed daemon token exchange returned ${tokenResponse.status} ${tokenResponse.headers.get("content-type") ?? "without content type"}`);
         }
+        const token = await tokenResponse.json();
+        if (typeof token?.access_token !== "string" || token.access_token.length === 0
+            || typeof token.token_type !== "string" || token.token_type.toLowerCase() !== "bearer") {
+            throw new Error("installed daemon token exchange did not return a Bearer access token");
+        }
+        const admitted = await fetch(url, {
+            headers: { authorization: `Bearer ${token.access_token}` },
+            redirect: "error",
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        await listenerProblem(admitted, 404, "route-not-found");
         probeResult = { address: url.href, pid: child.pid };
     } catch (cause) {
         probeFailure = cause;
