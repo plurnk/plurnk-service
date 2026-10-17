@@ -646,7 +646,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: "````READ (skill://plurnk/.env.defaults) <1,-1>````",
     }, attached.name)).results[0];
     await aguiAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
-    const proposed = await aguiRun(address, {
+    const executed = await aguiRun(address, {
         workspace: attached.name,
         action: {
             kind: "op.parse",
@@ -655,15 +655,14 @@ raw stdin
 \`\`\`\``,
         },
     });
-    const interrupts = proposed.events.find((event) => event.type === "RUN_FINISHED")?.outcome?.interrupts;
-    if (!proposed.response.ok || interrupts?.length !== 1 || existsSync(packedSkillMarker)) {
-        throw new Error(`packed Skill execution did not pause for one approval: ${proposed.body}`);
+    // {§agui-client-operation}: a person's explicit operation is their decision, not an approval request.
+    const terminal = executed.events.find((event) => event.type === "RUN_FINISHED");
+    const completed = terminal?.result;
+    if (!executed.response.ok || terminal?.outcome?.type !== "success" || completed?.ok !== true
+        || completed.result.results[0]?.status !== 200
+        || completed.result.results[0]?.outcome !== "client_operation") {
+        throw new Error(`packed Skill client operation failed: ${executed.body}`);
     }
-    const resumed = await aguiRun(address, { workspace: attached.name }, {
-        resume: [{ interruptId: interrupts[0].id, status: "resolved", payload: { decision: "accept" } }],
-    });
-    const completed = resumed.events.find((event) => event.type === "RUN_FINISHED")?.result;
-    if (!resumed.response.ok || completed?.ok !== true) throw new Error(`packed Skill execution resume failed: ${resumed.body}`);
     const skillExec = completed.result.results[0];
     const deadline = Date.now() + 5000;
     while (!existsSync(packedSkillMarker) && Date.now() < deadline) await delay(20);
