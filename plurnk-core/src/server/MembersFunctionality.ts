@@ -15,7 +15,7 @@ import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-me
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
-import AmbientMembers from "../core/AmbientMembers.ts";
+import AmbientMembers, { AUTO_ADD_KEY } from "../core/AmbientMembers.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import PathGlob from "../core/PathGlob.ts";
@@ -122,8 +122,8 @@ const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) :
 // its glob; the environment key is its provenance. Two keys naming one glob fail by name.
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
     // {§membership-auto-add} — the family's own control is validated with its definitions, so `config
-    // check` fails by name before any dispatch reads it.
-    AmbientMembers.enabled(environ);
+    // check` fails by name before any dispatch reads it; an absent key is the dispatch's to report.
+    if (environ[AUTO_ADD_KEY] !== undefined) AmbientMembers.enabled(environ);
     const environment = new ResourceEnvironment(PREFIX, { controls: ["AUTO_ADD"], settings: [] }, environ);
     const declared = new Map<string, string>();
     return [...environment.definitions].map(([alias, { key, value }]) => {

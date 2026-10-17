@@ -55,7 +55,7 @@ test("members: a READ of an untracked file admits it as the model's own definiti
         const member = await s.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: s.workspaceId, scheme: "file", authority: "", pathname: REPORT });
         assert.ok(member, "the generated file became a member");
         const packets = await Promise.all(loop.turnIds.map((id) => s.db.test_get_packet.get<{ packet: string }>({ id })));
-        assert.ok(packets.some((row) => row?.packet.includes("[member_added]") === true), "the member_added notice reached a packet");
+        assert.ok(packets.some((row) => row?.packet?.includes("[member_added]") === true), "the member_added notice reached a packet");
 
         assert.equal(loop.finalStatus, 200, "the loop concluded");
         assert.match(loop.lastContent, /\b87\b/u, "the answer is the number the file records");
