@@ -17,6 +17,8 @@
   `cancelLoop` cancels the specific operation and its executions.
 - LOOK, `ClientStatement`, `ClientOp`, their validation surface and
   `ApplicationPort.look` are removed. Use the ordinary statement/read contracts.
+- Remove `ApplicationPort.executorJsonBodyTags`: executor heading JSON is input,
+  and metadata uses its bracketed slot, independently of runtime availability.
 - `workerAccounting` replaces `descendantAccounting` and reports the worker
   and descendants over their lifetime.
 - AG-UI conformance fixtures use standard message parts and

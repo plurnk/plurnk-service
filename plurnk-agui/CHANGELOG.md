@@ -53,6 +53,8 @@
   timestamps and lifetime worker/descendant spend.
 - The browser-safe `/client` entry exports standard state and action-result
   types without Node globals. Shutdown stops admission and releases open Runs.
+- Direct operations use ordered runtime resolution, without the removed
+  `ApplicationPort.executorJsonBodyTags` parser plumbing.
 
 ## 3.1.0
 

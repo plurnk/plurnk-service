@@ -7,6 +7,11 @@
   are no longer generic. Client statements share the ordinary operation contract.
 - Parse failures retain the attempted verb and exact statement for faithful
   protocol diagnostics, without changing the model's packet body or weight.
+- Explicitly shaped executor invocations parse before their runtime is available;
+  ordered dispatch resolves the current registry and permissions. Unknown slotless
+  fences and quoted examples remain inert.
+- Executor heading JSON is always input; metadata uses its bracketed slot.
+  Remove the MIME-dependent `jsonBodyExecutors` parser option.
 - Uses contracts 4.0.
 
 ## 3.0.3

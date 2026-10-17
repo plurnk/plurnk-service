@@ -74,6 +74,13 @@ authentication and client-binding contracts; it is not wire-compatible with the
 
 ### Reliability and maintenance
 
+- Subsystem changes settle in authored order before later operations use them.
+  Members admitted earlier in a program are immediately readable; explicitly
+  shaped executor calls can use MCP tools added or enabled earlier in that program.
+- Cancellation stops subsequent operations and unresolved glob targets while
+  retaining completed effects and provider accounting.
+- Routine status 200 is omitted from every model-facing receipt. Other statuses,
+  durable results, message completion and external protocol responses are unchanged.
 - Workspace MCP preparation runs concurrently with per-alias progress, and
   owner attachment starts activation without blocking the client.
 - Shutdown cancels preparation, joins publication and cleanup, and releases
