@@ -234,7 +234,7 @@ const INITIALIZATION_NOTE: NoteStatement = {
     body: [
         "1. Survey the tooling, documentation, extended context, and project root: what exists decides what can be done.",
         "2. Read the Open Message and restate what it asks for and what will show it is done.",
-        "3. Do the work, preserving useful findings, decisions, and plans in NOTEs for later turns.",
+        "3. Do the work, saving all new plans, findings, and decisions in NOTEs for later turns.",
     ].join("\n"),
     position: UNKNOWN_POSITION,
 };
@@ -245,7 +245,7 @@ const INITIALIZATION_NEXT_NOTE: NoteStatement = {
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
-    emission: "YOU MUST ONLY emit fenced operations; with the parameters, pattern, and terse aside on the fenced operation line.",
+    emission: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
