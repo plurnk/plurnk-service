@@ -287,7 +287,7 @@ export default class PacketBuilder {
         const programs = omitEmissionHistory || history === "none" ? [] : await this.#db.engine_emission_history.all<EmissionProgram>({
             loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
         });
-        const { operations, paired } = OperationHistory.project(log, programs);
+        const { operations, paired, turns } = OperationHistory.project(log, programs);
         for (const [coordinate, operation] of operations) paired.set(coordinate, { ...paired.get(coordinate)!, tokens: weighContent(operation) });
         const renderedLog = PacketWire.renderLogWithAccounting(
             log,
@@ -312,7 +312,7 @@ export default class PacketBuilder {
             items = [];
         };
         for (const [index, row] of log.entries()) {
-            const emission = operations.get(String(row.coordinate));
+            const emission = turns.get(String(row.coordinate));
             if (emission !== undefined) {
                 flush();
                 logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });

@@ -7,11 +7,13 @@ import type { ReplayedOperation } from "./packet-wire.ts";
 type Entry = ReturnType<typeof PacketWire.entryView>;
 export interface EmissionProgram { id: number; content: string; executors: string }
 
-// {§emission-history}: durable ordinals join requests to receipts; text is never an identity.
+// {§emission-history}: durable ordinals join requests to receipts; text is never an identity. A turn's
+// surviving operations replay together, in program order, before the turn's first surviving receipt.
 export default class OperationHistory {
     static project(entries: readonly Entry[], programs: readonly EmissionProgram[]): {
         operations: Map<string, string>;
         paired: Map<string, ReplayedOperation>;
+        turns: Map<string, string>;
     } {
         const byId = new Map(programs.map((program) => [program.id, program]));
         const byTurn = new Map(entries.flatMap((entry) => {
@@ -21,6 +23,7 @@ export default class OperationHistory {
         }));
         const operations = new Map<string, string>();
         const paired = new Map<string, ReplayedOperation>();
+        const replayed = new Map<string, { anchor: string; operations: Array<{ ordinal: number; text: string }> }>();
         const seen = new Set<string>();
         for (const entry of entries) {
             const program = byTurn.get(OperationHistory.#turn(entry));
@@ -41,9 +44,15 @@ export default class OperationHistory {
             seen.add(key);
             const replay = statement.op === "KILL" && statement.target?.kind === "url" && statement.target.scheme === "log"
                 ? { ...statement, body: null } : statement;
-            operations.set(coordinate, TurnOps.renderEmission([replay]));
+            const text = TurnOps.renderEmission([replay]);
+            operations.set(coordinate, text);
+            const turn = OperationHistory.#turn(entry);
+            if (!replayed.has(turn)) replayed.set(turn, { anchor: coordinate, operations: [] });
+            replayed.get(turn)!.operations.push({ ordinal, text });
         }
-        return { operations, paired };
+        const turns = new Map([...replayed.values()].map(({ anchor, operations: turnOperations }) =>
+            [anchor, turnOperations.toSorted((left, right) => left.ordinal - right.ordinal).map(({ text }) => text).join("\n\n")]));
+        return { operations, paired, turns };
     }
 
     static #turn(entry: Entry): string {
