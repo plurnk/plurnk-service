@@ -174,19 +174,10 @@ export default class BuiltinActions {
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                 }
                 case "workspace.attach": {
-                    // Select by immutable workspace identity; no thread is rebound.
-                    if (typeof p.id !== "number") {
-                        return actionFailure(
-                            "invalid-action-parameters",
-                            "workspace.attach requires a numeric workspace id.",
-                            400,
-                            {
-                                field: "id",
-                                recovery: "Provide a workspace id returned by workspace.list.",
-                            },
-                        );
-                    }
-                    const att = await this.#seam().attachWorkspace({ workspaceId: p.id });
+                    // The registry admits exactly one selector; core owns its interpretation.
+                    const att = await this.#seam().attachWorkspace(typeof p.id === "number"
+                        ? { workspaceId: p.id }
+                        : typeof p.name === "string" ? { name: p.name } : { projectRoot: p.projectRoot as string });
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName } };
                 }
             }

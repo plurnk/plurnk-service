@@ -2192,33 +2192,35 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
     }
 });
 
-test("a workspace name is its identity; attach rebinds", async () => {
+test("{§agui-thread-binding} explicit names select literally; workspace.attach returns an existing identity", async () => {
     const created: Array<{ name?: string }> = [];
     const attached: number[] = [];
     const { seam } = mockSeam();
     const base = seam.createWorkspace.bind(seam);
     seam.createWorkspace = async (args) => { created.push(args); return { ...(await base(args)), workspaceName: args.name ?? "workspace-1" }; };
-    seam.attachWorkspace = async (args) => { attached.push(args.workspaceId); return { workspaceId: args.workspaceId, workspaceName: "alpha", projectRoot: null, projectLabel: null }; };
+    seam.attachWorkspace = async ({ workspaceId }) => {
+        assert.ok(workspaceId !== undefined);
+        attached.push(workspaceId);
+        return { workspaceId, workspaceName: "alpha", projectRoot: null, projectLabel: null };
+    };
     seam.listWorkspaces = async () => [workspaceRow(4, "alpha")];
     const mod = await host(seam);
     try {
-        // 1) A workspace named like an existing workspace attaches to IT — the exact name.
-        // (A workspace-scoped action binds the workspace; a control-plane one would not.)
+        // Explicit workspace selection and daemon-scoped attachment have separate contracts.
         const run = await post(mod.address().port, { threadId: "alpha", workerId: "r1", forwardedProps: { plurnk: { workspace: "alpha", action: { kind: "workspace.workers" } } } });
         assert.equal(run[run.length - 1].type, "RUN_FINISHED");
         assert.deepEqual(attached, [4], "workspace 'alpha' attached the workspace 'alpha' — no agui- prefix lookup");
-        // 2) A new workspace name creates a workspace with EXACTLY that name.
         await post(mod.address().port, { threadId: "beta", workerId: "r2", forwardedProps: { plurnk: { workspace: "beta", action: { kind: "workspace.workers" } } } });
         assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
-        // 3) workspace.attach is a REAL action kind returning the envelope.
         const att = await post(mod.address().port, { threadId: "alpha", workerId: "r3", forwardedProps: { plurnk: { workspace: "alpha", action: { kind: "workspace.attach", id: 4 } } } });
         const result = actionOutcome(att) as { ok: boolean; result: { id: number; name: string } };
-        assert.equal(result.ok, true, "workspace.attach is wired, not unknown-kind");
+        assert.equal(result.ok, true);
         assert.deepEqual(
             result.result,
             { id: 4, name: "alpha" },
             "{§agui-thread-binding} attach returns the selected workspace and mints nothing",
         );
+        assert.deepEqual(created.map((c) => c.name), ["beta"]);
     } finally { await mod.close(); }
 });
 
@@ -2383,7 +2385,10 @@ test("{§agui-thread-binding} a thread's worker belongs to its workspace, not a 
         projectRoot: null, projectLabel: null,
     });
     seam.listWorkspaces = async () => workspaces;
-    seam.attachWorkspace = async ({ workspaceId }) => envelope(workspaceId);
+    seam.attachWorkspace = async ({ workspaceId }) => {
+        assert.ok(workspaceId !== undefined);
+        return envelope(workspaceId);
+    };
     seam.createWorkspace = async ({ name }) => { workspaces.push(workspaceRow(4, name!)); return envelope(4); };
     const workers = new Map<number, WorkerRow[]>([[3, [workerRow(77, "page")]], [4, []]]);
     directory(seam, (workspaceId) => workers.get(workspaceId) ?? []);
@@ -2779,7 +2784,11 @@ test("{§agui-thread-binding} explicit workspace selection resolves the thread's
     const minted: Array<Parameters<ApplicationPort["createWorker"]>[0]> = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(7, "workspace-a")];
-    seam.attachWorkspace = async (a) => { attaches.push(a.workspaceId); return { workspaceId: a.workspaceId, workspaceName: "workspace-a", projectRoot: "/w", projectLabel: "/w" }; };
+    seam.attachWorkspace = async ({ workspaceId }) => {
+        assert.ok(workspaceId !== undefined);
+        attaches.push(workspaceId);
+        return { workspaceId, workspaceName: "workspace-a", projectRoot: "/w", projectLabel: "/w" };
+    };
     seam.createWorkspace = async (a) => { created.push(a); return { workspaceId: 8, workspaceName: a.name ?? "workspace-1", projectRoot: a.projectRoot ?? null, projectLabel: a.projectRoot ?? null }; };
     const workers = [workerRow(200, "chat-0")];
     directory(seam, workers);
@@ -2802,12 +2811,15 @@ test("{§agui-thread-binding}: the same thread name remains isolated across work
     const driven: Array<[workspaceId: number, workerId: number]> = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace-a"), workspaceRow(4, "workspace-b")];
-    seam.attachWorkspace = async ({ workspaceId }) => ({
-        workspaceId,
-        workspaceName: workspaceId === 3 ? "workspace-a" : "workspace-b",
-        projectRoot: null,
-        projectLabel: null,
-    });
+    seam.attachWorkspace = async ({ workspaceId }) => {
+        assert.ok(workspaceId !== undefined);
+        return {
+            workspaceId,
+            workspaceName: workspaceId === 3 ? "workspace-a" : "workspace-b",
+            projectRoot: null,
+            projectLabel: null,
+        };
+    };
     directory(seam, (workspaceId) => [workerRow(workspaceId === 3 ? 31 : 41, "shared")]);
     seam.runLoop = async ({ workspaceId, workerId }) => {
         driven.push([workspaceId, workerId]);
@@ -3134,6 +3146,7 @@ for (const name of ["42#alice", "01#x", "folder#name", "42#one#two"]) {
                 return { workspaceId: 12, workspaceName: args.name!, projectRoot: null, projectLabel: null };
             };
             seam.attachWorkspace = async ({ workspaceId }) => {
+                assert.ok(workspaceId !== undefined);
                 attached.push(workspaceId);
                 return { workspaceId, workspaceName: name, projectRoot: null, projectLabel: null };
             };
@@ -3150,6 +3163,39 @@ for (const name of ["42#alice", "01#x", "folder#name", "42#one#two"]) {
         });
     }
 }
+
+test("{§methods-workspace-attach} workspace.attach forwards one selector literally and never creates or binds a thread", async () => {
+    const { seam } = mockSeam();
+    const selections: Array<Parameters<ApplicationPort["attachWorkspace"]>[0]> = [];
+    seam.attachWorkspace = async (selection) => {
+        selections.push(selection);
+        return { workspaceId: 12, workspaceName: "42#alice", projectRoot: null, projectLabel: null };
+    };
+    seam.createWorkspace = async () => { throw new Error("read-only selection must not create a workspace"); };
+    seam.createWorker = async () => { throw new Error("read-only selection must not create a worker"); };
+    const mod = await host(seam);
+    try {
+        for (const selector of [{ id: 12 }, { name: "42#alice" }, { projectRoot: "/srv/project" }]) {
+            const events = await post(mod.address().port, {
+                threadId: "unbound-observer",
+                forwardedProps: { plurnk: { action: { kind: "workspace.attach", ...selector } } },
+            });
+            assert.deepEqual(actionOutcome(events), { kind: "workspace.attach", ok: true, result: { id: 12, name: "42#alice" } });
+        }
+        assert.deepEqual(selections, [{ workspaceId: 12 }, { name: "42#alice" }, { projectRoot: "/srv/project" }]);
+        for (const selector of [{}, { id: 12, name: "42#alice" }, { name: "" }, { projectRoot: null }, { id: 0 }, { name: "a", projectRoot: "/srv/project" }]) {
+            const events = await post(mod.address().port, {
+                threadId: "unbound-observer",
+                forwardedProps: { plurnk: { action: { kind: "workspace.attach", ...selector } } },
+            });
+            const result = actionOutcome(events) as { ok: boolean; problem?: ProblemDetails };
+            assert.equal(result.ok, false, JSON.stringify(selector));
+            assert.equal(result.problem?.status, 400);
+            assert.match(result.problem?.type ?? "", /invalid-action-parameters$/u);
+        }
+        assert.equal(selections.length, 3, "invalid selectors never reach core");
+    } finally { await mod.close(); }
+});
 
 test("loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
     const cancelled: Array<{ workerId: number; reason?: string }> = [];

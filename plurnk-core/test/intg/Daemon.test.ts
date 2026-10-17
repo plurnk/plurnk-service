@@ -821,6 +821,58 @@ test("{§workspace-name} workspace.create with a project root and no name is nam
     });
 });
 
+test("{§methods-workspace-attach} read-only selection uses exactly the ID, literal name or folder-derived default and creates nothing", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const projectRoot = join(new HostPaths().home, "read-only-selection");
+        const folder = await daemon.createWorkspace({ projectRoot });
+        const literal = await daemon.createWorkspace({ name: `${folder.workspaceId}#user` });
+        const before = await daemon.listWorkspaces();
+        const events: string[] = [];
+        const unsubscribe = daemon.subscribeToEvents((_workspaceId, method) => { events.push(method); });
+        try {
+            assert.equal((await daemon.attachWorkspace({ workspaceId: folder.workspaceId })).workspaceId, folder.workspaceId);
+            assert.equal((await daemon.attachWorkspace({ name: folder.workspaceName })).workspaceId, folder.workspaceId);
+            assert.equal((await daemon.attachWorkspace({ projectRoot })).workspaceId, folder.workspaceId);
+            assert.equal((await daemon.attachWorkspace({ projectRoot: `${projectRoot}/../read-only-selection/.` })).workspaceId, folder.workspaceId);
+            assert.equal((await daemon.attachWorkspace({ name: literal.workspaceName })).workspaceId, literal.workspaceId);
+            for (const selection of [{ workspaceId: 999999 }, { name: "absent" }, { projectRoot: `${projectRoot}-absent` }]) {
+                await assert.rejects(daemon.attachWorkspace(selection), (error: unknown) =>
+                    error instanceof OperationFailureError && error.result.status === 404 && /workspace-not-found$/u.test(error.result.problem?.type ?? ""));
+            }
+            assert.deepEqual(await daemon.listWorkspaces(), before);
+            assert.deepEqual(await daemon.listWorkers(folder.workspaceId), []);
+            assert.deepEqual(await daemon.listWorkers(literal.workspaceId), []);
+            assert.deepEqual(events, [], "selection emits no creation or activation events");
+            await daemon.renameWorkspace(folder.workspaceId, "renamed-selection");
+            await assert.rejects(daemon.attachWorkspace({ projectRoot }), (error: unknown) =>
+                error instanceof OperationFailureError && error.result.status === 404 && /workspace-not-found$/u.test(error.result.problem?.type ?? ""),
+                "a stored project folder does not become a second lookup identity after rename");
+            assert.equal((await daemon.attachWorkspace({ name: "renamed-selection" })).workspaceId, folder.workspaceId);
+        } finally { unsubscribe(); }
+    });
+});
+
+test("{§methods-workspace-attach} selection rejects ambiguous, empty and invalid inputs without creating anything", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const cases = [
+            [{}, "identity-invalid"],
+            [{ workspaceId: 1, name: "a" }, "identity-invalid"],
+            [{ name: "a", projectRoot: "/a" }, "identity-invalid"],
+            [{ workspaceId: 1, projectRoot: "/a" }, "identity-invalid"],
+            [{ workspaceId: 0 }, "identifier-invalid"],
+            [{ name: "" }, "name-invalid"],
+            [{ projectRoot: null }, "identity-invalid"],
+            [{ projectRoot: "relative" }, "project-root-not-absolute"],
+        ] as const;
+        for (const [selection, code] of cases) {
+            await assert.rejects(daemon.attachWorkspace(selection as Parameters<ApplicationPort["attachWorkspace"]>[0]), (error: unknown) =>
+                error instanceof OperationFailureError && error.result.status === 400 && error.result.problem?.type.endsWith(`/${code}`) === true,
+                JSON.stringify(selection));
+        }
+        assert.deepEqual(await daemon.listWorkspaces(), []);
+    });
+});
+
 test("{§workspace-label} every envelope, row and created notice carries the folder's label beside it: a default name equals it, any other name leaves it be", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const home = new HostPaths().home;
@@ -924,6 +976,8 @@ test("{§workspace-name} an existing numeric name remains listed, attachable and
         const { workerId } = await daemon.createWorker({ workspaceId, name: "alice" });
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === workspaceId)?.name, "42");
         assert.equal((await daemon.attachWorkspace({ workspaceId })).workspaceName, "42");
+        assert.equal((await daemon.attachWorkspace({ name: "42" })).workspaceId, workspaceId,
+            "lookup preserves an existing label even when that spelling is no longer admitted for creation");
         await assert.rejects(daemon.renameWorkspace(workspaceId, "0042"), nameInvalid(/reserved for workspace IDs/u));
         assert.deepEqual(await daemon.renameWorkspace(workspaceId, "renamed"), { id: workspaceId, name: "renamed" });
         const attached = await daemon.attachWorkspace({ workspaceId });

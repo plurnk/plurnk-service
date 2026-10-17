@@ -369,6 +369,9 @@ try {
     const { AguiTransport } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
     )).href);
+    const { actionViaAgui } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "agui.js",
+    )).href);
     // {§agui-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
     const { default: Credential } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
@@ -395,7 +398,10 @@ try {
         if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
-        const retained = await new AguiTransport(credential(), "Recovery_Worker", { workspace: "installed-recovery" })
+        const recoveryWorkspace = await actionViaAgui(credential(), {
+            threadId: "bootstrap", kind: "workspace.attach", params: { name: "installed-recovery" },
+        });
+        const retained = await new AguiTransport(credential(), { workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
             .rpc("entry.read", { target: `sh://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
@@ -431,7 +437,11 @@ try {
 
     fixture.assertComplete();
 
-    const terminal = new AguiTransport(credential(), workspace, { workspace: workspace });
+    const sharedWorkspace = await actionViaAgui(credential(), {
+        threadId: "bootstrap", kind: "workspace.create", params: { name: workspace },
+    });
+    const binding = { workspaceId: sharedWorkspace.id, worker: "user" };
+    const terminal = new AguiTransport(credential(), binding);
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
@@ -468,8 +478,7 @@ try {
 
     const observer = new AguiTransport(
         credential(),
-        "independent-observer",
-        { workspace: workspace },
+        { workspaceId: sharedWorkspace.id, worker: "independent-observer" },
     );
     const observedCapabilities = await observer.rpc("workspace.capabilities.get");
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
@@ -491,8 +500,7 @@ try {
     // The read takes the perspective of the worker the CLI journey created ({§agui-action-binding}).
     const persistedFiles = new AguiTransport(
         credential(),
-        "File_Worker",
-        { workspace: "installed-files", projectRoot: project },
+        { workspaceId: fileRecord.workspace.id, worker: "File_Worker" },
     );
     const persistedFile = await persistedFiles.rpc("entry.read", { target: pathToFileURL(join(project, "integrity.txt")).href });
     if (persistedFile.status !== 200 || persistedFile.entry?.channels.body?.content !== "after"
@@ -502,8 +510,7 @@ try {
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
     const afterRestart = new AguiTransport(
         credential(),
-        workspace,
-        { workspace: workspace },
+        binding,
     );
     const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
     const persistedMembers = await afterRestart.rpc("workspace.members.list");

@@ -140,9 +140,12 @@ export interface ApplicationPort extends HttpHost {
         readonly settings?: string | object;
         readonly constraints?: Array<{ readonly effect: string; readonly glob: string }>;
     }): Promise<ClientEnvelope>;
-    attachWorkspace(args: {
-        readonly workspaceId: number;
-    }): Promise<ClientEnvelope>;
+    /** {§methods-workspace-attach} Read-only selection; folder defaults are derived by the daemon. */
+    attachWorkspace(args:
+        | { readonly workspaceId: number; readonly name?: never; readonly projectRoot?: never }
+        | { readonly name: string; readonly workspaceId?: never; readonly projectRoot?: never }
+        | { readonly projectRoot: string; readonly workspaceId?: never; readonly name?: never }
+    ): Promise<ClientEnvelope>;
     /** {§worker-external-reference} Opaque, adapter-namespaced identity; reading never allocates. */
     readWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number } | null>;
     /** {§worker-external-reference} Atomically allocate a folderless workspace and model worker when absent. */

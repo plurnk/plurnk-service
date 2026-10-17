@@ -1407,10 +1407,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
     }
 
-    // {§connection-lifecycle} Binding a workspace mints nothing.
-    async attachWorkspace(args: { workspaceId: number }): Promise<ClientEnvelope> {
-        const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
-        return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
+    // {§methods-workspace-attach} Selection is passive and never searches by the stored project folder.
+    async attachWorkspace(args: Parameters<ApplicationPort["attachWorkspace"]>[0]): Promise<ClientEnvelope> {
+        const selectors = ["workspaceId", "name", "projectRoot"].filter((key) => Object.hasOwn(args, key));
+        if (selectors.length !== 1 || args[selectors[0] as keyof typeof args] == null) {
+            throw daemonFailure("daemon:workspace", "identity-invalid", 400,
+                "Workspace selection requires exactly one ID, name or project root.", { retryable: false });
+        }
+        if (Object.hasOwn(args, "workspaceId")) {
+            const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
+            return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
+        }
+        const name = Object.hasOwn(args, "name")
+            ? ClientInput.assertOptionalName("workspace.attach", "name", args.name)!
+            : this.#hostPaths.abbreviateUserPath(ClientInput.assertProjectRoot("workspace.attach", args.projectRoot)!);
+        const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name });
+        if (existing === undefined) {
+            throw daemonFailure("daemon:workspace", "workspace-not-found", 404,
+                `Workspace ${JSON.stringify(name)} does not exist.`, { name });
+        }
+        return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
     }
 
     // {§worker-external-reference} The adapter interprets the key; core retains its target by identity.

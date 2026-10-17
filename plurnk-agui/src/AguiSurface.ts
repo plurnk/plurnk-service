@@ -100,7 +100,11 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         projectRoot: nullable(string()),
         settings: { oneOf: [string(), { type: "object", additionalProperties: true }] },
     }), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
-    "workspace.attach": action("daemon", object({ id: POSITIVE }, ["id"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
+    "workspace.attach": action("daemon", { oneOf: [
+        object({ id: POSITIVE }, ["id"]),
+        object({ name: NONEMPTY }, ["name"]),
+        object({ projectRoot: NONEMPTY }, ["projectRoot"]),
+    ] }, object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
     "workspace.workers": action("workspace", object({ id: POSITIVE }), object({ workers: array(worker) }, ["workers"])),
     "log.read": action("workspace", object({
         workerId: POSITIVE,
