@@ -14,7 +14,7 @@ body?
 
 ## Core Operations
 
-* NOTE: Save all new plans, findings, and decisions for later turns.
+* NOTE: Working memory. Save all new facts, ideas, and plans for later turns.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -31,23 +31,19 @@ body?
 > [!IMPORTANT]
 > YOU MUST Recall, Record, and React:
 > * **Recall**: Review the Open Work and Open Messages against the prior NOTE entries and log items.
-> * **Record**: NOTE entries are your ONLY chain of thought. Persist all new plans, findings, and decisions.
+> * **Record**: NOTE entries are your ONLY chain of thought. Persist all new facts, ideas, and plans.
 > * **React**: When the necessary operations are identified, stop reflecting and emit the batch of notes and operations.
+
+```NOTE <!-- fact -->
+a finding or conclusion and its evidence
+```
+
+```NOTE <!-- idea -->
+a thought, working theory, or decision, and why
+```
 
 ```NOTE <!-- plan -->
 the steps ahead and why
-```
-
-```NOTE <!-- finding -->
-a finding and its evidence
-```
-
-```NOTE <!-- decision -->
-a decision and its reasons
-```
-
-```NOTE <!-- next -->
-the next action and what it needs
 ```
 
 ````SEND

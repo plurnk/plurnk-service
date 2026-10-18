@@ -227,19 +227,19 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
 // ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§worker-initialization-entry} — the two NOTEs that open and close the initialization surveys, labelled
-// as the card's own first and last NOTE examples are.
+// {§worker-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
+// labelled as the card's own plan example is: the worker's plan in steps, then its next step.
 const INITIALIZATION_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
     body: [
         "1. Survey the tooling, documentation, extended context, and project root: what exists decides what can be done.",
         "2. Read the Open Message and restate what it asks for and what will show it is done.",
-        "3. Do the work, saving all new plans, findings, and decisions in NOTEs for later turns.",
+        "3. Do the work, saving all new facts, ideas, and plans in NOTEs for later turns.",
     ].join("\n"),
     position: UNKNOWN_POSITION,
 };
-const INITIALIZATION_NEXT_NOTE: NoteStatement = {
-    op: "NOTE", aside: "next", metadata: null, target: null, lineMarker: null,
+const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
+    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
     body: "Read and resolve the Open Message.", position: UNKNOWN_POSITION,
 };
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
@@ -861,7 +861,7 @@ export default class TurnRunner {
         // when the surveys run, one NOTE opens them and one closes them.
         const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "FIND")
-                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_NEXT_NOTE]
+                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_CLOSING_NOTE]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

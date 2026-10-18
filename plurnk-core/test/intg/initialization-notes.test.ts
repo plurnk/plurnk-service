@@ -55,12 +55,11 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
         assert.ok(rest.length > 0 && rest.every(({ op }) => op === "FIND" || op === "READ"), "the surveys stand between them");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const program = sources.find((row) => row.turn_id === initialization && row.kind === "ops")?.content ?? "";
-        const asides = await cardNoteAsides();
-        assert.ok(asides.length > 1, "the card teaches NOTE by labelled examples");
-        assert.match(program, new RegExp(`^\`{3,}NOTE <!-- ${asides[0]} -->\\n1\\. `, "u"),
-            "the recorded ops:// program begins with the NOTE labelled as the card's first NOTE example is");
-        assert.match(program, new RegExp(`\\n\`{3,}NOTE <!-- ${asides.at(-1)} -->\\nRead and resolve the Open Message\\.\\n\`{3,}\\s*$`, "u"),
-            "and ends with the NOTE labelled as the card's last NOTE example is");
+        assert.ok((await cardNoteAsides()).includes("plan"), "the card teaches NOTE by labelled examples, a plan among them");
+        assert.match(program, /^`{3,}NOTE <!-- plan -->\n1\. /u,
+            "the recorded ops:// program begins with the plan NOTE, labelled as the card's plan example is");
+        assert.match(program, /\n`{3,}NOTE <!-- plan -->\nRead and resolve the Open Message\.\n`{3,}\s*$/u,
+            "and ends with the closing NOTE, a plan of one step");
     });
 });
 
