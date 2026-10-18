@@ -145,6 +145,21 @@ const readProposalTimeoutMs = (): number | null => {
 // side-effecting op that returns 202 pauses in dispatch until a resolution
 // arrives — from a client-interface resume, core-owned disposition, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
+// Where a proposal is applied: the coordinates it was raised in, the row it settles, and the capture capability.
+// `resources` is the dispatcher's own capture capability. An applied operation may need
+// it — an outbound SEND snapshots its attachments when the settlement accepts, not when the
+// proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
+type ApplyIds = {
+    workspaceId: number; workerId: number; loopId: number; turnId: number;
+    // {§log-mutation-patch} — the operation row this application settles, so a scheme can keep
+    // what it did on that row.
+    logEntryId?: number;
+    resources?: PlurnkSchemeContext["resources"];
+};
+
+// What an entry address is bound with at application time, as the binding declares it.
+type ApplyBinding = Parameters<EntryAddressBinding["resolve"]>[0];
+
 export default class ProposalLifecycle {
     #db: Db;
     #schemes: SchemeRegistry;
@@ -492,18 +507,9 @@ export default class ProposalLifecycle {
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: AppliedProposalResolution,
-        // `resources` is the dispatcher's own capture capability. An applied operation may need
-        // it — an outbound SEND snapshots its attachments when the settlement accepts, not when the
-        // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
-        ids: {
-            workspaceId: number; workerId: number; loopId: number; turnId: number;
-            // {§log-mutation-patch} — the operation row this application settles, so a scheme can keep
-            // what it did on that row.
-            logEntryId?: number;
-            resources?: PlurnkSchemeContext["resources"];
-        },
+        ids: ApplyIds,
     ): Promise<ProposalSettlement> {
-        const { workspaceId, workerId, loopId, turnId } = ids;
+        const { workspaceId } = ids;
         if (resolution.decision !== "accept") return { resolution };
         // {§move-decomposition}: once the destination is written, approval applies
         // to the source operand, including its metadata and manifest binding.
@@ -528,27 +534,7 @@ export default class ProposalLifecycle {
         }
         if (typeof handler.applyResolution !== "function") return { resolution };
         try {
-            // Build a ctx for the scheme's applyResolution. The proposal
-            // was raised inside a specific (workspace, worker, loop, turn);
-            // the scheme uses ctx to write the entry that makes the
-            // operation's artifact visible in the next packet's index.
-            const applyCtx: PlurnkSchemeContext = {
-                db: this.#db, workspaceId, workerId, loopId, turnId,
-                ...(ids.logEntryId === undefined ? {} : { logEntryId: ids.logEntryId }),
-                writer: "model", signal: this.#loopSignal(loopId),
-                streamEventNotify: this.#notify.streamEventNotify,
-                wakeWorkerNotify: this.#notify.wakeWorkerNotify,
-                weigh: this.#weighContent,
-                mimetypes: this.#mimetypes,
-                ...(ids.resources === undefined ? {} : { resources: ids.resources }),
-                pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
-                requestInteraction: (interaction, signal = this.#loopSignal(loopId)) => this.#interactions.request(
-                    interaction,
-                    { workspaceId, workerId, loopId, turnId },
-                    signal,
-                ),
-                executors: this.#executors(),
-            };
+            const applyCtx = this.#applyContext(ids);
             const request = {
                 attrs: (originalResult.attrs ?? {}) as object,
                 metadata: operand.metadata,
@@ -562,50 +548,8 @@ export default class ProposalLifecycle {
             // resources into channels it never declared.
             const manifest = this.#schemes.manifestAt(schemeName, authoredTarget, workspaceId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-            let authority = proposalTarget === undefined
-                ? authoredTarget === null
-                    ? ""
-                    : entryCoordinateOf(authoredTarget, manifest.authority ?? "namespace").authority
-                : proposalTarget.authority;
-            if (
-                manifest.category === "data"
-                && !isExecution(statement)
-                && authoredTarget !== null
-            ) {
-                const binding = await this.#entryAddresses.resolve({
-                    target: authoredTarget,
-                    routedScheme: schemeName,
-                    handler,
-                    manifest,
-                    ctx: applyCtx,
-                });
-                if (binding.result !== null) {
-                    return {
-                        resolution: {
-                            ...resolution,
-                            outcome: typeof binding.result.outcome === "string"
-                                ? binding.result.outcome
-                                : "apply_failed",
-                        },
-                        applied: binding.result,
-                    };
-                }
-                if (binding.address === null) {
-                    const applied = Results.failure(
-                        "proposal:application",
-                        "entry-not-found",
-                        404,
-                        "The proposed entry target no longer resolves.",
-                        {},
-                        { stage: "proposal-application", retryable: false },
-                    );
-                    return {
-                        resolution: { ...resolution, outcome: "apply_failed" },
-                        applied,
-                    };
-                }
-                authority = binding.address.authority;
-            }
+            const authority = await this.#applyAuthority({ statement, schemeName, handler, manifest, authoredTarget, proposalTarget, applyCtx, resolution });
+            if (typeof authority !== "string") return authority;
             const applyResult = Results.assert(await handler.applyResolution(
                 request,
                 new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions, { authority }),
@@ -652,6 +596,91 @@ export default class ProposalLifecycle {
                 ),
             };
         }
+    }
+
+    // The context a scheme's applyResolution runs under: the (workspace, worker, loop, turn) the proposal was
+    // raised in — the scheme uses it to write the entry that makes the operation's artifact visible in the next
+    // packet's index — the row it settles, and the dispatcher's capture capability when the operation needs one.
+    #applyContext(ids: ApplyIds): PlurnkSchemeContext {
+        const { workspaceId, workerId, loopId, turnId } = ids;
+        return {
+        db: this.#db, workspaceId, workerId, loopId, turnId,
+        ...(ids.logEntryId === undefined ? {} : { logEntryId: ids.logEntryId }),
+        writer: "model", signal: this.#loopSignal(loopId),
+        streamEventNotify: this.#notify.streamEventNotify,
+        wakeWorkerNotify: this.#notify.wakeWorkerNotify,
+        weigh: this.#weighContent,
+        mimetypes: this.#mimetypes,
+        ...(ids.resources === undefined ? {} : { resources: ids.resources }),
+        pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+        requestInteraction: (interaction, signal = this.#loopSignal(loopId)) => this.#interactions.request(
+            interaction,
+            { workspaceId, workerId, loopId, turnId },
+            signal,
+        ),
+        executors: this.#executors(),
+        };
+    }
+
+    // The authority the application runs under: the proposal's recorded target, else the authored target's
+    // coordinate. A data scheme's entry target is bound again at application time, and a binding that fails or
+    // resolves to nothing is the settlement's failure.
+    async #applyAuthority(args: {
+        statement: PlurnkStatement;
+        schemeName: string;
+        handler: SchemeHandler;
+        manifest: ApplyBinding["manifest"];
+        authoredTarget: ApplyBinding["target"] | null;
+        proposalTarget: OrchestrationProposalAttrs["proposalTarget"];
+        applyCtx: PlurnkSchemeContext;
+        resolution: AppliedProposalResolution;
+    }): Promise<string | ProposalSettlement> {
+        const { statement, schemeName, handler, manifest, authoredTarget, proposalTarget, applyCtx, resolution } = args;
+        let authority = proposalTarget === undefined
+            ? authoredTarget === null
+                ? ""
+                : entryCoordinateOf(authoredTarget, manifest.authority ?? "namespace").authority
+            : proposalTarget.authority;
+        if (
+            manifest.category === "data"
+            && !isExecution(statement)
+            && authoredTarget !== null
+        ) {
+            const binding = await this.#entryAddresses.resolve({
+                target: authoredTarget,
+                routedScheme: schemeName,
+                handler,
+                manifest,
+                ctx: applyCtx,
+            });
+            if (binding.result !== null) {
+                return {
+                    resolution: {
+                        ...resolution,
+                        outcome: typeof binding.result.outcome === "string"
+                            ? binding.result.outcome
+                            : "apply_failed",
+                    },
+                    applied: binding.result,
+                };
+            }
+            if (binding.address === null) {
+                const applied = Results.failure(
+                    "proposal:application",
+                    "entry-not-found",
+                    404,
+                    "The proposed entry target no longer resolves.",
+                    {},
+                    { stage: "proposal-application", retryable: false },
+                );
+                return {
+                    resolution: { ...resolution, outcome: "apply_failed" },
+                    applied,
+                };
+            }
+            authority = binding.address.authority;
+        }
+        return authority;
     }
 
     async applyResolution(logEntryId: number, settlement: ProposalSettlement): Promise<DispatchResult> {
