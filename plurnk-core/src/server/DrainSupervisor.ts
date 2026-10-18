@@ -69,6 +69,25 @@ type DrainStartResult = {
     drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
 };
 
+// The handle is the drain identity. Start/exit compare by reference so an
+// exiting drain cannot clobber a successor that raced in.
+type DrainHandle = { controller: AbortController; promise: Promise<unknown> };
+
+// A loop as the queue hands it to its drain.
+type ClaimedLoop = { id: number; sequence: number; prompt: string; max_turns: number };
+
+// What one drain's steps share: the worker, its cancellation scope, the drain's identity, and the first
+// loop's settlement, delivered once to whoever started the drain — its result, the drain's error, or an
+// exit with neither.
+type DrainScope = {
+    workspaceId: number;
+    workerId: number;
+    systemPrompt: string;
+    controller: AbortController;
+    handle: DrainHandle;
+    first: { settled: boolean; resolve: (result: DrainLoopResult) => void; reject: (error: unknown) => void };
+};
+
 type CompletionWakeGate = {
     conclusions: number;
     poke: PromiseWithResolvers<void>;
@@ -124,9 +143,7 @@ export default class DrainSupervisor {
     readonly #emit: EmitEvent;
     readonly #completeAbandonedMessages: CompleteAbandonedMessages;
 
-    // The handle is the drain identity. Start/exit compare by reference so an
-    // exiting drain cannot clobber a successor that raced in.
-    readonly #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
+    readonly #activeDrains = new Map<number, DrainHandle>();
     readonly #settlementTasks = new Set<Promise<void>>();
     readonly #settlementFailures: unknown[] = [];
     // One cancellation scope spans a worker's loops and streams. It outlives
@@ -344,289 +361,272 @@ export default class DrainSupervisor {
         // The drain runs under the worker's cancellation scope (shared with the
         // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
         const controller = this.#workerSignal(workerId);
-        const handle: { controller: AbortController; promise: Promise<unknown> } = {
-            controller, promise: Promise.resolve(),
-        };
-
-        let resolveFirst: (v: DrainLoopResult) => void = () => {};
-        let rejectFirst: (e: unknown) => void = () => {};
-        const firstLoopPromise = new Promise<DrainLoopResult>((res, rej) => {
-            resolveFirst = res; rejectFirst = rej;
-        });
-        let firstSettled = false;
-
-        const claim = () => this.#db.drain_claim_next_loop.get<{
-            id: number; sequence: number; prompt: string; max_turns: number;
-        }>({ worker_id: workerId });
-
-        const drainPromise = (async () => {
-            let loopsDrained = 0;
-            let lastResult: DrainLoopResult | null = null;
-            let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
-            try {
-                while (true) {
-                    controller.signal.throwIfAborted();
-                    let loopRow = await claim();
-                    if (loopRow === undefined) {
-                        // {§worker-lifecycle-no-lost-loop}
-                        // Queue empty → teardown UNDER the per-worker drain lock (R4 / I1),
-                        // serialized against ensureDrain so a concurrent inject can't
-                        // start a 2nd drain in the gap. Re-claim while holding the lock;
-                        // relinquish the registry slot only if it's empty too. A loop
-                        // that raced in is returned and run — we stay registered, so
-                        // there's no transient delete for ensureDrain to catch.
-                        loopRow = await this.#withDrainLock(workerId, async () => {
-                            const claimed = await claim();
-                            if (claimed === undefined && this.#activeDrains.get(workerId) === handle) {
-                                this.#activeDrains.delete(workerId);
-                            }
-                            return claimed;
-                        });
-                        if (loopRow === undefined) break;
-                    }
-                    currentLoopId = loopRow.id;
-                    this.#clearLoopTimer(loopRow.id);
-                    await this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 102);
-                    const onSettled = async (logEntryId: number): Promise<void> => {
-                        await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
-                            console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
-                        });
-                    };
-                    const result = await observed(
-                        "loop.run",
-                        { workspaceId, workerId, "loop.id": loopRow.id },
-                        async (span) => {
-                            const loopResult = await this.#runLoop({
-                                workspaceId,
-                                workerId,
-                                loopId: loopRow.id,
-                                maxTurns: loopRow.max_turns,
-                                prompt: loopRow.prompt,
-                                systemPrompt,
-                                signal: controller.signal,
-                                onSettled,
-                            });
-                            span.setAttribute("status", loopResult.result.status);
-                            recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });
-                            return loopResult;
-                        },
-                    );
-                    if (result.result.status === 202) {
-                        await this.#withDrainLock(workerId, () => this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 202));
-                        // The loop parked — suspended, not terminated. Leave it at 202
-                        // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
-                        // through handleWakeWorker re-queues it; the durable wait deadline also
-                        // wakes it to inspect ({§worker-wait-timing}). {§worker-lifecycle-wake-liveness}.
-                        await this.scheduleWakes(workspaceId, workerId, systemPrompt);
-                        // Serialize the park boundary against message injection.
-                        // Whichever side arrives first owns a wake edge: injection wakes
-                        // an already-parked loop, while this check wakes a message written
-                        // just before runLoop finished parking.
-                        const messageWaiting = await this.#withDrainLock(workerId, async () => {
-                            const unpublished = await this.#db.drain_unpublished_messages_for_loop.get<{ id: number }>({ loop_id: loopRow.id });
-                            if (unpublished === undefined) return false;
-                            return this.#wakeLoop(workspaceId, workerId, loopRow.id);
-                        });
-                        if (messageWaiting) {
-                            currentLoopId = null;
-                            continue;
-                        }
-                        // {§loop-wake-identity}: events observed by another loop
-                        // cannot consume this loop's completion wake.
-                        if (await this.#withDrainLock(workerId, () => this.#wakeLoop(workspaceId, workerId, loopRow.id, { eventOnly: true }))) {
-                            currentLoopId = null;
-                            continue;
-                        }
-                        // {§loop-wake-identity}: the wait now belongs to its completion
-                        // obligations and inherited observation, not this drain.
-                        currentLoopId = null;
-                        continue;
-                    }
-                    const [usage, attributions, turnIds] = await Promise.all([
-                        this.#loopUsage(loopRow.id),
-                        this.#loopAttributions(loopRow.id),
-                        this.#lifecycle.turnIds(loopRow.id),
-                    ]);
-                    await this.#publishTermination(workspaceId, {
-                        workerId,
-                        loopId: loopRow.id,
-                        result: result.result,
-                        hitMaxTurns: result.hitMaxTurns,
-                        turnIds,
-                        usage,
-                        attributions,
-                    });
-                    loopsDrained++;
-                    const loopResult: DrainLoopResult = {
-                        loopId: loopRow.id,
-                        turnIds,
-                        result: result.result,
-                        hitMaxTurns: result.hitMaxTurns,
-                        usage,
-                        attributions,
-                    };
-                    lastResult = loopResult;
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        resolveFirst(loopResult);
-                    }
-                    // A message this loop ended before publishing (a wake conclusion or a
-                    // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
-                    // never silently dropped ({§message-loop-containment}).
-                    await this.reconcileOrphanedMessages(workerId, loopRow.id);
-                    await this.#abandonUnanswered(workspaceId, workerId, loopRow.id, result.result.status);
-                    currentLoopId = null;
-                }
-            } catch (err) {
-                if (controller.signal.aborted) {
-                    // {§methods-loop-cancel} — loop.cancel / shutdown aborted the live drain. A cancellation
-                    // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
-                    // longer blocks to return it). A genuine error rejects firstLoopPromise.
-                    let usage: LoopUsage = {
-                        accounting: aggregateProviderAccounting([]),
-                        curationWeight: null,
-                        curationBudget: null,
-                        contextTokens: null,
-                        contextCapacity: null,
-                        meta: {},
-                    };
-                    let attributions: string[] = [];
-                    const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
-                        || "no reason was supplied";
-                    if (currentLoopId !== null) {
-                        // {§methods-loop-cancel}/{§worker-lifecycle-terminal-result} —
-                        // persist the exact 499 cancellation result before broadcasting it.
-                        const cancelled = await this.#lifecycle.finish(
-                            currentLoopId,
-                            Results.failure(
-                                "lifecycle:cancel",
-                                "loop-cancelled",
-                                499,
-                                `The loop was cancelled: ${message}.`,
-                                {},
-                                {
-                                    reason: message,
-                                    stage: "loop",
-                                    retryable: false,
-                                },
-                            ),
-                            { terminatedBy: "cancel" },
-                        );
-                        [usage, attributions] = await Promise.all([
-                            this.#loopUsage(currentLoopId),
-                            this.#loopAttributions(currentLoopId),
-                        ]);
-                        if (cancelled !== null) {
-                            await this.#publishTermination(workspaceId, {
-                                workerId,
-                                loopId: currentLoopId,
-                                result: cancelled,
-                                hitMaxTurns: false,
-                                turnIds: await this.#lifecycle.turnIds(currentLoopId),
-                                usage,
-                                attributions,
-                            });
-                            await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, cancelled.status);
-                        }
-                    }
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        resolveFirst({
-                            loopId: currentLoopId ?? 0,
-                            turnIds: [],
-                            result: currentLoopId === null
-                                ? Results.failure(
-                                    "lifecycle:cancel",
-                                    "loop-cancelled",
-                                    499,
-                                    `The loop was cancelled: ${message}.`,
-                                    {},
-                                    {
-                                        reason: message,
-                                        stage: "loop",
-                                        retryable: false,
-                                    },
-                                )
-                                : await this.#lifecycle.result(currentLoopId)
-                                    ?? Results.failure(
-                                        "lifecycle:cancel",
-                                        "loop-cancelled",
-                                        499,
-                                        `The loop was cancelled: ${message}.`,
-                                        {},
-                                        {
-                                            reason: message,
-                                            stage: "loop",
-                                            retryable: false,
-                                        },
-                                    ),
-                            hitMaxTurns: false,
-                            usage,
-                        });
-                    }
-                } else {
-                    // {§worker-lifecycle-terminal-result} — a non-abort drain
-                    // failure becomes an exact durable 500 and terminal notification;
-                    // daemon diagnostics retain the complete caught error.
-                    console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
-                    if (currentLoopId !== null) {
-                        const failure = err instanceof OperationFailureError
-                            ? err.result
-                            : Results.failure(
-                                "daemon:drain",
-                                "loop-threw",
-                                500,
-                                "The loop failed outside its operation result contract.",
-                                {},
-                                {
-                                    stage: "loop",
-                                    retryable: false,
-                                },
-                            );
-                        const settled = await this.#lifecycle.finish(currentLoopId, failure)
-                            ?? await this.#lifecycle.result(currentLoopId);
-                        if (settled === null) {
-                            throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
-                        }
-                        const [usage, attributions] = await Promise.all([
-                            this.#loopUsage(currentLoopId),
-                            this.#loopAttributions(currentLoopId),
-                        ]);
-                        await this.#publishTermination(workspaceId, {
-                            workerId,
-                            loopId: currentLoopId,
-                            result: settled,
-                            hitMaxTurns: false,
-                            turnIds: await this.#lifecycle.turnIds(currentLoopId),
-                            usage,
-                            attributions,
-                        });
-                        await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, settled.status);
-                    }
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        rejectFirst(err);
-                    }
-                }
-                throw err;
-            } finally {
-                if (!firstSettled) {
-                    firstSettled = true;
-                    rejectFirst(new Error("drain exited without producing a result"));
-                }
-                if (this.#activeDrains.get(workerId) === handle) this.#activeDrains.delete(workerId);
-                await this.scheduleWakes(workspaceId, workerId, systemPrompt);
-            }
-            return { loopsDrained, lastResult };
-        })();
-
+        const handle: DrainHandle = { controller, promise: Promise.resolve() };
+        const firstLoop = Promise.withResolvers<DrainLoopResult>();
+        const first: DrainScope["first"] = { settled: false, resolve: firstLoop.resolve, reject: firstLoop.reject };
+        const drainPromise = this.#drain({ workspaceId, workerId, systemPrompt, controller, handle, first });
         handle.promise = drainPromise;
         this.#activeDrains.set(workerId, handle);
         // Swallow unhandled rejections (drain aborts with no awaiter); the
         // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
-        firstLoopPromise.catch(() => {});
-        return { firstLoopPromise, drainPromise };
+        firstLoop.promise.catch(() => {});
+        return { firstLoopPromise: firstLoop.promise, drainPromise };
+    }
+
+    // The drain itself: claim, run, then park or conclude, until the queue is empty under the lock. A
+    // cancellation or a failure settles the loop in flight before the drain exits, the first loop's
+    // settlement is delivered exactly once, and the exit always schedules the worker's wakes.
+    async #drain(scope: DrainScope): Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }> {
+        const { workspaceId, workerId, systemPrompt, controller, handle, first } = scope;
+        let loopsDrained = 0;
+        let lastResult: DrainLoopResult | null = null;
+        let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
+        try {
+            while (true) {
+                controller.signal.throwIfAborted();
+                const loopRow = await this.#claimLoop(workerId, handle);
+                if (loopRow === undefined) break;
+                currentLoopId = loopRow.id;
+                const result = await this.#runClaimedLoop(scope, loopRow);
+                if (result.result.status === 202) {
+                    await this.#parkLoop(scope, loopRow.id);
+                    currentLoopId = null;
+                    continue;
+                }
+                const loopResult = await this.#concludeLoop(scope, loopRow.id, result);
+                loopsDrained++;
+                lastResult = loopResult;
+                if (!first.settled) {
+                    first.settled = true;
+                    first.resolve(loopResult);
+                }
+                // A message this loop ended before publishing (a wake conclusion or a
+                // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
+                // never silently dropped ({§message-loop-containment}).
+                await this.reconcileOrphanedMessages(workerId, loopRow.id);
+                await this.#abandonUnanswered(workspaceId, workerId, loopRow.id, result.result.status);
+                currentLoopId = null;
+            }
+        } catch (err) {
+            if (controller.signal.aborted) await this.#settleCancelledDrain(scope, currentLoopId);
+            else await this.#settleFailedDrain(scope, currentLoopId, err);
+            throw err;
+        } finally {
+            if (!first.settled) {
+                first.settled = true;
+                first.reject(new Error("drain exited without producing a result"));
+            }
+            if (this.#activeDrains.get(workerId) === handle) this.#activeDrains.delete(workerId);
+            await this.scheduleWakes(workspaceId, workerId, systemPrompt);
+        }
+        return { loopsDrained, lastResult };
+    }
+
+    // {§worker-lifecycle-no-lost-loop} The next queued loop. An empty queue is re-claimed UNDER the per-worker
+    // drain lock (R4 / I1), serialized against ensureDrain so a concurrent inject can't start a 2nd drain
+    // in the gap; the registry slot is relinquished only if it is empty there too, and a loop that raced in
+    // is returned and run — the drain stays registered, so there's no transient delete for ensureDrain to
+    // catch.
+    async #claimLoop(workerId: number, handle: DrainHandle): Promise<ClaimedLoop | undefined> {
+        const claim = () => this.#db.drain_claim_next_loop.get<ClaimedLoop>({ worker_id: workerId });
+        const claimed = await claim();
+        if (claimed !== undefined) return claimed;
+        return this.#withDrainLock(workerId, async () => {
+            const reclaimed = await claim();
+            if (reclaimed === undefined && this.#activeDrains.get(workerId) === handle) {
+                this.#activeDrains.delete(workerId);
+            }
+            return reclaimed;
+        });
+    }
+
+    // One claimed loop under observation: its timer cleared, 102 announced, every settled row broadcast.
+    async #runClaimedLoop(scope: DrainScope, loopRow: ClaimedLoop): Promise<{ result: SchemeResult; hitMaxTurns: boolean }> {
+        const { workspaceId, workerId, systemPrompt, controller } = scope;
+        this.#clearLoopTimer(loopRow.id);
+        await this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 102);
+        const onSettled = async (logEntryId: number): Promise<void> => {
+            await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
+                console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
+            });
+        };
+        return observed(
+            "loop.run",
+            { workspaceId, workerId, "loop.id": loopRow.id },
+            async (span) => {
+                const loopResult = await this.#runLoop({
+                    workspaceId,
+                    workerId,
+                    loopId: loopRow.id,
+                    maxTurns: loopRow.max_turns,
+                    prompt: loopRow.prompt,
+                    systemPrompt,
+                    signal: controller.signal,
+                    onSettled,
+                });
+                span.setAttribute("status", loopResult.result.status);
+                recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });
+                return loopResult;
+            },
+        );
+    }
+
+    // A parked loop (202) is suspended, not terminated: it stays resumable, with no loop/terminated and no
+    // orphan reconcile. A stream conclusion through handleWakeWorker re-queues it; the durable wait deadline
+    // also wakes it to inspect ({§worker-wait-timing}). {§worker-lifecycle-wake-liveness}
+    async #parkLoop(scope: DrainScope, loopId: number): Promise<void> {
+        const { workspaceId, workerId, systemPrompt } = scope;
+        await this.#withDrainLock(workerId, () => this.#emitLoopStatus(workspaceId, workerId, loopId, 202));
+        await this.scheduleWakes(workspaceId, workerId, systemPrompt);
+        // Serialize the park boundary against message injection.
+        // Whichever side arrives first owns a wake edge: injection wakes
+        // an already-parked loop, while this check wakes a message written
+        // just before runLoop finished parking.
+        const messageWaiting = await this.#withDrainLock(workerId, async () => {
+            const unpublished = await this.#db.drain_unpublished_messages_for_loop.get<{ id: number }>({ loop_id: loopId });
+            if (unpublished === undefined) return false;
+            return this.#wakeLoop(workspaceId, workerId, loopId);
+        });
+        if (messageWaiting) return;
+        // {§loop-wake-identity}: events observed by another loop cannot consume this loop's completion
+        // wake. Whether or not one wakes it here, the wait now belongs to its completion obligations and
+        // inherited observation, not this drain.
+        await this.#withDrainLock(workerId, () => this.#wakeLoop(workspaceId, workerId, loopId, { eventOnly: true }));
+    }
+
+    // A loop's terminal: usage, attributions and turns gathered, loop/terminated published, and the result
+    // the drain reports.
+    async #concludeLoop(scope: DrainScope, loopId: number, result: { result: SchemeResult; hitMaxTurns: boolean }): Promise<DrainLoopResult> {
+        const { workspaceId, workerId } = scope;
+        const [usage, attributions, turnIds] = await Promise.all([
+            this.#loopUsage(loopId),
+            this.#loopAttributions(loopId),
+            this.#lifecycle.turnIds(loopId),
+        ]);
+        await this.#publishTermination(workspaceId, {
+            workerId,
+            loopId: loopId,
+            result: result.result,
+            hitMaxTurns: result.hitMaxTurns,
+            turnIds,
+            usage,
+            attributions,
+        });
+        return {
+            loopId: loopId,
+            turnIds,
+            result: result.result,
+            hitMaxTurns: result.hitMaxTurns,
+            usage,
+            attributions,
+        };
+    }
+
+    // {§methods-loop-cancel} loop.cancel / shutdown aborted the live drain. A cancellation is the loop's
+    // TERMINAL state (499), delivered via loop/terminated (runLoop no longer blocks to return it), and the
+    // exact 499 is persisted before it is broadcast ({§worker-lifecycle-terminal-result}).
+    async #settleCancelledDrain(scope: DrainScope, currentLoopId: number | null): Promise<void> {
+        const { workspaceId, workerId, controller, first } = scope;
+        const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
+            || "no reason was supplied";
+        const cancelledResult = () => Results.failure(
+            "lifecycle:cancel",
+            "loop-cancelled",
+            499,
+            `The loop was cancelled: ${message}.`,
+            {},
+            {
+                reason: message,
+                stage: "loop",
+                retryable: false,
+            },
+        );
+        let usage: LoopUsage = {
+            accounting: aggregateProviderAccounting([]),
+            curationWeight: null,
+            curationBudget: null,
+            contextTokens: null,
+            contextCapacity: null,
+            meta: {},
+        };
+        let attributions: string[] = [];
+        if (currentLoopId !== null) {
+            const cancelled = await this.#lifecycle.finish(currentLoopId, cancelledResult(), { terminatedBy: "cancel" });
+            [usage, attributions] = await Promise.all([
+                this.#loopUsage(currentLoopId),
+                this.#loopAttributions(currentLoopId),
+            ]);
+            if (cancelled !== null) {
+                await this.#publishTermination(workspaceId, {
+                    workerId,
+                    loopId: currentLoopId,
+                    result: cancelled,
+                    hitMaxTurns: false,
+                    turnIds: await this.#lifecycle.turnIds(currentLoopId),
+                    usage,
+                    attributions,
+                });
+                await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, cancelled.status);
+            }
+        }
+        if (!first.settled) {
+            first.settled = true;
+            first.resolve({
+                loopId: currentLoopId ?? 0,
+                turnIds: [],
+                result: currentLoopId === null
+                    ? cancelledResult()
+                    : await this.#lifecycle.result(currentLoopId) ?? cancelledResult(),
+                hitMaxTurns: false,
+                usage,
+            });
+        }
+    }
+
+    // {§worker-lifecycle-terminal-result} A non-abort drain failure becomes an exact durable 500 and terminal
+    // notification; daemon diagnostics retain the complete caught error.
+    async #settleFailedDrain(scope: DrainScope, currentLoopId: number | null, err: unknown): Promise<void> {
+        const { workspaceId, workerId, first } = scope;
+        console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
+        if (currentLoopId !== null) {
+            const failure = err instanceof OperationFailureError
+                ? err.result
+                : Results.failure(
+                    "daemon:drain",
+                    "loop-threw",
+                    500,
+                    "The loop failed outside its operation result contract.",
+                    {},
+                    {
+                        stage: "loop",
+                        retryable: false,
+                    },
+                );
+            const settled = await this.#lifecycle.finish(currentLoopId, failure)
+                ?? await this.#lifecycle.result(currentLoopId);
+            if (settled === null) {
+                throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
+            }
+            const [usage, attributions] = await Promise.all([
+                this.#loopUsage(currentLoopId),
+                this.#loopAttributions(currentLoopId),
+            ]);
+            await this.#publishTermination(workspaceId, {
+                workerId,
+                loopId: currentLoopId,
+                result: settled,
+                hitMaxTurns: false,
+                turnIds: await this.#lifecycle.turnIds(currentLoopId),
+                usage,
+                attributions,
+            });
+            await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, settled.status);
+        }
+        if (!first.settled) {
+            first.settled = true;
+            first.reject(err);
+        }
     }
 
     // Per-worker drain-transition lock (R4 / {§worker-lifecycle-single-drain}). ensureDrain's
