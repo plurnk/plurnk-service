@@ -20,11 +20,23 @@ import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
 import FileSnapshot from "./FileSnapshot.ts";
 import FileMaterialization from "./file-materialization.ts";
-import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds, DeferredMoveSource } from "./mutation-types.ts";
+import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds, DeferredMoveSource, PendingResourceEffect } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
 // COPY and MOVE orchestration: source selection, destination writes, move settlement.
+type ScopeNormalizations = ReturnType<typeof LineMarkerOps.applyLineMarkerEdit>["scopeNormalizations"];
+type EntryChannel = EntryData["channels"][string];
+
+// A transfer's destination as writeDestination binds it: handler, storage address, the entry as it stands (none
+// at 404), and the context carrying the file revision that read observed.
+type DestinationBinding = {
+    handler: SchemeHandler;
+    storageAddress: BoundEntryAddress;
+    existing: EntryData | null;
+    ctx: PlurnkSchemeContext;
+};
+
 export default class ResourceTransfers {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
@@ -413,12 +425,46 @@ export default class ResourceTransfers {
     }
 
 
+    // {§copy-destination-mimetype} {§fs-write-surface} The destination half of a transfer: bound and read as it
+    // stands, its channel type agreed with the source, then written — a scoped creation, a region of an existing
+    // channel, or the whole channel — with the effect and the receipt the row carries.
     async writeDestination(
         statement: CopyStatement | MoveStatement,
         source: SelectedSource,
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
+        const bound = await this.#bindDestination(destination, ctx);
+        if ("status" in bound) return bound;
+        const { handler, storageAddress, existing } = bound;
+        ctx = bound.ctx;
+        const destinationChannel = existing?.channels[destination.channel];
+        const expectedMimetype = await ResourceTransfers.#destinationMimetype(source, destination, existing, ctx);
+        if (typeof expectedMimetype !== "string") return expectedMimetype;
+
+        const destinationEffect = MutationEffects.pendingEffect(
+            destination,
+            destinationChannel === undefined ? "create" : "update",
+        );
+        let creationContent = source.content;
+        let creationScopeNormalizations: ScopeNormalizations;
+        if (destination.lineMarker !== null && destinationChannel === undefined) {
+            const created = this.#scopedCreation(statement, source, destination);
+            if ("status" in created) return created;
+            creationContent = created.content;
+            creationScopeNormalizations = created.scopeNormalizations;
+        } else if (destination.lineMarker !== null && destinationChannel !== undefined) {
+            return this.#writeIntoRegion({ statement, source, destination, destinationChannel, handler, storageAddress, existing, destinationEffect, ctx });
+        }
+        return this.#writeWholeChannel({
+            source, destination, destinationChannel, existing, storageAddress, expectedMimetype, destinationEffect,
+            creationContent, creationScopeNormalizations, ctx,
+        });
+    }
+
+    // The destination bound for writing and read as it stands: its handler, its storage address, the existing entry
+    // (none at 404), and the context carrying the file revision that read observed.
+    async #bindDestination(destination: AddressedResourceSelection, ctx: PlurnkSchemeContext): Promise<DestinationBinding | DispatchResult> {
         const handler = this.#schemes.get(destination.scheme, ctx.workspaceId);
         if (handler === undefined) {
             throw new InvalidOperationResultError(
@@ -459,6 +505,16 @@ export default class ResourceTransfers {
                 `The '${destination.scheme}' scheme returned 200 without a destination entry.`,
             );
         }
+        return { handler, storageAddress, existing, ctx };
+    }
+
+    // The channel type a transfer writes, which the source must be transfer-compatible with.
+    static async #destinationMimetype(
+        source: SelectedSource,
+        destination: AddressedResourceSelection,
+        existing: EntryData | null,
+        ctx: PlurnkSchemeContext,
+    ): Promise<string | DispatchResult> {
         const destinationChannel = existing?.channels[destination.channel];
         // {§binary-parity} — a materialized binary destination's channel mimetype is its text projection
         // (the facts line); its real mimetype is the source projection, and that is what a transfer must
@@ -489,85 +545,119 @@ export default class ResourceTransfers {
                 },
             );
         }
+        return expectedMimetype;
+    }
 
-        const destinationEffect = MutationEffects.pendingEffect(
-            destination,
-            destinationChannel === undefined ? "create" : "update",
-        );
-        let creationContent = source.content;
-        let creationScopeNormalizations: ReturnType<typeof LineMarkerOps.applyLineMarkerEdit>["scopeNormalizations"];
-        if (destination.lineMarker !== null && destinationChannel === undefined) {
-            if (source.bytes !== undefined) {
-                const marker = ByteView.marker(destination.lineMarker);
-                if ("result" in marker) return marker.result;
-            }
-            // {§fs-write-surface} {§empty-mutation-scope} — creation has an
-            // ordinary empty pre-mutation value. Resolve and apply the authored
-            // destination scope to that value; no source-length allowlist exists.
-            const resolvedMarker = this.#selection.resolveResourceLineMarker(
-                destination,
-                "",
-                statement.op,
-            );
-            if ("result" in resolvedMarker) return resolvedMarker.result;
-            if (source.bytes !== undefined && resolvedMarker.selection.lineMarker!.marks.length > 2) {
-                return LineMarkerOps.window(resolvedMarker.selection.lineMarker!, 0, "byte");
-            }
-            const created = LineMarkerOps.applyLineMarkerEdit(
-                "",
-                resolvedMarker.selection.lineMarker!,
-                source.content,
-            );
-            if (created.status >= 400) return Results.assert(created);
-            if (created.result === undefined) {
-                throw new InvalidOperationResultError(
-                    "A successful empty-destination mutation produced no resulting content.",
-                );
-            }
-            creationContent = created.result;
-            creationScopeNormalizations = created.scopeNormalizations;
-        } else if (destination.lineMarker !== null && destinationChannel !== undefined) {
-            if (source.bytes !== undefined) {
-                // {§binary-parity} — a byte source into a destination region is a splice: the destination's
-                // named byte window becomes exactly the source bytes, every other byte untouched. The whole
-                // result is re-written. Coordinate = byte, as the source range is ({§read-bytes}).
-                return this.#spliceBytes(
-                    handler, storageAddress, destination, existing ?? null,
-                    source.bytes, source.mimetype, destinationEffect, ctx,
-                );
-            }
-            if (await MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype, ctx.mimetypes)) {
-                return MutationEffects.failure(
-                    "binary-region-unsupported",
-                    415,
-                    `Channel #${destination.channel} is binary and cannot receive a textual region.`,
-                    {},
-                    {
-                        channel: destination.channel,
-                        mimetype: destinationChannel.mimetype,
-                        retryable: false,
-                    },
-                );
-            }
-            const resolvedMarker = this.#selection.resolveResourceLineMarker(
-                destination,
-                destinationChannel.content,
-                statement.op,
-            );
-            if ("result" in resolvedMarker) return resolvedMarker.result;
-            const edited = await this.invokeEditBatch(
-                resolvedMarker.selection,
-                [{
-                    marker: resolvedMarker.selection.lineMarker!,
-                    body: source.content,
-                    position: statement.position,
-                }],
-                ctx,
-                resolvedMarker.precondition,
-            );
-            return MutationEffects.finalizeEffects(edited, resolvedMarker.selection, [destinationEffect]);
+    // {§fs-write-surface} {§empty-mutation-scope} A scoped transfer into a channel that does not exist yet: the
+    // authored scope applied to an ordinary empty pre-mutation value.
+    #scopedCreation(
+        statement: CopyStatement | MoveStatement,
+        source: SelectedSource,
+        destination: AddressedResourceSelection,
+    ): { content: string; scopeNormalizations: ScopeNormalizations } | DispatchResult {
+        if (source.bytes !== undefined) {
+            const marker = ByteView.marker(destination.lineMarker);
+            if ("result" in marker) return marker.result;
         }
+        // {§fs-write-surface} {§empty-mutation-scope} — creation has an
+        // ordinary empty pre-mutation value. Resolve and apply the authored
+        // destination scope to that value; no source-length allowlist exists.
+        const resolvedMarker = this.#selection.resolveResourceLineMarker(
+            destination,
+            "",
+            statement.op,
+        );
+        if ("result" in resolvedMarker) return resolvedMarker.result;
+        if (source.bytes !== undefined && resolvedMarker.selection.lineMarker!.marks.length > 2) {
+            return LineMarkerOps.window(resolvedMarker.selection.lineMarker!, 0, "byte");
+        }
+        const created = LineMarkerOps.applyLineMarkerEdit(
+            "",
+            resolvedMarker.selection.lineMarker!,
+            source.content,
+        );
+        if (created.status >= 400) return Results.assert(created);
+        if (created.result === undefined) {
+            throw new InvalidOperationResultError(
+                "A successful empty-destination mutation produced no resulting content.",
+            );
+        }
+        return { content: created.result, scopeNormalizations: created.scopeNormalizations };
+    }
 
+    // A transfer into a region of an existing channel: bytes splice the destination's byte window
+    // ({§binary-parity}); text edits the resolved region through the ordinary edit batch.
+    async #writeIntoRegion(args: {
+        statement: CopyStatement | MoveStatement;
+        source: SelectedSource;
+        destination: AddressedResourceSelection;
+        destinationChannel: EntryChannel;
+        handler: SchemeHandler;
+        storageAddress: BoundEntryAddress;
+        existing: EntryData | null;
+        destinationEffect: PendingResourceEffect;
+        ctx: PlurnkSchemeContext;
+    }): Promise<DispatchResult> {
+        const { statement, source, destination, destinationChannel, handler, storageAddress, existing, destinationEffect, ctx } = args;
+        if (source.bytes !== undefined) {
+            // {§binary-parity} — a byte source into a destination region is a splice: the destination's
+            // named byte window becomes exactly the source bytes, every other byte untouched. The whole
+            // result is re-written. Coordinate = byte, as the source range is ({§read-bytes}).
+            return this.#spliceBytes(
+                handler, storageAddress, destination, existing ?? null,
+                source.bytes, source.mimetype, destinationEffect, ctx,
+            );
+        }
+        if (await MimetypeBinary.isBinaryMimetype(destinationChannel.mimetype, ctx.mimetypes)) {
+            return MutationEffects.failure(
+                "binary-region-unsupported",
+                415,
+                `Channel #${destination.channel} is binary and cannot receive a textual region.`,
+                {},
+                {
+                    channel: destination.channel,
+                    mimetype: destinationChannel.mimetype,
+                    retryable: false,
+                },
+            );
+        }
+        const resolvedMarker = this.#selection.resolveResourceLineMarker(
+            destination,
+            destinationChannel.content,
+            statement.op,
+        );
+        if ("result" in resolvedMarker) return resolvedMarker.result;
+        const edited = await this.invokeEditBatch(
+            resolvedMarker.selection,
+            [{
+                marker: resolvedMarker.selection.lineMarker!,
+                body: source.content,
+                position: statement.position,
+            }],
+            ctx,
+            resolvedMarker.precondition,
+        );
+        return MutationEffects.finalizeEffects(edited, resolvedMarker.selection, [destinationEffect]);
+    }
+
+    // The whole channel: unchanged content is 304, different content is 409, and an absent channel is written — bytes
+    // as bytes ({§binary-parity}), text with its parse-issue transition and, for a scoped source, an edit receipt.
+    async #writeWholeChannel(args: {
+        source: SelectedSource;
+        destination: AddressedResourceSelection;
+        destinationChannel: EntryChannel | undefined;
+        existing: EntryData | null;
+        storageAddress: BoundEntryAddress;
+        expectedMimetype: string;
+        destinationEffect: PendingResourceEffect;
+        creationContent: string;
+        creationScopeNormalizations: ScopeNormalizations;
+        ctx: PlurnkSchemeContext;
+    }): Promise<DispatchResult> {
+        const {
+            source, destination, destinationChannel, existing, storageAddress, expectedMimetype, destinationEffect,
+            creationContent, creationScopeNormalizations, ctx,
+        } = args;
         if (
             destinationChannel !== undefined
             && destinationChannel.content !== source.content
