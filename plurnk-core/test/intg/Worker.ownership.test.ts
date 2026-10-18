@@ -134,7 +134,7 @@ test("{§worker-owner-resolution}: runtime-owned work cannot hang awaiting a rev
                 new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("runtime-owned proposal never settled")), 2000).unref()),
             ]);
             assert.equal(result.status, 400);
-            assert.match(String((result.problem as { type: string }).type), /\/rejected$/);
+            assert.match((result.problem as { type: string }).type, /\/rejected$/);
             assert.equal(result.outcome, "no_review_channel");
             assert.deepEqual(await daemon.pendingProposals(workspaceId), []);
         } finally {

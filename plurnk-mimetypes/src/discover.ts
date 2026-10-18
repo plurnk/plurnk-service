@@ -72,7 +72,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
             registry,
             handlers,
             packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
-            skipped: [...skipped].sort(),
+            skipped: [...skipped].toSorted(),
         };
     }
 
@@ -104,7 +104,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         registry,
         handlers,
         packageAttributions: survivingPackageAttributions(handlers, discoveredAttributions),
-        skipped: [...skipped].sort(),
+        skipped: [...skipped].toSorted(),
     };
 }
 

@@ -33,7 +33,7 @@ const continuing = "````NOTE\nReview the evidence.\n````";
 
 const receipt = (row: Record<string, unknown>): { lines: number; tokens: number; remaining: number; detail: string } => {
     const problem = (row.problem ?? {}) as { detail?: string; lines?: number; tokens?: number; remaining?: number };
-    return { lines: Number(problem.lines), tokens: Number(problem.tokens), remaining: Number(problem.remaining), detail: String(problem.detail ?? "") };
+    return { lines: Number(problem.lines), tokens: Number(problem.tokens), remaining: Number(problem.remaining), detail: problem.detail ?? "" };
 };
 
 // {§markerless-first-page} — the room a test pins is measured, not guessed: the first packet's weight
@@ -339,7 +339,7 @@ test("{§context-own-rows-fit}: a body the wall took stays readable at its addre
     assert.equal(taken.body, undefined, "the wall took the newest bodied row");
     // `log:///` is the reader's own log ({§turn-source-resources}), so the worker reads its row, as its last action:
     // the READ joins its log and would occupy the room the scenario above measures.
-    const recalled = await clientRead(engine, db, { statement: readStmt(urlPath("log", String(betaRow.logPath).slice("log://".length)), { marks: [1, -1] }), workspaceId, workerId });
+    const recalled = await clientRead(engine, db, { statement: readStmt(urlPath("log", betaRow.logPath.slice("log://".length)), { marks: [1, -1] }), workspaceId, workerId });
     assert.equal(recalled.status, 200);
     assert.match(String((recalled as { content?: string }).content), /beta beta/u, "the body is readable at its address");
 }));

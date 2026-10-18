@@ -391,7 +391,7 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
 
     const { registry } = await Discover.scan({ cwd: root });
 
-    assert.deepEqual([...registry.keys()].sort(), ["cobol", "fortran", "sh"]);
+    assert.deepEqual([...registry.keys()].toSorted(), ["cobol", "fortran", "sh"]);
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
 });
 

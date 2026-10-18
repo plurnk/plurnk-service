@@ -38,7 +38,7 @@ test("discover: the node_modules scan is scope-agnostic — third-party scopes a
         "@acme/acme-execs-wrong-kind": { name: "@acme/acme-execs-wrong-kind", plurnk: { kind: "exec", runtimes: [] } }, // wrong kind → ignored
     });
     const { registry } = await discover({ cwd: root });
-    assert.deepEqual([...registry.keys()].sort(), ["bar", "foo", "native"]);
+    assert.deepEqual([...registry.keys()].toSorted(), ["bar", "foo", "native"]);
     assert.equal(registry.get("foo"), "@acme/acme-provider-foo");      // third-party scope resolves
     assert.equal(registry.get("bar"), "unscoped-provider-bar");        // unscoped resolves
 });
@@ -172,12 +172,12 @@ test("trust gate OFF ('' or '0'): every provider is trusted; unset defers to the
     const root = await trustFixture(t);
     for (const gate of ["", "0"]) {
         const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } });
-        assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
+        assert.deepEqual([...registry.keys()].toSorted(), ["foo", "native"]);
         assert.equal(skipped.size, 0);
     }
     // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
     const { registry, skipped } = await discover({ cwd: root, env: {} });
-    assert.deepEqual([...registry.keys()].sort(), ["native"], "only the first-party provider survives the shipped gate");
+    assert.deepEqual([...registry.keys()].toSorted(), ["native"], "only the first-party provider survives the shipped gate");
     assert.equal(skipped.size, 1);
 });
 
@@ -192,6 +192,6 @@ test("trust gate ON: @plurnk/* always trusted; third party declined → skipped,
 test("trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
     const root = await trustFixture(t);
     const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } });
-    assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
+    assert.deepEqual([...registry.keys()].toSorted(), ["foo", "native"]);
     assert.equal(skipped.size, 0);
 });

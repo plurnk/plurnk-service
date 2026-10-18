@@ -547,7 +547,7 @@ test("an empty finite GET materializes atomically and remains reusable through 3
         const completed = await handlerCtx.entries.read(pathname);
         assert.equal(completed.entry?.channels.body.content, "");
         // {§readable-channel} — a plain-text response has no projection: body and header only.
-        assert.deepEqual(Object.keys(completed.entry?.channels ?? {}).sort(), ["body", "header"]);
+        assert.deepEqual(Object.keys(completed.entry?.channels ?? {}).toSorted(), ["body", "header"]);
         assert.equal(completed.entry?.channels.body.state, "static");
         assert.equal(completed.entry?.channels.header.state, "static");
 

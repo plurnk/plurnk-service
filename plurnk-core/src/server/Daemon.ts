@@ -1232,7 +1232,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 "daemon:worker",
                 "origin-invalid",
                 400,
-                `Worker origin '${String(origin)}' is invalid.`,
+                `Worker origin '${origin}' is invalid.`,
                 { origin, retryable: false },
             );
         }
@@ -1738,7 +1738,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
     }
 
-    async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
+    async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown> {
         return this.#residency.readModuleState(workspaceId, namespaceOwner);
     }
 

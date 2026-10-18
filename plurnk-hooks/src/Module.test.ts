@@ -244,7 +244,7 @@ test("{§hooks-bounded-delivery} finite concurrency and queue capacity report ex
     module.start(fixture.seam);
     for (const id of [1, 2, 3, 4]) assert.doesNotThrow(() => fixture.emit(42, "loop/terminated", { id }));
     await command.waitFor(2);
-    assert.deepEqual(command.events.map(({ plurnk }) => plurnk.params.id).sort(), [1, 2]);
+    assert.deepEqual(command.events.map(({ plurnk }) => plurnk.params.id).toSorted((a, b) => a - b), [1, 2]);
     assert.equal(failures.length, 1);
     assert.match(String(failures[0]), /queue is full; event not delivered/);
     command.release(1);

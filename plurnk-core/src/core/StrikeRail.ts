@@ -65,7 +65,7 @@ export default class StrikeRail {
         });
         const canonical = JSON.stringify(activity, (_key, value) =>
             value !== null && typeof value === "object" && !Array.isArray(value)
-                ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]))
+                ? Object.fromEntries(Object.keys(value).toSorted().map((key) => [key, value[key]]))
                 : value);
         return createHash("sha256").update(canonical).digest("hex");
     }

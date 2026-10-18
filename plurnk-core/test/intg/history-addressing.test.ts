@@ -126,13 +126,13 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
         }
         const found = await perform(frame("FIND (note://*/1/1/*) <1,-1>", null)) as FindResult;
         assert.equal(found.status, 200);
-        assert.deepEqual(resourcePaths(found).sort(), ["note://child_A/1/1/1", "note://parent/1/1/1"]);
+        assert.deepEqual(resourcePaths(found).toSorted(), ["note://child_A/1/1/1", "note://parent/1/1/1"]);
         const searched = await perform(frame("FIND (note://*/1/1/1) <1,-1> /child_A/", null)) as FindResult;
         assert.equal(searched.status, 200, JSON.stringify(searched));
         assert.deepEqual(resourcePaths(searched), ["note://child_A/1/1/1"], "authority glob with an exact path retains a resource catalog");
         const indexed = await perform(frame('FIND (ops://*/1/1) <1,-1> [{"pattern":"~source"}]', null)) as FindResult;
         assert.equal(indexed.status, 200, JSON.stringify(indexed));
-        assert.deepEqual(resourcePaths(indexed).sort(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both workers at identical coordinates");
+        assert.deepEqual(resourcePaths(indexed).toSorted(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both workers at identical coordinates");
         for (const address of ["note:///1/1/1", "note://child_A:80/1/1/1", "note://child_A/1/1/1?q=x"]) {
             const invalid = await perform(frame(`READ (${address})`, null));
             assert.equal(invalid.status, 400, address);

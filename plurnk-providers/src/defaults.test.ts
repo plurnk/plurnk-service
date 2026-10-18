@@ -8,7 +8,7 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
-    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).sort(), [
+    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).toSorted(), [
         "PLURNK_PROVIDERS_FETCH_TIMEOUT",
         "PLURNK_PROVIDERS_OPERATION_TIMEOUT",
     ]);

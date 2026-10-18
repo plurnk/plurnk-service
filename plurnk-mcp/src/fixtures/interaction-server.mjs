@@ -219,7 +219,7 @@ server.registerPrompt(
         if (response.kind === "missing") {
             return inputRequired({
                 inputRequests: {
-                    prompt: confirmationRequest(`Build the ${String(topic)} prompt?`),
+                    prompt: confirmationRequest(`Build the ${topic} prompt?`),
                 },
             });
         }
@@ -228,7 +228,7 @@ server.registerPrompt(
                 role: "user",
                 content: {
                     type: "text",
-                    text: `${String(topic)}:${response.kind === "elicit" ? response.action : response.kind}`,
+                    text: `${topic}:${response.kind === "elicit" ? response.action : response.kind}`,
                 },
             }],
         };

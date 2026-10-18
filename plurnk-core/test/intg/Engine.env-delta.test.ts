@@ -133,7 +133,7 @@ test("a parent receives all direct-child entry activity while an independent run
             deltas
                 .filter((row) => row.scheme === "worker")
                 .map(({ hostname, pathname, source }) => ({ hostname, pathname, source }))
-                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
+                .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
                 { hostname: "sibling", pathname: "/named-secret.md", source: "worker://sibling" },
                 { hostname: "sibling", pathname: "/secret.md", source: "worker://sibling" },
@@ -252,7 +252,7 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
         const observed = rows
             .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.startsWith("/equal-") === true)
             .map((row) => row.pathname)
-            .sort();
+            .toSorted();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
 
         const links = async (workerId: number) => (await db.test_log_entries_by_worker.all<{
@@ -260,7 +260,7 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
         }>({ worker_id: workerId }))
             .filter((row) => row.pathname?.startsWith("/equal-") === true)
             .map(({ pathname, ambient_event_id }) => ({ pathname, eventId: ambient_event_id }))
-            .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
+            .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
         const produced = await links(producer);
         assert.ok(produced.every(({ eventId }) => eventId !== null), "each source row is atomically linked to its occurrence");
         assert.ok((produced[0]?.eventId ?? 0) < (produced[1]?.eventId ?? 0), "equal wall time does not disturb total occurrence order");
@@ -374,7 +374,7 @@ test("a closed pull boundary assigns before, during, and after races exactly onc
             rows
                 .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
                 .map(({ turn_seq, pathname }) => ({ turn: turn_seq, pathname }))
-                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
+                .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
                 { turn: 4, pathname: "/after-boundary.md" },
                 { turn: 3, pathname: "/before-boundary.md" },
@@ -492,7 +492,7 @@ test("a fork inherits observed progress and independently receives pending event
             const paths = rows
                 .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
                 .map(({ pathname, source }) => ({ pathname, source }))
-                .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
+                .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
             assert.deepEqual(paths, [
                 { pathname: "/pending-at-fork.md", source: "worker://producer" },
                 { pathname: "/seen-before-fork.md", source: "worker://producer" },

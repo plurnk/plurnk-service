@@ -173,7 +173,7 @@ test("{§env-option} the modifier is read through the shared reader and admitted
     assert.deepEqual(EnvFunctionality.modifier(null), {}, "no block, no environment");
     assert.deepEqual(EnvFunctionality.modifier(['{"cwd": "src"}']), {}, "a block without env is not an environment");
     const type = (run: () => unknown): string => {
-        try { run(); } catch (cause) { return String((cause as { result: { problem: { type: string } } }).result.problem.type); }
+        try { run(); } catch (cause) { return (cause as { result: { problem: { type: string } } }).result.problem.type; }
         throw new Error("expected a refusal");
     };
     assert.match(type(() => EnvFunctionality.modifier(['{"env": ["x"]}'])), /env\/functionality\/env-invalid$/u);

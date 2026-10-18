@@ -36,7 +36,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         // {§readable-channel} — the source is verbatim; its projection rides beside it, never over it.
-        assert.deepEqual(rows.map((r) => r.name).sort(), ["body", "readable"], "the verbatim source and its readable sibling; no #html archive of an authored file");
+        assert.deepEqual(rows.map((r) => r.name).toSorted(), ["body", "readable"], "the verbatim source and its readable sibling; no #html archive of an authored file");
         const body = rows.find((r) => r.name === "body")!;
         assert.equal(body.mimetype, "text/html", "the authored mimetype is preserved");
         assert.equal(body.content, ROSTER, "the source channel is exactly what was authored");

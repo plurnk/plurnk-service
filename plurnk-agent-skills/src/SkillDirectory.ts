@@ -84,11 +84,11 @@ export default class SkillDirectory implements SkillTree {
                 throw new SkillResourceError("SKILL_DIRECTORY_CYCLE", `Skill directory '${pathname}' contains a symbolic-link cycle.`);
             }
             const next = new Set([...ancestors, canonical]);
-            for (const name of (await readdir(canonical)).sort()) {
+            for (const name of (await readdir(canonical)).toSorted()) {
                 await visit(join(pathname, name), next);
             }
         };
         await visit("", new Set());
-        return files.sort();
+        return files.toSorted();
     }
 }

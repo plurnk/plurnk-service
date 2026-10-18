@@ -227,7 +227,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initialization = logEntries(packet)
             .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
         assert.deepEqual(
-            [...new Set(initialization.map(({ logPath: path }) => String(path).split("/").at(-1)))].sort(),
+            [...new Set(initialization.map(({ logPath: path }) => String(path).split("/").at(-1) ?? ""))].toSorted(),
             ["FIND", "NOTE", "READ"],
             "{§worker-initialization-entry}: turn 0 exposes its NOTE, the READ of its own program and its surveys, and nothing else",
         );

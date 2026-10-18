@@ -29,7 +29,7 @@ export default class PatternEdits {
                 lines.add(line);
             }
         }
-        return [...lines].sort((a, b) => a - b);
+        return [...lines].toSorted((a, b) => a - b);
     }
 
     // {§read-pattern-evidence} — presentation may clip a match, but cannot redefine it.

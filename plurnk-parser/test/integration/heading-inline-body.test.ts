@@ -65,7 +65,7 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
 ];
 
 const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] });
-const nameOf = (statement: object): string => "op" in statement ? String(statement.op) : String((statement as { runtime: string }).runtime);
+const nameOf = (statement: object): string => "op" in statement ? String(statement.op) : (statement as { runtime: string }).runtime;
 const reading = (statement: Record<string, unknown>): Reading => {
     const body = statement.body as string | { raw: string } | null | undefined;
     const matcher = statement.matcher as { raw: string } | null | undefined;

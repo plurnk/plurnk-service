@@ -230,7 +230,7 @@ export default class ProposalHitl {
                 .filter((item) => item.kind === "proposal" && item.projection.disposition.decision === "review"),
             ...interactions.map(interactionItem),
         ]
-            .sort(comparePending);
+            .toSorted(comparePending);
     }
 
     async resurface(workspaceId: number, address: string): Promise<HitlDelivery[]> {

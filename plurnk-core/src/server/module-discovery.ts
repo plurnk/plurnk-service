@@ -123,7 +123,7 @@ export const discoverDaemonModules = async (
                     `module package '${manifest.packageName}' DaemonModule factory must accept no arguments.`,
                 );
             }
-            const created = await (exported as () => unknown | Promise<unknown>)();
+            const created = await (exported as () => unknown)();
             modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
             const owner = `module:${manifest.packageName}`;

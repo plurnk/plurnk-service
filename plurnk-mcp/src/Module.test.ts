@@ -76,7 +76,7 @@ interface Adapter {
 
 interface ActionRegistration {
     readonly name: string;
-    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "workspace"; workspaceId: number }) => unknown | Promise<unknown>;
+    readonly handler: (params: Readonly<Record<string, unknown>>, context: { scope: "workspace"; workspaceId: number }) => unknown;
 }
 
 // A harness that stands where the coordinator stands: it holds each workspace's
@@ -207,7 +207,7 @@ const httpHandler = (): McpHttpHandler => createMcpHandler(() => {
     server.registerTool(
         "echo",
         { description: "Echo one message.", inputSchema: z.object({ message: z.string() }) },
-        async ({ message }) => ({ content: [{ type: "text", text: String(message) }] }),
+        async ({ message }) => ({ content: [{ type: "text", text: message }] }),
     );
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });

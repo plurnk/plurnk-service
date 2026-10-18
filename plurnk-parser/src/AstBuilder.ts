@@ -1206,7 +1206,7 @@ export default class AstBuilder {
     }
 
     static #parseSendBody(raw: string): SendBody {
-        let json: unknown | null = null;
+        let json: unknown = null;
         try { json = JSON.parse(raw); } catch { /* best-effort */ }
         return { raw, json };
     }

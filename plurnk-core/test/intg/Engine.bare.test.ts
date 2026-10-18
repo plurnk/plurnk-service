@@ -205,7 +205,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
                 "````EDIT (worker:///prompt.md)",
-                "" + (prompt) + "",
+                prompt,
                 "````",
                 "````BARE (worker:///prompt.md)````",
                 "````BARE (worker:///prompt.md)",

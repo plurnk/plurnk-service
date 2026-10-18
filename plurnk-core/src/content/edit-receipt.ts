@@ -321,7 +321,7 @@ const lineEffects = (
             index,
             source: sourceLineRange(edit.marker, before.length),
         }))
-        .sort((left, right) => left.source.start - right.source.start)
+        .toSorted((left, right) => left.source.start - right.source.start)
         .forEach(({ edit, index, source }) => {
             const inserted = splitLines(edit.body).length;
             const resultStart = source.start + offset;
@@ -400,7 +400,7 @@ const codePointEffects = (
                 inserted: codePointCount(replacement.body),
             };
         })
-        .sort((left, right) => left.sourceStart - right.sourceStart)
+        .toSorted((left, right) => left.sourceStart - right.sourceStart)
         .forEach((effect) => {
             const removed = effect.sourceEnd - effect.sourceStart;
             const resultStart = effect.sourceStart + offset;
@@ -467,7 +467,7 @@ const addContext = (
             addRange(firstChanged, firstChanged + radius - 1);
         }
         const context = [...selected]
-            .sort((left, right) => left - right)
+            .toSorted((left, right) => left - right)
             .map((line) => `${prefix(line)}${lines[line - 1]}`);
         const {
             resultStartLine: _resultStartLine,

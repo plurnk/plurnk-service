@@ -121,7 +121,7 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                 assert.equal(subtree.matchingPathCount, names.length, "the grouped selector includes hidden members and preserves literal glob characters");
                 assert.ok(userText(provider.received[5]).includes(glob), "the glob receipt retains the authored URI's syntax");
                 const keys = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
-                assert.deepEqual(keys.map(({ pathname }) => pathname).sort(), names.map(key).sort(), "no encoded or double-decoded shadow identities");
+                assert.deepEqual(keys.map(({ pathname }) => pathname).toSorted(), names.map(key).toSorted(), "no encoded or double-decoded shadow identities");
             } finally { client.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }

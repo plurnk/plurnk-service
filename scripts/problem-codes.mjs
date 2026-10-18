@@ -74,7 +74,7 @@ export const declaredCodes = (spec) => {
 
 export const undeclaredCodes = async (root) => {
     const findings = [];
-    for (const name of (await fs.readdir(root)).filter((entry) => entry.startsWith("plurnk-")).sort()) {
+    for (const name of (await fs.readdir(root)).filter((entry) => entry.startsWith("plurnk-")).toSorted()) {
         const src = path.join(root, name, "src");
         try { await fs.access(src); } catch { continue; }
         const codes = new Map();

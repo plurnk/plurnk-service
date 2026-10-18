@@ -35,7 +35,7 @@ export default class BaseHandler {
 
     // Faithful JSONPath target, or null when the algebra has none
     // ({§mimetype-channel-architecture}).
-    deepJson(_content: HandlerContent): unknown | Promise<unknown> {
+    deepJson(_content: HandlerContent): unknown {
         return null;
     }
 
@@ -56,7 +56,7 @@ export default class BaseHandler {
 
     // {§mimetype-projection-facts} — small structured facts about the source (an image's
     // dimensions) that ride its readable projection; absent by default.
-    facts(_content: HandlerContent): unknown | Promise<unknown> {
+    facts(_content: HandlerContent): unknown {
         return undefined;
     }
 

@@ -249,7 +249,7 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
 
         await dispatch("````FIND (https://93.184.216.34/channel-facts) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
         const bodyFind = await readContent(db, ids, sequence);
-        const bodyLocations = JSON.parse(String(bodyFind.content ?? "[]")) as Array<{ channel?: string }>;
+        const bodyLocations = JSON.parse(bodyFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
         for (const location of bodyLocations) {
             assert.equal(location.channel, undefined, "{§channel-selection-visibility}: a default-channel match names no channel");
@@ -257,7 +257,7 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
 
         await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
         const readableFind = await readContent(db, ids, sequence);
-        const readableLocations = JSON.parse(String(readableFind.content ?? "[]")) as Array<{ channel?: string }>;
+        const readableLocations = JSON.parse(readableFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(readableLocations.length > 0, "the #readable-channel FIND reports match locations");
         for (const location of readableLocations) {
             assert.equal(location.channel, "readable", "a #readable-channel match names the readable channel");

@@ -68,7 +68,7 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     // The enabled definitions to prepare, in alias order.
     readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     // The adapter's previous process snapshot for this workspace, when one exists.
-    readonly previous: unknown | null;
+    readonly previous: unknown;
     // The current add or replace's admissions: one, or every definition an addressing family's add
     // names ({§functionality-addressing}); empty on refresh, activation and other verbs.
     readonly admissions: readonly FunctionalityAdmission[];

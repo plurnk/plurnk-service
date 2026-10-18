@@ -14,7 +14,7 @@ test("{§problem-codes-declared}: the three minting shapes name a code; prose an
         'const rejection = { code: "file-create-excluded", status: 403 };',
         'log("not-a-code", value); // no status follows',
     ].join("\n");
-    assert.deepEqual([...mintedCodes(source)].sort(), ["file-create-excluded", "path-outside-workspace", "stale-target"]);
+    assert.deepEqual([...mintedCodes(source)].toSorted(), ["file-create-excluded", "path-outside-workspace", "stale-target"]);
 });
 
 test("{§problem-codes-declared}: shared result constructors mint their code regardless of the owner expression", () => {
@@ -27,7 +27,7 @@ test("{§problem-codes-declared}: shared result constructors mint their code reg
         '// Results.failure(OWNER, "comment-only", 400, "Comment.");',
         'const example = \'Results.failure(OWNER, "string-only", 400)\';',
     ].join("\n");
-    assert.deepEqual([...mintedCodes(source)].sort(), [
+    assert.deepEqual([...mintedCodes(source)].toSorted(), [
         "audit-unrecordable", "stale-source", "upstream-closed", "write-failed", "write-refused",
     ]);
 });
@@ -73,7 +73,7 @@ test("{§problem-codes-declared}: a code counts as declared only inside a tagged
         "",
         `- ${declare("edit-collision")} **409 \`edit-collision\`** is neutral.`,
     ].join("\n");
-    assert.deepEqual([...declaredCodes(spec)].sort(), ["edit-collision", "path-outside-workspace"]);
+    assert.deepEqual([...declaredCodes(spec)].toSorted(), ["edit-collision", "path-outside-workspace"]);
 });
 
 test("{§problem-codes-declared}: a wider outer fence keeps its inner fences inert", () => {

@@ -97,7 +97,7 @@ test("two threads, one workspace: each thread's operations under its own address
         assert.ok(rows.every(({ source }) => source === null), "an operation's rows are acts, not arrivals");
         const [workspace] = await daemon.listWorkspaces();
         const loops: readonly ApplicationLoopProjection[] = await daemon.listWorkerLoops({ workspaceId: workspace!.id, workerId: runtime.id });
-        assert.deepEqual([...new Set(loops.flatMap(({ promptSource }) => promptSource === null ? [] : [promptSource]))].sort(), [
+        assert.deepEqual([...new Set(loops.flatMap(({ promptSource }) => promptSource === null ? [] : [promptSource]))].toSorted(), [
             "agui://anonymous/threads/first-thread",
             "agui://anonymous/threads/second-thread",
         ], "every operation's loop names the person who acted");

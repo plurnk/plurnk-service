@@ -580,9 +580,9 @@ test("{§agui-encrypted-reasoning} the encrypted-reasoning interface is not impl
         id: 9, op: "SEND", status_rx: 200, origin: "model", turn_id: 1,
         tx: { body: "Answer." }, reasoning: "Readable provider text.",
     }));
-    assert.ok(events.some(({ type }) => String(type).startsWith("REASONING")), "readable reasoning still streams");
+    assert.ok(events.some(({ type }) => type.startsWith("REASONING")), "readable reasoning still streams");
     assert.ok(
-        events.every(({ type }) => !String(type).includes("ENCRYPTED")),
+        events.every(({ type }) => !type.includes("ENCRYPTED")),
         JSON.stringify(events.map((e) => e.type)),
     );
 });

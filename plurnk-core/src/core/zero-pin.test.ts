@@ -29,7 +29,7 @@ test("{§operator-config-zero-pin-gate}: scrubbing mutates the gate environment 
         PLURNK_PROVIDERS_REASONING_BUDGET_turboderp: "4096", // per-alias — stripped
     } as NodeJS.ProcessEnv;
     const stripped = scrubZeroPinTuning(env);
-    assert.deepEqual(stripped.sort(), ["PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp", "PLURNK_PROVIDERS_REASONING_BUDGET_turboderp"]);
+    assert.deepEqual(stripped.toSorted(), ["PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp", "PLURNK_PROVIDERS_REASONING_BUDGET_turboderp"]);
     assert.equal(env.PLURNK_MODEL, "turboderp", "model selection survives");
     assert.equal(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "35%", "the bare percentage envelope survives");
     assert.equal(env.PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp, undefined, "the window pin is gone → probe forced");

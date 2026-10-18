@@ -161,7 +161,7 @@ test("{§context-fit}: a single-line jumbo prompt lands folded with its size, an
             assert.doesNotMatch(log, /hay hay/u, "the jumbo line is not stuffed into the packet, nor cut into it");
             const arrival = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
             assert.ok(arrival);
-            assert.deepEqual(Object.keys(arrival.size as object).sort(), ["lines", "tokens"], "the row states its size");
+            assert.deepEqual(Object.keys(arrival.size as object).toSorted(), ["lines", "tokens"], "the row states its size");
             assert.equal((arrival.size as { lines: number }).lines, 1);
             assert.equal(arrival.preview, undefined);
         } finally { ws.close(); }

@@ -149,7 +149,7 @@ test("{§message-abandonment} a parent that strikes out with the child's message
             assert.equal(await loopsOf(db, kid), 1, "the same parked loop woke; none was minted");
             assert.equal((await inferenceStatuses(db, kid))[0], 202, "kid's WAIT had parked on its message");
             await flush();
-            const statuses = (terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status).toSorted();
+            const statuses = (terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status).toSorted((a, b) => a - b);
             assert.ok(statuses.includes(200), `kid concluded 200; saw ${JSON.stringify(statuses)}`);
         } finally { ws.close(); }
     });

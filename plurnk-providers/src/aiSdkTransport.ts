@@ -691,7 +691,7 @@ const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
         emptyChunks,
         fields,
         channels,
-        toolCalls: [...toolCalls.values()].sort((a, b) => a.index - b.index),
+        toolCalls: [...toolCalls.values()].toSorted((a, b) => a.index - b.index),
         finishReasons: [...finishReasons],
         ...(unmappedChunks.length === 0 ? {} : { unmappedChunks }),
     };

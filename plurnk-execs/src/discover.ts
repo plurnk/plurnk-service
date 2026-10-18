@@ -75,7 +75,7 @@ export default class Discover {
             if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
         }
 
-        return { registry, packageAttributions, skipped: [...skipped].sort(), disabled: [...disabled].sort() };
+        return { registry, packageAttributions, skipped: [...skipped].toSorted(), disabled: [...disabled].toSorted() };
     }
 
 

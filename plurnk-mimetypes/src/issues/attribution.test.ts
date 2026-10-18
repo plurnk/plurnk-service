@@ -59,7 +59,7 @@ describe("discover attribution", () => {
             },
         });
         const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
-        assert.deepEqual([...handlers.keys()].sort(), ["application/x-a", "application/x-b"]);
+        assert.deepEqual([...handlers.keys()].toSorted(), ["application/x-a", "application/x-b"]);
         assert.deepEqual([...packageAttributions], [["@acme/acme-mime-multi", ["acme", "acme-pro"]]]);
     });
 

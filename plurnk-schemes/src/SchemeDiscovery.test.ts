@@ -42,7 +42,7 @@ test("discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscop
         ["just-a-lib", { name: "just-a-lib" }], // not a scheme → ignored
     ]);
     const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
-    assert.deepEqual(schemes.map((s) => s.name).sort(), ["bare", "foo", "http"]);
+    assert.deepEqual(schemes.map((s) => s.name).toSorted(), ["bare", "foo", "http"]);
     assert.deepEqual(
         schemes.find((s) => s.name === "foo"),
         { name: "foo", packageName: "@acme/acme-scheme-foo" },
@@ -111,7 +111,7 @@ test("discover: plurnk.schemes surfaces one SchemeInfo per named scheme, with ex
         }],
     ]);
     const { schemes } = await SchemeDiscovery.discover({ cwd });
-    assert.deepEqual(schemes.map((s) => s.name).sort(), ["http", "wss"]);
+    assert.deepEqual(schemes.map((s) => s.name).toSorted(), ["http", "wss"]);
     assert.deepEqual(schemes.find((s) => s.name === "http"), { name: "http", packageName: "@plurnk/plurnk-schemes-http", exportName: "default" });
     assert.deepEqual(schemes.find((s) => s.name === "wss"), { name: "wss", packageName: "@plurnk/plurnk-schemes-http", exportName: "Ws" });
 });
@@ -128,7 +128,7 @@ test("discover: a multi-scheme package contributes one package attribution fact"
         plurnk: { kind: "scheme", attribution: "Grace", schemes: [{ name: "a", export: "default" }, { name: "b", export: "B" }] },
     }]]);
     const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
-    assert.deepEqual(schemes.map((s) => s.name).sort(), ["a", "b"]);
+    assert.deepEqual(schemes.map((s) => s.name).toSorted(), ["a", "b"]);
     assert.deepEqual([...packageAttributions], [["p", ["Grace"]]]);
 });
 

@@ -76,10 +76,10 @@ export const packageGraphViolations = (entries) => {
         if (low.get(name) !== order.get(name)) return;
         const component = stack.splice(stack.indexOf(name));
         if (component.length > 1 || edges.get(name).targets.some(({ target }) => target === name)) {
-            violations.push(`package cycle among ${component.sort().join(", ")}, against the Acyclic Dependencies principle (ARCHITECTURE.md § Package principles)`);
+            violations.push(`package cycle among ${component.toSorted().join(", ")}, against the Acyclic Dependencies principle (ARCHITECTURE.md § Package principles)`);
         }
     };
-    for (const name of [...names].sort()) if (!order.has(name)) visit(name);
+    for (const name of [...names].toSorted()) if (!order.has(name)) visit(name);
     for (const [source, { file, targets }] of edges) {
         const out = fanOut(source);
         const all = out + fanIn.get(source);

@@ -35,5 +35,5 @@ for (const name of process.argv.slice(2)) {
     const by = {};
     for (const r of rows) { const k = `${r.rendering}/${r.task ?? r.card}`; const kind = score(r.head ?? "", r.intended ?? [135]); by[k] ??= {}; by[k][kind] = (by[k][kind] ?? 0) + 1; }
     console.log(`== ${name} (${rows.length} rows)`);
-    for (const [k, v] of Object.entries(by).sort()) console.log("  ", k.padEnd(24), JSON.stringify(v));
+    for (const [k, v] of Object.entries(by).toSorted()) console.log("  ", k.padEnd(24), JSON.stringify(v));
 }

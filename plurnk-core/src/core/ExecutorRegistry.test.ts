@@ -262,7 +262,7 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
 test("{§extension-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
-    console.warn = (msg: string): void => { warnings.push(String(msg)); };
+    console.warn = (msg: string): void => { warnings.push(msg); };
     try {
         await ExecutorRegistry.build({
             discoverFn: async () => ({ registry: new Map(), skipped: ["@acme/acme-execs-cobol"] }),

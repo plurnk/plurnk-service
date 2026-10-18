@@ -13,7 +13,7 @@ const run = promisify(execFile);
 // --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const contractsDir = process.cwd();
-const expectedRootValues = Object.keys(SourceContracts).sort();
+const expectedRootValues = Object.keys(SourceContracts).toSorted();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-smoke-"));
 let tarballPath: string | undefined;
 
@@ -48,8 +48,8 @@ try {
 
     // Stale-artifact guard: the shipped dist/schema must mirror source schema/
     // exactly; a deleted schema surviving in dist fails here.
-    const sourceSchemas = (await readdir(join(contractsDir, "schema"))).sort();
-    const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-contracts", "dist", "schema"))).sort();
+    const sourceSchemas = (await readdir(join(contractsDir, "schema"))).toSorted();
+    const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-contracts", "dist", "schema"))).toSorted();
     if (JSON.stringify(sourceSchemas) !== JSON.stringify(shippedSchemas)) {
         throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas}] vs source [${sourceSchemas}]`);
     }

@@ -19,7 +19,7 @@ const httpsResolver = {
 
 const files = (await readdir(SCHEMA_DIR))
     .filter((file) => file.endsWith(".json"))
-    .sort();
+    .toSorted();
 const emitted = new Set<string>();
 const declaration = /^export (?:interface|type) (\w+)/m;
 let combined = [

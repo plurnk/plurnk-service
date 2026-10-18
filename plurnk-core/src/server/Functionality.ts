@@ -51,15 +51,15 @@ export interface FunctionalityHost {
     readonly signal: AbortSignal;
     registerModuleAction(registration: ModuleActionRegistration): void;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
-    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
+    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     replaceWorkspaceCapabilities(
         replacement: WorkspaceCapabilityReplacement,
         options?: WorkspaceCapabilityPublication,
     ): Promise<void>;
     // {§functionality-scope} — a worker-scoped family's durable value: the same shape, keyed by the
     // Worker, replaced without runtimes and without workspace exclusivity.
-    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null>;
-    replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void>;
+    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown>;
+    replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown): Promise<void>;
     withWorkspaceGate<T>(workspaceId: number, namespaceOwner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>, signal?: AbortSignal): Promise<T>;
     atWorkspaceBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
@@ -551,7 +551,7 @@ export default class Functionality {
         return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`, "worker");
     }
 
-    static #parseState(adapter: HostFunctionalityAdapter, raw: unknown | null, where: string, scope: "workspace" | "worker"): FamilyState {
+    static #parseState(adapter: HostFunctionalityAdapter, raw: unknown, where: string, scope: "workspace" | "worker"): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
             throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);

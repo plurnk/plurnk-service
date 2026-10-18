@@ -76,7 +76,7 @@ test("Worker.find returns the scheme's catalog groups (JSON), filtered to matche
         assert.equal(typeof first[0].mimetype, "string");
         assert.equal(first[0].lines, 1, "\"alpha\" is one line");
         assert.equal(typeof first[0].weight, "number");
-        assert.deepEqual(Object.keys(first[0]).sort(), ["lines", "mimetype", "path", "weight"], "a catalog channel carries exactly its path, mimetype, lines and weight");
+        assert.deepEqual(Object.keys(first[0]).toSorted(), ["lines", "mimetype", "path", "weight"], "a catalog channel carries exactly its path, mimetype, lines and weight");
     } finally { db.close(); }
 });
 

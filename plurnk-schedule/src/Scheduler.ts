@@ -49,7 +49,7 @@ interface Armed {
     readonly rule: ScheduledRule;
     readonly dueMs: number;
     readonly event: string;
-    handle: unknown | null;
+    handle: unknown;
     delivering: boolean;
 }
 

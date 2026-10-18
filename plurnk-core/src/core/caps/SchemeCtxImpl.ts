@@ -83,19 +83,19 @@ export default class SchemeCtxImpl implements SchemeCtx {
                 options.publishedChannel ?? null,
             );
         } else {
-            this.entries = SchemeCtxImpl.#unavailable<EntryCaps>(scheme, "entries");
-            this.channels = SchemeCtxImpl.#unavailable<ChannelCaps>(scheme, "channels");
-            this.notify = SchemeCtxImpl.#unavailable<NotifyCaps>(scheme, "notify");
-            this.subscriptions = SchemeCtxImpl.#unavailable<SubscriptionCaps>(scheme, "subscriptions");
+            this.entries = SchemeCtxImpl.#unavailable(scheme, "entries");
+            this.channels = SchemeCtxImpl.#unavailable(scheme, "channels");
+            this.notify = SchemeCtxImpl.#unavailable(scheme, "notify");
+            this.subscriptions = SchemeCtxImpl.#unavailable(scheme, "subscriptions");
         }
     }
 
-    static #unavailable<T extends object>(scheme: string, capability: string): T {
+    static #unavailable(scheme: string, capability: string): never {
         return new Proxy({}, {
             get() {
                 throw new Error(`Non-data scheme '${scheme}' cannot use the '${capability}' capability.`);
             },
-        }) as T;
+        }) as never;
     }
 
     static editPreconditionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): LineAnchorPrecondition | null {

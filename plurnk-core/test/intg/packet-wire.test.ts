@@ -13,7 +13,7 @@ import { parseLogRecords } from "../LogRecords.ts";
 const METADATA_WEIGHT = 308;
 const tok = (s: string): number => Math.ceil(s.length / 4);
 // The exact names a parsed log record carries: its heading's identity and charge, then its facts.
-const facts = (record: Record<string, unknown>): string[] => Object.keys(record).sort();
+const facts = (record: Record<string, unknown>): string[] => Object.keys(record).toSorted();
 
 test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not elapsed time or a re-read default", () => {
     for (const seconds of [300, 600, 0.25]) {
@@ -489,7 +489,7 @@ test("{§log-wire-format}: heading addresses precede the facts, and the facts ke
             assert.equal(row.aside, aside);
             if (facts !== undefined && facts.startsWith("{")) {
                 const keys = Object.keys(JSON.parse(facts) as object);
-                assert.deepEqual(keys, [...keys].sort(), "result facts keep stable alphabetical order");
+                assert.deepEqual(keys, [...keys].toSorted(), "result facts keep stable alphabetical order");
             }
             assert.equal(row.tokens, tok(out), "the heading's charge prices the complete row");
             assert.equal(PacketWire.renderLog([entry], tok), out, "unchanged facts keep stable packet bytes");
@@ -1618,7 +1618,7 @@ test("{§body-projection}: a program READ renders whole; deliberate curation and
         const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0];
         assert.equal(suppressed.body, undefined);
         assert.equal(suppressed.preview, undefined);
-        assert.ok(Number(suppressed.tokens) < Number(complete.tokens), "suppression does not charge the absent program body");
+        assert.ok(Number(suppressed.tokens) < complete.tokens, "suppression does not charge the absent program body");
     }
 });
 

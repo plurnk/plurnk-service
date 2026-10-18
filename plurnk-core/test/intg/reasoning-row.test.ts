@@ -24,7 +24,7 @@ const withEnv = async (name: string, value: string | undefined, fn: () => Promis
 const withKnob = (value: string | undefined, fn: () => Promise<void>): Promise<void> => withEnv(KNOB, value, fn);
 type Row = { sequence: number; op: string | null; origin: string; scheme: string | null; attrs: string | null; tx: string | null; rx: string | null };
 const rowsOf = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<Row[]> =>
-    (await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId })).sort((a, b) => a.sequence - b.sequence);
+    (await db.test_log_entries_by_turn.all<Row>({ turn_id: turnId })).toSorted((a, b) => a.sequence - b.sequence);
 const kindOf = (row: Row): string | null => { try { return (JSON.parse(row.attrs ?? "{}") as { kind?: string }).kind ?? null; } catch { return null; } };
 
 const story = async (contextWindow: number, reasoning: string) => {

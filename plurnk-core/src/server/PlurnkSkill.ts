@@ -32,7 +32,7 @@ export default class PlurnkSkill implements SkillTree {
     }
 
     async list(): Promise<string[]> {
-        return [...this.#files.keys(), ".env.defaults", ...(await this.#contracts()).keys()].sort();
+        return [...this.#files.keys(), ".env.defaults", ...(await this.#contracts()).keys()].toSorted();
     }
 
     resource(pathname: string): ByteSource {

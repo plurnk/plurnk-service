@@ -17,7 +17,7 @@ const run = promisify(execFile);
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const parserDir = process.cwd();
 const contractsDir = join(parserDir, "..", "plurnk-contracts");
-const expectedRootValues = Object.keys(SourceParser).sort();
+const expectedRootValues = Object.keys(SourceParser).toSorted();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-parser-smoke-"));
 
 const cleanup = async (): Promise<void> => {

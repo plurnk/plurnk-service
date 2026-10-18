@@ -187,7 +187,7 @@ test("entries: owner-keyed identity index exists", async () => {
     const db = await openMigrated();
     try {
         const indexes = await db.test_entries_partial_indexes.all<{ name: string; sql: string }>();
-        const names = indexes.map((i) => i.name).sort();
+        const names = indexes.map((i) => i.name).toSorted();
         assert.deepEqual(names, ["entries_identity"]);
         assert.match(indexes.find((index) => index.name === "entries_identity")?.sql ?? "", /\(workspace_id, scheme, authority, pathname\)/);
         assert.ok(indexes.every((index) => /UNIQUE/.test(index.sql)));

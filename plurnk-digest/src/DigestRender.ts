@@ -256,7 +256,7 @@ export default class DigestRender {
     // {§loop-claim-latency} — claim to first model turn: a stall between them is a number, not a gap.
     static #wakeLatency(loop: LoopRow, m: DigestModel): string | null {
         if (loop.claimed_at === null) return null;
-        const first = (m.turnsByLoop.get(loop.id) ?? []).filter((t) => t.kind === "inference").sort((a, b) => a.sequence - b.sequence)[0];
+        const first = (m.turnsByLoop.get(loop.id) ?? []).filter((t) => t.kind === "inference").toSorted((a, b) => a.sequence - b.sequence)[0];
         if (first === undefined) return `Claimed: ${loop.claimed_at} · no model turn`;
         const seconds = (Date.parse(first.timestamp) - Date.parse(loop.claimed_at)) / 1000;
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
@@ -310,7 +310,7 @@ export default class DigestRender {
         // A worker's model turns in order; the ordinal is the distance the revisit window counts in.
         const ordinal = new Map<number, number>();
         const perWorker = new Map<number, number>();
-        for (const turn of [...m.turns].sort((a, b) => a.id - b.id)) {
+        for (const turn of [...m.turns].toSorted((a, b) => a.id - b.id)) {
             if (turn.producer !== "model") continue;
             const workerId = loopWorker.get(turn.loop_id);
             if (workerId === undefined) throw new TypeError(`turn ${turn.id} has no loop in scope`);

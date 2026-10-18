@@ -12,7 +12,7 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
 
     it("scopes to every changed workspace", () => {
         const s = scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
-        assert.deepEqual([...s].sort(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
+        assert.deepEqual([...s].toSorted(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
     });
 
     it("returns null (full intg) on a change under a framework package", () => {

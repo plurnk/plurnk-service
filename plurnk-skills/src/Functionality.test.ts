@@ -85,7 +85,7 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
         workspaceStateDirectory: async () => root,
         operatorEnvironment: () => ({}),
     });
-    const prepare = (source: string, previous: unknown | null, failure: "reject" | "publish-unavailable") => family.prepare({
+    const prepare = (source: string, previous: unknown, failure: "reject" | "publish-unavailable") => family.prepare({
         signal: new AbortController().signal,
         workspaceId: 1, enabled: new Map([["review", { definition: { name: "review", source } }]]),
         previous, failure, admissions: [], progress: () => {}, retain: () => () => {},

@@ -6,7 +6,7 @@ export interface TreeNode {
 }
 
 export function buildTree(symbols: MimeSymbol[]): TreeNode[] {
-    const sorted = [...symbols].sort((a, b) => {
+    const sorted = [...symbols].toSorted((a, b) => {
         if (a.line !== b.line) return a.line - b.line;
         return b.endLine - a.endLine;
     });

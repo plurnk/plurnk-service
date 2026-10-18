@@ -50,7 +50,7 @@ const handler = (): McpHttpHandler => createMcpHandler(() => {
             inputSchema: z.object({ message: z.string() }),
         },
         async ({ message }) => ({
-            content: [{ type: "text", text: String(message) }],
+            content: [{ type: "text", text: message }],
         }),
     );
     return server;

@@ -38,7 +38,7 @@ describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects 
         const matches = await h.query(source, "xpath", "//function");
         assert.equal(matches.length, 2);
         // The two function elements have pk:line="42" and pk:line="73".
-        const lines = matches.map((m) => m.enclosingRegions![0].startLine).sort((a, b) => a - b);
+        const lines = matches.map((m) => m.enclosingRegions![0].startLine).toSorted((a, b) => a - b);
         assert.deepEqual(lines, [42, 73]);
     });
 

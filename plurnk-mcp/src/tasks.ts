@@ -342,7 +342,7 @@ class TaskInbox {
         this.#wake?.();
     }
 
-    async next(waitMs: number, signal?: AbortSignal): Promise<unknown | undefined> {
+    async next(waitMs: number, signal?: AbortSignal): Promise<unknown> {
         if (this.#queue.length > 0) return this.#queue.shift();
         const controller = new AbortController();
         const wake = Promise.withResolvers<void>();

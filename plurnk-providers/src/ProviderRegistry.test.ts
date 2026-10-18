@@ -45,7 +45,7 @@ const fullEnv = Object.freeze({
 test("instantiateProvider: cataloged name resolves in-framework, no scan, no import", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
-        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
         throw new Error("unexpected fetch");
     });
     const imports: string[] = [];
@@ -107,7 +107,7 @@ test("instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe"
     resetDiscoveryCache();
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (url: string) => {
-        calls.push(String(url));
+        calls.push(url);
         return new Response(JSON.stringify({ model_info: { "qwen.context_length": 32768 } }));
     });
     await instantiateProvider("ollama", { ...fullEnv }, "qwen2.5-coder",
@@ -122,7 +122,7 @@ test("instantiateProvider: a per-alias baseUrl drives the standard openai probe 
     resetDiscoveryCache();
     const probed: string[] = [];
     mock.method(globalThis, "fetch", async (url: string) => {
-        probed.push(String(url));
+        probed.push(url);
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
     await instantiateProvider("openai", { ...fullEnv }, "m", // fullEnv.OPENAI_BASE_URL is http://x — the override must win
@@ -146,7 +146,7 @@ test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to it
 test("instantiateProvider: a cataloged name is authoritative — a scanned package of the same name is shadowed", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
-        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
         throw new Error("unexpected fetch");
     });
     const imports: string[] = [];
@@ -206,8 +206,8 @@ test("instantiateProvider: a discovered package whose import throws fails hard, 
 test("instantiateProvider: per-alias knobs scope through to the provider ({§provider-configuration})", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
-        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
-        if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };

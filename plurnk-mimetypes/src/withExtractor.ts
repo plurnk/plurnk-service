@@ -86,7 +86,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             // Sorting here makes every ANTLR handler's refs ordered for free.
             return this.#refs
                 .map((ref) => this.#materializeRef(ref))
-                .sort((a, b) => a.line - b.line || a.column - b.column);
+                .toSorted((a, b) => a.line - b.line || a.column - b.column);
         }
 
         get inBody(): boolean {

@@ -448,7 +448,7 @@ test("Log.read: #channel on an execution log item names the command's stream add
         assert.equal(miss.problem?.requestedChannel, "stdout");
         assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
         assert.equal(miss.problem?.recovery, `READ ${address}#stdout for the command's stdout stream.`);
-        assert.ok(String(miss.problem?.detail).includes(`${address}#stdout`));
+        assert.ok(miss.problem?.detail.includes(`${address}#stdout`));
 
         // The named address is real: the same READ against it returns the output.
         const stream = await clientRead(engine, db, {
@@ -503,7 +503,7 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
         assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
-        assert.doesNotMatch(String(miss.problem?.recovery ?? ""), /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.doesNotMatch(miss.problem?.recovery ?? "", /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
         assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
         assert.equal(miss.problem?.retryable, false);
 
@@ -551,7 +551,7 @@ test("{§log-range-miss-names-stream} Log.read: an out-of-range 416 against a co
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 2, requested: [9, 9] });
         assert.equal(miss.problem?.stream, "sh:///0badcafe");
-        assert.doesNotMatch(String(miss.problem?.recovery ?? ""), /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
+        assert.doesNotMatch(miss.problem?.recovery ?? "", /sh:\/\//u, "{§diagnostic-observation}: the stream is a fact on the receipt, not a remedy");
         assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2.");
     } finally { db.close(); }
 });

@@ -83,21 +83,21 @@ export default class Slicer {
             : undefined;
     }
 
-    static #failure<T extends SchemeResult>(
+    static #failure(
         code: string,
         status: number,
         detail: string,
         fields: Readonly<Record<string, unknown>> = {},
         extensions: Readonly<Record<string, unknown>> = {},
-    ): T {
-        return Results.failure("schemes:slicer", code, status, detail, fields, extensions) as T;
+    ): SchemeResult {
+        return Results.failure("schemes:slicer", code, status, detail, fields, extensions);
     }
 
-    static #rangeFailure<T extends SchemeResult>(
+    static #rangeFailure(
         detail: string,
         range: RangeExtent,
         recovery = "Choose a range within the available extent.",
-    ): T {
+    ): SchemeResult {
         return Slicer.#failure(
             "range-not-satisfiable",
             416,
@@ -118,11 +118,11 @@ export default class Slicer {
         return `Choose positions within 1..${total}.`;
     }
 
-    static #regionFailure<T extends SchemeResult>(
+    static #regionFailure(
         detail: string,
         marker: LineMarker,
         recovery = "Choose a region within the available text.",
-    ): T {
+    ): SchemeResult {
         return Slicer.#failure(
             "range-not-satisfiable",
             416,
@@ -166,14 +166,14 @@ export default class Slicer {
     // 416s, resolved against a total alone. A null start is a sentinel selection of nothing.
     static window(marker: LineMarker, total: number, unit: RangeUnit): WindowResult {
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
-            return Slicer.#regionFailure<WindowResult>(
+            return Slicer.#regionFailure(
                 `Positional windows take one or two coordinates; received ${marker.marks.length}.`,
                 marker,
             );
         }
         const norm = Slicer.#normalize(marker, total, unit);
         const extent = Slicer.#extent(marker, total, unit);
-        if ("error" in norm) return Slicer.#rangeFailure<WindowResult>(norm.error, extent, norm.recovery);
+        if ("error" in norm) return Slicer.#rangeFailure(norm.error, extent, norm.recovery);
         if (norm.kind !== "range" || norm.start > norm.end) {
             return { status: 200, start: null, end: null, range: Slicer.#projectedExtent(extent, null, null) };
         }

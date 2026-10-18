@@ -501,6 +501,6 @@ test("{§fence-boundary}: literal programs inside a longer fence produce no spur
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
-        assert.doesNotMatch(String(notice), /parse_advisory|parse_error/, "literal examples are not probable mistakes");
+        assert.doesNotMatch(notice, /parse_advisory|parse_error/, "literal examples are not probable mistakes");
     } finally { await db.close(); }
 });

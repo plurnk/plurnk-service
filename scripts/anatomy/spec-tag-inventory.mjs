@@ -13,10 +13,10 @@ const unenforced = rows.filter((r) => r.code === 0), untested = rows.filter((r) 
 console.log(`declared tags: ${rows.length} across ${specs.length} SPECs`);
 console.log(`cited from code: ${rows.filter((r) => r.code > 0).length} | cited from tests: ${rows.filter((r) => r.tests > 0).length} | no code citation: ${unenforced.length} | no test citation: ${untested.length} | orphan (no code/test/doc citation, ≤1 spec self-cite): ${orphan.length}`);
 const perSpec = {}; for (const r of rows) { const k = r.spec; perSpec[k] ??= { tags: 0, orphan: 0 }; perSpec[k].tags++; if (orphan.includes(r)) perSpec[k].orphan++; }
-console.log("per SPEC (tags / orphans):"); for (const [k, v] of Object.entries(perSpec).sort((a, b) => b[1].tags - a[1].tags)) console.log(`  ${k}: ${v.tags} / ${v.orphan}`);
+console.log("per SPEC (tags / orphans):"); for (const [k, v] of Object.entries(perSpec).toSorted((a, b) => b[1].tags - a[1].tags)) console.log(`  ${k}: ${v.tags} / ${v.orphan}`);
 console.log("first 25 orphan tags:", orphan.slice(0, 25).map((r) => r.tag).join(", "));
 const undeclaredCites = [...cites.keys()].filter((t) => !decl.has(t)); console.log(`cited but never declared as a block: ${undeclaredCites.length}`, undeclaredCites.slice(0, 12).join(", "));
 // per-SPEC orphan listing (declaration line + text)
 const specText = new Map(specs.map((f) => [relative(root, f), readFileSync(f, "utf8").split("\n")]));
 const grouped = new Map(); for (const r of orphan) (grouped.get(r.spec) ?? grouped.set(r.spec, []).get(r.spec)).push(r);
-for (const [spec, rows] of [...grouped.entries()].sort((a, b) => b[1].length - a[1].length)) { console.log(`\n## ${spec}\n`); for (const r of rows.toSorted((a, b) => a.line - b.line)) console.log(`- ${r.line}: §${r.tag} — ${specText.get(spec)[r.line - 1].trim().slice(0, 160)}`); }
+for (const [spec, rows] of [...grouped.entries()].toSorted((a, b) => b[1].length - a[1].length)) { console.log(`\n## ${spec}\n`); for (const r of rows.toSorted((a, b) => a.line - b.line)) console.log(`- ${r.line}: §${r.tag} — ${specText.get(spec)[r.line - 1].trim().slice(0, 160)}`); }

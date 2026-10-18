@@ -19,7 +19,7 @@ const demoDirectory = resolve(workspace, "test/demo");
 
 export const demoFiles = async () => (await readdir(demoDirectory))
     .filter((name) => name.endsWith(".test.ts"))
-    .sort()
+    .toSorted()
     .map((name) => resolve(demoDirectory, name));
 
 // A selector is what node's --test-name-pattern makes of it: a regular expression tested against

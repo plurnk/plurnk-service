@@ -21,7 +21,7 @@ export const liveFiles = async () => (await Promise.all(liveDirectories.map(asyn
     (await readdir(directory)).filter((name) => name.endsWith(".test.ts"))
         .map((name) => resolve(directory, name)))))
     .flat()
-    .sort();
+    .toSorted();
 
 export const exactSpecimen = (requested, names) => {
     const matches = names.filter((name) => name === requested);

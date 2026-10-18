@@ -28,7 +28,7 @@ export interface WorkspaceCapabilityProvider {
 // {§module-workspace-capabilities}
 export interface WorkspaceCapabilityReplacement extends WorkspaceCapabilityIdentity {
     readonly namespaceOwner: string;
-    readonly state: unknown | null;
+    readonly state: unknown;
     readonly runtimes: readonly RuntimeRegistration[];
 }
 
@@ -43,7 +43,7 @@ export interface WorkspaceCapabilityPublication {
 export interface CapabilityProviderSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
-    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
+    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     replaceWorkspaceCapabilities(replacement: WorkspaceCapabilityReplacement): Promise<void>;
 }
 

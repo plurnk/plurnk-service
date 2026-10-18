@@ -183,5 +183,5 @@ test("{§find-candidate-containment} #449: one crashing candidate drops out; the
     ], crashing);
     assert.equal(allCrash.status, 415);
     assert.equal(allCrash.problem?.title, "Content handler crashed");
-    assert.match(String(allCrash.problem?.detail), /text\/html content handler failed on one\.html/);
+    assert.match(allCrash.problem?.detail, /text\/html content handler failed on one\.html/);
 });

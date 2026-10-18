@@ -10,7 +10,7 @@ test("ProposalProjection's op keywords are the closed operation alphabet; a runt
 });
 
 test("{§root-value-api} the package root exposes exactly the supported runtime values", () => {
-    assert.deepEqual(Object.keys(Contracts).sort(), [
+    assert.deepEqual(Object.keys(Contracts).toSorted(), [
         "CapabilityAdmission",
         "EFFORTS",
         "INTERNAL_ROW_OPS",

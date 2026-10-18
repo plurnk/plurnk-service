@@ -203,7 +203,7 @@ const factory = () => {
                 role: "user",
                 content: {
                     type: "text",
-                    text: `Summarize ${String(topic)}.`,
+                    text: `Summarize ${topic}.`,
                 },
             }],
         }),

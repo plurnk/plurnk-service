@@ -28,7 +28,7 @@ export type ModuleActionContext = ApplicationActionContext;
 export type ModuleActionHandler = (
     params: Readonly<Record<string, unknown>>,
     context: ModuleActionContext,
-) => unknown | Promise<unknown>;
+) => unknown;
 
 // {§module-action-registration}
 export interface ModuleActionRegistration {

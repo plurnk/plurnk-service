@@ -358,7 +358,7 @@ class CatalogClient extends Client {
     readonly #unsupported = new Set<string>();
 
     get unsupportedLists(): readonly string[] {
-        return [...this.#unsupported].sort();
+        return [...this.#unsupported].toSorted();
     }
 
     override request<M extends RequestMethod>(request: { method: M; params?: Record<string, unknown> }, options?: RequestOptions): Promise<ResultTypeMap[M]>;

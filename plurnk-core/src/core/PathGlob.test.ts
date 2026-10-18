@@ -41,8 +41,8 @@ test("{§path-glob-matching} traversal and matching select the same literal name
         }
         for (const [pattern, expected] of cases) {
             const traversed = await scan(pattern);
-            assert.deepEqual(traversed.sort(), expected.toSorted(), `scan ${pattern}`);
-            assert.deepEqual(names.filter((name) => PathGlob.matches(name, pattern)).sort(), expected.toSorted(), `match ${pattern}`);
+            assert.deepEqual(traversed.toSorted(), expected.toSorted(), `scan ${pattern}`);
+            assert.deepEqual(names.filter((name) => PathGlob.matches(name, pattern)).toSorted(), expected.toSorted(), `match ${pattern}`);
         }
         for (const name of names) {
             const escaped = PathGlob.escape(name);

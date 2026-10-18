@@ -31,7 +31,7 @@ interface Settlement {
 
 interface InteractionWaiter {
     readonly request: ClientInteractionRequest;
-    settle(settlement: Settlement): Promise<unknown | null>;
+    settle(settlement: Settlement): Promise<unknown>;
 }
 
 const pendingFailure = (interactionId: number): OperationFailureError =>
@@ -116,7 +116,7 @@ export default class ClientInteractions {
         };
         const waiter: InteractionWaiter = {
             request: exact,
-            settle: async (settlement): Promise<unknown | null> => {
+            settle: async (settlement): Promise<unknown> => {
                 if (settled) return pendingFailure(interactionId);
                 settled = true;
                 this.#pending.delete(interactionId);

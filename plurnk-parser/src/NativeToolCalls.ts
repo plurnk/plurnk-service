@@ -453,7 +453,7 @@ export default class NativeToolCalls {
     }
 
     // A JSON value at the start of `text`, followed by nothing but stray closing tags.
-    static #jsonPrefix(text: string): unknown | null {
+    static #jsonPrefix(text: string): unknown {
         const end = NativeToolCalls.#balancedEnd(text, 0);
         if (end === null || !STRAY_CLOSERS.test(text.slice(end))) return null;
         return NativeToolCalls.#json(text.slice(0, end));
@@ -608,7 +608,7 @@ export default class NativeToolCalls {
         return value.replace(/^\n+/, "").replace(/\n+$/, "");
     }
 
-    static #json(text: string): unknown | null {
+    static #json(text: string): unknown {
         try { return JSON.parse(text) as unknown; } catch { return null; }
     }
 

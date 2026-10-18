@@ -94,7 +94,7 @@ const rpcProblem = (response: RpcResponse): ProblemDetails => {
     return result.problem;
 };
 
-const rejectedProblem = async (run: () => Promise<unknown> | unknown): Promise<ProblemDetails> => {
+const rejectedProblem = async (run: () => unknown): Promise<ProblemDetails> => {
     try {
         await run();
     } catch (error) {

@@ -598,7 +598,7 @@ test("log_entries: indexes exist", async () => {
     const db = await openMigrated();
     try {
         const rows = await db.test_log_entries_indexes.all<{ name: string; sql: string }>();
-        const names = rows.map((r) => r.name).sort();
+        const names = rows.map((r) => r.name).toSorted();
         assert.deepEqual(names, [
             "log_entries_deep_hash",
             "log_entries_emission_turn",

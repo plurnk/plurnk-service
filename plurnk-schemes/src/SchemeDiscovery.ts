@@ -89,7 +89,7 @@ export default class SchemeDiscovery {
             }
             if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
         }
-        return { schemes: [...byName.values()], packageAttributions, skipped: [...skipped].sort() };
+        return { schemes: [...byName.values()], packageAttributions, skipped: [...skipped].toSorted() };
     }
 
     // Host extension-trust gate, read from PLURNK_EXTENSIONS_TRUSTED_ONLY — the SAME

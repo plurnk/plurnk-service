@@ -31,7 +31,7 @@ test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable op
         const chapter = await read(uri);
         assert.equal(chapter.status, 200);
         assert.equal(chapter.content, (await readFile("docs/copy-move.md", "utf8")).trimEnd(), "the skill exposes its owning source verbatim");
-        const parsed = PlurnkParser.parseStatements(String(chapter.content));
+        const parsed = PlurnkParser.parseStatements(chapter.content);
         assert.equal(parsed.unparsedTail, undefined);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
         const examples = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

@@ -18,8 +18,8 @@ export const aguiConformanceReport = (
         discoveryValue,
         conformanceValue,
     );
-    const rows = <Kind extends "actions" | "notifications">(
-        kind: Kind,
+    const rows = (
+        kind: "actions" | "notifications",
         label: AguiConformanceRow["kind"],
     ): AguiConformanceRow[] => Object.entries(conformance[kind])
         .toSorted(([left], [right]) => left.localeCompare(right))

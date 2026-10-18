@@ -77,7 +77,7 @@ for (const scope of ["workers", "workspaces", "aliases"] as const) {
             fx.file.applyResolution({ attrs: first.attrs as never }, fx.ctx),
             fx.file.applyResolution({ attrs: second.attrs as never }, secondCtx),
         ]);
-        assert.deepEqual(results.map(({ status }) => status).sort(), [200, 409]);
+        assert.deepEqual(results.map(({ status }) => status).toSorted((a, b) => a - b), [200, 409]);
         const winner = results[0].status === 200 ? "first edit!\n" : "second edit\n";
         assert.equal(await fs.readFile(fx.path, "utf8"), winner);
         const rejected = results.find(({ status }) => status === 409);

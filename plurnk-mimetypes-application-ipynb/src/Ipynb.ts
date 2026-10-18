@@ -195,7 +195,7 @@ export function project(nb: Notebook): Projection {
     });
 
     const symbols = [...headingSyms, ...codeSyms]
-        .sort((a, b) => a.line - b.line || b.endLine - a.endLine);
+        .toSorted((a, b) => a.line - b.line || b.endLine - a.endLine);
     return { markdown: lines.join("\n"), symbols };
 }
 

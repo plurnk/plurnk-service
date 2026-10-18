@@ -332,7 +332,7 @@ test("manifest: name https (plain http folds in, #340), default channel body, we
     assert.deepEqual(Http.manifest.traits, ["web"]);
     assert.equal(Http.manifest.volatile, true);
     assert.equal(Http.manifest.metadataModifier, true);
-    assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "readable"]);
+    assert.deepEqual(Object.keys(Http.manifest.channels).toSorted(), ["body", "header", "readable"]);
 });
 
 test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
@@ -704,7 +704,7 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.deepEqual(seq, ["write"]);
     assert.equal(wrote?.pathname, "/robots.txt");
     // {§readable-channel} — a plain-text response has no projection: body and header, nothing else.
-    assert.deepEqual(Object.keys(wrote.entry.channels).sort(), ["body", "header"]);
+    assert.deepEqual(Object.keys(wrote.entry.channels).toSorted(), ["body", "header"]);
     assert.deepEqual(wrote.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
@@ -1352,7 +1352,7 @@ test("READ: negotiated origin Markdown is the source itself, one request, no pro
     });
     // {§readable-channel} — the origin sent readable text; nothing to project, no HTML variant to chase.
     assert.deepEqual(accepts.map((accept) => accept.split(",")[0]), ["text/markdown"], "exactly one request");
-    assert.deepEqual(Object.keys(inspect().wrote?.entry.channels ?? {}).sort(), ["body", "header"]);
+    assert.deepEqual(Object.keys(inspect().wrote?.entry.channels ?? {}).toSorted(), ["body", "header"]);
     assert.equal(inspect().wrote?.entry.channels.body?.content, "# Origin Markdown");
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "text/markdown");
     const header = inspect().wrote?.entry.channels.header?.content ?? "";

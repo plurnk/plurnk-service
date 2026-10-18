@@ -80,13 +80,13 @@ export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideT
 // plus the recorded status, so the same program reaching two different dispositions is
 // kept as two cases rather than collapsed into one.
 const shapeOf = (r: Omit<CorpusRecord, "specimen" | "packet" | "emission" | "turns">): string =>
-    JSON.stringify([[...new Set(r.ops)].sort(), r.ops.length, r.outsideText, r.errors, r.recordedStatus]);
+    JSON.stringify([[...new Set(r.ops.map((op) => op ?? ""))].toSorted(), r.ops.length, r.outsideText, r.errors, r.recordedStatus]);
 
 export const harvest = (root: string): CorpusRecord[] => {
     const chosen = new Map<string, CorpusRecord>();
     const seen = new Map<string, number>();
     const identifiers = localIdentifiers();
-    for (const specimen of readdirSync(root).sort()) {
+    for (const specimen of readdirSync(root).toSorted()) {
         const digest = join(root, specimen, "digest");
         const index = join(digest, "digest.md");
         if (!existsSync(index)) continue;
@@ -109,7 +109,7 @@ export const harvest = (root: string): CorpusRecord[] => {
         }
     }
     for (const [shape, record] of chosen) chosen.set(shape, { ...record, turns: seen.get(shape)! });
-    return [...chosen.values()].sort((a, b) => a.specimen.localeCompare(b.specimen) || a.packet.localeCompare(b.packet));
+    return [...chosen.values()].toSorted((a, b) => a.specimen.localeCompare(b.specimen) || a.packet.localeCompare(b.packet));
 };
 
 export const CORPUS = new URL("../test/fixtures/recorded-emissions.jsonl", import.meta.url).pathname;

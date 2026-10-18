@@ -35,7 +35,7 @@ export const publicationOrder = (graph) => {
         active.push(name);
         const manifest = graph.get(name);
         for (const field of INSTALL_FIELDS) {
-            for (const dependency of Object.keys(manifest[field] ?? {}).sort()) {
+            for (const dependency of Object.keys(manifest[field] ?? {}).toSorted()) {
                 if (graph.has(dependency)) visit(dependency);
             }
         }
@@ -43,7 +43,7 @@ export const publicationOrder = (graph) => {
         complete.add(name);
         ordered.push(manifest);
     };
-    for (const name of [...graph.keys()].sort()) visit(name);
+    for (const name of [...graph.keys()].toSorted()) visit(name);
     return ordered;
 };
 

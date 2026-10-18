@@ -260,7 +260,7 @@ for (const op of ["WORK", "FORK"] as const) {
                 statement, workspaceId, workerId: parentId, loopId, turnId, sequence, origin: "model",
             })));
             assert.deepEqual(results.map(({ status }) => status), [200, 200]);
-            assert.deepEqual(results.map(({ body }) => body).toSorted(), ["c4e56789", "d5f67890"]);
+            assert.deepEqual(results.map(({ body }) => String(body)).toSorted(), ["c4e56789", "d5f67890"]);
             for (const result of results) {
                 const { worker, message, ...rest } = result.attrs as { worker?: unknown; message?: unknown };
                 assert.deepEqual([worker, rest], [`worker://${result.body}`, {}], "the receipt names the worker it created");

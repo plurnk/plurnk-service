@@ -446,7 +446,7 @@ describe("discover — scope-agnostic scan ({§mimetype-discovery})", () => {
 
             const result = await discover({ cwd: root, includeTreeSitter: false });
             assert.deepEqual(
-                [...result.handlers.keys()].sort(),
+                [...result.handlers.keys()].toSorted(),
                 ["text/plain", "text/x-cobol", "text/x-fortran"],
             );
             assert.equal(result.handlers.get("text/x-cobol")?.packageName, "@acme/acme-mime-cobol");
@@ -579,11 +579,11 @@ describe("discover — extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY ({§e
         try {
             for (const env of [{ PLURNK_EXTENSIONS_TRUSTED_ONLY: "" }, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "0" }]) {
                 const r = await discover({ cwd: root, includeTreeSitter: false, env });
-                assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol", "text/x-fortran"]);
+                assert.deepEqual([...r.handlers.keys()].toSorted(), ["text/plain", "text/x-cobol", "text/x-fortran"]);
             }
             // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
             const shipped = await discover({ cwd: root, includeTreeSitter: false, env: {} });
-            assert.deepEqual([...shipped.handlers.keys()].sort(), ["text/plain"], "only the first-party handler survives the shipped gate");
+            assert.deepEqual([...shipped.handlers.keys()].toSorted(), ["text/plain"], "only the first-party handler survives the shipped gate");
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
@@ -597,7 +597,7 @@ describe("discover — extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY ({§e
                 env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-mime-cobol" },
             });
             // @plurnk always trusted; @acme listed; mime-fortran skipped.
-            assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol"]);
+            assert.deepEqual([...r.handlers.keys()].toSorted(), ["text/plain", "text/x-cobol"]);
             assert.equal(r.handlers.has("text/x-fortran"), false, "unlisted third-party skipped");
             assert.deepEqual(r.skipped, ["mime-fortran"]);
         } finally {

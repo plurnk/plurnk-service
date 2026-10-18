@@ -454,7 +454,7 @@ export default class PacketWire {
 
     // {§log-wire-format} Orientation precedes telemetry on every receipt.
     static #canonicalJson(obj: Record<string, unknown>): string {
-        return JSON.stringify(Object.fromEntries(Object.keys(obj).sort().map((key) => [key, obj[key]])));
+        return JSON.stringify(Object.fromEntries(Object.keys(obj).toSorted().map((key) => [key, obj[key]])));
     }
 
     static #receiptMeta(value: unknown): Record<string, string | number> {

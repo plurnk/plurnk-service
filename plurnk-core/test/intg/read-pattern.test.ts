@@ -112,7 +112,7 @@ test("a pattern READ over a glob fans out into one exact pattern READ receipt pe
             return result;
         };
         const rows = async () => (await db.test_log_entries_by_loop.all<{ op: string; pathname: string | null; status_rx: number; rx: string; attrs: string; sequence: number }>({ loop_id: env.loopId }))
-            .filter((row) => row.op === "READ" || row.op === "FIND").sort((a, b) => a.sequence - b.sequence);
+            .filter((row) => row.op === "READ" || row.op === "FIND").toSorted((a, b) => a.sequence - b.sequence);
 
         const globTarget = urlPath("worker", "/pets_*.md");
         const grep = await dispatch(readStmt(globTarget, null, { dialect: "regex", raw: "/dogs/i", pattern: "dogs", flags: "i" }));

@@ -59,7 +59,7 @@ test("identical entries attach one complete search artifact and both remain addr
             rows.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             "shared artifact",
         );
-        assert.deepEqual(ranked.matches.map((r) => r.key).sort(), ["/a.md", "/b.md"],
+        assert.deepEqual(ranked.matches.map((r) => r.key).toSorted(), ["/a.md", "/b.md"],
             "artifact sharing never collapses the independently addressable entries");
     } finally {
         await db.close();

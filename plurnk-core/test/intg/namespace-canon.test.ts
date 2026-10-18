@@ -52,7 +52,7 @@ for (const glob of ["**", "~/**"]) test(`{§fs-home} literal membership glob ${g
         for (const target of ["./~", "./~/", "./~/**", "**"]) {
             const found = await file.find(find(target), ctx);
             assert.equal(found.status, 200, target);
-            assert.deepEqual(resourcePaths(found).sort(), ["./~/a.md", "./~/b.md"]);
+            assert.deepEqual(resourcePaths(found).toSorted(), ["./~/a.md", "./~/b.md"]);
             for (const path of resourcePaths(found)) {
                 const read = await readFileScheme(readStmt(path), ctx);
                 assert.equal(read.status, 200, path);

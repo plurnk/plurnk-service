@@ -132,7 +132,7 @@ const main = async () => {
         .filter((name) => name.startsWith(PACKAGE_PREFIX))
         .map((name) => name.slice(PACKAGE_PREFIX.length))
         .filter((slug) => only === undefined || slug === only)
-        .sort();
+        .toSorted();
     invariant(expected.length > 0, only === undefined
         ? "framework declares no grammar package devDependencies"
         : `unknown grammar slug: ${only}`);

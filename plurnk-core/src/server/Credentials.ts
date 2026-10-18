@@ -140,9 +140,9 @@ export default class Credentials implements CredentialAuthority {
         return Object.freeze([...families]
             .filter(([, family]) => family.signedIn)
             .map(([family, { expiresAt, clients }]) => Object.freeze({
-                family, subject, createdAt: this.#established.get(family)!, expiresAt, clients: Object.freeze([...clients].sort()),
+                family, subject, createdAt: this.#established.get(family)!, expiresAt, clients: Object.freeze([...clients].toSorted()),
             }))
-            .sort((a, b) => a.createdAt - b.createdAt || a.family.localeCompare(b.family)));
+            .toSorted((a, b) => a.createdAt - b.createdAt || a.family.localeCompare(b.family)));
     }
 
     registerClient({ id, redirectPaths, scopes, stylesheetPath }: ModuleClient): { readonly clientId: string; readonly clientSecret: string } {

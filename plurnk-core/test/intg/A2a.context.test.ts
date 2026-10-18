@@ -75,7 +75,7 @@ test("{§a2a-inbound-exposure}: same-Context Tasks finish and cancel independent
         assert.equal(aWorker.parentWorkerId, bWorker.parentWorkerId);
         assert.equal(aWorker.parentWorkerId, await daemon.ensureRuntimeWorker(workspaceId));
         assert.deepEqual((await daemon.listWorkers(workspaceId, { origin: "model" })).map(({ name }) => name).toSorted(),
-            [a.id, b.id].toSorted(), "Context identity creates no extra Worker");
+            [a.id, b.id].toSorted((x, y) => String(x).localeCompare(String(y))), "Context identity creates no extra Worker");
         const third = observe(client, "Keep another sibling in flight.", a.contextId);
         const c = await third.admitted;
         const signal = await thirdCall.promise;

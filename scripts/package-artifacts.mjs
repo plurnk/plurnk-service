@@ -94,7 +94,7 @@ export const packageArtifactViolations = (dir, paths) => {
     const violations = projection.required
         .filter((required) => !packed.has(required))
         .map((required) => `${dir}: required runtime artifact is absent: ${required}`);
-    for (const path of [...packed].sort()) {
+    for (const path of [...packed].toSorted()) {
         if (projection.forbiddenPrefixes.some((prefix) => path.startsWith(prefix))) {
             violations.push(`${dir}: test-only artifact leaked into package: ${path}`);
         }

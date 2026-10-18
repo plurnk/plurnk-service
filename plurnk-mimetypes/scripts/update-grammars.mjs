@@ -37,7 +37,7 @@ export const expectedGrammarPackages = (manifest, only) => {
         .filter((name) => name.startsWith(PACKAGE_PREFIX))
         .map((name) => name.slice(PACKAGE_PREFIX.length))
         .filter((slug) => only === undefined || slug === only)
-        .sort();
+        .toSorted();
     invariant(expected.length > 0, only === undefined
         ? "framework declares no grammar package devDependencies"
         : `unknown grammar slug: ${only}`);
@@ -147,7 +147,7 @@ export const runGrammarLifecycle = async ({
     const issueMap = await readIssueMap(issueMapPath, behind);
     const results = probes.filter(({ state }) => state === "current");
     for (const grammar of behind) results.push(await updateGrammar(run, grammar, issueMap[grammar.slug]));
-    return results.sort((left, right) => left.slug.localeCompare(right.slug));
+    return results.toSorted((left, right) => left.slug.localeCompare(right.slug));
 };
 
 const main = async () => {

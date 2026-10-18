@@ -125,7 +125,7 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
     const arrival = logEntries(before).find(({ logPath: path }) => String(path).endsWith("/SEND"));
     assert.ok(arrival, "the arrival row is in the packet");
     assert.equal(arrival.body, undefined, "the message did not fit the budget: it landed folded, its row its size and address");
-    assert.deepEqual(Object.keys(arrival.size as object).sort(), ["lines", "tokens"], "the folded arrival states its size, never a preview");
+    assert.deepEqual(Object.keys(arrival.size as object).toSorted(), ["lines", "tokens"], "the folded arrival states its size, never a preview");
     await recordSamples(f);
     const after = await f.build(provider);
     assert.notEqual(budgetOf(before).budget, budgetOf(after).budget, "the ceiling uses new model evidence");
@@ -248,7 +248,7 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
         .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)} `))!;
     assert.equal(read.tokens, contentWeight(renderedRead(before)));
-    assert.equal(Number(read.tokens) - Number(trimmedRead.tokens),
+    assert.equal(read.tokens - Number(trimmedRead.tokens),
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");

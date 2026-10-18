@@ -31,7 +31,7 @@ const sqlFiles = async (dir: string): Promise<string[]> => {
 // file's numeric prefix, so the chapter a reader opens is the version sqlrite applies.
 const baselineTriggers = async (): Promise<Array<{ name: string; when: string; writes: boolean }>> => {
     const dir = resolve(PROJECT_ROOT, "migrations");
-    const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).sort();
+    const chapters = (await readdir(dir)).filter((name) => name.endsWith(".sql")).toSorted();
     assert.ok(chapters.length > 1, "the baseline is chaptered");
     // {§db-migrations}: a chapter that rebuilds a table redeclares that table's guards, so the
     // latest chapter naming a trigger is its current declaration, and one it drops without
@@ -46,7 +46,7 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
         const statements = [
             ...[...text.matchAll(TRIGGER)].map((m) => ({ index: m.index, name: m[1], declared: { name: m[1], when: m[2], writes: WRITES.test(body(m[0])) } })),
             ...[...text.matchAll(DROPPED)].map((m) => ({ index: m.index, name: m[1], declared: null })),
-        ].sort((a, b) => a.index - b.index);
+        ].toSorted((a, b) => a.index - b.index);
         for (const { name, declared } of statements) {
             if (declared === null) triggers.delete(name);
             else triggers.set(name, declared);
@@ -97,7 +97,7 @@ test("{§db-process-triggers}: every INIT trigger writes rows, is named after it
 });
 
 test("{§db-process-triggers}: a fresh database holds exactly the declared triggers, and a reopen keeps every one", async () => {
-    const declared = [...(await baselineTriggers()).map(({ name }) => name), ...(await initTriggers()).map(({ name }) => name)].sort();
+    const declared = [...(await baselineTriggers()).map(({ name }) => name), ...(await initTriggers()).map(({ name }) => name)].toSorted();
     assert.equal(new Set(declared).size, declared.length, "no trigger is declared twice");
     const path = join(tmpdir(), `composition-${crypto.randomUUID()}.db`);
     const live = (): string[] => {

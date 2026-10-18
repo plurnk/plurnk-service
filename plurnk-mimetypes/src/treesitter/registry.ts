@@ -42,7 +42,7 @@ export interface TreeSitterLanguageMapping {
     // AST — YAML, TOML, JSON, CSV. The default walker (walkDeepNode) is the
     // right answer for code-shaped languages where the AST IS what users
     // want to query.
-    deepJson?(content: string): unknown | Promise<unknown>;
+    deepJson?(content: string): unknown;
     // Optional references-channel query ({§mimetype-references}): tree-sitter query
     // source (S-expression patterns) whose `@ref.<kind>` captures yield the
     // classified symbol uses. Loaded from packaged .scm assets by the mapping

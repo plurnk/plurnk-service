@@ -78,10 +78,10 @@ test("{§service-posix-artifacts} bash completes locally and preserves literal f
         // Completion cannot consult a daemon or any external executable.
         env: { PATH: "" },
         encoding: "utf8",
-    }).split("\0").filter(Boolean).sort();
+    }).split("\0").filter(Boolean).toSorted();
     assert.deepEqual(complete(["plurnk-service", "mi"]), ["migrate"]);
     assert.deepEqual(complete(["plurnk-service", "--env-f"]), ["--env-file", "--env-file-if-exists"]);
-    assert.deepEqual(complete(["plurnk-service", "share", "alpha"]), files.sort());
+    assert.deepEqual(complete(["plurnk-service", "share", "alpha"]), files.toSorted());
     assert.deepEqual(complete(["plurnk-service", "share", "alpha b"]), ["alpha beta.db"]);
     assert.deepEqual(complete(["plurnk-service", "share", "missing"]), []);
 });

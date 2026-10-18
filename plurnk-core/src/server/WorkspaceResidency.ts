@@ -144,7 +144,7 @@ export default class WorkspaceResidency {
         LoopDocs.evict(this.#db, identity.workspaceId);
     }
 
-    async readModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
+    async readModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown> {
         const identity = await this.identity(workspaceId);
         if (namespaceOwner.trim().length === 0) throw new Error("workspace module state requires a non-empty namespace owner");
         const row = await this.#db.workspace_module_state_get.get<{ state: string }>({
@@ -156,7 +156,7 @@ export default class WorkspaceResidency {
     // {§module-workspace-state} — the same snapshot, owned by a worker. A family declares the
     // scope its definitions belong to; the coordinator keys state by it, so origin, enabledness
     // and the service-baseline rules remain one implementation rather than one per family.
-    async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown | null> {
+    async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown> {
         if (namespaceOwner.trim().length === 0) throw new Error("worker module state requires a non-empty namespace owner");
         const row = await this.#db.worker_module_state_get.get<{ state: string }>({
             worker_id: workerId, namespace_owner: namespaceOwner,
@@ -167,7 +167,7 @@ export default class WorkspaceResidency {
     // The worker-scoped counterpart of `replace`: state alone, no runtimes, no workspace exclusivity.
     // A Worker's context changes nothing resident; the next spawn reads it ({§functionality-scope}).
     // The real foreign key refuses a Worker that does not exist.
-    async replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void> {
+    async replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown): Promise<void> {
         if (namespaceOwner.trim().length === 0) throw new Error("worker module state requires a non-empty namespace owner");
         const key = { worker_id: workerId, namespace_owner: namespaceOwner };
         if (state === null) {

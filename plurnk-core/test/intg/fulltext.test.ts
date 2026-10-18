@@ -46,7 +46,7 @@ test("native FTS5 expressions select visible resources and integer result pages"
         ] as const) {
             const result = await worker.find(find("*", query), ctx);
             assert.equal(result.status, 200, query);
-            assert.deepEqual(resourcePaths(result).sort(), paths.map((path) => `worker:///${path}`), query);
+            assert.deepEqual(resourcePaths(result).toSorted(), paths.map((path) => `worker:///${path}`), query);
         }
         const complete = await worker.find(find("*", "connection"), ctx);
         const page = await worker.find(find("*", "connection", [2]), ctx);
@@ -159,7 +159,7 @@ test("{§fts-word-phrase}: a word with inner punctuation searches its tokens as 
         ] as const) {
             const result = await worker.find(find("*", query), ctx);
             assert.equal(result.status, 200, `${query}: ${JSON.stringify(result.problem)}`);
-            assert.deepEqual(resourcePaths(result).sort(), paths.map((path) => `worker:///${path}`), query);
+            assert.deepEqual(resourcePaths(result).toSorted(), paths.map((path) => `worker:///${path}`), query);
         }
         const excluded = await worker.find(find("*", "inherited -members"), ctx);
         assert.equal(excluded.status, 400, "a leading `-` stays FTS5's column exclusion");
