@@ -56,7 +56,7 @@ import type { EditBatchReceipt } from "../content/index.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import FileMaterialization from "../core/file-materialization.ts";
 import FileSnapshot from "../core/FileSnapshot.ts";
-import FilePublication from "../core/FilePublication.ts";
+import FilePublication, { type PublishedFile } from "../core/FilePublication.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
 type ApplyArgs = { attrs: { path?: string; canonical?: string; original?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
@@ -639,24 +639,7 @@ export default class File extends CoreSchemeAdapterBase {
         let receipt = attrs.editReceipt;
         const original = attrs.original ?? (existed ? null : "");
         if (body !== undefined && body !== attrs.patched) {
-            if (original === null) {
-                throw new InvalidOperationResultError("A reviewer-modified file proposal is missing its original content.");
-            }
-            if (receipt === undefined) {
-                if (typeof attrs.patched !== "string") {
-                    throw new InvalidOperationResultError(
-                        "The reviewer-modified file proposal is missing its proposed content.",
-                    );
-                }
-                receipt = editReceipt(
-                    original,
-                    attrs.patched,
-                    [{ marker: { marks: [1, -1] }, body: attrs.patched }],
-                    undefined,
-                    EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)),
-                );
-            }
-            receipt = reviewerReplacementReceipt(original, patched, receipt, undefined, EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)));
+            receipt = await File.#reviewerReceipt(core, { attrs, relPath, original, patched, receipt });
         }
         if (receipt !== undefined) {
             const parseIssues = await new DbProjectionCaps(core).parseIssueTransition(
@@ -720,65 +703,7 @@ export default class File extends CoreSchemeAdapterBase {
                     );
                 }
             } catch (err) {
-                if (!existed) {
-                    const rollbackErrors: unknown[] = [];
-                    try {
-                        const row = await core.db.crud_find_workspace_entry.get<{ id: number }>({
-                            workspace_id: core.workspaceId,
-
-                            scheme: "file",
-                            authority: "",
-                            pathname: relPath,
-                        });
-                        if (row !== undefined) await core.db.crud_delete_entry.run({ entry_id: row.id });
-                    } catch (rollbackCause) {
-                        rollbackErrors.push(rollbackCause);
-                    }
-                    try {
-                        const current = await FileSnapshot.acquire(publication.revision.canonical, null);
-                        if (current === null && await FileSnapshot.observe(publication.revision.canonical) !== null) {
-                            throw new Error("The created path changed during rollback validation; it was preserved.");
-                        }
-                        if (current !== null && !FileSnapshot.matches(publication.revision, current.revision)) {
-                            throw new Error("The created path changed; its replacement was preserved.");
-                        }
-                        if (current !== null) await rm(publication.revision.canonical);
-                    } catch (rollbackCause) {
-                        if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
-                            rollbackErrors.push(rollbackCause);
-                        }
-                    }
-                    if (rollbackErrors.length > 0) {
-                        const rollback = new AggregateError(rollbackErrors, `Creation rollback failed for '${relPath}'.`);
-                        console.error(`File creation failed and rollback was incomplete for '${relPath}':`, err, rollback);
-                        return Results.failure(
-                            "scheme:file",
-                            "creation-rollback-failed",
-                            500,
-                            `The file could not be incorporated and rollback was incomplete: ${ErrorDetail.preview(rollback)}`,
-                            { outcome: "creation_rollback_failed", effects: [{ target: relPath, action: "create" }] },
-                            {
-                                path: relPath,
-                                stage: "creation-rollback",
-                                cause: ErrorDetail.preview(err),
-                                retryable: false,
-                            },
-                        );
-                    }
-                    console.error(`File creation incorporation failed for '${relPath}':`, err);
-                    return Results.failure(
-                        "scheme:file",
-                        "creation-incorporation-failed",
-                        500,
-                        `The file could not be incorporated, so its exclusive creation was rolled back: ${ErrorDetail.preview(err)}`,
-                        { outcome: "creation_rolled_back" },
-                        {
-                            path: relPath,
-                            stage: "membership-incorporation",
-                            retryable: false,
-                        },
-                    );
-                }
+                if (!existed) return File.#rollbackCreation(core, relPath, publication.revision, err);
                 // An existing-file write has already changed disk. Surface the partial
                 // failure rather than pretending the addressable entry followed it.
                 console.error(`File registration failed for '${relPath}':`, err);
@@ -807,6 +732,104 @@ export default class File extends CoreSchemeAdapterBase {
                 result: { receipt: projectEditReceipt(receipt, 0) },
             };
         });
+    }
+
+    // {§edit-result-reviewer-replacement} A reviewer's replacement lands as its own receipt against the original:
+    // the proposed content's receipt first, when the proposal carried none, then the replacement's over it.
+    static async #reviewerReceipt(core: PlurnkSchemeContext, args: {
+        attrs: ApplyArgs["attrs"];
+        relPath: string;
+        original: string | null;
+        patched: string;
+        receipt: EditBatchReceipt | undefined;
+    }): Promise<EditBatchReceipt> {
+        const { attrs, relPath, original, patched } = args;
+        let { receipt } = args;
+        if (original === null) {
+            throw new InvalidOperationResultError("A reviewer-modified file proposal is missing its original content.");
+        }
+        if (receipt === undefined) {
+            if (typeof attrs.patched !== "string") {
+                throw new InvalidOperationResultError(
+                    "The reviewer-modified file proposal is missing its proposed content.",
+                );
+            }
+            receipt = editReceipt(
+                original,
+                attrs.patched,
+                [{ marker: { marks: [1, -1] }, body: attrs.patched }],
+                undefined,
+                EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)),
+            );
+        }
+        return reviewerReplacementReceipt(original, patched, receipt, undefined, EntryManifest.toPath("file", "", relPath, await FileAddress.projectRoot(core)));
+    }
+
+    // A created file whose incorporation failed is rolled back — its entry row and, when the path still holds
+    // exactly what was published, the file — and the failure says whether the rollback was complete.
+    static async #rollbackCreation(
+        core: PlurnkSchemeContext,
+        relPath: string,
+        revision: Extract<PublishedFile, { status: "published" }>["revision"],
+        err: unknown,
+    ): Promise<ApplyResult> {
+        const rollbackErrors: unknown[] = [];
+        try {
+            const row = await core.db.crud_find_workspace_entry.get<{ id: number }>({
+                workspace_id: core.workspaceId,
+
+                scheme: "file",
+                authority: "",
+                pathname: relPath,
+            });
+            if (row !== undefined) await core.db.crud_delete_entry.run({ entry_id: row.id });
+        } catch (rollbackCause) {
+            rollbackErrors.push(rollbackCause);
+        }
+        try {
+            const current = await FileSnapshot.acquire(revision.canonical, null);
+            if (current === null && await FileSnapshot.observe(revision.canonical) !== null) {
+                throw new Error("The created path changed during rollback validation; it was preserved.");
+            }
+            if (current !== null && !FileSnapshot.matches(revision, current.revision)) {
+                throw new Error("The created path changed; its replacement was preserved.");
+            }
+            if (current !== null) await rm(revision.canonical);
+        } catch (rollbackCause) {
+            if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
+                rollbackErrors.push(rollbackCause);
+            }
+        }
+        if (rollbackErrors.length > 0) {
+            const rollback = new AggregateError(rollbackErrors, `Creation rollback failed for '${relPath}'.`);
+            console.error(`File creation failed and rollback was incomplete for '${relPath}':`, err, rollback);
+            return Results.failure(
+                "scheme:file",
+                "creation-rollback-failed",
+                500,
+                `The file could not be incorporated and rollback was incomplete: ${ErrorDetail.preview(rollback)}`,
+                { outcome: "creation_rollback_failed", effects: [{ target: relPath, action: "create" }] },
+                {
+                    path: relPath,
+                    stage: "creation-rollback",
+                    cause: ErrorDetail.preview(err),
+                    retryable: false,
+                },
+            );
+        }
+        console.error(`File creation incorporation failed for '${relPath}':`, err);
+        return Results.failure(
+            "scheme:file",
+            "creation-incorporation-failed",
+            500,
+            `The file could not be incorporated, so its exclusive creation was rolled back: ${ErrorDetail.preview(err)}`,
+            { outcome: "creation_rolled_back" },
+            {
+                path: relPath,
+                stage: "membership-incorporation",
+                retryable: false,
+            },
+        );
     }
 
     async #applyDelete(pathname: string, baseSig: string | null, mimetype: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
