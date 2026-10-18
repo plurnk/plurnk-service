@@ -253,26 +253,18 @@ that caller used; a module that asks with no request in hand, as one reading the
 start does, is answered with the configured origin or the listener's own. A configured origin is for
 a front the daemon cannot see, such as a TLS proxy. No request is refused for the name it uses.
 
-§credential-authority **The daemon is one credential authority.** Every credential presented
-to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials`
-authority on the application port ({§application-port}): an opaque random token held in memory
-with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its
-subject, its client, its scopes, its family and its expiry. A restart revokes every credential.
-Revocation is by family, so an access token and the refresh token that renews it fall together;
-a refresh token is consumed once, and a second presentation revokes its family and says so. The
-authority has no HTTP face and no policy of its own: the issuing module publishes the one face
-(`publish({ issuer })`, at setup) that names where a request's caller obtains credentials
-({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an
-exterior adapter
-verifies through it ({§agui-http-authorization}), and the client protocol issues through it
-({§agui-oauth}). The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
-never inferred from what else is set. Under `1` the authority holds the operator's client secret,
-`PLURNK_SECRET` when set, else one minted for this boot and written to the file `secret` beside the
-database, 0600 and complete or absent, before any mount is admitted, where a tool running as the
-operator reads it; a configured secret and a daemon that does not authenticate leave no such file. A
-listening daemon under `1` refuses to start until a module publishes the face. Under `0` no
-credential exists, no face is published and every mounted resource admits anonymously. Credentials
-the daemon presents to others follow the remote party's declared scheme and are never minted here.
+§credential-authority **The daemon is one credential authority.** Every credential presented to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials` authority on the application port ({§application-port}): an opaque random token held in memory with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its subject, its client, its scopes, its family and its expiry.
+
+- A restart revokes every credential. Revocation is by family, so an access token and the refresh token that renews it fall together; a refresh token is consumed once, and a second presentation revokes its family and says so.
+- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§agui-http-authorization}), and the client protocol issues through it ({§agui-oauth}).
+- Credentials the daemon presents to others follow the remote party's declared scheme and are never minted here.
+
+The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is never inferred from what else is set:
+
+| `PLURNK_AUTH` | Rule |
+| --- | --- |
+| `1` | The authority holds the operator's client secret, `PLURNK_SECRET` when set, else one minted for this boot and written to the file `secret` beside the database, 0600 and complete or absent, before any mount is admitted, where a tool running as the operator reads it; a configured secret and a daemon that does not authenticate leave no such file. A listening daemon refuses to start until a module publishes the face. |
+| `0` | No credential exists, no face is published and every mounted resource admits anonymously. |
 
 §credential-module-client **A module of this daemon is a confidential client by registration.** At setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes, stylesheetPath })`; nothing is configured, printed or persisted, so installing a module adds no operator step.
 
@@ -1502,29 +1494,14 @@ This is an exact-repetition backstop, not a semantic judgment of task progress;
 new asynchronous invocation identities do not prove repetition of their eventual
 effects. Ordinary contract strikes and operator budgets remain independent.
 
-§provider-recovery **A recoverable provider failure never ends a loop.** An isolated BARE
-call ({§bare-inference}) takes the same recovery as the loop's own inference: each re-issue
-is its own model call on the ledger, and a spent window leaves the operation's result as the
-provider's exact failure. When a model
-call fails with a kind the provider marks `retryable` ({§provider-retryable-truth}: network
-failure, rate limit, deadline, interrupted resource, dropped output) after the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
-notices the client (`engine:provider` / `provider_unavailable`), waits with
-exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling up to
-`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX`), and re-issues the same call against the exact frozen model
-messages whose response is still outstanding. Each reissue remains a distinct logical
-model call with complete physical-request accounting, but the active turn's newly
-recorded provider Problems do not recursively enter that request; they surface normally
-only in a later genuinely new packet. No emission attempt is consumed and no strike is
-scored. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer
-retains only the current provider state; the next completed exchange notices
-`provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
-is spent the turn completes as `202` and the loop parks exactly like a
-WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact — **unless the worker's owner is not interactive
-({§worker-ownership}); then the loop concludes on the provider's exact failure because no
-person attends to wake that park.** Only a client cancel, the execution allowance
-({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
-authorization, quota, an invalid response) settles a loop on a provider failure.
+§provider-recovery **A recoverable provider failure never ends a loop.** An isolated BARE call ({§bare-inference}) takes the same recovery as the loop's own inference: each re-issue is its own model call on the ledger, and a spent window leaves the operation's result as the provider's exact failure. When a model call fails with a kind the provider marks `retryable` ({§provider-retryable-truth}: network failure, rate limit, deadline, interrupted resource, dropped output) after the provider's own retries:
+
+1. The turn records the exact Problem as a `_plurnk` row and notices the client (`engine:provider` / `provider_unavailable`).
+2. It waits with exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX`).
+3. It re-issues the same call against the exact frozen model messages whose response is still outstanding. Each reissue remains a distinct logical model call with complete physical-request accounting, but the active turn's newly recorded provider Problems do not recursively enter that request; they surface normally only in a later genuinely new packet. No emission attempt is consumed and no strike is scored.
+4. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer retains only the current provider state; the next completed exchange notices `provider_recovered`.
+
+Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it is spent the turn completes as `202` and the loop parks exactly like a WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the next prompt or wake with its log intact — **unless the worker's owner is not interactive ({§worker-ownership}); then the loop concludes on the provider's exact failure because no person attends to wake that park.** Only a client cancel, the execution allowance ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal, authorization, quota, an invalid response) settles a loop on a provider failure.
 
 **Contract Strikes**: every turn with one or more contract violations earns a
 strike; a turn without any contract violations clears the strikes.
@@ -2013,7 +1990,14 @@ Every fact names the canonical key, never the host root or an echo of the
 model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
-§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.` — a key beyond the root named by the absolute path it renders as ({§file-path-normalization}) — its target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}). Recovery offers listing with FIND, creation with EDIT, and admission with `members (add)` as alternatives and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. `` The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads there differ only in the address they echo — the absolute path ({§file-path-normalization}) — and their recovery speaks of the address too, true under every members scope: `'<address>' is outside the project root: only a members definition under the operator's namespace scope admits it.` Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery — unless the model's read admits it first ({§membership-auto-add}); a path the repository ignores, which no model definition admits, carries the members discovery verdict instead: `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` Occupancy may surface there; content never does ({§membership}).
+§membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a pattern EDIT's source, a COPY or MOVE source — answers about the address, true whether or not a file is there: it neither claims absence nor hints at presence. Occupancy may surface inside the root; content never does ({§membership}).
+
+| Case | Result | Recovery |
+| --- | --- | --- |
+| Not a member | 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, the target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}) | Offers listing with FIND, creation with EDIT and admission with `members (add)` and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. `` |
+| Beyond the root | The engine does not look at the disk at all, and the key is named by the absolute path it renders as ({§file-path-normalization}), so two reads there differ only in the address they echo | Speaks of the address too, true under every members scope: `'<address>' is outside the project root: only a members definition under the operator's namespace scope admits it.` |
+| Inside the root, on disk, not a member | Occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ says so: 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.` — unless the model's read admits it first ({§membership-auto-add}) | Admission only |
+| Ignored by the repository, admitted by no model definition | The members discovery verdict instead | `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` |
 
 §file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.`; a READ or KILL carries the listing as its recovery, `` `FIND (<key>/)` lists its files. ``, and an EDIT carries none. Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
@@ -5548,23 +5532,17 @@ door past the ceiling.
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
 not from a live process or a cached worker environment.
 
-§env-scheme **The env scheme is the registry as an address space.** Every name in effect for a Worker's commands —
-the ambient names the ceiling admits, workspace defaults and the Worker's own entries, exactly
-what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a
-reserved or masked name is no resource. The family's manager exposes it as the facet of its own
-`env://` namespace ({§runtime-resource-binding}), read for the dispatching Worker: READ projects
-the value its commands receive now, FIND lists the names in effect and a pattern on it matches
-values, COPY carries a value out. The manager's own output streams, eight hexadecimal characters
-({§execution-output-identity}), stay the executor's. A write is the Worker's own layer, never the
-workspace's or the operator's (the runtime worker keeps none, so a person's write is the workspace's,
-{§actor-boundary-client-operations}): EDIT sets the whole value through the family's `replace` for the
-Worker, and KILL retires the name from the Worker's commands — `remove` for an entry the Worker
-owns, which restores an inherited value, `disable` for an inherited one, which keeps its
-definition. Admission is the family's ({§env-functionality}) and its refusal is the operation's
-result. A value has no lines: a line scope on EDIT or KILL is `value-whole` (400), and a pattern
-on EDIT is the dispatcher's refusal for any scheme without text scopes; a target that is not
-`env:///NAME` is `name-invalid` (400), or `target-required` (400) when absent; a name not in
-effect is `entry-not-found` (404) on READ and KILL alike.
+§env-scheme **The env scheme is the registry as an address space.** Every name in effect for a Worker's commands — the ambient names the ceiling admits, workspace defaults and the Worker's own entries, exactly what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a reserved or masked name is no resource. The family's manager exposes it as the facet of its own `env://` namespace ({§runtime-resource-binding}), read for the dispatching Worker; the manager's own output streams, eight hexadecimal characters ({§execution-output-identity}), stay the executor's. Admission is the family's ({§env-functionality}) and its refusal is the operation's result.
+
+| Operation | On `env:///NAME` |
+| --- | --- |
+| READ | projects the value its commands receive now |
+| FIND | lists the names in effect; a pattern on it matches values |
+| COPY | carries a value out |
+| EDIT | sets the whole value through the family's `replace` for the Worker: a write is the Worker's own layer, never the workspace's or the operator's (the runtime worker keeps none, so a person's write is the workspace's, {§actor-boundary-client-operations}) |
+| KILL | retires the name from the Worker's commands: `remove` for an entry the Worker owns, which restores an inherited value, `disable` for an inherited one, which keeps its definition |
+
+A value has no lines: a line scope on EDIT or KILL is `value-whole` (400), and a pattern on EDIT is the dispatcher's refusal for any scheme without text scopes; a target that is not `env:///NAME` is `name-invalid` (400), or `target-required` (400) when absent; a name not in effect is `entry-not-found` (404) on READ and KILL alike.
 
 §functionality-scope **A family declares its supported scopes.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
@@ -5930,30 +5908,14 @@ the default page is 50 and the schema caps it at 100. Discovery never probes,
 authenticates, invokes, or selects a model, and catalog data never enters model
 packets or state snapshots.
 
-§worker-model-selection **Worker-owned model selection.** Every model worker
-owns one durable model, persisted as a nullable `model_routes` foreign key.
-Concurrent first selections of the same resolved tuple share one identity;
-an insertion conflict returns the existing route without changing its fields.
-A root model worker is seeded once — from an explicit selection, else
-the daemon default — and never re-seeded from a later default change. A
-deliberately modelless daemon leaves the worker unset and rejects model work
-until an explicit selection. Starting a loop snapshots the worker's resolved
-model onto the loop; inject, park, wake, retry, reconnect, and restart
-continue from the loop snapshot and never re-resolve through the alias
-cascade. A WORK/FORK child copies the spawning loop's effective spawn model
-(spawn override ?? model) onto the new worker by value at creation; it retains
-no live link and begins with no override, so a later parent change affects
-only that worker's future loops and descendants. The runtime worker and other
-Plurnk-owned bookkeeping workers run no model loops and own no model
-selection; the model, spawn-override, and effort controls refuse them with
-`409 model-worker-required` before any policy row is initialized or written. An explicit model, spawn-override, or effort change while
-the worker holds any queued, running, or parked loop is a precise
-`409 worker-loop-active` ({§worker-lifecycle-live}), independent of a process-local
-drain. The policy write checks liveness atomically, including selections carried
-by new prompts. Reasserting unchanged settings is not a change. Select after
-concluding or cancelling the unfinished tasks.
-First-time initialization of an unset worker model remains legal and never
-rewrites an existing loop's generation snapshot.
+§worker-model-selection **Worker-owned model selection.** Every model worker owns one durable model, persisted as a nullable `model_routes` foreign key:
+
+- Concurrent first selections of the same resolved tuple share one identity; an insertion conflict returns the existing route without changing its fields.
+- A root model worker is seeded once — from an explicit selection, else the daemon default — and never re-seeded from a later default change. A deliberately modelless daemon leaves the worker unset and rejects model work until an explicit selection. First-time initialization of an unset worker model remains legal and never rewrites an existing loop's generation snapshot.
+- Starting a loop snapshots the worker's resolved model onto the loop; inject, park, wake, retry, reconnect, and restart continue from the loop snapshot and never re-resolve through the alias cascade.
+- A WORK/FORK child copies the spawning loop's effective spawn model (spawn override ?? model) onto the new worker by value at creation; it retains no live link and begins with no override, so a later parent change affects only that worker's future loops and descendants.
+- The runtime worker and other Plurnk-owned bookkeeping workers run no model loops and own no model selection; the model, spawn-override, and effort controls refuse them with `409 model-worker-required` before any policy row is initialized or written.
+- An explicit model, spawn-override, or effort change while the worker holds any queued, running, or parked loop is a precise `409 worker-loop-active` ({§worker-lifecycle-live}), independent of a process-local drain; the policy write checks liveness atomically, including selections carried by new prompts. Reasserting unchanged settings is not a change. Select after concluding or cancelling the unfinished tasks.
 
 A client-created branch copies the source worker's durable model, spawn
 override, and effort by value alongside its history. It retains no
@@ -6518,7 +6480,7 @@ Stream progress remains owned by {§exec-stream}.
 | {§turn-accounting-notice} | The turn accounting notice: the completion beat carries the spend. |
 | {§notice-content-offset-pointer} | Content-offset position. |
 | {§tools-resource-discovery} | Executable capability discovery uses ordinary Plurnk resources. |
-| {§tools-resource-materialization} | The runtime registry, workspace capability policy, tool resources, and dispatch use one effective workspace… |
+| {§tools-resource-materialization} | Tool resources materialize from one workspace snapshot. |
 | {§tool-document-header-only} | A header-only tool document: |
 | {§tools-summary-invocation} | A summary featuring one exact enabled tool invocation includes its compact input signature after literal `\n`… |
 | {§members-functionality} | File membership is one workspace Functionality family. |
@@ -6585,23 +6547,12 @@ leaves the request-only record, while rejected exchanges remain in their
 | Request assembled             | `{ weight, attributions }` + the ordered sections as items; each selected program is stored at its emission boundary, with no empty placeholder ({§emission-history}) |
 | Response admitted             | `{ weight, attributions, assistant, assistantRaw }` + the sections as items |
 
-§packet-items **Sections are rows over content-addressed items; the bag never holds them.**
-Every rendered block — one log row's record, one non-log section's content — is stored once in
-`packet_items` under the SHA-256 of its text (`sha256`, a registered function), and a turn stores
-its composition in `turn_sections` and `turn_section_items`: the ordered sections and, per
-section, the ordered item hashes. A section's content is its items joined by one blank line, so a
-log row whose rendering did not change between turns hashes to the same item and a turn's durable
-cost is its new and changed items — the copied prefix of the previous packet is transient data and
-is never written. The write is one statement: an INSERT into the `turn_inference_evidence` view,
-whose INSTEAD OF trigger refuses a turn that is not an open model inference turn and lands the
-items, the composition, the bag, and the provider metadata together. Readers of a whole packet
-select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest,
-and every test that inspects a stored packet); statements that need one field read the bag
-directly with `json_extract`. A packet transformed by an extension, or any non-log section, is one
-item. Items no composition references are transient data: `retention_collect_packet_items`
-collects them under the retention policy ({§retention-policy}), which is how a deleted worker's or
-workspace's packets release their space while shared items survive. A fork copies the composition
-and shares the items ({§worker-fork-trigger}).
+§packet-items **Sections are rows over content-addressed items; the bag never holds them.** Every rendered block — one log row's record, one non-log section's content — is stored once in `packet_items` under the SHA-256 of its text (`sha256`, a registered function), and a turn stores its composition in `turn_sections` and `turn_section_items`: the ordered sections and, per section, the ordered item hashes.
+
+- A section's content is its items joined by one blank line, so a log row whose rendering did not change between turns hashes to the same item and a turn's durable cost is its new and changed items — the copied prefix of the previous packet is transient data and is never written. A packet transformed by an extension, or any non-log section, is one item.
+- The write is one statement: an INSERT into the `turn_inference_evidence` view, whose INSTEAD OF trigger refuses a turn that is not an open model inference turn and lands the items, the composition, the bag, and the provider metadata together.
+- Readers of a whole packet select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest, and every test that inspects a stored packet); statements that need one field read the bag directly with `json_extract`.
+- Items no composition references are transient data: `retention_collect_packet_items` collects them under the retention policy ({§retention-policy}), which is how a deleted worker's or workspace's packets release their space while shared items survive. A fork copies the composition and shares the items ({§worker-fork-trigger}).
 
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6869,35 +6820,12 @@ flowchart LR
     Schema --> Exec
 ```
 
-§tools-resource-materialization The runtime registry, workspace capability policy,
-tool resources, and dispatch use one effective workspace snapshot. A
-disabled, unavailable, detached, replaced, or removed runtime has no
-tool resource; an exact registry's empty set publishes no runtime and
-admits no invocation. Reconciliation deletes stale documents
-before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
-enabled executable; executor enablement is the sole user-configured filter
-shared by discovery and dispatch. A runtime declaration may carry
-`resourcesPath` — its generated-doc root relative to the workspace's generated
-subtree ({§worker-generated-subtree}). Absent, its docs live in the internal
-`_plurnk/plurnk` namespace; present (attached MCP servers: `/tools`),
-the runtime document materializes at `_plurnk` + that root in the
-shared scratch. Turn 0 surveys the runtimes (`FIND
-(worker:///_plurnk/tools/*.md)`, one row per
-server carrying its summary) and, for each server named in
-`PLURNK_MCP_EXPANDED`, adds one FIND over its runtime document matching the
-complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)`
-with a multiline regex over matching fences), so turn 0 names every tool with its aside and
-signature — one row per tool, paged like every survey. Capability attenuation
-restricts that matcher to the admitted exact tools. No document is delivered
-unasked.
-When the registry supplies {§executor-tool-catalog} definitions, the runtime
-document links to its sibling `<runtime>.json`. The catalog contains exactly
-the effective tools and is an ordinary `application/json` resource for READ,
-FIND, and JSONPath selection. It follows the same reconciliation as the runtime
-document and per-tool schemas; neither the catalog nor its definitions are
-automatically included in turn 0 or expanded-tool surveys.
-Attached tools are capabilities like every other runtime; the model never
-learns an origin.
+§tools-resource-materialization **Tool resources materialize from one workspace snapshot.** The runtime registry, workspace capability policy, tool resources, and dispatch use one effective workspace snapshot; attached tools are capabilities like every other runtime, and the model never learns an origin.
+
+- A disabled, unavailable, detached, replaced, or removed runtime has no tool resource; an exact registry's empty set publishes no runtime and admits no invocation. Reconciliation deletes stale documents before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an enabled executable; executor enablement is the sole user-configured filter shared by discovery and dispatch.
+- A runtime declaration may carry `resourcesPath`, its generated-doc root relative to the workspace's generated subtree ({§worker-generated-subtree}). Absent, its docs live in the internal `_plurnk/plurnk` namespace; present (attached MCP servers: `/tools`), the runtime document materializes at `_plurnk` + that root in the shared scratch.
+- Turn 0 surveys the runtimes (`FIND (worker:///_plurnk/tools/*.md)`, one row per server carrying its summary) and, for each server named in `PLURNK_MCP_EXPANDED`, adds one FIND over its runtime document matching the complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)` with a multiline regex over matching fences), so turn 0 names every tool with its aside and signature — one row per tool, paged like every survey. Capability attenuation restricts that matcher to the admitted exact tools. No document is delivered unasked.
+- When the registry supplies {§executor-tool-catalog} definitions, the runtime document links to its sibling `<runtime>.json`. The catalog contains exactly the effective tools and is an ordinary `application/json` resource for READ, FIND, and JSONPath selection. It follows the same reconciliation as the runtime document and per-tool schemas; neither the catalog nor its definitions are automatically included in turn 0 or expanded-tool surveys.
 
 §tool-document-header-only **A header-only tool document:** a registry-less runtime whose declaration carries no
 supplemental details (no `docs/<tag>.md`, no inline `details`) is a
@@ -6911,28 +6839,14 @@ already present. Required schema fields use {§executor-input-schema-preview};
 authored examples take precedence. Family alternatives and descriptive summaries
 remain one compact orientation line, not an expansion of every tool's signature.
 
-§members-functionality **File membership is one workspace Functionality family.**
-Core registers the `members` family with the coordinator ({§functionality-coordinator}):
-the model, the client, and the operator learn one surface — `list | discover | add |
-enable | disable | remove`, `workspace.members.<verb>` for the client,
-```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
-MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project
-root; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob
-is the definition's identity ({§functionality-addressing}): `add` takes `{"files": ["<glob>", …]}`
-and admits each glob, trimmed, as one definition, a glob named twice being one; `enable`, `disable`
-and `remove` take `{"file": "<glob>"}`, the glob as `list` shows it. A bare `!` is 400
-`definition-invalid`. Admission provenance (`service-configuration`, `client-action`,
-`model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce
-{§members-model-scope}; configuration-source provenance belongs to the shared inspection projection
-({§configuration-provenance}). `list` shows each
-definition with what it resolved to — `include` or `exclude`, the pattern, the members it
-admits or removes (count and a bounded sample), and for a model's inclusion the matches the
-repository's ignore rules refused — so the model sees what its glob did and adapts.
-`discover` is introspection, never a catalog: its one input, `query`, is a path or a glob. A path
-answers why it is or is not visible (tracked, included by which pattern, a creation record,
-excluded by which `!glob`, ignored, untracked, absent); a glob previews what `add` would include
-or exclude. A query that names neither, blank or a bare `!`, is 400 `query-invalid`. Names only,
-never content; nothing is added.
+§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project root; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
+
+| Verb | Input | Effect |
+| --- | --- | --- |
+| `add` | `{"files": ["<glob>", …]}` | admits each glob, trimmed, as one definition, a glob named twice being one; a bare `!` is 400 `definition-invalid` |
+| `enable`, `disable`, `remove` | `{"file": "<glob>"}`, the glob as `list` shows it | the definition's state |
+| `list` | — | each definition with what it resolved to — `include` or `exclude`, the pattern, the members it admits or removes (count and a bounded sample), and for a model's inclusion the matches the repository's ignore rules refused — so the model sees what its glob did and adapts |
+| `discover` | `query`, a path or a glob | introspection, never a catalog: a path answers why it is or is not visible (tracked, included by which pattern, a creation record, excluded by which `!glob`, ignored, untracked, absent); a glob previews what `add` would include or exclude; a query that names neither, blank or a bare `!`, is 400 `query-invalid`; names only, never content, and nothing is added |
 
 §members-configuration *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>`
 declares one service-origin rule (`!glob` excludes), named by its glob like every definition; the
@@ -7437,23 +7351,19 @@ lane's run directory and the lane's reclaim takes all of it; an unnamed run is C
 that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
 caller's own run directory.
 
-§tier-census **A real-model tier run is one directory with its census.** The live and demo drivers
-stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every worker the run claims lands inside
-`PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own
-host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests,
-tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter
-when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the
-workers it claimed, turns, requests and cost; a run never deletes or moves any of it. A specimen
-declares what it requires of the route and the host (`input:<image|pdf|audio|video>`, `reasoning`,
-`output-budget`, `env:<NAME>`, `url:<http(s) URL>`, `bin:<name>` on PATH, `checkout:<client|a2a-tck>`
-at `PLURNK_CLIENT_CHECKOUT` or `PLURNK_A2A_TCK_CHECKOUT`, else beside the repository); an unmet
-requirement is a skip, before anything boots or is spent, whose reason names the requirement and what
-was observed, and the census answers each unmet route-bound requirement with the declared aliases
-whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No
-test surface is an opt-in flag or a script of its own: the third-party MCP composition, the
-llama-server rails, the upstream A2A TCK and the client's real-model TUI tier are live specimens that
-run wherever their requirements hold. `tier:history` ledgers every census under the home: per
-specimen, its verdicts over runs and its last reason.
+§tier-census **A real-model tier run is one directory with its census.** The live and demo drivers stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every worker the run claims lands inside `PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests, tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the workers it claimed, turns, requests and cost; a run never deletes or moves any of it. `tier:history` ledgers every census under the home: per specimen, its verdicts over runs and its last reason.
+
+A specimen declares what it requires of the route and the host; an unmet requirement is a skip, before anything boots or is spent, whose reason names the requirement and what was observed, and the census answers each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No test surface is an opt-in flag or a script of its own: the third-party MCP composition, the llama-server rails, the upstream A2A TCK and the client's real-model TUI tier are live specimens that run wherever their requirements hold.
+
+| Requirement | Form |
+| --- | --- |
+| an input modality | `input:<image\|pdf\|audio\|video>` |
+| reasoning | `reasoning` |
+| an output budget | `output-budget` |
+| an environment variable | `env:<NAME>` |
+| a URL | `url:<http(s) URL>` |
+| a binary on PATH | `bin:<name>` |
+| a checkout | `checkout:<client\|a2a-tck>`, at `PLURNK_CLIENT_CHECKOUT` or `PLURNK_A2A_TCK_CHECKOUT`, else beside the repository |
 
 §fs-resource-state **The resource-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting resource state. `ResourceState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
