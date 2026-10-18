@@ -1,7 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { type ExecStatement, type FindStatement, type KillStatement, type SendStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
-import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect } from "@plurnk/plurnk-execs";
+import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
     InvalidOperationResultError,
     MetadataOptions,
@@ -20,11 +20,13 @@ import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
-import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime } from "./exec-lifetime.ts";
+import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime, type ExecLifetime } from "./exec-lifetime.ts";
 import { entryCoordinateOf, generatedPathname, isGeneratedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
+import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
+import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
@@ -255,292 +257,53 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
     // (e.g. sh:///1/1/2/sh, {§exec}). The model READs that entry on a subsequent turn.
+    //
+    // Admission runs in the order its refusals are owed — the executor, its tool, the fence's shape,
+    // the target's routing, the service's reserved metadata, the executor's preparation, a script
+    // target's existence — and each step returns either the refusal or what the next step needs.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
         const body = statement.body ?? "";
-        if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
+        const { executors } = core;
+        if (executors === undefined) throw new Error("exec dispatched without an executor registry");
         // {§exec-executor-slot}: the fence names the executor; the path is its program.
         const route = execRouteOf(statement);
         const runtime = route.runtime;
-        // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
-        // tool. Unknown tags are not reinterpreted as shell command words: that would make the
-        // executed command differ from the authored body.
-        const resolved = core.executors.entry(runtime, core.workspaceId);
-        if (resolved === undefined) {
-            return Results.failure(
-                "scheme:exec",
-                "executor-not-registered",
-                400,
-                `No executor or MCP service named \`${runtime}\` is registered for this worker.`,
-                {},
-                {
-                    requestedRuntime: runtime,
-                    executors: core.executors.availableRuntimes(core.workspaceId),
-                    retryable: false,
-                },
-            );
-        }
-        if (!resolved.available) {
-            if (resolved.configurationError !== undefined) return Results.configurationFailure(resolved.configurationError);
-            const why = resolved.detail === undefined ? "" : `: ${ErrorDetail.preview(resolved.detail)}`;
-            return Results.failure(
-                "scheme:exec",
-                "runtime-unavailable",
-                501,
-                `Executable tool '${runtime}' is unavailable${why}.`,
-                {},
-                {
-                    requestedRuntime: runtime,
-                    retryable: false,
-                },
-            );
-        }
+        const resolved = Exec.#admitRuntime(executors, core.workspaceId, runtime);
+        if ("status" in resolved) return resolved;
 
         this.#prepareExecution();
 
-        const registry = core.executors.toolRegistry(runtime, core.workspaceId);
-        const exactTarget = route.target === null ? null : route.target.raw;
-        const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
-        if (registry !== null && registeredTool === undefined) {
-            const availableTargets = registry.tools.map((tool) => tool.target);
-            return Results.failure(
-                "scheme:exec",
-                exactTarget === null ? "target-required" : "target-not-registered",
-                exactTarget === null ? 400 : 404,
-                exactTarget === null
-                    ? `Runtime '${runtime}' requires one registered tool target.`
-                    : `Runtime '${runtime}' has no registered target '${exactTarget}'.`,
-                {},
-                {
-                    runtime,
-                    availableTargetCount: availableTargets.length,
-                    ...(availableTargets.length === 0 ? {} : {
-                        recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.`,
-                    }),
-                    retryable: false,
-                },
-            );
-        }
-
-        const invocation = registeredTool?.invocation ?? resolved.invocation;
+        const invocation = Exec.#admitTool(executors, core.workspaceId, resolved, runtime, route.target === null ? null : route.target.raw);
+        if ("status" in invocation) return invocation;
         const hasBody = body.length > 0;
         const execTarget = route.target;
         const hasTarget = execTarget !== null;
-        const refuse = (
-            code: string,
-            detail: string,
-            recovery: string | undefined,
-            extensions: Readonly<Record<string, unknown>> = {},
-        ): ExecResult => Results.failure(
-            "scheme:exec",
-            code,
-            400,
-            detail,
-            {},
-            { runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false, ...extensions },
-        );
+        const shape = Exec.#checkInvocationShape(invocation, runtime, hasBody, hasTarget);
+        if (shape !== null) return shape;
 
-        if (invocation.body.required && !hasBody) {
-            return refuse(
-                "body-required",
-                `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
-                `Provide the ${invocation.body.role} in the ${runtime} body.`,
-            );
-        }
-        if (invocation.target === undefined && hasTarget) {
-            return refuse(
-                "target-not-supported",
-                `Executable tool '${runtime}' does not accept a target.`,
-                `Remove the target and provide the ${invocation.body.role} in the body.`,
-            );
-        }
-        if (invocation.target?.required === true && !hasTarget) {
-            return refuse(
-                "target-required",
-                `Executable tool '${runtime}' requires a ${invocation.target.role} target.`,
-                `Provide the ${invocation.target.role} in (target).`,
-            );
-        }
-        if (!hasBody && !hasTarget) {
-            return refuse(
-                "input-required",
-                `Executable tool '${runtime}' requires a body or target.`,
-                `Provide ${invocation.target === undefined ? "a body" : "a body or target"}.`,
-            );
-        }
-        if (invocation.exclusive === true && hasBody && hasTarget) {
-            return refuse(
-                "input-conflict",
-                `Executable tool '${runtime}' accepts its ${invocation.body.role} body and ${invocation.target?.role ?? "target"} target only as alternatives.`,
-                "Provide either the body or target, not both.",
-            );
-        }
-
-        const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
-        const projectRoot = workspaceRow?.project_root ?? null;
-        // The working directory is always concrete — the project root, or the shell's own
-        // cwd when the workspace has none — so every receipt can name it ({§exec-target-routing}).
-        const defaultCwd = projectRoot ?? process.cwd();
+        const routed = await this.#routeTarget(core, { runtime, invocation, execTarget, hasBody });
+        if ("status" in routed) return routed;
+        const { defaultCwd, resourceSource } = routed;
+        let { target } = routed;
         let cwd: string | null = defaultCwd;
         let inputDeclared = false;
-        let target: string | null = null;
-        let resourceSource: string | null = null;
-        const targetDecl = invocation.target;
-        if (execTarget !== null && targetDecl !== undefined) {
-            if (targetDecl.kind === "literal") {
-                target = execTarget.raw;
-            } else {
-                const localTarget = localPathFromTarget(execTarget);
-                if (localTarget !== null) {
-                    target = localTarget;
-                } else if (targetDecl.kind === "resource" || targetDecl.kind === "script") {
-                    resourceSource = resourceSourceOf(execTarget);
-                    if (resourceSource === null) {
-                        throw new Error(`'${runtime}' resource target could not be classified`);
-                    }
-                } else {
-                    return refuse(
-                        "target-kind-invalid",
-                        `Executable tool '${runtime}' accepts only a local or file:// ${targetDecl.role} target.`,
-                        `Use a local or file:// ${targetDecl.role} target.`,
-                        { target: execTarget.raw, targetKind: targetDecl.kind },
-                    );
-                }
-            }
-        }
 
-        // {§exec-target-near-miss} — a target in this executor's own scheme whose path can never be a
-        // stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's name for the run,
-        // not a program: with a body present, the body runs as if targetless. Never taught.
-        if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
-            && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? "")) {
-            resourceSource = null;
-        }
-
-        // {§exec-target-documentation} — the generated reference under worker:///_plurnk/ describes a
-        // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
-        // cannot see the host's temporary directory, and runs markdown where it can.
-        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "worker"
-            && isGeneratedPathname(PathSyntax.decodeParens(execTarget.pathname ?? ""))) {
-            return refuse(
-                "target-is-documentation",
-                `\`${execTarget.raw}\` is reference documentation the harness generated, not a program; ${runtime} cannot run it.`,
-                undefined,
-                { target: execTarget.raw },
-            );
-        }
-
-        // {§exec-scratch-directory} — a standalone source is realized under the scratch directory,
-        // where its executor must be able to read it; a directory the daemon cannot create or
-        // write refuses here, never mid-run.
-        if (resourceSource !== null && execTarget !== null) {
-            const scratch = this.#sourceScratch();
-            const unavailable = await scratch.unavailable();
-            if (unavailable !== null) {
-                return refuse(
-                    "scratch-unavailable",
-                    `The execution scratch directory \`${scratch.directory}\` named by ${ExecScratch.KNOB} cannot be created or written (${unavailable}), so the ${runtime} source \`${execTarget.raw}\` cannot be realized.`,
-                    `The operator points ${ExecScratch.KNOB} at a writable absolute directory the ${runtime} executor can also read; meanwhile, target a program file the executor can reach, or put the command beneath a ${runtime} heading with no target.`,
-                    { target: execTarget.raw, scratch: scratch.directory, configuration: ExecScratch.KNOB },
-                );
-            }
-        }
-
-        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none.
-        if (statement.lineMarker !== null) return refuse("scope-unsupported", "An execution takes no scope.", undefined);
-
-        // {§env-option} — the fence's own environment is the service's key: refused here by name,
-        // so the model learns why, never dropped at the spawn. The executor never sees it.
-        try {
-            EnvFunctionality.modifier(statement.metadata);
-        } catch (cause) {
-            if (!(cause instanceof OperationFailureError)) throw cause;
-            return cause.result;
-        }
-        // {§exec-lifetime} — the service's other reserved key, read before the executor's options so
-        // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
-        // that is not the option-array shape carries no lifetime for the service to read: it is the
-        // invoked executor's to accept or refuse ({§executor-metadata}), exactly as `env` is.
-        const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
-        const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
-        if ("invalid" in lifetime) {
-            return Results.failure("scheme:exec", "lifetime-invalid", 400, lifetime.invalid, {}, {
-                runtime, recovery: `State one lifetime: ${LIFETIME_SYNTAX}.`, retryable: false,
-            });
-        }
+        const lifetime = Exec.#readReservedMetadata(statement, runtime);
+        if ("status" in lifetime) return lifetime;
         // {§executor-metadata} Options belong to the invoked executor for every source kind.
-        const executor = resolved.executor;
-        if (executor.prepare !== undefined) {
-            const prepared = Results.assert(await executor.prepare({
-                runtime, body, target: resourceSource ?? target, cwd, metadata: statement.metadata,
-            }));
-            if (prepared.status >= 400) return prepared;
-            if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
-                throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
-            }
-            cwd = prepared.cwd;
-            inputDeclared = prepared.input === "open";
-        } else if ((statement.metadata?.length ?? 0) > 0) {
-            return Results.failure("scheme:exec", "metadata-unsupported", 400,
-                `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
-        }
+        const prepared = await Exec.#prepareInvocation(resolved.executor, statement, { runtime, body, target: resourceSource ?? target, cwd });
+        if ("status" in prepared) return prepared;
+        ({ cwd, inputDeclared } = prepared);
         // A `script` target must be an existing file; other kinds pass through as declared.
-        if (target !== null && targetDecl?.kind === "script") {
-            const inspected = isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target);
-            let kind: "file" | "directory" | "missing" = "missing";
-            try {
-                kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
-            } catch (cause) {
-                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-                    console.error(`Execution target classification failed for '${inspected}':`, cause);
-                    return Results.failure(
-                        "scheme:exec",
-                        "target-classification-failed",
-                        500,
-                        `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
-                        {},
-                        { target, stage: "target-classification" },
-                    );
-                }
-            }
-            // {§exec-target-near-miss} — a directory is never a program: with a body and no explicit
-            // cwd, it is where the body runs. Never taught.
-            if (kind === "directory" && hasBody && cwd === defaultCwd) {
-                cwd = inspected;
-                target = null;
-            } else if (kind === "directory") {
-                return refuse(
-                    "target-not-a-program",
-                    `${runtime} target '${target}' is a directory, not a program.`,
-                    undefined,
-                    { target },
-                );
-            }
-            if (kind === "missing") {
-                // The target is not a script here, but it may be a registered tool of another executor or an
-                // executor itself: that is what exists, said as found (#388, {§diagnostic-observation}).
-                const executors = core.executors;
-                const ownerRuntimes = executors === undefined
-                    ? []
-                    : executors.availableRuntimes(core.workspaceId)
-                        .filter((tag) => executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === target) === true);
-                const runtimeTarget = executors !== undefined && target !== null && target !== runtime
-                    && executors.availableRuntimes(core.workspaceId).includes(target);
-                const recovery = ownerRuntimes.length > 0
-                    ? `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`.`
-                    : runtimeTarget
-                        ? `\`${target}\` is its own executor.`
-                        : "The target must name an existing program resource.";
-                return refuse(
-                    "target-not-found",
-                    `The ${runtime} program does not resolve as a script or a registered tool for this executor.`,
-                    recovery,
-                    { target, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
-                );
-            }
+        if (target !== null && invocation.target?.kind === "script") {
+            const inspected = await Exec.#inspectScriptTarget(core, { runtime, target, cwd, defaultCwd, hasBody });
+            if ("status" in inspected) return inspected;
+            ({ target, cwd } = inspected);
         }
         if (!hasBody && target === null && resourceSource === null) {
-            return refuse(
+            return Exec.#refuse(
+                runtime,
                 "input-required",
                 `Executable tool '${runtime}' has no executable body or realized target.`,
                 `Provide a ${invocation.body.role} body or a non-directory target.`,
@@ -565,6 +328,327 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
         const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
+    }
+
+    // A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
+    static #refuse(
+        runtime: string,
+        code: string,
+        detail: string,
+        recovery: string | undefined,
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): ExecResult {
+        return Results.failure(
+            "scheme:exec",
+            code,
+            400,
+            detail,
+            {},
+            { runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false, ...extensions },
+        );
+    }
+
+    // The executor the fence names, or the refusal: unregistered, unavailable, or unconfigured.
+    static #admitRuntime(executors: ExecutorRegistry, workspaceId: number, runtime: string): RegistryEntry | ExecResult {
+        // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
+        // tool. Unknown tags are not reinterpreted as shell command words: that would make the
+        // executed command differ from the authored body.
+        const resolved = executors.entry(runtime, workspaceId);
+        if (resolved === undefined) {
+            return Results.failure(
+                "scheme:exec",
+                "executor-not-registered",
+                400,
+                `No executor or MCP service named \`${runtime}\` is registered for this worker.`,
+                {},
+                {
+                    requestedRuntime: runtime,
+                    executors: executors.availableRuntimes(workspaceId),
+                    retryable: false,
+                },
+            );
+        }
+        if (!resolved.available) {
+            if (resolved.configurationError !== undefined) return Results.configurationFailure(resolved.configurationError);
+            const why = resolved.detail === undefined ? "" : `: ${ErrorDetail.preview(resolved.detail)}`;
+            return Results.failure(
+                "scheme:exec",
+                "runtime-unavailable",
+                501,
+                `Executable tool '${runtime}' is unavailable${why}.`,
+                {},
+                {
+                    requestedRuntime: runtime,
+                    retryable: false,
+                },
+            );
+        }
+        return resolved;
+    }
+
+    // The invocation contract the fence runs under: a family runtime's registered tool, named exactly, or
+    // the executor's own declaration.
+    static #admitTool(executors: ExecutorRegistry, workspaceId: number, resolved: RegistryEntry, runtime: string, exactTarget: string | null): RuntimeInvocationDecl | ExecResult {
+        const registry = executors.toolRegistry(runtime, workspaceId);
+        const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
+        if (registry !== null && registeredTool === undefined) {
+            const availableTargets = registry.tools.map((tool) => tool.target);
+            return Results.failure(
+                "scheme:exec",
+                exactTarget === null ? "target-required" : "target-not-registered",
+                exactTarget === null ? 400 : 404,
+                exactTarget === null
+                    ? `Runtime '${runtime}' requires one registered tool target.`
+                    : `Runtime '${runtime}' has no registered target '${exactTarget}'.`,
+                {},
+                {
+                    runtime,
+                    availableTargetCount: availableTargets.length,
+                    ...(availableTargets.length === 0 ? {} : {
+                        recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.`,
+                    }),
+                    retryable: false,
+                },
+            );
+        }
+        return registeredTool?.invocation ?? resolved.invocation;
+    }
+
+    // The fence's body and target against the invocation's declaration, refused by name.
+    static #checkInvocationShape(invocation: RuntimeInvocationDecl, runtime: string, hasBody: boolean, hasTarget: boolean): ExecResult | null {
+        if (invocation.body.required && !hasBody) {
+            return Exec.#refuse(
+                runtime,
+                "body-required",
+                `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
+                `Provide the ${invocation.body.role} in the ${runtime} body.`,
+            );
+        }
+        if (invocation.target === undefined && hasTarget) {
+            return Exec.#refuse(
+                runtime,
+                "target-not-supported",
+                `Executable tool '${runtime}' does not accept a target.`,
+                `Remove the target and provide the ${invocation.body.role} in the body.`,
+            );
+        }
+        if (invocation.target?.required === true && !hasTarget) {
+            return Exec.#refuse(
+                runtime,
+                "target-required",
+                `Executable tool '${runtime}' requires a ${invocation.target.role} target.`,
+                `Provide the ${invocation.target.role} in (target).`,
+            );
+        }
+        if (!hasBody && !hasTarget) {
+            return Exec.#refuse(
+                runtime,
+                "input-required",
+                `Executable tool '${runtime}' requires a body or target.`,
+                `Provide ${invocation.target === undefined ? "a body" : "a body or target"}.`,
+            );
+        }
+        if (invocation.exclusive === true && hasBody && hasTarget) {
+            return Exec.#refuse(
+                runtime,
+                "input-conflict",
+                `Executable tool '${runtime}' accepts its ${invocation.body.role} body and ${invocation.target?.role ?? "target"} target only as alternatives.`,
+                "Provide either the body or target, not both.",
+            );
+        }
+        return null;
+    }
+
+    // {§exec-target-routing} The working directory the run can always name, and the target as the executor
+    // will receive it: a literal, a local path, or a non-file resource realized at apply time.
+    async #routeTarget(core: PlurnkSchemeContext, args: {
+        runtime: string; invocation: RuntimeInvocationDecl; execTarget: ExecStatement["target"]; hasBody: boolean;
+    }): Promise<{ defaultCwd: string; target: string | null; resourceSource: string | null } | ExecResult> {
+        const { runtime, invocation, execTarget, hasBody } = args;
+        const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
+        const projectRoot = workspaceRow?.project_root ?? null;
+        // The working directory is always concrete — the project root, or the shell's own
+        // cwd when the workspace has none — so every receipt can name it ({§exec-target-routing}).
+        const defaultCwd = projectRoot ?? process.cwd();
+        let target: string | null = null;
+        let resourceSource: string | null = null;
+        const targetDecl = invocation.target;
+        if (execTarget !== null && targetDecl !== undefined) {
+            if (targetDecl.kind === "literal") {
+                target = execTarget.raw;
+            } else {
+                const localTarget = localPathFromTarget(execTarget);
+                if (localTarget !== null) {
+                    target = localTarget;
+                } else if (targetDecl.kind === "resource" || targetDecl.kind === "script") {
+                    resourceSource = resourceSourceOf(execTarget);
+                    if (resourceSource === null) {
+                        throw new Error(`'${runtime}' resource target could not be classified`);
+                    }
+                } else {
+                    return Exec.#refuse(
+                        runtime,
+                        "target-kind-invalid",
+                        `Executable tool '${runtime}' accepts only a local or file:// ${targetDecl.role} target.`,
+                        `Use a local or file:// ${targetDecl.role} target.`,
+                        { target: execTarget.raw, targetKind: targetDecl.kind },
+                    );
+                }
+            }
+        }
+
+        // {§exec-target-near-miss} — a target in this executor's own scheme whose path can never be a
+        // stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's name for the run,
+        // not a program: with a body present, the body runs as if targetless. Never taught.
+        if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
+            && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? "")) {
+            resourceSource = null;
+        }
+
+        // {§exec-target-documentation} — the generated reference under worker:///_plurnk/ describes a
+        // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
+        // cannot see the host's temporary directory, and runs markdown where it can.
+        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "worker"
+            && isGeneratedPathname(PathSyntax.decodeParens(execTarget.pathname ?? ""))) {
+            return Exec.#refuse(
+                runtime,
+                "target-is-documentation",
+                `\`${execTarget.raw}\` is reference documentation the harness generated, not a program; ${runtime} cannot run it.`,
+                undefined,
+                { target: execTarget.raw },
+            );
+        }
+
+        // {§exec-scratch-directory} — a standalone source is realized under the scratch directory,
+        // where its executor must be able to read it; a directory the daemon cannot create or
+        // write refuses here, never mid-run.
+        if (resourceSource !== null && execTarget !== null) {
+            const scratch = this.#sourceScratch();
+            const unavailable = await scratch.unavailable();
+            if (unavailable !== null) {
+                return Exec.#refuse(
+                    runtime,
+                    "scratch-unavailable",
+                    `The execution scratch directory \`${scratch.directory}\` named by ${ExecScratch.KNOB} cannot be created or written (${unavailable}), so the ${runtime} source \`${execTarget.raw}\` cannot be realized.`,
+                    `The operator points ${ExecScratch.KNOB} at a writable absolute directory the ${runtime} executor can also read; meanwhile, target a program file the executor can reach, or put the command beneath a ${runtime} heading with no target.`,
+                    { target: execTarget.raw, scratch: scratch.directory, configuration: ExecScratch.KNOB },
+                );
+            }
+        }
+        return { defaultCwd, target, resourceSource };
+    }
+
+    // {§exec-lifetime} {§env-option} The service's reserved keys, read before the executor sees its options.
+    static #readReservedMetadata(statement: ExecStatement, runtime: string): ExecLifetime | ExecResult {
+        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none.
+        if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);
+
+        // {§env-option} — the fence's own environment is the service's key: refused here by name,
+        // so the model learns why, never dropped at the spawn. The executor never sees it.
+        try {
+            EnvFunctionality.modifier(statement.metadata);
+        } catch (cause) {
+            if (!(cause instanceof OperationFailureError)) throw cause;
+            return cause.result;
+        }
+        // {§exec-lifetime} — the service's other reserved key, read before the executor's options so
+        // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
+        // that is not the option-array shape carries no lifetime for the service to read: it is the
+        // invoked executor's to accept or refuse ({§executor-metadata}), exactly as `env` is.
+        const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
+        const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
+        if ("invalid" in lifetime) {
+            return Results.failure("scheme:exec", "lifetime-invalid", 400, lifetime.invalid, {}, {
+                runtime, recovery: `State one lifetime: ${LIFETIME_SYNTAX}.`, retryable: false,
+            });
+        }
+        return lifetime;
+    }
+
+    // {§executor-metadata} The executor's preparation of its own options: the working directory it chose
+    // and whether the invocation registers an input receiver; metadata without a preparer is refused.
+    static async #prepareInvocation(executor: Executor, statement: ExecStatement, args: {
+        runtime: string; body: string; target: string | null; cwd: string | null;
+    }): Promise<{ cwd: string | null; inputDeclared: boolean } | ExecResult> {
+        const { runtime, body, target, cwd } = args;
+        if (executor.prepare !== undefined) {
+            const prepared = Results.assert(await executor.prepare({ runtime, body, target, cwd, metadata: statement.metadata }));
+            if (prepared.status >= 400) return prepared;
+            if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
+                throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
+            }
+            return { cwd: prepared.cwd, inputDeclared: prepared.input === "open" };
+        }
+        if ((statement.metadata?.length ?? 0) > 0) {
+            return Results.failure("scheme:exec", "metadata-unsupported", 400,
+                `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
+        }
+        return { cwd, inputDeclared: false };
+    }
+
+    // A script target as it exists: a file runs, a directory with a body is where the body runs
+    // ({§exec-target-near-miss}), and a missing one is refused as what it is ({§diagnostic-observation}).
+    static async #inspectScriptTarget(core: PlurnkSchemeContext, args: {
+        runtime: string; target: string; cwd: string | null; defaultCwd: string; hasBody: boolean;
+    }): Promise<{ target: string | null; cwd: string | null } | ExecResult> {
+        const { runtime, defaultCwd, hasBody } = args;
+        let { cwd } = args;
+        let target: string | null = args.target;
+        const inspected = isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target);
+        let kind: "file" | "directory" | "missing" = "missing";
+        try {
+            kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
+        } catch (cause) {
+            if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+                console.error(`Execution target classification failed for '${inspected}':`, cause);
+                return Results.failure(
+                    "scheme:exec",
+                    "target-classification-failed",
+                    500,
+                    `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                    {},
+                    { target, stage: "target-classification" },
+                );
+            }
+        }
+        // {§exec-target-near-miss} — a directory is never a program: with a body and no explicit
+        // cwd, it is where the body runs. Never taught.
+        if (kind === "directory" && hasBody && cwd === defaultCwd) {
+            cwd = inspected;
+            target = null;
+        } else if (kind === "directory") {
+            return Exec.#refuse(
+                runtime,
+                "target-not-a-program",
+                `${runtime} target '${target}' is a directory, not a program.`,
+                undefined,
+                { target },
+            );
+        }
+        if (kind === "missing") {
+            // The target is not a script here, but it may be a registered tool of another executor or an
+            // executor itself: that is what exists, said as found (#388, {§diagnostic-observation}).
+            const executors = core.executors;
+            const ownerRuntimes = executors === undefined
+                ? []
+                : executors.availableRuntimes(core.workspaceId)
+                    .filter((tag) => executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === target) === true);
+            const runtimeTarget = executors !== undefined && target !== null && target !== runtime
+                && executors.availableRuntimes(core.workspaceId).includes(target);
+            const recovery = ownerRuntimes.length > 0
+                ? `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`.`
+                : runtimeTarget
+                    ? `\`${target}\` is its own executor.`
+                    : "The target must name an existing program resource.";
+            return Exec.#refuse(
+                runtime,
+                "target-not-found",
+                `The ${runtime} program does not resolve as a script or a registered tool for this executor.`,
+                recovery,
+                { target, ...(ownerRuntimes.length === 0 ? {} : { toolRuntimes: ownerRuntimes }) },
+            );
+        }
+        return { target, cwd };
     }
 
     async #inputRecipient(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string) {
