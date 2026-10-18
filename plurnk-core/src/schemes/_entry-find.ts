@@ -27,7 +27,7 @@ import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import FileAddress from "../core/FileAddress.ts";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
-import { resolveSearchCandidates } from "./_search-candidate.ts";
+import { resolveSearchCandidates, type SearchCandidateSet } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope, type PathFolderSummary } from "./_path-scope.ts";
 
 export interface Match { pathname: string; matches: MatchEvidence[]; }
@@ -234,6 +234,54 @@ export const projectFindResult = (
     };
 };
 
+// What a FIND selection resolves to, before the public projection: the matches with their channel, scope
+// and folders, an admission proposal, or the refusal.
+type MatchOutcome = {
+    status: number;
+    matches: Match[];
+    channel?: string;
+    scope?: PathScope;
+    folders?: PathFolderSummary[];
+    // {§membership-auto-add} — listed candidates that are not members: no catalog row, no admission.
+    ambient?: ReadonlySet<string>;
+    // {§membership-auto-add} — the text pattern matched inside candidates: their admission is proposed.
+    proposal?: AdmissionProposal;
+    code?: string;
+    error?: string;
+    problem?: ProblemDetails;
+    extensions?: Readonly<Record<string, unknown>>;
+};
+
+// The scope a FIND target names, resolved once for every step after it.
+type FindScope = {
+    scheme: string;
+    projectRoot: string | null;
+    authority: string;
+    multipleAuthorities: boolean;
+    authorityScope: PathScope;
+    scopePathname: string | null;
+    scope: PathScope | null;
+};
+
+// {§find-scoped-isolation} A candidate row retains the selected workspace and literal authority.
+type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
+
+// {§relation-indexed-dialects} An indexed dialect over candidates the index does not yet cover.
+const incompleteIndex = (
+    search: Extract<SearchCandidateSet, { state: "incomplete" }>,
+    what: string,
+): MatchOutcome => ({
+    status: 503,
+    matches: [],
+    error: `The persistent search index covers ${search.indexed} of ${search.total} ${what}.`,
+    extensions: {
+        search,
+        stage: "search-index",
+        recovery: "Wait for search indexing to complete before repeating the search.",
+        retryable: true,
+    },
+});
+
 export default class EntryFind {
     static #targetPath(scheme: string, authority: string, pathname: string, fragment: string | null, projectRoot: string | null): string {
         const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
@@ -253,26 +301,16 @@ export default class EntryFind {
     // framework) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
     // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
     // locations remain grouped by resource internally until the target-shaped public projection.
+    //
+    // The steps run in the order their refusals are owed — the channel, the scope and its exact
+    // miss, the candidates, the universe beyond membership, the scope filter, the matcher — and each
+    // returns either the refusal or what the next step needs.
     static async #matchPathnames(
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         address: FindAddress,
-    ): Promise<{
-        status: number;
-        matches: Match[];
-        channel?: string;
-        scope?: PathScope;
-        folders?: PathFolderSummary[];
-        // {§membership-auto-add} — listed candidates that are not members: no catalog row, no admission.
-        ambient?: ReadonlySet<string>;
-        // {§membership-auto-add} — the text pattern matched inside candidates: their admission is proposed.
-        proposal?: AdmissionProposal;
-        code?: string;
-        error?: string;
-        problem?: ProblemDetails;
-        extensions?: Readonly<Record<string, unknown>>;
-    }> {
+    ): Promise<MatchOutcome> {
         if (statement.target === null) {
             return {
                 status: 400,
@@ -285,12 +323,53 @@ export default class EntryFind {
             };
         }
         const fragment = statement.target.fragment ?? null;
-        const channel = fragment;
+        const unaddressed = EntryFind.#checkChannel(fragment, manifest);
+        if (unaddressed !== null) return unaddressed;
+        const found = await EntryFind.#resolveScope(statement, ctx, manifest, address, fragment);
+        if ("status" in found) return found;
+        const { scheme, authority, multipleAuthorities, scopePathname, scope } = found;
+        const superset = await EntryFind.#selectCandidates(statement, ctx, address, fragment, found);
+        if ("status" in superset) return superset;
+        const coordinateByKey = new Map(superset.map((candidate) => [
+            multipleAuthorities ? EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) : candidate.pathname,
+            { authority: candidate.authority, pathname: candidate.pathname },
+        ]));
+        const ambientKeys = await EntryFind.#ambientKeys(statement, address, found, superset);
+        const folders = EntryFind.#folderSummaries(statement, address, found, coordinateByKey, ambientKeys);
+        const inScope = EntryFind.#scopeCandidates(superset, found, address, fragment, ambientKeys);
+        if ("status" in inScope) return inScope;
+        const candidates = multipleAuthorities
+            ? inScope.map((candidate) => ({ ...candidate, pathname: EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) }))
+            : inScope;
+        const channels = new Map(candidates.map((candidate) => [candidate.pathname, candidate.channel]));
+        const channelOf = (key: string): string => {
+            const selected = channels.get(key);
+            if (selected === undefined) throw new Error(`FIND candidate lost its selected channel: ${key}`);
+            return selected;
+        };
+        const effectiveBytes = address.bytes === undefined ? undefined : (key: string): ByteSource => {
+            const coordinate = coordinateByKey.get(key);
+            if (coordinate === undefined) throw new Error(`FIND byte source lost coordinate ${key}`);
+            return address.bytes!(coordinate.pathname, coordinate.authority);
+        };
+
+        const matches = await EntryFind.#selectMatches(statement, ctx, address, { candidates, ambientKeys, channelOf, effectiveBytes });
+        if ("status" in matches) return matches;
+
+        const projectedScope = multipleAuthorities && scopePathname !== null
+            ? pathScope(EntryManifest.toPath(scheme, authority, scopePathname), manifest.folderScopes === true)
+            : scope;
+        return { status: 200, matches, channel: fragment ?? candidates[0]?.channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders,
+            ...(ambientKeys.length === 0 ? {} : { ambient: new Set(ambientKeys) }) };
+    }
+
+    // The channel the FIND addresses, refused when the scheme has no default or does not declare it.
+    static #checkChannel(fragment: string | null, manifest: SchemeManifest): MatchOutcome | null {
         const availableChannels = [...new Set([
             manifest.defaultChannel,
             ...Object.keys(manifest.channels),
         ])].filter((candidate) => candidate.length > 0);
-        if (manifest.defaultChannel.length === 0 && Object.keys(manifest.channels).length > 0 && channel === null) {
+        if (manifest.defaultChannel.length === 0 && Object.keys(manifest.channels).length > 0 && fragment === null) {
             return {
                 status: 400,
                 matches: [],
@@ -328,6 +407,18 @@ export default class EntryFind {
                 },
             };
         }
+        return null;
+    }
+
+    // The scheme, authority and path scope the target names; an exact path that names nothing is the
+    // scheme's miss ({§fs-errno}) unless the universe beyond membership holds it ({§membership-auto-add}).
+    static async #resolveScope(
+        statement: FindStatement,
+        ctx: PlurnkSchemeContext,
+        manifest: SchemeManifest,
+        address: FindAddress,
+        fragment: string | null,
+    ): Promise<FindScope | MatchOutcome> {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
@@ -363,19 +454,31 @@ export default class EntryFind {
                 };
             }
         }
+        return { scheme, projectRoot, authority, multipleAuthorities, authorityScope, scopePathname, scope };
+    }
+
+    // {§find-scope-prefix-filter} {§find-scoped-isolation} The candidate rows: SQL's safe superset on the
+    // literal prefix, the authority glob applied, the asker's visibility applied, and derivation
+    // settled before an indexed dialect reads it.
+    static async #selectCandidates(
+        statement: FindStatement,
+        ctx: PlurnkSchemeContext,
+        address: FindAddress,
+        fragment: string | null,
+        found: FindScope,
+    ): Promise<Candidate[] | MatchOutcome> {
+        const { scheme, authority, multipleAuthorities, authorityScope, scope } = found;
         // SQL receives only the literal prefix and returns a safe superset. The
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
         // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
         const { db, workspaceId } = ctx;
-        // {§find-scoped-isolation} Candidates retain the selected workspace and literal authority.
-        type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
         const fulltext = statement.matcher?.dialect === "fts";
         let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
             scheme,
             authority: multipleAuthorities ? null : authority,
-            channel,
+            channel: fragment,
             scope_prefix: address.pathBase !== undefined && scope?.candidatePrefix?.startsWith("../")
                 ? null : scope?.candidatePrefix ?? null,
         });
@@ -389,10 +492,12 @@ export default class EntryFind {
         if (ctx.settleDerivations !== undefined && candidates.some((candidate) => candidate.deep_hash === null)) {
             return { status: 503, matches: [], error: "Resource metadata is still being derived.", extensions: { stage: "search-index" } };
         }
-        const coordinateByKey = new Map(candidates.map((candidate) => [
-            multipleAuthorities ? EntryManifest.toPath(scheme, candidate.authority, candidate.pathname) : candidate.pathname,
-            { authority: candidate.authority, pathname: candidate.pathname },
-        ]));
+        return candidates;
+    }
+
+    // {§membership-auto-add} The universe beyond membership that joins the listing and the text match.
+    static async #ambientKeys(statement: FindStatement, address: FindAddress, found: FindScope, candidates: readonly Candidate[]): Promise<string[]> {
+        const { scheme, multipleAuthorities, scope } = found;
         // {§membership-auto-add} — the universe beyond membership joins the listing and the text match;
         // the indexed dialects (`~`, `&`) see members only, since nothing unadmitted is indexed.
         let ambientKeys: string[] = [];
@@ -407,7 +512,19 @@ export default class EntryFind {
                 ambientKeys = [];   // a malformed glob is reported below, by the members' own filter
             }
         }
-        const folders = statement.matcher === null && scope !== null
+        return ambientKeys;
+    }
+
+    // A listing's folder rows, grouped by authority when the target spans several.
+    static #folderSummaries(
+        statement: FindStatement,
+        address: FindAddress,
+        found: FindScope,
+        coordinateByKey: ReadonlyMap<string, { authority: string; pathname: string }>,
+        ambientKeys: readonly string[],
+    ): PathFolderSummary[] {
+        const { scheme, authority, multipleAuthorities, scope } = found;
+        return statement.matcher === null && scope !== null
             ? [...Map.groupBy([...coordinateByKey.entries(), ...ambientKeys.map((key) => [key, { authority, pathname: key }] as const)], ([, coordinate]) => coordinate.authority)]
                 .flatMap(([groupAuthority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname), address.pathBase)
                     .map((folder) => ({
@@ -415,10 +532,22 @@ export default class EntryFind {
                         pathnames: folder.pathnames.map((pathname) => multipleAuthorities ? EntryManifest.toPath(scheme, groupAuthority, pathname) : pathname),
                     })))
             : [];
+    }
 
+    // The shell-glob truth over the candidates ({§find-scope-prefix-filter}): a malformed glob is refused by
+    // name, and an exact path left with nothing is the scheme's miss.
+    static #scopeCandidates(
+        candidates: Candidate[],
+        found: FindScope,
+        address: FindAddress,
+        fragment: string | null,
+        ambientKeys: readonly string[],
+    ): Candidate[] | MatchOutcome {
+        const { scheme, projectRoot, authority, multipleAuthorities, scopePathname, scope } = found;
+        let inScope = candidates;
         if (scope !== null) {
             try {
-                candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname, address.pathBase));
+                inScope = candidates.filter((c) => pathScopeMatches(scope, c.pathname, address.pathBase));
             } catch {
                 return {
                     status: 400,
@@ -432,7 +561,7 @@ export default class EntryFind {
                 };
             }
         }
-        if (!multipleAuthorities && scope?.kind === "exact" && candidates.length === 0 && ambientKeys.length === 0) {
+        if (!multipleAuthorities && scope?.kind === "exact" && inScope.length === 0 && ambientKeys.length === 0) {
             const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
             return {
                 status: 404,
@@ -442,43 +571,31 @@ export default class EntryFind {
                 extensions: missExtensions(scheme, target),
             };
         }
+        return inScope;
+    }
 
-        if (multipleAuthorities) {
-            candidates = candidates.map((candidate) => ({
-                ...candidate, pathname: EntryManifest.toPath(scheme, candidate.authority, candidate.pathname),
-            }));
-        }
-        const channels = new Map(candidates.map((candidate) => [candidate.pathname, candidate.channel]));
-        const channelOf = (key: string): string => {
-            const selected = channels.get(key);
-            if (selected === undefined) throw new Error(`FIND candidate lost its selected channel: ${key}`);
-            return selected;
-        };
-        const effectiveBytes = address.bytes === undefined ? undefined : (key: string): ByteSource => {
-            const coordinate = coordinateByKey.get(key);
-            if (coordinate === undefined) throw new Error(`FIND byte source lost coordinate ${key}`);
-            return address.bytes!(coordinate.pathname, coordinate.authority);
-        };
-
-        // Every dialect resolves to one selection per resource. Content
-        // dialects already carry honest match evidence; relation dialects map
-        // their indexed source spans into readable TextRegions below.
+    // Every dialect resolves to one selection per resource: rank for ~full-text, the relation index for
+    // &graph, every candidate for a bare listing, and the content matcher otherwise. Content dialects
+    // already carry honest match evidence; relation dialects map their indexed source spans into readable
+    // TextRegions.
+    static async #selectMatches(
+        statement: FindStatement,
+        ctx: PlurnkSchemeContext,
+        address: FindAddress,
+        selection: {
+            candidates: Candidate[];
+            ambientKeys: string[];
+            channelOf: (key: string) => string;
+            effectiveBytes: ((key: string) => ByteSource) | undefined;
+        },
+    ): Promise<Match[] | MatchOutcome> {
+        const { candidates, ambientKeys, channelOf } = selection;
         let matches: Match[];
         if (statement.matcher !== null && statement.matcher.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
-            if (candidateSet.state === "incomplete") return {
-                status: 503,
-                matches: [],
-                error: `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected entries.`,
-                extensions: {
-                    search: candidateSet,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: true,
-                },
-            };
+            if (candidateSet.state === "incomplete") return incompleteIndex(candidateSet, "selected entries");
             const ranked = await EntryFts.rankCandidates(
                 ctx.db, candidateSet.candidates, statement.matcher.raw.slice(1), ctx.signal,
             );
@@ -505,34 +622,14 @@ export default class EntryFind {
             const scopedCandidates = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
-            if (scopedCandidates.state === "incomplete") return {
-                status: 503,
-                matches: [],
-                error: `The persistent search index covers ${scopedCandidates.indexed} of ${scopedCandidates.total} selected entries.`,
-                extensions: {
-                    search: scopedCandidates,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: true,
-                },
-            };
+            if (scopedCandidates.state === "incomplete") return incompleteIndex(scopedCandidates, "selected entries");
             const universeRows = await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({
                 workspace_id: ctx.workspaceId,
             });
             const universe = resolveSearchCandidates(
                 universeRows.map(({ key, deep_hash }) => ({ key, deepHash: deep_hash })),
             );
-            if (universe.state === "incomplete") return {
-                status: 503,
-                matches: [],
-                error: `The persistent search index covers ${universe.indexed} of ${universe.total} entries in the relationship universe.`,
-                extensions: {
-                    search: universe,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: true,
-                },
-            };
+            if (universe.state === "incomplete") return incompleteIndex(universe, "entries in the relationship universe");
             const graph = await EntryGraph.matchCandidates(
                 ctx.db,
                 universe.candidates,
@@ -555,71 +652,85 @@ export default class EntryFind {
                 pathname: key, matches: evidence.map((item) => ({ channel: channelOf(key), ...item })),
             }));
         } else {
-            const { mimetypes } = ctx;
-            if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
-            // {§find-source-agnostic} — the shared content-matcher primitive (Log.find runs the same
-            // one over log rows). Candidates key by pathname; each hit becomes a Match.
-            const textCandidates: Array<{ key: string; content: string; mimetype: string }> = [];
-            const byteCandidates: string[] = [];
-            // {§find-bytes}/{§binary-parity} — a binary channel is searched as bytes, never as its stored
-            // text form: from the scheme's byte supplier (a File member's disk) or, absent one, from the
-            // bytes a DB entry keeps base64 in its content. It is never handed to the text matcher, so its
-            // bytes cannot poison a text search; a binary channel with neither source has nothing to search.
-            const contentBytes = new Map<string, ByteSource>();
-            for (const c of candidates) {
-                if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
-                if (await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) {
-                    if (effectiveBytes !== undefined) byteCandidates.push(c.pathname);
-                    else if (c.content !== "") {
-                        byteCandidates.push(c.pathname);
-                        contentBytes.set(c.pathname, EntryCrud.contentByteSource(c.content));
-                    }
-                } else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
-            }
-            // {§membership-auto-add} — a candidate's text is matched from disk; a match admits it, and the
-            // selection runs again over members, so an unadmitted candidate never shows its content.
-            const ambientSet = new Set(ambientKeys);
-            for (const key of ambientKeys) {
-                const text = await address.ambient!.text(key);
-                if (text?.content != null) textCandidates.push({ key, content: text.content, mimetype: text.mimetype });
-            }
-            const byteSupplier = effectiveBytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
-            const r = textCandidates.length === 0
-                ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
-                : await Matcher.matchCandidates(statement.matcher, textCandidates, mimetypes);
-            if (r.status !== 200) return {
-                status: r.status,
-                matches: [],
-                problem: r.problem,
-            };
-            const ambientMatched = r.matches.filter((match) => ambientSet.has(match.key)).map((match) => match.key);
-            if (ambientMatched.length > 0) {
-                const proposal = await address.ambient!.propose(ambientMatched);
-                if (proposal !== null) return { status: 202, matches: [], proposal };
-            }
-            r.matches = r.matches.filter((match) => !ambientSet.has(match.key));
-            const bytesMatched = byteCandidates.length === 0
-                ? { status: 200, matches: [] as Match[] }
-                : await EntryFind.#matchBytes(statement.matcher, byteCandidates, byteSupplier, mimetypes, channelOf);
-            if (bytesMatched.status !== 200) return {
-                status: bytesMatched.status,
-                matches: [],
-                problem: bytesMatched.problem,
-            };
-            matches = [
-                ...r.matches.map((match) => ({
-                    pathname: match.key,
-                    matches: match.matches.map((evidence) => ({ channel: channelOf(match.key), ...evidence })),
-                })),
-                ...bytesMatched.matches,
-            ];
+            const content = await EntryFind.#matchContent(statement.matcher, ctx, address, selection);
+            if ("status" in content) return content;
+            matches = content;
         }
+        return matches;
+    }
 
-        const projectedScope = multipleAuthorities && scopePathname !== null
-            ? pathScope(EntryManifest.toPath(scheme, authority, scopePathname), manifest.folderScopes === true)
-            : scope;
-        return { status: 200, matches, channel: fragment ?? candidates[0]?.channel, ...(projectedScope === null ? {} : { scope: projectedScope }), folders,
-            ...(ambientKeys.length === 0 ? {} : { ambient: new Set(ambientKeys) }) };
+    // {§find-source-agnostic} The content matcher over the candidates' text and bytes, and over the universe
+    // beyond membership: a hit there proposes admission instead of showing content ({§membership-auto-add}).
+    static async #matchContent(
+        matcher: NonNullable<FindStatement["matcher"]>,
+        ctx: PlurnkSchemeContext,
+        address: FindAddress,
+        selection: {
+            candidates: Candidate[];
+            ambientKeys: string[];
+            channelOf: (key: string) => string;
+            effectiveBytes: ((key: string) => ByteSource) | undefined;
+        },
+    ): Promise<Match[] | MatchOutcome> {
+        const { candidates, ambientKeys, channelOf, effectiveBytes } = selection;
+        const { mimetypes } = ctx;
+        if (mimetypes === undefined) throw new Error("EntryFind.#matchContent: body matcher requires the mimetypes capability in ctx");
+        // {§find-source-agnostic} — the shared content-matcher primitive (Log.find runs the same
+        // one over log rows). Candidates key by pathname; each hit becomes a Match.
+        const textCandidates: Array<{ key: string; content: string; mimetype: string }> = [];
+        const byteCandidates: string[] = [];
+        // {§find-bytes}/{§binary-parity} — a binary channel is searched as bytes, never as its stored
+        // text form: from the scheme's byte supplier (a File member's disk) or, absent one, from the
+        // bytes a DB entry keeps base64 in its content. It is never handed to the text matcher, so its
+        // bytes cannot poison a text search; a binary channel with neither source has nothing to search.
+        const contentBytes = new Map<string, ByteSource>();
+        for (const c of candidates) {
+            if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchContent: content candidate is incomplete");
+            if (await MimetypeBinary.isBinaryMimetype(c.mimetype, mimetypes)) {
+                if (effectiveBytes !== undefined) byteCandidates.push(c.pathname);
+                else if (c.content !== "") {
+                    byteCandidates.push(c.pathname);
+                    contentBytes.set(c.pathname, EntryCrud.contentByteSource(c.content));
+                }
+            } else textCandidates.push({ key: c.pathname, content: c.content, mimetype: c.mimetype });
+        }
+        // {§membership-auto-add} — a candidate's text is matched from disk; a match admits it, and the
+        // selection runs again over members, so an unadmitted candidate never shows its content.
+        const ambientSet = new Set(ambientKeys);
+        for (const key of ambientKeys) {
+            const text = await address.ambient!.text(key);
+            if (text?.content != null) textCandidates.push({ key, content: text.content, mimetype: text.mimetype });
+        }
+        const byteSupplier = effectiveBytes ?? ((pathname: string): ByteSource => contentBytes.get(pathname)!);
+        const r = textCandidates.length === 0
+            ? { status: 200, matches: [] as Awaited<ReturnType<typeof Matcher.matchCandidates>>["matches"] }
+            : await Matcher.matchCandidates(matcher, textCandidates, mimetypes);
+        if (r.status !== 200) return {
+            status: r.status,
+            matches: [],
+            problem: r.problem,
+        };
+        const ambientMatched = r.matches.filter((match) => ambientSet.has(match.key)).map((match) => match.key);
+        if (ambientMatched.length > 0) {
+            const proposal = await address.ambient!.propose(ambientMatched);
+            if (proposal !== null) return { status: 202, matches: [], proposal };
+        }
+        r.matches = r.matches.filter((match) => !ambientSet.has(match.key));
+        const bytesMatched = byteCandidates.length === 0
+            ? { status: 200, matches: [] as Match[] }
+            : await EntryFind.#matchBytes(matcher, byteCandidates, byteSupplier, mimetypes, channelOf);
+        if (bytesMatched.status !== 200) return {
+            status: bytesMatched.status,
+            matches: [],
+            problem: bytesMatched.problem,
+        };
+        return [
+            ...r.matches.map((match) => ({
+                pathname: match.key,
+                matches: match.matches.map((evidence) => ({ channel: channelOf(match.key), ...evidence })),
+            })),
+            ...bytesMatched.matches,
+        ];
     }
 
     // {§membership-auto-add} — a candidate's listing row: its type, weight and extent from disk, marked
