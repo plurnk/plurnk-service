@@ -29,10 +29,7 @@ body?
 ## Loop Protocol
 
 > [!IMPORTANT]
-> YOU MUST Recall, Record, and React:
-> * **Recall**: Review the Open Work and Open Messages against the prior NOTE entries and log items.
-> * **Record**: NOTE entries are your ONLY chain of thought. Persist all new facts, ideas, and plans.
-> * **React**: When the necessary operations are identified, stop reflecting and emit the batch of notes and operations.
+> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn.
 
 ```NOTE <!-- fact -->
 a finding or conclusion and its evidence
