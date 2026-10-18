@@ -3422,7 +3422,7 @@ pattern-bounded and admits files only; it does not become an unrestricted walk.
 | --- | --- |
 | {§message-completion} | Reply delivery and message completion are distinct. |
 | {§loop-completion} | The loop concludes from discharged obligations, not a terminating operation. |
-| {§worker-obligations} | A worker holds its unresolved children, its open non-detached streams, and the messages it sent to other… |
+| {§worker-obligations} | A worker's obligations are the work it opened and still awaits. |
 | {§message-abandonment} | Message abandonment: an ended loop answers what it left open. |
 | {§wait-obligation-matrix} | The WAIT obligation matrix resolves the end of a program. |
 | {§loop-response-messages} | A response is a recorded delivery. |
@@ -3496,18 +3496,15 @@ When all messages are resolved but new results require another packet, the engin
 reports only: `All Open Messages resolved. Review new results; emit no OPs if finished.`
 The notice creates no state and does not demand another final reply.
 
-§worker-obligations A worker holds its unresolved children, its open non-detached
-streams, and the messages it sent to other workers that await completion while the
-recipient's loop is live (`worker_obligations`); `loop_obligations` names them per
-loop. Each obligation records the operation that opened it, by identity: a stream its
-execution ({§subscriptions-causal-resource}), a message the SEND, WORK or FORK that sent it,
-by the row that operation writes; a child's loop is opened by its first message's. The
-opening row names what it opened: an execution's `attrs.stream`, a message's `attrs.message`
-(its durable address). A message holds, and its reply reaches, the worker whose own operation
-sent it; a message a person, a client or the daemon sends opens no worker's obligation. The packet's Open Work list, WAIT, completion and drain wake settlement use
-that same durable liveness: a worker that messaged another worker parks on an
-authored WAIT until the completion arrives ({§message-completion}), and with no WAIT
-joins that work with the bounded park rather than concluding idle.
+§worker-obligations **A worker's obligations are the work it opened and still awaits.** A worker holds its unresolved children, its open non-detached streams, and the messages it sent to other workers that await completion while the recipient's loop is live (`worker_obligations`); `loop_obligations` names them per loop. A message holds, and its reply reaches, the worker whose own operation sent it; a message a person, a client or the daemon sends opens no worker's obligation.
+
+| Obligation | Opened by | The opening row names |
+| --- | --- | --- |
+| A stream | its execution ({§subscriptions-causal-resource}) | `attrs.stream` |
+| A message | the SEND, WORK or FORK that sent it, by the row that operation writes | `attrs.message` (its durable address) |
+| A child's loop | its first message's row | as a message |
+
+The packet's Open Work list, WAIT, completion and drain wake settlement use that same durable liveness: a worker that messaged another worker parks on an authored WAIT until the completion arrives ({§message-completion}), and with no WAIT joins that work with the bounded park rather than concluding idle.
 
 §message-abandonment **Message abandonment: an ended loop answers what it left open.** When a loop ends,
 every message another worker sent it that has no completion is completed `499` by the
@@ -3987,21 +3984,14 @@ retain only the publication offset, not a second liveness value. A closed channe
 publishes only once subscription settlement has installed its terminal result;
 until then the stream is still in flight and publishes on the turn after it settles.
 
-§exec-concurrency **Execution concurrency is bounded per workspace (#389).** At most
-`PLURNK_SERVICE_EXEC_CONCURRENCY` external executions run at once in one workspace (`-1`
-unbounded); the scope is the workspace, so neither delegation nor later turns
-bypass it and no other workspace can starve it. Every admitted execution still creates its
-entry, channels, and open subscription before its receipt returns, so queued work is
-cancellable, restart-reconcilable, completion-gated, and observed through the ordinary
-stream mechanics ({§exec-stream}). The receipt tells the truth once and never rewrites
-it: an immediate slot is `200 { outcome: "started" }`; delayed work is
-`202 { outcome: "queued", executionsAhead, concurrency }`, and the channel stays
-`active` in the existing live sense — output growth and terminal settlement are the
-current truth. Admission is FIFO within the workspace; queue residence does not consume
-the execution timeout; a KILL while queued never invokes the executor and concludes the
-stream as any KILL does ({§stream-control}). The scheduler is the exec scheme's; the knob is the
-service's ({§operator-config}), fail-hard on any other value. Ordered subsystem
-commands use {§functionality-model-mutation}, not this background-work queue.
+§exec-concurrency **Execution concurrency is bounded per workspace (#389).** At most `PLURNK_SERVICE_EXEC_CONCURRENCY` external executions run at once in one workspace (`-1` unbounded); the scope is the workspace, so neither delegation nor later turns bypass it and no other workspace can starve it. The scheduler is the exec scheme's; the knob is the service's ({§operator-config}), fail-hard on any other value. Ordered subsystem commands use {§functionality-model-mutation}, not this background-work queue.
+
+| Fact | Rule |
+| --- | --- |
+| Admission | every admitted execution still creates its entry, channels, and open subscription before its receipt returns, so queued work is cancellable, restart-reconcilable, completion-gated, and observed through the ordinary stream mechanics ({§exec-stream}); FIFO within the workspace |
+| An immediate slot | `200 { outcome: "started" }` |
+| Delayed work | `202 { outcome: "queued", executionsAhead, concurrency }`, and the channel stays `active` in the existing live sense: output growth and terminal settlement are the current truth; the receipt tells the truth once and never rewrites it |
+| Queue residence | does not consume the execution timeout; a KILL while queued never invokes the executor and concludes the stream as any KILL does ({§stream-control}) |
 
 §exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
 terminal observation is the same page a markerless READ returns, whatever the
@@ -5484,20 +5474,12 @@ not from a live process or a cached worker environment.
 | a target that is not `env:///NAME` | `name-invalid` (400), or `target-required` (400) when absent |
 | a name not in effect | `entry-not-found` (404) on READ and KILL alike |
 
-§functionality-scope **A family declares its supported scopes.** Skills, MCP, members
-and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
-that every Worker there shares. Environment describes how one **Worker** works — context rather
-than capability — with worker overrides above workspace defaults. A context family's definitions are read where they
-are used, so a change at either scope holds nothing resident and takes no workspace exclusivity: it serializes on
-the family's lane. The adapter declares
-`scopes` (absent means `["workspace"]`; the first is the model default), and the
-coordinator keys durable state and the locally-owned `origin`
-by it: a workspace-scoped family's own entries carry origin `workspace`, a worker-scoped
-family's carry `worker`. Origin names ownership, never scope, so a projection never claims the
-workspace set a value one Worker set for itself. Nothing else in the contract varies but the
-discovery inputs a family serves ({§functionality-discover-advertisement}): the verbs, the two
-projections, enabledness, and the service-baseline rules are one implementation
-across every family, which is what keeps their idioms from drifting apart.
+§functionality-scope **A family declares its supported scopes.** The adapter declares `scopes` (absent means `["workspace"]`; the first is the model default), and the coordinator keys durable state and the locally-owned `origin` by it. Origin names ownership, never scope, so a projection never claims the workspace set a value one Worker set for itself. Nothing else in the contract varies but the discovery inputs a family serves ({§functionality-discover-advertisement}): the verbs, the two projections, enabledness, and the service-baseline rules are one implementation across every family, which is what keeps their idioms from drifting apart.
+
+| Scope | Describes | Own entries' origin |
+| --- | --- | --- |
+| **workspace** (Skills, MCP, members and outbound A2A) | what exists in a workspace: a capability, resident or installable, that every Worker there shares | `workspace` |
+| **worker** (Environment) | how one Worker works — context rather than capability — with worker overrides above workspace defaults; a context family's definitions are read where they are used, so a change at either scope holds nothing resident and takes no workspace exclusivity: it serializes on the family's lane | `worker` |
 
 A family projects `<scope>.<family>.<verb>` for each verb it serves, in each supported scope. The action's
 context binds that scope; a worker-scoped action also names the Worker. Its durable
@@ -6403,22 +6385,16 @@ Stream progress remains owned by {§exec-stream}.
 | {§recap-lines} | The operator's recap lines lead the footer: every non-empty `PLURNK_SERVICE_RECAP_LINE_<alias>`, in alias… |
 <!-- /map -->
 
-§packet-markdown **The packet's Markdown projection (#626).** Core renders the transformed section list
-into the ordered messages of {§packet-wire-envelope}. Within each message, section order is
-preserved. A nonempty section with a header renders as an H2 immediately followed
-by its JSON object/array content; non-JSON content has one blank line after the
-header. A null header renders only its content. Empty content is omitted, trailing
-newlines are removed from each section, and rendered sections are separated by one
-blank line. Any node whose content is empty is absent from the wire, except the
-child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}).
-Core owns the order at {§packet-cache-monotone}; a trusted extension may transform the
-section list before rendering ({§packet-extension-transform}). The projection preserves
-the evidence section owners supply: paths, URI fragments, log coordinates, scopes and
-coordinate-prefixed body lines remain usable without translation; curation and log-row
-measurements stay attached to what they measure ({§tokenomics-agnostic-ruler});
-statuses, Problems, body visibility and bodyless rows render as produced, never
-upgraded or suppressed; operation examples remain typed fences and log records keep
-their boundaries ({§log-wire-format}).
+§packet-markdown **The packet's Markdown projection (#626).** Core renders the transformed section list into the ordered messages of {§packet-wire-envelope}; within each message, section order is preserved. Core owns the order at {§packet-cache-monotone}; a trusted extension may transform the section list before rendering ({§packet-extension-transform}).
+
+| Section | Renders as |
+| --- | --- |
+| Nonempty, with a header | an H2 immediately followed by its JSON object/array content; non-JSON content has one blank line after the header |
+| A null header | only its content |
+| Empty content | omitted: any node whose content is empty is absent from the wire, except the child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}) |
+| Between sections | trailing newlines are removed from each section, and rendered sections are separated by one blank line |
+
+The projection preserves the evidence section owners supply: paths, URI fragments, log coordinates, scopes and coordinate-prefixed body lines remain usable without translation; curation and log-row measurements stay attached to what they measure ({§tokenomics-agnostic-ruler}); statuses, Problems, body visibility and bodyless rows render as produced, never upgraded or suppressed; operation examples remain typed fences and log records keep their boundaries ({§log-wire-format}).
 
 | Default section | Slot   | Wire form                                                                                     | Semantic owner                  |
 | --------------- | ------ | --------------------------------------------------------------------------------------------- | ------------------------------- |
@@ -6554,7 +6530,15 @@ message — an AG-UI message UUID, an A2A address — stays the durable `path` t
 delivery and reply accounting use, and remains addressable in its own scheme; the short form is an
 additional alias. Answering either reaches the same message.
 
-§message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter supplies its own canonical actor address through {§methods-loop-run}: the AG-UI module names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://`. An absent source is the operator. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers. The Open Messages pointer carries the same attribution ({§message-arrival}).
+§message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The Open Messages pointer carries the same attribution ({§message-arrival}).
+
+| Arrival | `source` |
+| --- | --- |
+| Native WORK, FORK, and directed worker SEND | `worker://<sender>`, derived from the authenticated sender worker ID |
+| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the AG-UI module names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://` |
+| Absent | the operator |
+
+The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers.
 
 §message-projection **Message storage is unbounded by model context; its arrival in the packet is not.** Core persists every accepted message completely before packet assembly. An arrival renders complete when it fits the remaining budget ({§context-fit}) and otherwise as its size and address, where a READ of the message's log body, scoped or whole, retrieves it. A peer worker's message is received text and arrives as its first page ({§markerless-first-page}). No share of the capacity is set aside for arrivals, and no knob sizes one.
 
@@ -6687,7 +6671,13 @@ the same deadline through {§application-loop-observation}, not a restarted cloc
 
 §candidate-pinned-runtime **Candidate runtime stays pinned.** At launch, after its optional build, the candidate copies every workspace's package projection (`files`) into `<state>/runtime`, links third-party dependencies, and resolves `@plurnk/*` to those copies. Its daemon and its digest export both run from that copy, never the shared checkout, so neither source edits nor a concurrent candidate's or developer's rebuild after launch changes the code a run finishes on. The copy is removed once the digest is written.
 
-§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model for a cut the engine's own ceiling made: a cut turn is no repetition evidence ({§engine-cycle-evidence}), and a strike threshold crossed on one names the allowance ({§engine-rails}). The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
+§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record.
+
+| On a provider finish of `length` | Rule |
+| --- | --- |
+| The notice | the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path, railed or not |
+| The rails | the verdict never blames the model for a cut the engine's own ceiling made: a cut turn is no repetition evidence ({§engine-cycle-evidence}), and a strike threshold crossed on one names the allowance ({§engine-rails}) |
+| A cut so deep no operation parses | the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes |
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. The completion beat carries the spend ({§turn-accounting-notice}). Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 
@@ -6703,24 +6693,14 @@ content-offset position: reasoning coordinates do not address the content source
 
 ### Executable tool resources
 
-§tools-resource-discovery **Executable capability discovery uses ordinary
-Plurnk resources.** No generated tool table rides the system packet. Every
-runtime enabled for the current worker with an admitted invocation materializes one
-runtime document at `worker:///_plurnk/plurnk/<runtime>.md`. A general runtime's
-document contains its {§executor-tool-document}; a runtime with an exact
-{§executor-tool-registry} materializes a compact catalog at the same address. The runtime document summarizes
-the server or runtime, lists every enabled target as a directly copyable
-executable fence named for the runtime, with its input preview ({§operation-aside} carries the
-target one-liner; no invocation dispatch would reject is ever advertised).
-Schema-backed targets link from that aside to
-`<runtime>/<percent-encoded-target>.md` beneath the same root. These documents
-preserve the full tool description and raw input schema under
-{§executor-input-schema-preview}; their nested paths do not contribute extra
-Turn0 rows. A schema-backed general runtime uses `<runtime>/input.md`.
-Non-schema targets retain supplemental details after the framework-owned sections.
-Tool-result/output schemas remain ordinary evidence, not teaching. Unknown-target
-recovery names the published runtime document through the same path owner as
-materialization, including a runtime's declared `resourcesPath`.
+§tools-resource-discovery **Executable capability discovery uses ordinary Plurnk resources.** No generated tool table rides the system packet. Every runtime enabled for the current worker with an admitted invocation materializes one runtime document at `worker:///_plurnk/plurnk/<runtime>.md`; nested paths beneath it do not contribute extra Turn0 rows. Tool-result/output schemas remain ordinary evidence, not teaching. Unknown-target recovery names the published runtime document through the same path owner as materialization, including a runtime's declared `resourcesPath`.
+
+| Document | Contents |
+| --- | --- |
+| A general runtime's | its {§executor-tool-document} |
+| A runtime's with an exact {§executor-tool-registry} | a compact catalog at the same address |
+| Every runtime document | summarizes the server or runtime and lists every enabled target as a directly copyable executable fence named for the runtime, with its input preview ({§operation-aside} carries the target one-liner; no invocation dispatch would reject is ever advertised) |
+| `<runtime>/<percent-encoded-target>.md` beneath the same root | linked from that aside by a schema-backed target: the full tool description and raw input schema under {§executor-input-schema-preview}; a schema-backed general runtime uses `<runtime>/input.md`; non-schema targets retain supplemental details after the framework-owned sections |
 
 ```mermaid
 flowchart LR
@@ -6792,23 +6772,14 @@ so the family bounds the model without a second grammar; an admission a read ear
 The skills module owns the Agent Skills family ({§skills-functionality}) and its resource trees
 ({§skills-resources}); core supplies the Plurnk reference through {§provided-skills-module-slice}.
 
-§plurnk-skill **Plurnk's own reference is an ordinary service-provided skill.**
-`skill://plurnk/SKILL.md` is the standard frontmatter entry point, catalogued with
-other enabled skills. It links package-owned configuration, model, COPY/MOVE and extensibility
-chapters, the complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults`, the
-installed contracts at `skill://plurnk/packages/<package name>/SPEC.md`, and the
-Worker's existing tool/resource references. The contracts are the service's own `SPEC.md` and
-each installed ecosystem package's that ships one, the same membership as the defaults
-aggregate, with that package's published type declarations beside it at
-`packages/<package name>/dist/**/*.d.ts`; the service's declarations are its internals and are not
-served. Contracts are listed when the tree is listed and read where each package installed them,
-never through a symbolic link. No chapter, contract or defaults body is injected merely because the
-skill is enabled. The defaults bytes come from the
-same {§operator-config-env-defaults} renderer as the operator command, never the
-effective environment. Native chapter files retain their owners and locations;
-runtime-generated bytes have no invented disk location. Disable/enable,
-shared workspace visibility, and project/global shadowing use the ordinary Skills lifecycle.
-Service-provided skills are host-provided trees, never fetched; removal follows {§skills-remove}.
+§plurnk-skill **Plurnk's own reference is an ordinary service-provided skill.** `skill://plurnk/SKILL.md` is the standard frontmatter entry point, catalogued with other enabled skills. No chapter, contract or defaults body is injected merely because the skill is enabled. Disable/enable, shared workspace visibility, and project/global shadowing use the ordinary Skills lifecycle; service-provided skills are host-provided trees, never fetched, and removal follows {§skills-remove}.
+
+| It links | Where from |
+| --- | --- |
+| Package-owned configuration, model, COPY/MOVE and extensibility chapters | native chapter files, which retain their owners and locations |
+| The complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults` | the same {§operator-config-env-defaults} renderer as the operator command, never the effective environment; runtime-generated bytes have no invented disk location |
+| The installed contracts at `skill://plurnk/packages/<package name>/SPEC.md` | the service's own `SPEC.md` and each installed ecosystem package's that ships one, the same membership as the defaults aggregate, with that package's published type declarations beside it at `packages/<package name>/dist/**/*.d.ts`; the service's declarations are its internals and are not served; contracts are listed when the tree is listed and read where each package installed them, never through a symbolic link |
+| The Worker's existing tool/resource references | their own owners |
 
 The catalog and Turn0 describe Functionality under the current workspace
 capability policy and service ceiling. A direct denied attempt receives the
