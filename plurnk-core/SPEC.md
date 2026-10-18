@@ -274,27 +274,19 @@ listening daemon under `1` refuses to start until a module publishes the face. U
 credential exists, no face is published and every mounted resource admits anonymously. Credentials
 the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
-§credential-module-client **A module of this daemon is a confidential client by registration.** At
-setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes, stylesheetPath })`:
-an id of letters, digits, `.`, `_` or `-` other than `operator`, the absolute pathnames under its own
-mounts it may be answered at, each as a URL carries it, with no query and no fragment, the scopes it
-may ask for and, optionally, the pathname in the same form of a stylesheet under its own mounts,
-which the issuing face links on the documents it serves that client's requests
-({§agui-oauth-documents}). A module states no origin: it serves only on the daemon's one listener
-({§http-host}), so its address is its path on the issuer, and registration needs nothing from the
-listener, the issuer or another module. The issuing face answers the client at exactly the issuer
-followed by a registered path ({§agui-oauth-endpoints}), and the module forms the same address from
-`credentials.face().issuer()`, from its `start` on ({§credential-authority}). The authority mints the client's
-secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and
-checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration
-without the secret. A second registration of one id and a malformed registration are faults and
-register nothing. Nothing is configured, printed or persisted, so installing a module adds no
-operator step. The issuing face authenticates such a client as it does any confidential one
-({§agui-oauth-clients}). A module's own browser session is a credential of this authority too: a
-`session` credential it issues in the family of the authorization grant it stands on, which is the
-family of the browser's sign-in that authorized it ({§agui-oauth-session}), so revoking that family
-from either side ends the module's session, its tokens and the browser's standing at the issuing
-face together.
+§credential-module-client **A module of this daemon is a confidential client by registration.** At setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes, stylesheetPath })`; nothing is configured, printed or persisted, so installing a module adds no operator step.
+
+| Field | Rule |
+| --- | --- |
+| `id` | letters, digits, `.`, `_` or `-`, other than `operator` |
+| `redirectPaths` | the absolute pathnames under the module's own mounts it may be answered at, each as a URL carries it, with no query and no fragment |
+| `scopes` | the scopes it may ask for |
+| `stylesheetPath` | optional: the pathname, in the same form, of a stylesheet under its own mounts, which the issuing face links on the documents it serves that client's requests ({§agui-oauth-documents}) |
+
+- A module states no origin: it serves only on the daemon's one listener ({§http-host}), so its address is its path on the issuer, and registration needs nothing from the listener, the issuer or another module. The issuing face answers the client at exactly the issuer followed by a registered path ({§agui-oauth-endpoints}), and the module forms the same address from `credentials.face().issuer()`, from its `start` on ({§credential-authority}).
+- The authority mints the client's secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration without the secret. A second registration of one id and a malformed registration are faults and register nothing.
+- The issuing face authenticates such a client as it does any confidential one ({§agui-oauth-clients}).
+- A module's own browser session is a credential of this authority too: a `session` credential it issues in the family of the authorization grant it stands on, which is the family of the browser's sign-in that authorized it ({§agui-oauth-session}), so revoking that family from either side ends the module's session, its tokens and the browser's standing at the issuing face together.
 
 §credential-sessions **Credential sessions: a browser sign-in is a family, and a subject's sign-ins are listed without a
 token.** `sessions(subject)` answers every family of that subject that holds a live `session`
@@ -828,7 +820,7 @@ Worker control rides the daemon's inject seam (active→fold, idle→enqueue+dra
 | {§membership-glob-in-sql} | Membership globs are evaluated in SQL, where the constraint lives. |
 | {§membership-source-projection} | A member's source projection: |
 | {§membership-materialization-limit} | The materialization limit: a pathological member degrades, never the workspace. |
-| {§derivation-dedup-parallel} | The index dedups then parallelizes. |
+| {§derivation-dedup-parallel} | The index dedups, then parallelizes. |
 | {§derivation-member-failure} | One member's derivation failure never ends the pass or the model's turn. |
 | {§membership-change-gated-sync} | Projection is idempotent and change-gated. |
 | {§membership-emi-divergence-signal} | EMI divergence evidence. |
@@ -1017,7 +1009,15 @@ The file write gate independently stats the source against the same ceiling,
 so safety does not depend on a background warm winning a client-operation race.
 Whole-file deletion does not need a materialized body ({§file-delete-revision}).
 
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row and one symbol graph without copying, and the FTS index reads its text from the content store ({§content-store}) instead of keeping a copy. The identity hashes the representation's own SHA-256 ({§tokenomics-content-hash-identity}), never its body, so a maintenance pass judges an entry channel from its stored `content_hash` without the body crossing into the process; a body is acquired only for a derivation that runs, under that same identity (a representation that moved on since it was judged returns nothing and is judged again next pass), or for a channel with no stored identity, an open or streamed channel, which must be read to be judged. Log rows and turn sources still arrive whole. The pass reports the bytes it acquired beside the derivations it ran, and an unchanged workspace acquires none of its channel bodies at any concurrency. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling derivations. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. A changed pass emits one immediate `preparing` state, intermediate `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`, and one immediate `complete` or `failed` state. A no-op pass emits no lifecycle, an indexing heartbeat never claims 100%, and the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
+§derivation-dedup-parallel **The index dedups, then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior and applicable search exclusion, and identical projections share one FTS row and one symbol graph without copying:
+
+- A channel or log projection attaches the immutable artifact only after it is complete; the FTS index reads its text from the content store ({§content-store}) instead of keeping a copy.
+- The identity hashes the representation's own SHA-256 ({§tokenomics-content-hash-identity}), never its body, so a maintenance pass judges an entry channel from its stored `content_hash` without the body crossing into the process. A body is acquired only for a derivation that runs, under that same identity (a representation that moved on since it was judged returns nothing and is judged again next pass), or for a channel with no stored identity — an open or streamed channel, which must be read to be judged. Log rows and turn sources still arrive whole.
+- The pass reports the bytes it acquired beside the derivations it ran; an unchanged workspace acquires none of its channel bodies at any concurrency.
+- Distinct artifacts run with bounded producer concurrency, `PLURNK_SERVICE_DERIVE_CONCURRENCY`: unset is a host-relative square-root fan-out, a positive integer an exact operator budget, `-1` every core. Pending artifacts sort by readable content length before entering the pool, so small resources start first while every outlier still derives fully.
+- Graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement.
+- Every launched worker settles before the maintenance pass reports success or failure, so one failed artifact cannot orphan sibling derivations; every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N.
+- A changed pass emits one immediate `preparing` state, `indexing` heartbeats at `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS` and one immediate `complete` or `failed` state; a no-op pass emits no lifecycle; an indexing heartbeat never claims 100%; the model-facing Notice buffer retains only the current derivation state while live clients observe each heartbeat.
 
 The artifact also retains a positive `{§mimetype-parse-issues}` count and the
 full normalized `{§mimetype-summary}` when the exact parsed channel reported
@@ -3739,7 +3739,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§exec-target-routing} | Engine routes unconditionally to the `exec` scheme, resolves the runtime first, selects its static… |
+| {§exec-target-routing} | Exec target routing: |
 | {§exec-target-near-miss} | Two target near-misses have one reading each and are read without a diagnostic (#758). |
 | {§exec-target-documentation} | Documentation is never an execution target: generated reference is never a program. |
 | {§exec-tool-fall-through} | A tool run as a shell command is named at the failure site. |
@@ -3771,31 +3771,20 @@ control capabilities, not exceptions granting write access to stdout/resources.
 
 AST: `{ runtime (the fence name in its registered lowercase spelling; there is no operation keyword), target (optional runtime-specific target), body: string | null (runtime-specific input), lineMarker }`. Execution refuses a non-null scope under {§exec-lifetime}.
 
-§exec-target-routing Engine routes unconditionally to the `exec` scheme,
-resolves the runtime first, selects its static {§executor-invocation} or exact
-{§executor-tool-registry} entry, and enforces that declaration before effect
-admission. Core owns target
-realization; neither filesystem type nor body presence may invent a target role
-the selected runtime did not declare. Core supplies the workspace's `project_root`
-as the default `cwd`, or the daemon's cwd in a headless workspace. The selected
-executor prepares its invocation metadata under {§executor-metadata}, for every
-target scheme, before effect admission or source acquisition. Core validates the
-preparation result and retains its cwd; it neither parses option names nor
-redirects metadata to a source scheme. An executor without preparation accepts
-no metadata. A `script`-kind target ({§executor-invocation}) is the program: core inspects it before
-anything spawns — a file is the script; a directory is refused `400 target-not-a-program`;
-an absent path is refused `400 target-not-found`, stating what exists and inferring nothing
-({§diagnostic-observation}): a registered tool of another executor is named with that executor,
-another available executor as its own executor (`` `python3` is its own executor. ``), and
-anything else as a target that must name an existing program resource. A non-file resource
-target that cannot be read keeps the owning READ's failure identity (#163) and states
-the slot contract in its recovery: the resource is the program and the body its stdin. The started receipt always
-names the working directory only when it is not the project root, and then in the
-project-relative form ({§fs-namespace}); the default directory is omitted rather
-than repeated in every receipt. Native file addresses resolve from that same project
-directory, while absolute input retains its filesystem meaning. The `(path)` is a program — a script for an interpreter, a tool name for a tool
-runtime — and neither a command nor a working directory is ever a target. The default
-shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
+§exec-target-routing **Exec target routing:** the engine routes unconditionally to the `exec` scheme, resolves the runtime first, selects its static {§executor-invocation} or exact {§executor-tool-registry} entry, and enforces that declaration before effect admission. Core owns target realization: neither filesystem type nor body presence may invent a target role the selected runtime did not declare.
+
+- Core supplies the workspace's `project_root` as the default `cwd`, or the daemon's cwd in a headless workspace. The selected executor prepares its invocation metadata under {§executor-metadata}, for every target scheme, before effect admission or source acquisition; core validates the preparation result and retains its cwd, and neither parses option names nor redirects metadata to a source scheme. An executor without preparation accepts no metadata.
+- The `(path)` is a program — a script for an interpreter, a tool name for a tool runtime — and neither a command nor a working directory is ever a target. The default shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
+- The started receipt names the working directory only when it is not the project root, and then in the project-relative form ({§fs-namespace}); the default directory is omitted rather than repeated in every receipt. Native file addresses resolve from that same project directory, while absolute input retains its filesystem meaning.
+
+A `script`-kind target ({§executor-invocation}) is the program, and core inspects it before anything spawns:
+
+| Target | Outcome |
+| --- | --- |
+| a file | the script |
+| a directory | refused `400 target-not-a-program` |
+| an absent path | refused `400 target-not-found`, stating what exists and inferring nothing ({§diagnostic-observation}): a registered tool of another executor is named with that executor, another available executor as its own executor (`` `python3` is its own executor. ``), and anything else as a target that must name an existing program resource |
+| a non-file resource that cannot be read | the owning READ's failure identity (#163), its recovery stating the slot contract: the resource is the program and the body its stdin |
 
 §exec-target-near-miss Two target near-misses have one reading each and are read
 without a diagnostic (#758). A directory target is never a program: with a body
