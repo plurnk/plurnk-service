@@ -753,6 +753,12 @@ later reasoning block does not replenish it. Template parsing, the reasoning
 sampler, normalized usage, and the returned reasoning channel MUST agree on that
 response boundary.
 
+## Probes
+
+§provider-ping-probe **`npm run probe:providers` reaches every keyed provider once, by one cheapest declared route.** Planning selects, per provider that has a credential, its cheapest declared alias; a provider-named alias resolves that provider's own unpriced route without guessing another model, a catalog key with no declared route stays explicitly red, and several unpriced aliases of one provider are one ambiguous provider, never guessed routes. Execution invokes every selected route exactly once and preserves red outcomes. Each attempted provider leaves one safe JSON record: response evidence keeps its structure and no provider scalar values, retained diagnostics redact credentials, account identity and URL authority, and secret discovery never mistakes a token-limit control for a credential.
+
+§token-envelope-probe **`npm run probe:tokens` measures output-token envelopes for the aliases named explicitly, and no other.** Its output-token modes distinguish the configured policy from the model's physics.
+
 ## §8 Request authority
 
 <!-- map -->

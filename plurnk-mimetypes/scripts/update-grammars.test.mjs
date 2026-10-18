@@ -33,7 +33,7 @@ const makeGrammars = async (slugs = ["alpha", "beta"]) => {
     };
 };
 
-test("requires every framework-declared grammar checkout", async () => {
+test("{§grammar-package-lifecycle} requires every framework-declared grammar checkout", async () => {
     await using fixture = await makeGrammars();
     await writeFile(path.join(fixture.frameworkRoot, "package.json"), JSON.stringify({
         devDependencies: {
@@ -44,7 +44,7 @@ test("requires every framework-declared grammar checkout", async () => {
     await assert.rejects(resolveGrammarPackages(fixture), /missing grammar package checkouts: missing/);
 });
 
-test("check mode fails when any grammar probe fails", async () => {
+test("{§grammar-package-lifecycle} check mode fails when any grammar probe fails", async () => {
     await using fixture = await makeGrammars();
     const run = async (command, args, cwd) => {
         if (path.basename(cwd).endsWith("alpha")) throw new Error("probe failed");
@@ -57,7 +57,7 @@ test("check mode fails when any grammar probe fails", async () => {
     }), /probe failed/);
 });
 
-test("check mode is read-only and reports every declared grammar", async () => {
+test("{§grammar-package-lifecycle} check mode is read-only and reports every declared grammar", async () => {
     await using fixture = await makeGrammars();
     const calls = [];
     const run = async (command, args, cwd) => {
@@ -75,7 +75,7 @@ test("check mode is read-only and reports every declared grammar", async () => {
     ]);
 });
 
-test("check mode recognizes an upstream with no stable release tags as current", async () => {
+test("{§grammar-package-lifecycle} check mode recognizes an upstream with no stable release tags as current", async () => {
     await using fixture = await makeGrammars(["alpha"]);
     const run = async () => ({
         stdout: "https://example.test/alpha.git: no stable release tags upstream — staying pinned\n",
@@ -85,14 +85,14 @@ test("check mode recognizes an upstream with no stable release tags as current",
     assert.equal(results[0].state, "current");
 });
 
-test("update refuses mutation without repository-local issue provenance", async () => {
+test("{§grammar-package-lifecycle} update refuses mutation without repository-local issue provenance", async () => {
     await using fixture = await makeGrammars(["alpha"]);
     const run = async () => ({ stdout: "BUMP old -> new\n", stderr: "" });
     await assert.rejects(runGrammarLifecycle({ ...fixture, check: false, run }),
         /update requires --issue-map/);
 });
 
-test("update stops at the first failed lifecycle command", async () => {
+test("{§grammar-package-lifecycle} update stops at the first failed lifecycle command", async () => {
     await using fixture = await makeGrammars(["alpha"]);
     const issueMapPath = path.join(fixture.temporary.path, "issues.json");
     await writeFile(issueMapPath, JSON.stringify({ alpha: 7 }));

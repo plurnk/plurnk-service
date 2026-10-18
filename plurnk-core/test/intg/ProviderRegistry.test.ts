@@ -15,7 +15,7 @@ test("{§provider-instantiation} parseAliasesFromEnv: extracts PLURNK_MODEL_<ali
     ]);
 });
 
-test("parseAliasesFromEnv: downcases the alias suffix; preserves provider+model case", () => {
+test("{§alias-parse} parseAliasesFromEnv: downcases the alias suffix; preserves provider+model case", () => {
     const aliases = parseAliasesFromEnv({
         PLURNK_MODEL_GEMMA: "openai/Macher.GGUF",
     });
@@ -24,7 +24,7 @@ test("parseAliasesFromEnv: downcases the alias suffix; preserves provider+model 
     assert.equal(aliases[0].model, "Macher.GGUF");
 });
 
-test("parseAliasesFromEnv: empty value, no slash, or no suffix are skipped", () => {
+test("{§alias-parse} parseAliasesFromEnv: empty value, no slash, or no suffix are skipped", () => {
     const aliases = parseAliasesFromEnv({
         PLURNK_MODEL_empty: "",
         PLURNK_MODEL_noslash: "openai-no-slash",
@@ -35,7 +35,7 @@ test("parseAliasesFromEnv: empty value, no slash, or no suffix are skipped", () 
     assert.deepEqual(aliases.map((a) => a.alias), ["valid"]);
 });
 
-test("resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
+test("{§alias-resolve-active} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
     });
@@ -51,7 +51,7 @@ test("{§provider-resolution} resolveActiveRoute: returns the matching alias whe
     assert.deepEqual(alias, { alias: "opus", provider: "openrouter", model: "anthropic/claude-opus-latest" });
 });
 
-test("resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
+test("{§alias-resolve-active} resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL: "GEMMA",
@@ -59,7 +59,7 @@ test("resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
     assert.equal(alias?.alias, "gemma");
 });
 
-test("resolveActiveRoute: rejects an explicit unknown alias", () => {
+test("{§alias-resolve-active} resolveActiveRoute: rejects an explicit unknown alias", () => {
     assert.throws(() => resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL: "ghost",

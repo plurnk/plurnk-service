@@ -13,7 +13,7 @@ import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirements
 import { failAfterCleanup } from "../test/live-failure.ts";
 import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
-test("live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
+test("{§live-harness-deadline} live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
     const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
     t.after(() => {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
@@ -51,7 +51,7 @@ test("{§tier-census} the live catalog contains every registered specimen exactl
     assert.equal(new Set(names).size, names.length);
 });
 
-test("the full tier and exact specimen share one invocation", async () => {
+test("{§tier-specimen-selection} the full tier and exact specimen share one invocation", async () => {
     const full = await liveInvocation();
     const names = await collectLiveTestNames(await liveFiles());
     const specimen = await liveInvocation(names[0]);
@@ -195,7 +195,7 @@ test("{§tier-census} the census joins verdicts with the workers each specimen c
     assert.equal(ledger[0].last.reason, "one is not two");
 });
 
-test("live failure preserves cancellation failure without obscuring either cause", async () => {
+test("{§live-harness-deadline} live failure preserves cancellation failure without obscuring either cause", async () => {
     const primary = new Error("loop timed out");
     await assert.rejects(
         failAfterCleanup(primary, async () => {}),

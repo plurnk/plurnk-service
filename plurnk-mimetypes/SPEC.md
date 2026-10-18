@@ -638,6 +638,7 @@ characters count once, combining code points remain distinct, LF/CRLF/CR are
 line separators, and equal boundaries remain zero-width. A native span ending
 or starting between CR and LF expands to enclose the complete separator;
 a zero-width span there maps to the preceding line's end, still zero-width.
+`TextCoordinates` is the one arithmetic: code points, never UTF-16 units; an offset inside an indivisible text unit is enclosed minimally; a whole-line region is complete and exclusive, and the terminal insertion position is not a line. A column range it rejects names the line's current text, clipped to 96 code points (#321).
 Source text is unchanged. An otherwise unaddressable,
 partial, inverted, or code-point-bisecting native span throws
 `ParserCoordinateError`; projection adapters never convert that internal

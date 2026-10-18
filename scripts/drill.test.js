@@ -6,38 +6,38 @@ import { docsOnly, formatPhaseSummary, partitionByScript, scopeIntg } from "./dr
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
 
 describe("drill scopeIntg — changed-workspace intg scoping", () => {
-    it("scopes to the single workspace whose files changed", () => {
+    it("{§drill-scope} scopes to the single workspace whose files changed", () => {
         assert.deepEqual([...scopeIntg(["plurnk-execs-jq/src/x.ts"], DIRS)], ["plurnk-execs-jq"]);
     });
 
-    it("scopes to every changed workspace", () => {
+    it("{§drill-scope} scopes to every changed workspace", () => {
         const s = scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
         assert.deepEqual([...s].toSorted(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
     });
 
-    it("returns null (full intg) on a change under a framework package", () => {
+    it("{§drill-scope} returns null (full intg) on a change under a framework package", () => {
         assert.equal(scopeIntg(["plurnk-core/src/x.ts"], DIRS), null);
         assert.equal(scopeIntg(["plurnk-contracts/plurnk.md"], DIRS), null);
         assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-core/SPEC.md"], DIRS), null);
     });
 
-    it("returns null (full intg) on any root-level change", () => {
+    it("{§drill-scope} returns null (full intg) on any root-level change", () => {
         assert.equal(scopeIntg(["scripts/drill.mjs"], DIRS), null);
         assert.equal(scopeIntg(["package.json"], DIRS), null);
         assert.equal(scopeIntg(["AGENTS.md"], DIRS), null);
     });
 
-    it("a root change alongside a workspace change → full (conservative)", () => {
+    it("{§drill-scope} a root change alongside a workspace change → full (conservative)", () => {
         assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "package.json"], DIRS), null);
     });
 
-    it("an empty diff scopes to nothing (lint+unit already ran full)", () => {
+    it("{§drill-scope} an empty diff scopes to nothing (lint+unit already ran full)", () => {
         assert.deepEqual([...scopeIntg([], DIRS)], []);
     });
 });
 
 describe("drill tier inventory", () => {
-    it("runs root-owned lint and unit coverage before the workspace tiers", async () => {
+    it("{§drill-scope} runs root-owned lint and unit coverage before the workspace tiers", async () => {
         const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
         assert.equal(
             manifest.scripts["test:lint"],
@@ -58,7 +58,7 @@ describe("drill tier inventory", () => {
         assert.ok(rootUnit >= 0 && rootUnit < workspaceUnit, "npm test must gate root unit coverage before workspace unit");
     });
 
-    it("reports applicable and inapplicable workspaces explicitly", () => {
+    it("{§drill-scope} reports applicable and inapplicable workspaces explicitly", () => {
         const workspaces = [
             { dir: "unit", scripts: ["test:unit"] },
             { dir: "integration", scripts: ["test:intg"] },
@@ -70,7 +70,7 @@ describe("drill tier inventory", () => {
         });
     });
 
-    it("names every failing package in the tier summary", () => {
+    it("{§drill-scope} names every failing package in the tier summary", () => {
         const results = [
             { dir: "green", code: 0 },
             { dir: "red-one", code: 1 },
@@ -87,13 +87,13 @@ describe("drill tier inventory", () => {
 });
 
 describe("drill docsOnly — a Markdown-only push runs the root lint alone", () => {
-    it("README, CHANGELOG, and a SPEC are documentation", () => {
+    it("{§drill-scope} README, CHANGELOG, and a SPEC are documentation", () => {
         assert.equal(docsOnly(["README.md", "CHANGELOG.md", "plurnk-core/SPEC.md"]), true);
     });
-    it("plurnk.md is model-facing teaching that tests parse, never documentation-only", () => {
+    it("{§drill-scope} plurnk.md is model-facing teaching that tests parse, never documentation-only", () => {
         assert.equal(docsOnly(["README.md", "plurnk-contracts/plurnk.md"]), false);
     });
-    it("any non-Markdown file, or no file at all, is not a documentation-only push", () => {
+    it("{§drill-scope} any non-Markdown file, or no file at all, is not a documentation-only push", () => {
         assert.equal(docsOnly(["README.md", "scripts/drill.mjs"]), false);
         assert.equal(docsOnly([]), false);
     });

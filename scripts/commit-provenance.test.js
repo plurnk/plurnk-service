@@ -18,25 +18,25 @@ const valid = {
 };
 
 describe("commit provenance", () => {
-    it("accepts an author the clone's policy allows", () => {
+    it("{§commit-provenance} accepts an author the clone's policy allows", () => {
         assert.deepEqual(validateCommit(valid, POLICY), []);
     });
 
-    it("rejects an unregistered author", () => {
+    it("{§commit-provenance} rejects an unregistered author", () => {
         assert.match(validateCommit({ ...valid, authorName: "someone", authorEmail: "someone@example.invalid" }, POLICY)[0], /unexpected author/u);
     });
 
-    it("rejects an author presented as the committer", () => {
+    it("{§commit-provenance} rejects an author presented as the committer", () => {
         assert.match(validateCommit({ ...valid, committerName: "an-agent", committerEmail: "agent@example.invalid" }, POLICY)[0], /unexpected committer/u);
     });
 
-    it("rejects a missing or invalid signature, configured or not", () => {
+    it("{§commit-provenance} rejects a missing or invalid signature, configured or not", () => {
         assert.match(validateCommit({ ...valid, signature: "N" }, POLICY)[0], /signature status/u);
         // The universal rule: an unconfigured clone still refuses an unsigned push.
         assert.match(validateCommit({ ...valid, signature: "N" })[0], /signature status/u);
     });
 
-    it("checks only the signature when the clone configures no identities", () => {
+    it("{§commit-provenance} checks only the signature when the clone configures no identities", () => {
         assert.deepEqual(validateCommit({ ...valid, authorName: "anyone", authorEmail: "anyone@example.invalid" }), []);
     });
 });

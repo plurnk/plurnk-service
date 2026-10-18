@@ -6,7 +6,7 @@ import {
     selectProbeAliases,
 } from "./token-envelope-probe.mjs";
 
-test("#242: token probe selects only explicit aliases", () => {
+test("{§token-envelope-probe} #242: token probe selects only explicit aliases", () => {
     const routes = selectProbeAliases({
         PLURNK_MODEL_fast: "deepseek/deepseek-v4-flash",
         PLURNK_MODEL_slow: "deepseek/deepseek-v4-pro",
@@ -23,7 +23,7 @@ test("#242: token probe selects only explicit aliases", () => {
     );
 });
 
-test("#242: output-token modes distinguish configured policy from model physics", () => {
+test("{§token-envelope-probe} #242: output-token modes distinguish configured policy from model physics", () => {
     const provider = { outputBudget: 350, maxOutputTokens: 500 };
 
     assert.equal(resolveProbeMaxOutputTokens("configured", provider), 350);

@@ -65,7 +65,7 @@ const makePackage = async (overrides = {}) => {
     return { directory, [Symbol.asyncDispose]: () => temporary.remove() };
 };
 
-test("accepts one exact, locked, strictly authorized local CLI", async () => {
+test("{§grammar-package-reproducibility} accepts one exact, locked, strictly authorized local CLI", async () => {
     await using pkg = await makePackage();
     await assert.doesNotReject(assertGrammarPackageContract(pkg.directory));
 });
@@ -79,7 +79,7 @@ test("{§mimetype-grammar-packages} rejects a framework dependency on a data-onl
     }
 });
 
-test("rejects a floating CLI version", async () => {
+test("{§grammar-package-reproducibility} rejects a floating CLI version", async () => {
     await using pkg = await makePackage({
         manifest: {
             devDependencies: { "tree-sitter-cli": "^0.26.0" },
@@ -89,7 +89,7 @@ test("rejects a floating CLI version", async () => {
     await assert.rejects(assertGrammarPackageContract(pkg.directory), /must be an exact version/);
 });
 
-test("rejects an ad hoc or uncontained dependency install", async () => {
+test("{§grammar-package-reproducibility} rejects an ad hoc or uncontained dependency install", async () => {
     await using pkg = await makePackage({
         script: 'await run("npm", ["install", "--no-save", "tree-sitter-cli@^0.26.0"], { cwd: work });',
     });
@@ -101,7 +101,7 @@ test("rejects an ad hoc or uncontained dependency install", async () => {
     await assert.rejects(assertGrammarPackageContract(upstreamPackage.directory), /uncontained upstream dependency install/);
 });
 
-test("rejects a non-exact or persistent upstream checkout", async () => {
+test("{§grammar-package-reproducibility} rejects a non-exact or persistent upstream checkout", async () => {
     await using shortPinPackage = await makePackage({ pin: "0123456\n" });
     await assert.rejects(assertGrammarPackageContract(shortPinPackage.directory), /full git commit SHA/);
 
@@ -119,7 +119,7 @@ test("rejects a non-exact or persistent upstream checkout", async () => {
     await assert.rejects(assertGrammarPackageContract(persistentPackage.directory), /disposable temporary checkout/);
 });
 
-test("rejects an invalid or unpublished source locator", async () => {
+test("{§grammar-package-reproducibility} rejects an invalid or unpublished source locator", async () => {
     await using invalidSourcePackage = await makePackage({ source: "git@example.test:fixture.git\n" });
     await assert.rejects(assertGrammarPackageContract(invalidSourcePackage.directory), /HTTPS git URL/);
 
@@ -129,7 +129,7 @@ test("rejects an invalid or unpublished source locator", async () => {
     await assert.rejects(assertGrammarPackageContract(unpublishedSourcePackage.directory), /publish .grammar-source/);
 });
 
-test("rejects an abrupt exit that bypasses disposal", async () => {
+test("{§grammar-package-reproducibility} rejects an abrupt exit that bypasses disposal", async () => {
     await using pkg = await makePackage({ script: "process.exit(1);" });
     await assert.rejects(assertGrammarPackageContract(pkg.directory), /bypasses temporary checkout disposal/);
 });

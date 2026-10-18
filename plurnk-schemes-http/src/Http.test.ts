@@ -1362,7 +1362,7 @@ test("{§readable-channel} READ: negotiated origin Markdown is the source itself
 });
 
 for (const selected of ["body", "readable", "header"] as const) {
-    test(`preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
+    test(`{§http-channel-outcomes} preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
         __stub.set({
@@ -1441,7 +1441,7 @@ test("{§http-lifecycle} READ: recoverable materializer outcome uses the local f
 });
 
 for (const selected of ["body", "readable"] as const) {
-    test(`READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
+    test(`{§http-channel-outcomes} READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
         __stub.set({
@@ -2310,7 +2310,7 @@ for (const {
         valid: false,
     },
 ] as const) {
-    test(`304 correspondence: ${name}`, async () => {
+    test(`{§revalidation} 304 correspondence: ${name}`, async () => {
         const header = stampedHeader(
             500_000,
             storedValidator === null ? "" : `\n${storedValidator}`,
@@ -2412,7 +2412,7 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
         expectedValues: ["bypass"],
     },
 ]) {
-    test(`cache variant: ${name} receives authoritative package evidence`, async () => {
+    test(`{§revalidation} cache variant: ${name} receives authoritative package evidence`, async () => {
         const { ctx, inspect } = makeCtx();
         await withFetch(async () => new Response("fresh", { status: 200, headers: responseHeaders }), async () => {
             await prepareRepresentation(new Http(), readStmt(
@@ -2550,7 +2550,7 @@ test("{§http-lifecycle} exact FIND preparation reacquires request metadata thro
 });
 
 for (const state of ["active", "errored"] as const) {
-    test(`exact FIND preparation cannot reuse a ${state} default representation`, async () => {
+    test(`{§http-lifecycle} exact FIND preparation cannot reuse a ${state} default representation`, async () => {
         const { ctx, inspect } = makeCtx(priorEntry(
             "partial",
             "text/plain",
@@ -2769,7 +2769,7 @@ for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
         expectedFetch: true,
     })),
 ] as const) {
-    test(`cache policy: ${name}`, async () => {
+    test(`{§revalidation} cache policy: ${name}`, async () => {
         const header = stampedHeader(ageMs, `\n${cacheHeaders}\netag: "policy"`);
         const { ctx } = makeCtx(priorEntry("cached", "text/plain", header));
         let fetched = false;
@@ -2832,7 +2832,7 @@ for (const { name, cacheHeaders, expectedFetch } of [
     { name: "invalid s-maxage", cacheHeaders: "cache-control: s-maxage=no, max-age=60", expectedFetch: true },
     { name: "no-cache overrides s-maxage", cacheHeaders: "cache-control: s-maxage=60, no-cache", expectedFetch: true },
 ] as const) {
-    test(`exact FIND preparation cache policy: ${name}`, async () => {
+    test(`{§revalidation} exact FIND preparation cache policy: ${name}`, async () => {
         const { ctx } = makeCtx(priorEntry(
             "stored",
             "text/plain",
@@ -2959,7 +2959,7 @@ test("{§http-lifecycle} 304 merges freshness metadata without relabeling a proc
 });
 
 for (const policy of ["no-store", "private", 'private="set-cookie"']) {
-    test(`304 ${policy} retires the restored body and its validators from the next request`, async () => {
+    test(`{§revalidation} 304 ${policy} retires the restored body and its validators from the next request`, async () => {
         const stored = stampedHeader(1000, '\ncache-control: no-cache\netag: "v1"');
         const { ctx, inspect } = makeCtx(priorEntry("cached", "text/plain", stored));
         await withTtl("60000", async () => {
@@ -3081,7 +3081,7 @@ test("{§http-lifecycle} TTL: a completed empty GET is a reusable representation
 });
 
 for (const state of ["active", "errored"] as const) {
-    test(`TTL: an ${state} GET seed cannot supply freshness or validators`, async () => {
+    test(`{§revalidation} TTL: an ${state} GET seed cannot supply freshness or validators`, async () => {
         const header = stampedHeader(1000, '\netag: "partial"');
         const { ctx } = makeCtx(priorEntry("partial", "text/plain", header, undefined, state));
         let fetched = false;

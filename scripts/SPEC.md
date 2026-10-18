@@ -27,6 +27,8 @@ shared `.oxlintrc.json`. The gate fails on errors.
 | Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
 | Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |
 
+§drill-scope **The drill scopes integration to what changed.** `scripts/drill.mjs`, the pre-push gate, runs root-owned lint and unit coverage before every workspace's lint and unit tiers, then integration for exactly the workspaces whose files changed: a change under a framework package or at the root level, or a root change beside a workspace change, runs integration in full, and an empty diff runs none, lint and unit having already run in full. Each tier reports its applicable and inapplicable workspaces and names every failing package in its summary. A push whose every file is Markdown documentation — a README, a CHANGELOG, a SPEC — runs the root lint alone; `plurnk.md` is model-facing teaching that tests parse, so it never counts as documentation, nor does any non-Markdown file or an empty push.
+
 ## Policies the root lint enforces
 
 <!-- map -->
@@ -38,6 +40,7 @@ shared `.oxlintrc.json`. The gate fails on errors.
 | {§package-lifecycle} | Package lifecycle — A workspace's `test` is exactly its `test:lint`, `test:unit` and `test:intg` tiers in… |
 | {§packed-projection} | Packed projection — The tarball is a projection of the source: the published manifest carries no `plurnk-dev`… |
 | {§diagnostic-inventory} | Diagnostic inventory — Every Problem code and Notice a package mints is read lexically from its TypeScript —… |
+| {§commit-provenance} | Commit provenance — Every pushed commit carries a good signature, in any clone; its author and committer are… |
 | {§commit-conventions} | Commit conventions — A commit is one conventional subject line of at most 100 characters with no body;… |
 <!-- /map -->
 
@@ -52,6 +55,7 @@ refuses the tree when it does not hold.
 | §package-lifecycle Package lifecycle | A workspace's `test` is exactly its `test:lint`, `test:unit` and `test:intg` tiers in that order, omitting a tier it does not have, never a synonym tier and never a no-op; a workspace owns at least one tier; external, release and forensic commands keep their classified names; no workspace imposes a `prepare` on consumers; a recursive glob in any script is quoted so node expands it rather than `sh`. `scripts/package-lifecycle-policy.mjs`. |
 | §packed-projection Packed projection | The tarball is a projection of the source: the published manifest carries no `plurnk-dev` export condition and everything else it declares is shipped (a subpath pattern ships when a packed file matches it; a condition aimed outside the tarball names the export and the file); each package's runtime-loaded files are required packed inputs and its test helpers and fixture builders are refused (#797). `scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, checked by `scripts/package-provenance.mjs`. |
 | §diagnostic-inventory Diagnostic inventory | Every Problem code and Notice a package mints is read lexically from its TypeScript — constructors, parser errors and recovery clauses, with source coordinates, in deterministic file and source order; a private helper call, a regex and a string are not declarations. `scripts/diagnostic-inventory.mjs`, the reader behind {§problem-codes-declared}. |
+| §commit-provenance Commit provenance | Every pushed commit carries a good signature, in any clone; its author and committer are identities the clone's own `git config` registers (`plurnk.allowedAuthor`, repeatable; `plurnk.allowedCommitter`, the one signer), an author presented as the committer is refused, and a clone that registers none checks only the signature. `scripts/commit-provenance.mjs`, run by the pre-push hook. |
 | §commit-conventions Commit conventions | A commit is one conventional subject line of at most 100 characters with no body; generated merge and revert subjects pass; a template may carry blank and comment lines after the subject; a branch is `main` or `<type>/<kebab-slug>` over the same conventional types. `scripts/conventional.mjs`, run by the git hooks. |
 
 ## Audits on demand

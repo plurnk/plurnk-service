@@ -14,7 +14,7 @@ import {
     writePingRecord,
 } from "./providers-ping.mjs";
 
-test("#224: provider ping planning selects one cheapest declared route per keyed provider", () => {
+test("{§provider-ping-probe} #224: provider ping planning selects one cheapest declared route per keyed provider", () => {
     const plan = planProviderPings({
         PLURNK_MODEL_flash: "deepseek/deepseek-v4-flash",
         PLURNK_MODEL_pro: "deepseek/deepseek-v4-pro",
@@ -36,7 +36,7 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
     assert.deepEqual(plan.unrouted, []);
 });
 
-test("#224: the provider-named alias resolves an unpriced keyed provider without guessing another model", () => {
+test("{§provider-ping-probe} #224: the provider-named alias resolves an unpriced keyed provider without guessing another model", () => {
     const plan = planProviderPings({
         PLURNK_MODEL_amanda: "acme/amanda",
         PLURNK_MODEL_acme: "acme/acme",
@@ -49,7 +49,7 @@ test("#224: the provider-named alias resolves an unpriced keyed provider without
     assert.equal(plan.routes[0].selection, "provider-named alias");
 });
 
-test("#224: a catalog key without a declared route remains explicitly red", () => {
+test("{§provider-ping-probe} #224: a catalog key without a declared route remains explicitly red", () => {
     const plan = planProviderPings({ MISTRAL_API_KEY: "mistral-secret" });
 
     assert.deepEqual(plan.routes, []);
@@ -57,7 +57,7 @@ test("#224: a catalog key without a declared route remains explicitly red", () =
     assert.equal(pingRunIsRed(plan, []), true);
 });
 
-test("#224: multiple unpriced aliases remain one ambiguous provider, not guessed routes", () => {
+test("{§provider-ping-probe} #224: multiple unpriced aliases remain one ambiguous provider, not guessed routes", () => {
     const plan = planProviderPings({
         PLURNK_MODEL_amanda: "acme/amanda",
         PLURNK_MODEL_ashley: "acme/ashley",
@@ -69,7 +69,7 @@ test("#224: multiple unpriced aliases remain one ambiguous provider, not guessed
     assert.deepEqual(plan.unrouted, ["acme"]);
 });
 
-test("#224: response evidence retains structure but no provider scalar values", () => {
+test("{§provider-ping-probe} #224: response evidence retains structure but no provider scalar values", () => {
     assert.deepEqual(responseShape({
         id: "account-and-response-id",
         usage: { input_tokens: 12, cached: false, detail: null },
@@ -83,7 +83,7 @@ test("#224: response evidence retains structure but no provider scalar values", 
     });
 });
 
-test("#224: retained diagnostics redact credentials, account identity, and URL authority", () => {
+test("{§provider-ping-probe} #224: retained diagnostics redact credentials, account identity, and URL authority", () => {
     const redacted = redactText(
         "request secret-key failed for account-123 at https://user:pass@example.test/v1?token=query-secret",
         ["secret-key", "account-123", "query-secret"],
@@ -95,7 +95,7 @@ test("#224: retained diagnostics redact credentials, account identity, and URL a
     assert.match(redacted, /__redacted__/);
 });
 
-test("#242: secret discovery does not mistake token-limit controls for credentials", () => {
+test("{§provider-ping-probe} #242: secret discovery does not mistake token-limit controls for credentials", () => {
     const env = {
         PLURNK_DIGEST_REQUIEM_MAX_TOKENS: "16384",
         OPENAI_API_KEY: "credential-value",
@@ -108,7 +108,7 @@ test("#242: secret discovery does not mistake token-limit controls for credentia
     ]);
 });
 
-test("#224: each attempted provider leaves one safe JSON record", async () => {
+test("{§provider-ping-probe} #224: each attempted provider leaves one safe JSON record", async () => {
     const root = await mkdtemp(join(tmpdir(), "providers-ping-test-"));
     try {
         const record = {
@@ -143,7 +143,7 @@ test("#224: each attempted provider leaves one safe JSON record", async () => {
     }
 });
 
-test("#224: execution invokes every selected route exactly once and preserves red outcomes", async () => {
+test("{§provider-ping-probe} #224: execution invokes every selected route exactly once and preserves red outcomes", async () => {
     const routes = [
         { provider: "deepseek", alias: "flash", model: "deepseek-v4-flash" },
         { provider: "xai", alias: "gbuild", model: "grok-build-0.1" },

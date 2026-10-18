@@ -7055,6 +7055,7 @@ KILL controls a process and refuses a content pattern (`kill-pattern-unsupported
 | Tag | Promise |
 | --- | --- |
 | {§live-harness-deadline} | The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT` as one whole-specimen deadline, including… |
+| {§tier-specimen-selection} | One invocation runs a real-model tier or one of its specimens. |
 | {§provider-conformance-matrix} | The provider conformance matrix: every configured model alias is exercised through a real PLURNK loop: the… |
 | {§test-artifact-retention} | Test artifact retention: every harness writes its run into one home. |
 | {§tier-census} | A real-model tier run is one directory with its census. |
@@ -7077,6 +7078,8 @@ oracle failures, preserve the primary failure when their cleanup also fails,
 and attempt every registered disposal.
 The provider whole-call deadline and recovery policy remain independent; a harness cancellation is
 not evidence that the provider's own deadline expired.
+
+§tier-specimen-selection **One invocation runs a real-model tier or one of its specimens.** The demo catalog is every story under `test/demo/` and the live catalog every specimen under `test/live/`, each registered in one place; `npm run test:demo` and `npm run test:live` run the tier, and `-- --specimen "<name>"` the one specimen, through the same invocation, which places the name pattern before the file list. A selector must match at least one registered specimen before any provider call: a zero-match selector exits non-zero and runs nothing.
 
 §provider-conformance-matrix **The provider conformance matrix: every configured model alias is exercised through a
 real PLURNK loop: the production packet, a model-selected operation, its

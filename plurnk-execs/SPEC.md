@@ -38,6 +38,7 @@ spawn recipe and availability binary.
 | {§executor-sinks} | Inputs and sinks |
 | {§executor-interaction-sink} | `interact(request, signal?)` — Await one contracts-owned client interaction ({§client-interaction-wire}). |
 | {§executor-metadata} | Invocation metadata ownership |
+| {§executor-argv-tokenizer} | `tokenizeArgv` splits a command line into argv by shell quoting alone. |
 | {§executor-live-input} | Invocation-local input |
 | {§executor-stdin} | Subprocess input |
 | {§executor-channels} | Channels |
@@ -152,6 +153,8 @@ authored READ retains its own source-scheme metadata contract.
 | Subprocess options | `SubprocessExecutor` additionally accepts `[{"stdin": "open"}]` ({§executor-stdin}) and `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
 | Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. Subprocess executors use the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
+
+§executor-argv-tokenizer **`tokenizeArgv` splits a command line into argv by shell quoting alone.** Plain words split on whitespace; quoted multi-word and quoted empty arguments stay whole; escapes are honoured; nothing is expanded — no variables, no command substitution, no metacharacters — and unterminated quoting is refused as `CommandSyntaxError`.
 
 Metadata does not turn inline programs or script stdin into JSON envelopes.
 Executable references document advanced options on demand; no language-level
