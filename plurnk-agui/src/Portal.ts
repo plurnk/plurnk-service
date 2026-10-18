@@ -45,7 +45,6 @@ interface Thread {
     deferredFinish: { readonly events: AguiEvent[]; readonly result: unknown } | null;
     pendingTerminations: unknown[];
     resolvingInterrupts: boolean;
-    cancelOnDisconnect: boolean;
     disconnected: boolean;
     // {§agui-gate-deferral} — the stopped-world held while the bound Worker's reasoning lifecycle is open.
     deferredDelivery: HitlDelivery | null;
@@ -104,7 +103,6 @@ export interface Descendant {
 }
 
 interface InterruptContinuation {
-    readonly cancelOnDisconnect: boolean;
     readonly workspaceId: number;
     readonly gate: WorkerBinding;
     readonly binding: { readonly workerId: number | null; readonly loopId: number | null };
@@ -580,7 +578,6 @@ export default class Portal {
             const shaped = delivery.batch.gates.map((gate) => ({ gate, ...Portal.#concerning(thread, gate) }));
             const paused = thread.router.interrupt();
             const continuation: InterruptContinuation = {
-                cancelOnDisconnect: thread.cancelOnDisconnect,
                 workspaceId,
                 owner: delivery.recipient,
                 gate: { workerId: delivery.workerId, loopId: delivery.loopId },
@@ -706,7 +703,7 @@ export default class Portal {
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
     // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
     // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; cancelOnDisconnect?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -740,7 +737,6 @@ export default class Portal {
             deferredFinish: null,
             pendingTerminations: [],
             resolvingInterrupts: args.resume !== undefined,
-            cancelOnDisconnect: restored?.cancelOnDisconnect ?? args.cancelOnDisconnect === true,
             disconnected: false,
             deferredDelivery: null,
             descendants: args.descendants === true,
@@ -761,25 +757,11 @@ export default class Portal {
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
 
-    // {§agui-run-disconnect} A message Run cancels its bound worker; an operation Run cancels exactly its own Loop,
-    // at once when known, else when its dispatch opens it.
+    // {§agui-run-disconnect} A disconnect ends this Run's delivery and nothing else: the work it submitted,
+    // observed or resumed runs on under its own lifetime.
     disconnect(thread: unknown): void {
         const bound = thread as Thread;
-        if (bound.disconnected) return;
         bound.disconnected = true;
-        if (bound.cancelOnDisconnect) this.#cancelOwned(bound);
-    }
-
-    #cancelOwned(thread: Thread): void {
-        if (thread.notificationScope === "operation") {
-            const loopId = thread.loopId;
-            if (loopId === null) return;
-            void this.#seam.cancelLoop({ workspaceId: thread.workspaceId, loopId, reason: "client_disconnected" }).catch((cause: unknown) => {
-                console.error(`AG-UI: cancelling client operation loop ${loopId} failed:`, cause);
-            });
-            return;
-        }
-        if (thread.workerId !== null) this.#seam.cancelDrain(thread.workerId, "client_disconnected");
     }
 
     // {§agui-broadcast-fan} An operation Run observes the Loop its dispatch opened, from before any statement runs.
@@ -787,7 +769,6 @@ export default class Portal {
         const bound = thread as Thread;
         bound.workerId = loop.workerId;
         bound.loopId = loop.loopId;
-        if (bound.disconnected && bound.cancelOnDisconnect) this.#cancelOwned(bound);
     }
 
     // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch.
@@ -907,10 +888,8 @@ export default class Portal {
         const submitted = (args.envelope?.message as { id?: unknown } | undefined)?.id;
         if (typeof submitted === "string") bound.router.submitted(submitted);
         const ack = await this.#seam.runLoop(args);
-        if (bound.disconnected) {
-            if (bound.cancelOnDisconnect) this.#cancelOwned(bound);
-            return null;
-        }
+        // {§agui-run-disconnect} Admitted: a Run whose connection closed meanwhile delivers nothing and cancels nothing.
+        if (bound.disconnected) return null;
         if (!this.#threads.get(args.workspaceId)?.has(bound)) return null;
         if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         this.#bindLoop(bound, ack.loopId);
@@ -953,7 +932,6 @@ export default class Portal {
             }
             bound.workerId = continuation.binding.workerId;
             bound.loopId = continuation.binding.loopId;
-            bound.cancelOnDisconnect = continuation.cancelOnDisconnect;
             if (bound.disconnected) throw new HttpProblemError(Problems.create("agui:interrupt", "connection-closed", 499,
                 "The connection closed before the interrupt was resolved."));
         });

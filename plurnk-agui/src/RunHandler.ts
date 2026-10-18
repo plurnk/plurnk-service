@@ -254,7 +254,6 @@ export default class RunHandler {
             emit: routed,
             modelWorkerId: workerId,
             inputRunId: input.runId,
-            cancelOnDisconnect: prompt !== null || notificationScope === "operation",
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
         // {§agui-shutdown} Acquire the Run before committing headers or a heartbeat:
@@ -263,7 +262,8 @@ export default class RunHandler {
         // {§agui-configuration} SSE comments keep quiet generations connected.
         const cadence = this.#opts().heartbeatMs;
         const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
-        // {§agui-run-disconnect} Install once, before any asynchronous preparation.
+        // {§agui-run-disconnect} Install once, before any asynchronous preparation: a disconnect ends this
+        // delivery and nothing else.
         const disconnected = (): void => {
             if (finished) return;
             this.#portal().disconnect(boundRun);

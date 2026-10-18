@@ -1656,11 +1656,11 @@ test("{§agui-broadcast-fan} an operation Run stays open until the stream its ow
     } finally { await mod.close(); }
 });
 
-test("{§agui-run-disconnect} a client hangup cancels exactly its operation's loop, never the runtime worker", async () => {
+test("{§agui-run-disconnect} a client hangup cancels nothing: the operation's loop and the runtime worker run on", async () => {
     const { seam, emit } = mockSeam();
     const dispatchStarted = Promise.withResolvers<void>();
     const dispatchReleased = Promise.withResolvers<void>();
-    const cancellation = Promise.withResolvers<{ workspaceId: number; loopId: number; reason?: string }>();
+    const cancellations: Array<{ workspaceId: number; loopId: number; reason?: string }> = [];
     const drains: number[] = [];
     seam.dispatchClientAction = async ({ onLoop }) => {
         onLoop?.(OPERATION);
@@ -1668,7 +1668,7 @@ test("{§agui-run-disconnect} a client hangup cancels exactly its operation's lo
         await dispatchReleased.promise;
         return [{ status: 200 }];
     };
-    seam.cancelLoop = async (args) => { cancellation.resolve(args); return true; };
+    seam.cancelLoop = async (args) => { cancellations.push(args); return true; };
     seam.cancelDrain = (workerId) => { drains.push(workerId); return true; };
     const mod = await host(seam);
     try {
@@ -1691,8 +1691,9 @@ test("{§agui-run-disconnect} a client hangup cancels exactly its operation's lo
         await new Promise((resolve) => setImmediate(resolve));
         ac.abort();
         await assert.rejects(body, { name: "AbortError" });
-        assert.deepEqual(await cancellation.promise, { workspaceId: 3, loopId: OPERATION.loopId, reason: "client_disconnected" });
-        assert.deepEqual(drains, []);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.deepEqual(cancellations, [], "the admitted operation runs on");
+        assert.deepEqual(drains, [], "the runtime worker is never cancelled");
     } finally { await mod.close(); }
 });
 
@@ -1771,10 +1772,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
                 controller.abort();
                 await mod.close();
             }
-            assert.deepEqual(cancellations,
-                ending === "disconnect" && origin === "message"
-                    ? [{ workerId, reason: "client_disconnected" }] : [],
-                "approval does not change which connection owns the work's lifetime");
+            assert.deepEqual(cancellations, [], "no connection owns the work's lifetime: neither its ending nor its origin cancels");
         });
     }
 }
@@ -1862,7 +1860,7 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
     } finally { await mod.close(); }
 });
 
-test("{§agui-run-disconnect}: disconnect during resume validation cancels controlled work without releasing its approval", async () => {
+test("{§agui-run-disconnect}: disconnect during resume validation refuses the decision, cancels nothing and keeps the approval pending", async () => {
     const { seam, resolves } = mockSeam();
     const pending: ProposalProjection[] = [{ logEntryId: 42, workerId: 77, worker: "validating", loopId: 9, turnId: 1, coordinate: "1/1/42", op: "EDIT",
         target: { scheme: "file", authority: null, pathname: "file" }, body: "replacement", attrs: {},
@@ -1892,8 +1890,8 @@ test("{§agui-run-disconnect}: disconnect during resume validation cancels contr
         await responseClosed.promise;
         release.resolve();
         await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.deepEqual(cancellations, [77]);
-        assert.deepEqual(resolves, []);
+        assert.deepEqual(cancellations, [], "a decision that never settled cancels nothing");
+        assert.deepEqual(resolves, [], "and the gate stays pending for the next connection");
     } finally { release.resolve(); controller.abort(); await mod.close(); }
 });
 

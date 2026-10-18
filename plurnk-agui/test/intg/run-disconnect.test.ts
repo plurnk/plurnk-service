@@ -11,13 +11,13 @@ const frames = (body: string): AguiEvent[] => body.split("\n\n")
     .filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 
 {
-    test("{§agui-run-disconnect}: a resumed message Run's disconnect reaps its actual executor", { timeout: 30_000 }, async (t) => {
+    test("{§agui-run-disconnect}: a resumed message Run's disconnect leaves its executor to finish; the decision stands", { timeout: 30_000 }, async (t) => {
         await import(join(SERVICE, "test/setup.ts"));
         const [{ default: Daemon }, { makeMockResponse }, { waitForDb }] = await Promise.all([
             import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_mock.ts")),
             import(join(SERVICE, "test/intg/_rpc.ts")),
         ]);
-        const command = "printf ready; sleep 60";
+        const command = "printf ready; sleep 1; printf done";
         const provider = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse(`\`\`\`sh\n${command}\n\`\`\``), makeMockResponse("```WAIT\n```"),
         ] });
@@ -55,13 +55,14 @@ const frames = (body: string): AguiEvent[] => body.split("\n\n")
             controller.abort();
             await body;
             const stream = await concluded.promise;
-            assert.equal(stream.workerId, proposal.workerId, "the original operation worker is cancelled, not one guessed from the thread's binding");
-            assert.equal(stream.result.status, 499, "the executor is reaped rather than detached");
+            assert.equal(stream.workerId, proposal.workerId, "the accepted operation's own worker finishes it");
+            assert.equal(stream.result.status, 200, "the executor runs to its own end rather than being reaped");
+            assert.deepEqual(await daemon.pendingProposals(workspace.id), [], "the accepted decision stands");
             const loops: ApplicationLoopProjection[] = await waitForDb(() => application.listWorkerLoops({ workspaceId: workspace.id, workerId: proposal.workerId }),
-                (rows: ApplicationLoopProjection[]) => rows.some((row) => row.terminalResult !== null));
+                (rows: ApplicationLoopProjection[]) => rows.some((row) => row.id === proposal.loopId));
             const result = loops.find((loop) => loop.id === proposal.loopId)?.terminalResult;
-            assert.equal(result?.status, 499);
-            assert.equal(result?.problem?.reason, "client_disconnected");
+            assert.notEqual(result?.status, 499, "nothing cancelled the loop");
+            assert.notEqual(result?.problem?.reason, "client_disconnected");
         } finally {
             controller.abort();
             off();
@@ -72,7 +73,7 @@ const frames = (body: string): AguiEvent[] => body.split("\n\n")
     });
 }
 
-test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disconnect reaps the command it started, and no other operation's", { timeout: 30_000 }, async (t) => {
+test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disconnect leaves the command it started running, like every other", { timeout: 30_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { waitForDb }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_rpc.ts")),
@@ -98,7 +99,7 @@ test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disco
     const exec = (threadId: string, signal: AbortSignal) => fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {
         method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([signal, t.signal]),
         body: JSON.stringify({ threadId, runId: crypto.randomUUID(), messages: [], tools: [], state: {}, context: [],
-            forwardedProps: { plurnk: { workspace: "disconnect", projectRoot: null, action: { kind: "op.exec", command: "printf ready; sleep 60" } } } }),
+            forwardedProps: { plurnk: { workspace: "disconnect", projectRoot: null, action: { kind: "op.exec", command: "printf ready; sleep 1; printf done" } } } }),
     });
     try {
         await daemon.start();
@@ -111,12 +112,12 @@ test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disco
 
         mine.abort();
         await mineBody;
-        const reaped: OperationResult = await waitForDb(async () => concluded.get(myCommand), (result: OperationResult | undefined) => result !== undefined);
-        assert.equal(reaped.status, 499, "the command is reaped rather than detached");
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        assert.equal(concluded.has(theirCommand), false, "another operation's command runs on");
+        const finished: OperationResult = await waitForDb(async () => concluded.get(myCommand), (result: OperationResult | undefined) => result !== undefined);
+        assert.equal(finished.status, 200, "the command ran to its own end after its connection closed");
         theirs.abort();
         await theirBody;
+        const other: OperationResult = await waitForDb(async () => concluded.get(theirCommand), (result: OperationResult | undefined) => result !== undefined);
+        assert.equal(other.status, 200, "and so did the other operation's");
     } finally {
         mine.abort();
         theirs.abort();

@@ -216,8 +216,8 @@ export default class BuiltinActions {
                     });
                     return operationOutcome(ack);
                 }
-                // The stop control (TUI /stop + Ctrl-C): abort the model
-                // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
+                // The stop control (TUI /stop + Ctrl-C): abort the model worker's active drain.
+                // The one cancellation: a hangup ends delivery only ({§agui-run-disconnect}).
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam().cancelDrain(
                     BuiltinActions.#bound(boundWorkerId),
                     typeof p.reason === "string" ? p.reason : undefined,

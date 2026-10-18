@@ -125,22 +125,32 @@ Server approval policy belongs to Core.
 
 ## §agui-run-disconnect Run lifetime
 
-Approval ownership does not confer responsibility for cancelling running work.
+**A disconnect ends delivery, never work.** Once Core has admitted work, the loss of the
+transport that submitted it cancels nothing and changes nothing about it: not its owner, its
+permissions, its execution state or its accounting. Only an explicit cancellation
+(`loop.cancel`, {§methods-loop-cancel}) or the work's own end ends it. No connection owns a
+worker's lifetime, and approval ownership confers no responsibility for cancelling running work.
 
 | Connection | Unexpected disconnect |
 |---|---|
-| Message Run | Cancel its bound worker with `client_disconnected`. |
-| Resume of a message Run's interrupt | Retain the same cancellation responsibility and worker binding. |
-| Executing `op.exec` / `op.parse` Run | Cancel exactly its operation with `client_disconnected` ({§methods-loop-cancel}): its dispatch, and the executions it started that still run; once its dispatch opens the operation's loop if it disconnected before. |
-| Observation, including approval of independently started work | Detach; do not cancel work. |
+| Message Run | Detach. The admitted loop runs on; its rows reach every other observer. |
+| Resume of a message Run's interrupt | Detach. An accepted decision stands; the resumed work runs on. |
+| Executing `op.exec` / `op.parse` Run | Detach. The dispatched operation, its loop and the executions it started run on under their own lifetime ({§connection-lifecycle}). |
+| Observation, including approval of independently started work | Detach. |
 | Other management Run | Detach. |
 
-An authored terminal or interrupt ends the connection normally without cancellation.
-The disconnect handler is installed before asynchronous Run preparation; a disconnected
-request must not subsequently start work. Interrupt continuations are adapter-owned,
-not worker ownership or a second core lifecycle. Rediscovery, including after module
-restart, presents a fresh observer continuation rather than inferring a prior connection's
-cancellation responsibility.
+The admission boundary is Core's acknowledgement of the submission. Before it, a request
+that is incomplete, invalid or unauthorized acquires no authority, and a request whose
+connection closed starts nothing: the disconnect handler is installed before asynchronous Run
+preparation. After it, a lost reply undoes nothing: the admission stands exactly once, and
+delivery teardown (the transport, its heartbeat, its subscriptions and the connection-local
+projection) cannot reach it or any other loop. A resume whose connection closes before its
+decision is accepted is refused (499 `connection-closed`) and the same gate stays discoverable;
+one accepted is settled at most once and never undone. An authored terminal or interrupt ends
+the connection normally. Interrupt continuations are adapter-owned, not worker ownership or a
+second core lifecycle; rediscovery, including after module restart, presents a fresh observer
+continuation. A client's own request abortion is not evidence of cancellation: only the
+daemon's terminal record is.
 
 ## §agui-owner-connection Persistent observation
 
@@ -477,8 +487,8 @@ facts, which the official reducer folds onto the call it holds, its arguments un
 call's result, unless the operation opened an obligation, which what discharges it answers
 ({§agui-call-result}). A snapshot holds a pending proposal as its call without a result
 ({§agui-snapshot}), so a client that resumed holds exactly what a refreshed one builds. Separate
-presentations of one gate have separate interrupt IDs, so an observer cannot inherit another Run's
-cancellation responsibility ({§agui-run-disconnect}). Unknown presentations require
+presentations of one gate have separate interrupt IDs, so a resume addresses exactly the
+presentation its client holds ({§agui-run-disconnect}). Unknown presentations require
 rediscovery; pending proposals and interactions remain durable in Core. The module
 resolves the complete pending interrupt set for one worker, restores the thread's live projection
 state, and only then releases it. The pending Worker's persisted Worker and Loop remain the exact
@@ -625,7 +635,7 @@ dispatches one client operation ({§connection-lifecycle}) as the thread's owner
 ({§agui-worker-owner}), acting for the model worker the thread names when one exists
 ({§actor-boundary-client-operations}) and never creating it. The Run binds no worker, claims nothing and
 declares no capability set; it observes the operation's loop from the moment the dispatch opens it
-({§agui-broadcast-fan}), and a disconnect cancels exactly that operation ({§agui-run-disconnect}). A
+({§agui-broadcast-fan}), and a disconnect ends only that observation ({§agui-run-disconnect}). A
 person's operation is never routed for review ({§proposal-disposition}), so its Run presents no
 interrupt. `workspace.rollback`'s compensations are such an operation too, without an observing Run.
 
@@ -734,11 +744,10 @@ read perspective. Shared resources neither broadcast to unrelated workers
 nor hide updates from the producer ({§notifications-stream-event-on-channel-change}).
 
 `loop.inject`'s steered effect streams on the original worker's open SSE.
-`loop.cancel` is its counterpart: the addressable spelling of the SSE-hangup
-abort. An action that opens a stream remains one live AG-UI Run; its result is
+`loop.cancel` is its counterpart: the one cancellation, since a hangup is none
+({§agui-run-disconnect}). An action that opens a stream remains one live AG-UI Run; its result is
 held until every observed stream emits `stream/concluded`, then the result and
-`RUN_FINISHED` close that Run. An executing operation Run retains its cancellation
-responsibility under {§agui-run-disconnect}.
+`RUN_FINISHED` close that Run.
 
 ## §agui-topology-scope Topology scope
 

@@ -1001,7 +1001,7 @@ const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as 
 // it opened in the runtime worker (10).
 const openOperation = (portal: Portal, inputRunId: string, seen: AguiEvent[], loopId = 6) => {
     const thread = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId, notificationScope: "operation",
-        cancelOnDisconnect: true, emit: (events) => seen.push(...events) });
+        emit: (events) => seen.push(...events) });
     portal.bindOperation(thread, { workerId: 10, loopId });
     return thread;
 };
@@ -1122,20 +1122,19 @@ test("{§agui-broadcast-fan} stream activity that precedes the row announcing it
     portal.stop();
 });
 
-test("{§agui-run-disconnect} an operation Run's disconnect cancels exactly its own loop, even before its dispatch opened it", () => {
+test("{§agui-run-disconnect} an operation Run's disconnect cancels nothing, before or after its dispatch opened its loop", () => {
     const m = mockSeam();
     const portal = new Portal(m.seam);
     portal.start();
     const bound = openOperation(portal, "bound", [], 6);
     portal.disconnect(bound);
-    assert.deepEqual(m.cancelledLoops, [{ workspaceId: 3, loopId: 6, reason: "client_disconnected" }]);
+    assert.deepEqual(m.cancelledLoops, [], "an admitted operation runs on without its connection");
 
     const early = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "early", notificationScope: "operation",
-        cancelOnDisconnect: true, emit: () => undefined });
+        emit: () => undefined });
     portal.disconnect(early);
-    assert.equal(m.cancelledLoops.length, 1, "nothing to cancel before the loop exists");
     portal.bindOperation(early, { workerId: 10, loopId: 7 });
-    assert.deepEqual(m.cancelledLoops.at(-1), { workspaceId: 3, loopId: 7, reason: "client_disconnected" });
+    assert.deepEqual(m.cancelledLoops, [], "a loop bound after the disconnect runs on too");
     assert.equal(m.cancelled(), null, "the runtime worker itself is never cancelled");
     portal.stop();
 });
