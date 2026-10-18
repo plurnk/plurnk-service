@@ -165,35 +165,42 @@ type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[];
 // The objective ({§pairing-objective}): a complete reading, one with no repair, wins over any repaired one —
 // a complete nested interpretation takes precedence. Within a class readings compare lexicographically: operation
 // headings written at their block's width that will not run; repairs (supplied closers, surplus fences, undersized
-// closers accepted); headings literal by declaration (narrower than their block, in a labeled block, a quotation
-// or a KILL); supplied closers; other fence lines read as text. Equal cost goes to the reading whose first
-// differing choice comes earlier in the preference order, which is how a repair lands at the earliest viable
-// position.
-type Cost = readonly [hidden: number, repairs: number, declared: number, supplied: number, demoted: number, runOn: number, swallowed: number];
-const ZERO: Cost = [0, 0, 0, 0, 0, 0, 0];
-const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4], a[5] + b[5], a[6] + b[6]];
-// Repaired readings: [hidden, repairs, declared, supplied, demoted], in that order.
+// closers accepted); declared code blocks discarded as text, counted — among repaired readings only — with headings
+// literal by declaration (narrower than their block, in a labeled block, a quotation or a KILL); supplied closers;
+// other fence lines read as text. A heading the author enclosed in a wider or labeled fence is the example it was
+// written as: no departure in a complete reading. Equal cost goes to the reading whose first differing choice comes
+// earlier in the preference order, which is how a repair lands at the earliest viable position and a body nests
+// before it closes ({§balanced-fences}).
+type Cost = readonly [hidden: number, repairs: number, discarded: number, supplied: number, demoted: number, runOn: number, swallowed: number, literal: number];
+const ZERO: Cost = [0, 0, 0, 0, 0, 0, 0, 0];
+const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7]];
+// Repaired readings: [hidden, repairs, discarded with literal, supplied, demoted, runOn], in that order.
 // {§unclosed-mutation-yields}: a native heading swallowed by a mutation body outranks any number of repairs.
 const less = (a: Cost, b: Cost): boolean => {
     if (a[6] !== b[6]) return a[6] < b[6];
-    for (let k = 0; k < 6; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
+    if (a[0] !== b[0]) return a[0] < b[0];
+    if (a[1] !== b[1]) return a[1] < b[1];
+    if (a[2] + a[7] !== b[2] + b[7]) return a[2] + a[7] < b[2] + b[7];
+    for (let k = 3; k < 6; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
     return false;
 };
-// Complete readings: every operation or code block not read as written counts alike, then supplied closers,
-// then demotions.
+// Complete readings: every operation hidden or declared code block discarded counts alike, then supplied closers,
+// then demotions; a heading literal by declaration costs nothing.
 const lessComplete = (a: Cost, b: Cost): boolean => a[0] + a[2] !== b[0] + b[2] ? a[0] + a[2] < b[0] + b[2]
     : a[3] !== b[3] ? a[3] < b[3] : a[4] < b[4];
-const HIDE: Cost = [1, 0, 0, 0, 0, 0, 0];
-const REPAIR: Cost = [0, 1, 0, 0, 0, 0, 0];
-const SUPPLY: Cost = [0, 1, 0, 1, 0, 0, 0];
-const DECLARED: Cost = [0, 0, 1, 0, 0, 0, 0];
+const HIDE: Cost = [1, 0, 0, 0, 0, 0, 0, 0];
+const REPAIR: Cost = [0, 1, 0, 0, 0, 0, 0, 0];
+const SUPPLY: Cost = [0, 1, 0, 1, 0, 0, 0, 0];
+const DISCARDED: Cost = [0, 0, 1, 0, 0, 0, 0, 0];
+// A heading held literal by the author's own enclosure ({§pairing-objective}): the example it was written as.
+const LITERAL: Cost = [0, 0, 0, 0, 0, 0, 0, 1];
 // {§message-run-on}: a message, prompt or deliverable that runs to the end of the turn is supplied its closer there
 // without a repair — the text after its last inner block is still the message — and the run is counted apart.
-const RUN_ON: Cost = [0, 0, 0, 1, 0, 1, 0];
-const DEMOTE: Cost = [0, 0, 0, 0, 1, 0, 0];
+const RUN_ON: Cost = [0, 0, 0, 1, 0, 1, 0, 0];
+const DEMOTE: Cost = [0, 0, 0, 0, 1, 0, 0, 0];
 // {§unclosed-mutation-yields}: a same-width native heading held as an example by a mutation body (EDIT) is a
 // swallowed operation; such a reading is never complete, and loses to any repaired reading that runs it.
-const SWALLOW: Cost = [1, 0, 0, 0, 0, 0, 1];
+const SWALLOW: Cost = [1, 0, 0, 0, 0, 0, 1, 0];
 const repaired = (cost: Cost): boolean => cost[1] > 0 || cost[6] > 0;
 
 // An open block as its contents see it. `top`: it is the outermost block; `quoted`: it is or lies inside a
@@ -482,13 +489,13 @@ class Search {
         // {§prose-code-blocks}: a message or a prompt shows code; a block labeled with an executor's name is part of it.
         if (context.prose && (this.#lines[i] as { runtime?: string | null }).runtime != null) {
             yield example(ZERO, { ...flags, empty: false, written: true });
-            yield { kind: "stay", cost: DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
+            yield { kind: "stay", cost: DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             return;
         }
         // {§quotation}: inside a quotation an operation is shown, never run — text, or a complete literal
         // example ({§balanced-fences}). Text first on a tie (CommonMark); the objective decides otherwise.
         if (context.quoted) {
-            yield { kind: "stay", cost: DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
+            yield { kind: "stay", cost: DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             yield example(ZERO, flags);
             return;
         }
@@ -499,20 +506,21 @@ class Search {
         // {§naked-operation}: a naked body runs to the next heading; it expects no closer, so ending there is free.
         if (context.kind === "naked") {
             if (!flags.holds) yield interrupt(ZERO);
-            yield example(DECLARED, holding);
+            yield example(DISCARDED, holding);
             return;
         }
         // A literal example, or a heading narrower than its enclosing block read as content there (CommonMark),
         // names an operation that will not run: either costs a hidden operation.
         if (!flags.holds) yield interrupt(SUPPLY);
         // A heading narrower than its block, or no wider than the labeled block or example holding it, is literal by
-        // declaration; a wider one cannot be part of that block's content.
+        // declaration — the author's enclosure wrote it as an example, at no cost to a complete reading; a wider one
+        // cannot be part of that block's content.
         const narrower = context.character === "`" && width < context.width;
         const declared = narrower || context.kind === "nested" && !context.bareOpened && width <= context.width;
         // {§unclosed-mutation-yields}: an EDIT body reading a same-width native heading as its example swallows it.
         const native = (this.#lines[i] as { runtime?: string | null }).runtime == null;
-        yield example(declared ? DECLARED : context.mutation && native ? SWALLOW : HIDE, holding);
-        if (narrower) yield { kind: "stay", cost: DECLARED, effects: [], next, flags: holding };
+        yield example(declared ? LITERAL : context.mutation && native ? SWALLOW : HIDE, holding);
+        if (narrower) yield { kind: "stay", cost: LITERAL, effects: [], next, flags: holding };
     }
 
     *#bare(i: number, line: Extract<Line, { kind: "bare" }>, context: Context | null, flags: Flags): Generator<Move> {
@@ -568,7 +576,7 @@ class Search {
         const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...flags, empty: false, written: true } };
         // Outside a quotation a labeled fence is a code block the author declared; reading it as text ranks with a
         // hidden operation, so no reading ends a body early by discarding one.
-        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
+        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
         // A labeled fence opens a literal nested block, or is text — a demotion (inside a quotation, text first
         // on a tie, as CommonMark reads it).
         if (context.quoted) { yield text; yield push; return; }

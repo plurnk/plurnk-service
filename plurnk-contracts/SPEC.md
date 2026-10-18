@@ -291,7 +291,7 @@ rule.
 
 §balanced-fences A complete nested interpretation takes precedence over missing-closer
 recovery. Within a body, a line-leading labeled fence opens a literal block, and an equal or
-wider bare fence nests where closing there would cost the reading more
+wider bare fence nests unless closing there costs the reading less
 ({§fence-pairing}). A nested block ends at its first valid closer, as a CommonMark code block
 does. So a wider outer fence holds any narrower body, finished or not, and equal widths nest
 when every inner block closes. Preserve every nested body byte, including apparent operations
@@ -409,13 +409,18 @@ repaired reading: a complete nested interpretation takes precedence. Each class 
 
 | Counted | Complete readings | Repaired readings | Why |
 |---|---|---|---|
-| Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with the next row | 1 | Every operation the author wrote should run |
+| Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with discarded code | 1 | Every operation the author wrote should run |
 | Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (COPY, MOVE, non-log targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
-| Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL, or an executor heading inside a SEND, WORK, FORK or BARE body ({§prose-code-blocks}); a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
+| Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL, or an executor heading shown as a code block inside a SEND, WORK, FORK or BARE body ({§prose-code-blocks}) | none: the author's enclosure wrote it as an example | 3, together with the row below | A heading the author wrapped is the example it was written as |
+| Discarded code: a labeled fence in a body read as text, or such an executor heading read as text | 1, together with hidden operations | 3, together with the row above | Every code block the author declared should stand |
 | Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
 | Other fences read as text | 3 | 5 | The least departure from the fences as written |
 
-Complete readings compare exactly as a single least-errors order would. Once every reading of an
+Complete readings compare as a single least-errors order over departures from the fences as written,
+and a heading the author enclosed in a wider or labeled fence is the example it was written as, not a
+departure. So a message whose own fence is narrower than the fences wrapping its examples still holds
+them: the reading that lets a wrapper close the message and runs the examples ties on cost and loses on
+preference, since a body nests before it closes ({§balanced-fences}). Once every reading of an
 emission needs a repair, its shape is already broken, and saving a repair is not worth an operation
 the author wrote: across the corpus, readings that traded operations for repairs held a WORK in a
 BARE behind two stray fences, wrote 11,485 characters of operation text into a file as an EDIT

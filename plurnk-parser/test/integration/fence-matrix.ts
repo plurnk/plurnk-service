@@ -1,7 +1,8 @@
 // {§balanced-fences} matrix: the cells a model writes, generated, each with the reading the
 // metacontract requires (a complete nested interpretation wins; only irreconcilable shapes fall back).
 // {§fence-pairing}: an operation example quoted in a body of its own width reads as the body closing and the
-// example running ({§operation-fences}).
+// example running ({§operation-fences}); wrapped in a wider bare fence it stays the body's example whatever the
+// body's own width ({§pairing-objective}).
 // {§unclosed-mutation-yields}: a native example at an EDIT body's own width runs, closed or not; an example
 // inside an EDIT is written with the wider outer fence ({§operation-fences}).
 export type Cell = {
@@ -39,6 +40,8 @@ const INNERS: readonly Inner[] = [
     { name: "four-wide inner", body: () => `Nested:\n${fence(4)}\nouter example\n${fence(4)}\nEnd.` },
     { name: "quoted operation example", body: () => `Use this form:\n${fence(3)}\n${fence(3)}READ (a.md) <1,5>\n${fence(3)}\n${fence(3)}\nThat is all.`, sameWidth: { body: "Use this form:", following: ["READ"] } },
     { name: "labeled quoted operation", body: () => `Example:\n${fence(3)}READ (a.md) <1,5>\n${fence(3)}\nEnd.`, mutationSameWidth: { body: "Example:", following: ["READ"] } },
+    { name: "wrapped operation example", body: () => `Use this form:\n${fence(4)}\n${fence(3)}READ (a.md) <1,5>\n${fence(3)}\n${fence(4)}\nThat is all.` },
+    { name: "wrapped mutation example", body: () => `Never run:\n${fence(4)}\n${fence(3)}EDIT (b.py) /old/\nnew\n${fence(3)}\n${fence(4)}\nShown only.` },
     { name: "markdown document", body: () => `# Guide\n\nRun:\n\n${fence(3)}sh\nnpm test\n${fence(3)}\n\nThen:\n\n${fence(3)}\nnpm run build\n${fence(3)}\n` },
 ];
 
