@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
-import { aliveChildren, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
@@ -51,6 +51,7 @@ export type AguiPort = Pick<
     | "listWorkerLoops"
     | "listWorkers"
     | "listWorkspaces"
+    | "readInbox"
     | "readWorker"
     | "readWorkerReference"
     | "ensureWorkerReference"
@@ -491,15 +492,16 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return action.scope === "worker" ? "required" : "none";
     }
 
-    async #workerStatus(workspaceId: number, workerId: number): Promise<AguiStatusState> {
-        const [{ model }, loops, children] = await Promise.all([
+    async #workerStatus(workspaceId: number, workerId: number, threadId: string): Promise<AguiStatusState> {
+        const [{ model }, loops, children, inbox] = await Promise.all([
             this.#seam.readWorkerModel({ workspaceId, workerId }),
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
             this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
+            this.#seam.readInbox({ workspaceId, workerId }),
         ]);
         const loop = selectWorkerLoop(loops);
         const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
-        return statusState(model, loop, spendState(spend), aliveChildren(children));
+        return statusState(model, loop, spendState(spend), aliveChildren(children), inboxState(inbox, threadId));
     }
 
     // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on

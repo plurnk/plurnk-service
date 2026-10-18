@@ -222,6 +222,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         claimedAt: 1_792_008_000_000,
         terminatedAt: null,
         children: 0,
+        inbox: [],
         spend: NOTHING_SPENT,
     });
     assert.deepEqual(statusState(null, null, NOTHING_SPENT), {
@@ -233,6 +234,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         claimedAt: null,
         terminatedAt: null,
         children: 0,
+        inbox: [],
         spend: NOTHING_SPENT,
     });
     // {§agui-status-children} — alive means still owing a result: queued, running, or parked.

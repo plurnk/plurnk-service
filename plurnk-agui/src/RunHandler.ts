@@ -20,7 +20,7 @@ import { httpProblem, runErrorEvents } from "./run-events.ts";
 export type WorkerBinding = "create" | "required" | "attach" | "none";
 
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
-export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "readWorker" | "listWorkerReferences" | "messageAdmission" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
+export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "readWorker" | "listWorkerReferences" | "messageAdmission" | "readInbox" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
 
 export default class RunHandler {
     readonly #seam: () => RunPort;
@@ -33,7 +33,7 @@ export default class RunHandler {
     readonly #conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
     readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
-    readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
+    readonly #workerStatus: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiStatusState>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
 
     constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerStatus, action }: {
@@ -47,7 +47,7 @@ export default class RunHandler {
         conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
         boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
-        workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
+        workerStatus: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiStatusState>;
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
@@ -223,11 +223,13 @@ export default class RunHandler {
 
         // {§agui-run-start} The Portal routes to this Run from the moment it is bound; what reaches it
         // before RUN_STARTED and the snapshot are written follows them, in order. A terminal ends it at once.
-        // Each notification's events are held together, so a sync Run can tell the rows its snapshot holds.
+        // Each notification's events are held together, so a Run can tell the rows its snapshot holds.
         let presented = false;
         const held: Array<{ events: AguiEvent[]; interrupts: Interrupt[] }> = [];
+        // {§agui-sync} The rows the Run's snapshot holds, by version: a later delivery of one is not built a second time.
+        const replayed = new Map<unknown, string>();
         const routed = (events: AguiEvent[], interrupts: Interrupt[] = []): void => {
-            if (presented) return emit(events, interrupts);
+            if (presented) return emit(RunHandler.#unreplayed(events, replayed), interrupts);
             const terminal = events.filter(({ type }) => type === EventType.RUN_ERROR || type === EventType.RUN_FINISHED);
             if (terminal.length === 0) return void held.push({ events, interrupts });
             held.length = 0;
@@ -273,7 +275,7 @@ export default class RunHandler {
         if (res.destroyed) { disconnected(); return; }
         try {
         // A Run that binds no worker has no worker status to report.
-        const status = workerId === undefined ? undefined : await this.#workerStatus(workspaceId, workerId);
+        const status = workerId === undefined ? undefined : await this.#workerStatus(workspaceId, workerId, input.threadId);
         if (finished) return;
         let providers;
         let catalogProblem;
@@ -294,7 +296,10 @@ export default class RunHandler {
                 ...(status === undefined ? {} : { status }),
             }),
         ));
-        if (!synchronize) {
+        // {§agui-message-acceptance} A message Run on a thread it reattached may present a snapshot once its message is
+        // admitted; what reaches it before then is held as a sync Run's is.
+        const mayReplay = fresh !== null && reattached;
+        if (!synchronize && !mayReplay) {
             presented = true;
             for (const batch of held.splice(0)) emit(batch.events, batch.interrupts);
         }
@@ -309,14 +314,15 @@ export default class RunHandler {
                 emit([{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }]);
             }
             // A sync Run requires its worker ({§agui-action-binding}), so one is bound here.
-            const history = await this.#history(workspaceId, workerId!);
+            // {§agui-message-acceptance} The snapshot carries the accepted messages the Worker has not yet observed.
+            const [history, inbox] = await Promise.all([this.#history(workspaceId, workerId!), this.#seam().readInbox({ workspaceId, workerId: workerId! })]);
             // {§agui-subagents} A Run that observes its delegation replays it too.
             const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
             if (finished) return;
-            emit(this.#portal().replay(boundRun, history, undefined, subagents));
+            emit(this.#portal().replay(boundRun, history, inbox, subagents));
             // {§agui-sync} What reached the Run while its log was read follows its snapshot, and a row the snapshot
             // already holds as it arrived is not built a second time.
-            const replayed = new Map([...history, ...subagents.flatMap(({ entries }) => entries)].map((row) => [row.id, RunHandler.#version(row)]));
+            for (const row of [...history, ...subagents.flatMap(({ entries }) => entries)]) replayed.set(row.id, RunHandler.#version(row));
             presented = true;
             for (const batch of held.splice(0)) emit(RunHandler.#unreplayed(batch.events, replayed), batch.interrupts);
             if (finished) return;
@@ -359,17 +365,9 @@ export default class RunHandler {
 
         if (prompt === null || currentUser === null || workerId === undefined) throw new Error("message AG-UI Run reached dispatch without a validated prompt and its worker");
 
-        if (reattached) {
-            const history = await this.#history(workspaceId, workerId);
-            if (finished) return;
-            if (!RunHandler.#isOriented(input, history, replyThreads)) {
-                const replayUser = currentUser ?? undefined;
-                const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
-                if (finished) return;
-                emit(this.#portal().replay(boundRun, history, replayUser, subagents));
-            }
-        }
-        const started = await this.#portal().run(boundRun, {
+        // {§agui-message-acceptance} The message is durable before anything is presented: a snapshot built after its
+        // admission holds it accepted, and no Run copies a message from its input into one.
+        const submission = {
             workspaceId, workerId, prompt,
             ...MessageAddress.submission(principal, input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
@@ -388,9 +386,32 @@ export default class RunHandler {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "childSelector")
                 ? { childSelector: forwarded.childSelector as string | null }
                 : {}),
-        });
+        };
+        let started: { loopId: number } | null;
+        if (!reattached) {
+            started = await this.#portal().run(boundRun, submission);
+        } else {
+            // {§agui-replay} The conversation decides whether this Run replays before its message is submitted: a history
+            // the daemon cannot read submits nothing.
+            const history = await this.#history(workspaceId, workerId);
+            if (finished) return;
+            const oriented = RunHandler.#isOriented(input, history, replyThreads);
+            const ack = await this.#portal().submit(boundRun, submission);
+            if (!oriented) {
+                const inbox = await this.#seam().readInbox({ workspaceId, workerId });
+                const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
+                if (finished) return;
+                emit(this.#portal().replay(boundRun, history, inbox, subagents));
+                for (const row of [...history, ...subagents.flatMap(({ entries }) => entries)]) replayed.set(row.id, RunHandler.#version(row));
+            }
+            // {§agui-sync} What reached the Run meanwhile follows its snapshot, less the rows the snapshot already holds.
+            presented = true;
+            for (const batch of held.splice(0)) emit(RunHandler.#unreplayed(batch.events, replayed), batch.interrupts);
+            if (finished) return;
+            started = await this.#portal().attach(boundRun, workspaceId, ack);
+        }
         if (started !== null && !finished) {
-            const currentStatus = await this.#workerStatus(workspaceId, workerId);
+            const currentStatus = await this.#workerStatus(workspaceId, workerId, input.threadId);
             if (!finished) emit(this.#portal().replaceStatus(boundRun, currentStatus));
         }
         } catch (err) {

@@ -33,7 +33,7 @@ import {
 import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
+import { Validator, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
@@ -57,7 +57,8 @@ export default class Translator {
     #workspaceId: number | null;
     #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
     #completedReasoning = new Map<number, string[]>();
-    // {§agui-snapshot} The messages this Run submitted: its client already holds them.
+    // {§agui-snapshot} {§agui-message-acceptance} The messages whose words this Run's client holds: those it submitted
+    // and those its snapshot carried as accepted; their arrival rows fold their facts onto them.
     #submitted = new Set<string>();
     // {§agui-call-result} The calls this Run's client holds without their result: a gate's call it presented, or a
     // pending one its snapshot held. A later delivery of that row only answers it.
@@ -404,13 +405,13 @@ export default class Translator {
     // {§agui-replay} {§agui-snapshot} — the messages as the live projection built them: arrivals, each turn's
     // reasoning, speech, and every other model operation as its tool call and result, under the
     // live identities. Wire rows arrive as the log.read projection (tx parsed).
-    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
-        return Translator.replayAll([{ translator: this, entries }], currentUser);
+    replay(entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
+        return Translator.replayAll([{ translator: this, entries }], inbox);
     }
 
     // {§agui-snapshot} {§agui-subagents} One conversation from several logs: every row in the order the workspace
     // committed it, each projected by its own worker's translator into one message list.
-    static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: ReadonlyArray<Record<string, unknown>> }>, currentUser?: UserMessage): AguiEvent[] {
+    static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: ReadonlyArray<Record<string, unknown>> }>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
         const messages: ReplayMessage[] = [];
         const order = (e: Record<string, unknown>): number => typeof e.id === "number" ? e.id : Number.MAX_SAFE_INTEGER;
         const rows = parts.flatMap(({ translator, entries }) => entries.map((e) => ({ translator, e })))
@@ -421,10 +422,28 @@ export default class Translator {
             delivered.set(translator, reasoning);
             translator.#replayRow(e, messages, reasoning);
         }
-        if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
-            messages.push(currentUser);
+        // {§agui-message-acceptance} The accepted messages the bound worker has not yet observed, after every row: each a
+        // client on this thread sent, under that client's id; the client then holds its words, and its arrival folds.
+        const bound = parts[0]?.translator;
+        if (bound !== undefined) {
+            for (const message of inbox) {
+                const pending = bound.#pending(message);
+                if (pending === null || messages.some(({ id }) => id === pending.id)) continue;
+                messages.push(pending);
+                bound.#submitted.add(pending.id);
+            }
         }
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
+    }
+
+    // {§agui-message-acceptance} An accepted message a client on this thread sent, as the snapshot carries it: its words
+    // under that client's id, its acceptance as metadata, no coordinate. Another client's, a worker's or a schedule's
+    // waits for its arrival row, which names it by its coordinate.
+    #pending(message: ApplicationInboxMessage): UserMessage | null {
+        const id = MessageAddress.messageId(message.source, this.#threadId);
+        if (id === null) return null;
+        return { id, role: "user", content: message.body,
+            metadata: { plurnk: { message: message.path, loop: message.loopId, lifecycle: message.lifecycle, source: message.source, published: false } } };
     }
 
     #replayRow(e: Record<string, unknown>, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {

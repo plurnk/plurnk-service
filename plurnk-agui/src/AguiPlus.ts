@@ -7,8 +7,9 @@
 // shared STATE. This is the flagship choreography de-risked as logic before code.
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
+import MessageAddress from "./MessageAddress.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
-import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
@@ -129,6 +130,17 @@ export interface AguiDerivationActivity {
     readonly percent: number;
     readonly message: string;
 }
+// {§agui-message-acceptance} — an accepted message the bound Worker has not yet observed: its immutable source address,
+// the loop that holds it and, when a client on this thread sent it, that client's message id.
+export interface AguiInboxEntry {
+    readonly path: string;
+    readonly id: string | null;
+    readonly loopId: number;
+    readonly lifecycle: LoopLifecycle;
+}
+export const inboxState = (messages: readonly ApplicationInboxMessage[], threadId: string): AguiInboxEntry[] =>
+    messages.map(({ path, source, loopId, lifecycle }) => ({ path, id: MessageAddress.messageId(source, threadId), loopId, lifecycle }));
+
 export interface AguiStatusState {
     readonly lifecycle: AguiLifecycle;
     readonly model: ModelRoute | null;
@@ -139,6 +151,8 @@ export interface AguiStatusState {
     readonly children: number;
     // {§agui-status-spend} — what the bound Worker and its descendants have spent since it began.
     readonly spend: AguiSpendState;
+    // {§agui-message-acceptance} — the accepted messages the bound Worker has not yet observed.
+    readonly inbox: ReadonlyArray<AguiInboxEntry>;
     // {§agui-status-timing} — when the latest Loop first ran and when it concluded, Unix milliseconds.
     readonly claimedAt: number | null;
     readonly terminatedAt: number | null;
@@ -185,6 +199,7 @@ export const statusState = (
     loop: ApplicationLoopProjection | null,
     spend: AguiSpendState,
     children = 0,
+    inbox: readonly AguiInboxEntry[] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -195,6 +210,7 @@ export const statusState = (
     ...loopTiming(loop),
     children,
     spend,
+    inbox,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

@@ -126,6 +126,7 @@ const mockSeam = (
     const cancelledLoops: Array<{ workspaceId: number; loopId: number; reason?: string }> = [];
     const seam = {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
+        readInbox: async () => [],
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
         listWorkers: async () => topology.workers ?? [worker(10)],
@@ -149,7 +150,7 @@ const mockSeam = (
         readLog: async ({ workerId, loopSeq, turnSeq, sequence }) => loopSeq === undefined ? [] : [wireRow({ id: sequence, worker_id: workerId,
             loop_seq: loopSeq, turn_seq: turnSeq, sequence, op: "EDIT", status_rx: 202, rx: { status: 202 }, state: "proposed" })],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "readInbox" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),

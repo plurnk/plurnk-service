@@ -6,8 +6,8 @@
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
-import { EventType, type AguiEvent, type LogEntryNotification, type OutsideEventNotification, type ReasoningEventNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
-import type { ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
+import { EventType, type AguiEvent, type LogEntryNotification, type OutsideEventNotification, type ReasoningEventNotification, type TerminatedNotification } from "./types.ts";
+import type { ApplicationInboxMessage, ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 import { observedSync } from "./observe.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { AGUI_NOTIFICATIONS, type AguiNotificationContract } from "./AguiSurface.ts";
@@ -24,9 +24,9 @@ export default class EventRouter {
     runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
     submitted(messageId: string): void { this.#t.submitted(messageId); }
     // {§agui-subagents} The bound Worker's rows and each observed subagent run's, as one conversation.
-    replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage,
+    replay(entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = [],
         subagents: ReadonlyArray<{ translator: Translator; entries: Array<Record<string, unknown>> }> = []): AguiEvent[] {
-        return Translator.replayAll([{ translator: this.#t, entries }, ...subagents], currentUser);
+        return Translator.replayAll([{ translator: this.#t, entries }, ...subagents], inbox);
     }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
     gateCall(entry: LogEntryNotification["entry"]): AguiEvent[] { return this.#t.gateCall(entry); }

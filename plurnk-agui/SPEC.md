@@ -336,6 +336,8 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 | `snapshot.plurnk.workspace.activity` | `ApplicationPort.workspaceDerivationStatus(workspaceId)` | Current workspace derivation: phase, counts, percent and message while preparing, indexing or failed, and `null` when none is under way or the last pass completed. Live `search_progress` Notices replace it as `STATE_DELTA /plurnk/workspace/activity`; a Loop's terminal leaves it as derivation last reported it. Reattachment snapshots carry the current derivation through the same projection, without polling or duplicate routine Notices. |
 | `snapshot.plurnk.status.claimedAt`, `.terminatedAt` | latest `ApplicationLoopProjection.claimedAt`, `.terminatedAt` | When the latest Loop first ran and when it concluded, Unix milliseconds, null until they happen; live, the lifecycle beat and the terminal replace them in the same delta as the Loop's identity ({§agui-status-timing}). |
 | `snapshot.plurnk.status.spend` | `ApplicationPort.workerAccounting({ workspaceId, workerId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's and its descendants' settled spend since the Worker began, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/spend` only when it differs from what the Run's client holds, never before its snapshot ({§agui-status-spend}). |
+| `snapshot.plurnk.status.inbox` | `ApplicationPort.readInbox({ workspaceId, workerId })` | `[{ path, id, loopId, lifecycle }]`: the accepted messages the bound Worker has not yet observed ({§agui-message-acceptance}), each by its immutable source address, that client's message id when a client on this thread sent it (else `null`), the loop holding it and that loop's lifecycle. |
+| `STATE_DELTA /plurnk/status/inbox` | the Run's own submission; an arrival row; the moments of {§agui-status-children} | Republished only when it differs from the one the Run's client holds, never before the snapshot. |
 | `STATE_DELTA /plurnk/status/*`               | packet, termination, and lifecycle events | The bound Worker's replaceable lifecycle and packet chronology. Clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | initialization of a Run that binds a Worker | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |
@@ -380,7 +382,7 @@ every other daemon surface.
   | --- | --- |
   | A passive observation (`forwardedProps.plurnk.control` absent or false) | resolves an existing worker under {§agui-thread-binding}, creates nothing and claims nothing |
   | An owner's control observation | the owner's session attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}) |
-  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then an authoritative `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
+  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then an authoritative `MESSAGES_SNAPSHOT` of the daemon-owned log and the accepted messages the Worker has not yet observed ({§agui-snapshot}, {§agui-message-acceptance}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
   | A durable pending gate addressed to the Run's thread ({§agui-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not |
   | An active Loop | remains observed through its terminal; an idle worker emits `RUN_FINISHED` |
 
@@ -400,6 +402,7 @@ complete set:
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
 | A reply reporting progress on a message this worker sent | `user` identified by its coordinate and named by its source ({§agui-progress-reply}) |
 | Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
+| An accepted message a client on this thread sent, not yet observed | `user` under that client's message id, after every row, `metadata.plurnk.published` false and no coordinate ({§agui-message-acceptance}) |
 
 Interrupts are not snapshot messages: a pending gate is re-presented as an interrupt naming the call
 the snapshot holds, and a settled one's evidence is its operation's call and result. Transient reasoning of failed or rejected
@@ -947,6 +950,7 @@ address is the daemon's.
 | Tag | Promise |
 | --- | --- |
 | {§agui-run-input} | A Run's input is what its conversation doesn't hold. |
+| {§agui-message-acceptance} | A client tells an accepted message from its own copy by the daemon's word, never by an echo. |
 | {§agui-run-source} | The run's user message is the causal actor behind its inbound SEND |
 | {§agui-http-authorization} | `/agui` is a protected resource of the daemon's authority. |
 | {§agui-cors} | Every response carries `access-control-allow-origin` with the value of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows… |
@@ -971,13 +975,22 @@ anything, and a refused Run binds, creates and claims nothing:
 |---|---|
 | An interrupt resume | Resolves its interrupts ({§agui-proposal-resolve}) |
 | `forwardedProps.plurnk.action` | Acts ({§agui-management-plane}) |
-| A new message | Submits it: its text is the `ApplicationPort.runLoop` prompt, `maxTurns` from the forwarded PLURNK properties |
+| A new message | Submits it, durable before the Run presents anything ({§agui-message-acceptance}): its text is the `ApplicationPort.runLoop` prompt, `maxTurns` from the forwarded PLURNK properties |
 | None of them | Synchronizes ({§agui-sync}) |
 | More than one of them | Is refused, 400 `ambiguous-run-input` |
 
 A new message that is not non-empty text is refused, 400 `user-message-text-required`: multimodal content waits until
 the model-loop seam supports it deliberately. A client's address that core holds with other words is core's refusal,
 422 `message-address-reused`. A connection submits nothing ({§agui-owner-connection}).
+
+§agui-message-acceptance **A client tells an accepted message from its own copy by the daemon's word, never by an echo.** A message is accepted when Core holds it ({§message-arrival}): a message Run submits it before it presents anything, and no Run copies a message from its input into a snapshot. Until the Worker observes it at a turn boundary, an accepted message is discoverable on every Run that binds the Worker — before the current inference ends and after a disconnect, a reattachment or a cancellation:
+
+| Where | What |
+| --- | --- |
+| `status.inbox` | every accepted message the bound Worker has not yet observed, `{ path, id, loopId, lifecycle }`: its immutable source address, that client's message id when a client on this thread sent it (else `null`), the loop holding it and that loop's lifecycle ({§loop-lifecycle-vocabulary}); read from `ApplicationPort.readInbox` with the gauge ({§methods-worker-inbox}) and republished as `STATE_DELTA /plurnk/status/inbox` under the rule of {§agui-status-children}, after the Run's own submission and after an arrival row lands |
+| The snapshot | each such message a client on this thread sent, as a `user` message under that client's id with its words and `metadata.plurnk` `{ message, loop, lifecycle, source, published: false }`, after every row and with no coordinate ({§agui-snapshot}); one another client, a worker or a schedule sent waits for its arrival row, which names it by its coordinate |
+| Its arrival | the row folds its facts onto the message the client holds — a repeated `TEXT_MESSAGE_START` and `TEXT_MESSAGE_END` under the same id and no words again ({§agui-plurnk-metadata}) — and the message leaves `status.inbox`; a loop that concludes without observing it — cancelled, say — leaves it listed with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}) |
+| A refused input | is nowhere: a refusal before admission is the Run's own error ({§agui-run-input}), and the client's copy stays its own |
 
 §agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}): `operator` for the operator's own credentials, a declared client's id for its own, and `anonymous` when the listener authenticates nothing. The frontend's self-identification never enters the address ({§client-metadata}).
 

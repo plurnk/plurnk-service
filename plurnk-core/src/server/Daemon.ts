@@ -28,7 +28,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, ty
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type MessageResource, type MessageEvidence, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type MessageEvidence, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -571,6 +571,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async readMessages(args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
         await this.#assertModelWorker(args.workspaceId, args.workerId);
         return MessageResources.read(this.#db, args);
+    }
+
+    // {§methods-worker-inbox}
+    async readInbox(args: { workspaceId: number; workerId: number }): Promise<ApplicationInboxMessage[]> {
+        await this.#assertModelWorker(args.workspaceId, args.workerId);
+        return MessageResources.inbox(this.#db, args);
     }
 
     // {§message-idempotency}

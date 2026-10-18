@@ -19,6 +19,8 @@ export interface MessageEvidence {
     readonly attachments?: readonly MessageResourceReceipt[];
 }
 
+import type { LoopLifecycle } from "./LoopLifecycle.ts";
+
 export interface ApplicationMessage {
     readonly id: number;
     readonly loopId: number;
@@ -29,4 +31,16 @@ export interface ApplicationMessage {
     readonly body: string;
     readonly envelope?: Readonly<Record<string, unknown>>;
     readonly attachments: readonly MessageResource[];
+}
+
+/** {§methods-worker-inbox} An accepted message its recipient has not yet observed at a turn boundary ({§message-arrival}). */
+export interface ApplicationInboxMessage {
+    /** The immutable source address Open Messages lists the message by. */
+    readonly path: string;
+    /** The causal actor's canonical address; null for the operator's own. */
+    readonly source: string | null;
+    readonly body: string;
+    readonly loopId: number;
+    /** The lifecycle of the loop holding it ({§loop-lifecycle-vocabulary}): a terminal one will never observe it. */
+    readonly lifecycle: LoopLifecycle;
 }

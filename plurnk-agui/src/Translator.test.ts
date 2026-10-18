@@ -761,7 +761,7 @@ test("{§agui-plurnk-metadata} the newest-first workspace log replays user promp
         { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
         { id: 1, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 1, sequence: 1, turn_id: 1, tx: { body: "orient" } },
         { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, loop_seq: 1, turn_seq: 1, sequence: 0, tx: { body: { raw: "What is the answer?" } } },
-    ], { id: "current-user", role: "user", content: "Continue." });
+    ], [{ path: "agui://anonymous/threads/th/messages/current-user", source: "agui://anonymous/threads/th/messages/current-user", body: "Continue.", loopId: 1, lifecycle: "running" }]);
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
@@ -775,6 +775,33 @@ test("{§agui-plurnk-metadata} the newest-first workspace log replays user promp
         { id: "current-user", role: "user", content: "Continue." },
     ]);
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
+});
+
+test("{§agui-message-acceptance} {§agui-snapshot} an accepted message a client sent rides the snapshot under its id, unpublished, and its arrival folds without repeating its words", () => {
+    const tr = t();
+    const own = "agui://alice/threads/th-1/messages/m-pending";
+    const elsewhere = "agui://bob/threads/th-2/messages/m-elsewhere";
+    const earlier = wireRow({ id: 1, origin: "_plurnk", op: "SEND", source: "agui://alice/threads/th-1/messages/m-old", attrs: { kind: "message" }, tx: { body: { raw: "Earlier." } } });
+    const snapshot = tr.replay([earlier], [
+        { path: own, source: own, body: "Pending words.", loopId: 4, lifecycle: "running" },
+        { path: elsewhere, source: elsewhere, body: "Another thread's.", loopId: 4, lifecycle: "running" },
+        { path: "message://main/abc", source: "schedule://daily", body: "A schedule's.", loopId: 4, lifecycle: "running" },
+    ])[0] as { messages: Array<{ id: string; role: string; content: unknown; metadata?: unknown }> };
+    assert.deepEqual(snapshot.messages.map(({ id, role, content }) => ({ id, role, content })), [
+        { id: "m-old", role: "user", content: "Earlier." },
+        { id: "m-pending", role: "user", content: "Pending words." },
+    ], "the snapshot carries this thread's accepted message after every row, and nobody else's before its arrival");
+    assert.deepEqual(snapshot.messages[1].metadata, { plurnk: { message: own, loop: 4, lifecycle: "running", source: own, published: false } },
+        "its acceptance is its metadata, and it has no coordinate");
+    assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snapshot), "the snapshot stays the standard AG-UI message snapshot");
+    const arrival = tr.logEntry({ entry: wireRow({ id: 2, origin: "_plurnk", op: "SEND", source: own, attrs: { kind: "message" }, tx: { body: { raw: "Pending words." } } }) })
+        .filter((event) => event.type.startsWith("TEXT_MESSAGE_"));
+    assert.deepEqual(arrival.map(({ type }) => type), ["TEXT_MESSAGE_START", "TEXT_MESSAGE_END"],
+        "its arrival folds the row's facts onto the message the client holds and repeats no words");
+    const start = arrival[0] as { messageId: string; metadata?: { plurnk?: { coordinate?: unknown; published?: unknown } } };
+    assert.equal(start.messageId, "m-pending");
+    assert.equal(start.metadata?.plurnk?.coordinate, "1/1/2", "{§agui-plurnk-metadata} the fold carries the coordinate it now has");
+    assert.equal(start.metadata?.plurnk?.published, undefined, "and the row's facts replace the acceptance facts");
 });
 
 test("{§agui-plurnk-metadata} an interrupt closes the current AG-UI step and its resume Run reopens the continued Plurnk turn", () => {

@@ -1,5 +1,4 @@
 import type { RunAgentInput, UserMessage } from "./types.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]*)\/messages\/([^/]+)$/u;
 
@@ -14,7 +13,7 @@ export default class MessageAddress {
         principal: string,
         { threadId, runId }: Pick<RunAgentInput, "threadId" | "runId">,
         message: UserMessage,
-    ): Pick<Parameters<ApplicationPort["runLoop"]>[0], "source" | "messageAddress" | "envelope"> {
+    ): { source: string; messageAddress: string; envelope: Readonly<Record<string, unknown>> } {
         const address = MessageAddress.render(principal, threadId, message.id);
         return { source: address, messageAddress: address, envelope: { threadId, runId, message } };
     }

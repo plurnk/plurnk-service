@@ -6,19 +6,20 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, inboxState, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
 import { Problems, Validator, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
 import ProposalHitl, { type HitlDelivery, type HitlGate } from "./ProposalHitl.ts";
 import type {
+    ApplicationInboxMessage,
     ApplicationLoopProjection,
     ApplicationWorkerProjection,
     OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
@@ -59,7 +60,7 @@ interface Thread {
     subagents: Map<number, Subagent>;
     // {§agui-status-children} {§agui-status-spend} — what this Run's client holds: its snapshot's, its
     // latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
-    gauge: Pick<AguiStatusState, "children" | "spend"> | null;
+    gauge: Pick<AguiStatusState, "children" | "spend" | "inbox"> | null;
     // A refresh was asked for before the snapshot was presented; it runs once the snapshot is.
     staleGauge: boolean;
     // The latest refresh begun: an earlier one that completes after it publishes nothing.
@@ -123,6 +124,7 @@ interface PresentedInterrupt {
 export type PortalPort = Pick<
     ApplicationPort,
     | "subscribeToEvents"
+    | "readInbox"
     | "pendingProposals"
     | "resolveProposal"
     | "pendingClientInteractions"
@@ -236,7 +238,7 @@ export default class Portal {
     // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "worker") return false;
-        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown }; notice?: { source?: unknown; kind?: unknown } };
+        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown; origin?: unknown }; notice?: { source?: unknown; kind?: unknown } };
         if (method === "loop/terminated" || method === "loop/packet") {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
         }
@@ -245,8 +247,10 @@ export default class Portal {
                 && payload.notice?.source === "engine:turn" && payload.notice.kind === "turn_generated";
         }
         if (method === "log/entry") {
+            // {§agui-message-acceptance} An arrival row moves a message out of the inbox.
             return payload.entry?.worker_id === thread.workerId
-                && (payload.entry.op === "WORK" || payload.entry.op === "FORK" || payload.entry.op === "KILL");
+                && (payload.entry.op === "WORK" || payload.entry.op === "FORK" || payload.entry.op === "KILL"
+                    || (payload.entry.op === "SEND" && payload.entry.origin === "_plurnk"));
         }
         return false;
     }
@@ -260,9 +264,10 @@ export default class Portal {
         const workerId = thread.workerId;
         if (workerId === null) return;
         const refresh = ++thread.gaugeRefresh;
-        const [rows, accounting] = await Promise.all([
+        const [rows, accounting, messages] = await Promise.all([
             this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: workerId }),
             this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId }),
+            this.#seam.readInbox({ workspaceId: thread.workspaceId, workerId }),
         ]);
         if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
         if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
@@ -275,14 +280,19 @@ export default class Portal {
         if (JSON.stringify(spend) !== JSON.stringify(thread.gauge.spend)) {
             delta.push({ op: "replace", path: "/plurnk/status/spend", value: spend });
         }
-        thread.gauge = { children, spend };
+        // {§agui-message-acceptance} The accepted messages the Worker has not yet observed, by the daemon's word.
+        const inbox = inboxState(messages, thread.threadId);
+        if (JSON.stringify(inbox) !== JSON.stringify(thread.gauge.inbox)) {
+            delta.push({ op: "replace", path: "/plurnk/status/inbox", value: inbox });
+        }
+        thread.gauge = { children, spend, inbox };
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
     }
 
     // The client now holds this status. A refresh asked for before, or racing, its reads runs after it.
     #presentGauge(thread: Thread, status: AguiStatusState): void {
         const stale = thread.staleGauge || thread.gauge !== null;
-        thread.gauge = { children: status.children, spend: status.spend };
+        thread.gauge = { children: status.children, spend: status.spend, inbox: status.inbox };
         thread.staleGauge = false;
         thread.gaugeRefresh += 1;
         if (stale) void this.#refreshStatus(thread);
@@ -789,9 +799,9 @@ export default class Portal {
     }
 
     // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
-    replay(thread: unknown, entries: Array<Record<string, unknown>>, currentUser?: UserMessage, subagents: SubagentHistory = []): AguiEvent[] {
+    replay(thread: unknown, entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
         return [
-            ...(thread as Thread).router.replay(entries, currentUser, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
+            ...(thread as Thread).router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
             ...subagents.flatMap(({ subagent }) => Portal.#present(subagent)),
         ];
     }
@@ -879,21 +889,31 @@ export default class Portal {
         return !this.#bindLoop(bound, loop.id);
     }
 
-    // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
-    // subscription as loop/terminated). {§agui-message-before-gate} — the prompt is durable in
-    // Core before any pending stopped-world is re-presented.
-    async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
+    // {§agui-message-acceptance} Submit the prompt: durable in Core before the Run presents anything.
+    async submit(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number }> {
         const bound = thread as Thread;
         // {§agui-snapshot} The submitting Run's client holds its own message; every other Run receives it.
         const submitted = (args.envelope?.message as { id?: unknown } | undefined)?.id;
         if (typeof submitted === "string") bound.router.submitted(submitted);
-        const ack = await this.#seam.runLoop(args);
+        return { loopId: (await this.#seam.runLoop(args)).loopId };
+    }
+
+    // Observe the loop the submission joined or started (fire-and-forget — the outcome streams via the subscription as
+    // loop/terminated). {§agui-message-before-gate} — the prompt is durable in Core before any pending stopped-world is
+    // re-presented.
+    async attach(thread: unknown, workspaceId: number, ack: { loopId: number }): Promise<{ loopId: number } | null> {
+        const bound = thread as Thread;
         // {§agui-run-disconnect} Admitted: a Run whose connection closed meanwhile delivers nothing and cancels nothing.
         if (bound.disconnected) return null;
-        if (!this.#threads.get(args.workspaceId)?.has(bound)) return null;
-        if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
+        if (!this.#threads.get(workspaceId)?.has(bound)) return null;
+        if (await this.#resurfaceControlled(workspaceId, bound)) return null;
         this.#bindLoop(bound, ack.loopId);
         return { loopId: ack.loopId };
+    }
+
+    // Submit and attach in one step: a Run that presents nothing between them.
+    async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
+        return await this.attach(thread, args.workspaceId, await this.submit(thread, args));
     }
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }

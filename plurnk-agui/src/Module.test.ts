@@ -148,6 +148,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         cancelLoop: async () => false,
         readLog: async () => logRows([{ id: 1, op: "SEND", status_rx: 200, origin: "model" }]),
         readMessages: async () => [],
+        readInbox: async () => [],
         messageAdmission: async () => "new" as const,
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
@@ -328,7 +329,7 @@ for (const status of [200, 502]) {
                     kind: "derivation", phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } }, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, children: 1, waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
+                    packetCount: 2, children: 1, inbox: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
                     spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
@@ -788,6 +789,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
             claimedAt: null,
             terminatedAt: null,
             children: 0,
+            inbox: [],
             spend: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
         });
         assert.deepEqual(event.snapshot.plurnk.workspace, {
@@ -2260,6 +2262,8 @@ test("{§credential-authority} reattach replays SEND as speech without inventing
         { id: 3, loop_seq: 1, turn_seq: 1, sequence: 3, op: null, origin: "model", turn_id: 1, attrs: { kind: "emissionAttempt" } },
     ]);
     seam.runLoop = async (args) => {
+        // {§agui-message-acceptance} Core holds the message: the inbox lists it until its arrival row lands.
+        seam.readInbox = async () => [{ path: args.messageAddress ?? "", source: args.source ?? null, body: args.prompt, loopId: 9, lifecycle: "running" }];
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
@@ -2549,9 +2553,12 @@ test("{§agui-snapshot} {§agui-sync} through the official client, synchronizati
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: threadId, projectRoot: null, projectLabel: null });
     directory(seam, [workerRow(20, threadId)]);
     seam.readLog = async () => logRows(runs === 0 ? [] : rows.toReversed());
-    seam.runLoop = async () => {
+    seam.runLoop = async (args) => {
         runs++;
+        // {§agui-message-acceptance} Core holds the message until its arrival row lands.
+        seam.readInbox = async () => [{ path: args.messageAddress ?? "", source: args.source ?? null, body: args.prompt, loopId: 9, lifecycle: "running" }];
         setImmediate(() => {
+            seam.readInbox = async () => [];
             for (const entry of logRows(rows)) emit(3, "log/entry", { entry });
             emit(3, "loop/terminated", termination({ workerId: 20, loopId: 9, result: { status: 200 }, turnIds: [1, 2, 3],
                 usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
@@ -2760,6 +2767,8 @@ test("{§credential-authority} the official AG-UI client keeps the accepted curr
         { id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, tx: { body: { raw: "Prior question." } } },
     ]);
     seam.runLoop = async (args) => {
+        // {§agui-message-acceptance} Core holds the message: the inbox lists it until its arrival row lands.
+        seam.readInbox = async () => [{ path: args.messageAddress ?? "", source: args.source ?? null, body: args.prompt, loopId: 9, lifecycle: "running" }];
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
@@ -2781,7 +2790,7 @@ test("{§credential-authority} the official AG-UI client keeps the accepted curr
             .map(({ id, content }) => ({ id, content })), [
             { id: "1/1/1", content: "Prior question." },
             { id: "current-user", content: "Current question." },
-        ], "the wire snapshot is chronological and retains the accepted message identity");
+        ], "{§agui-message-acceptance} the wire snapshot is chronological and carries the accepted message under its identity");
         // The SDK's snapshot merge retains existing IDs in their old positions (#721).
         // That display-order limitation must not be repaired by renaming accepted messages.
         assert.deepEqual(
@@ -4043,8 +4052,8 @@ test("{§agui-plurnk-metadata} a post-headers runLoop failure preserves its exac
         assert.equal(err.code, problem.type, "RUN_ERROR code projects the exact Problem type");
         assert.deepEqual(
             frames.filter(({ type }) => type.startsWith("STEP_")).map(({ type }) => type),
-            ["STEP_STARTED", "STEP_FINISHED"],
-            "a failed AG-UI Run closes the Plurnk turn step it opened",
+            [],
+            "{§agui-message-acceptance} a Run whose submission failed presented nothing: no step opened, none to close",
         );
         assert.deepEqual(err.metadata?.plurnk?.problem, problem, "{§agui-plurnk-metadata} the Run's error carries every Problem field, losslessly");
         // The leak pin: the error path must release the AG-UI Run's handles (heartbeat

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ApplicationMessage, MessageEvidence, MessageResource, MessageResourceReceipt } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationMessage, type MessageEvidence, type MessageResource, type MessageResourceReceipt } from "@plurnk/plurnk-contracts";
 import { ResourceNames } from "@plurnk/plurnk-schemes";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -47,6 +47,16 @@ export default class MessageResources {
             "This message address was already accepted in this workspace with other words.",
             {}, { address, loopId, retryable: false },
         ));
+    }
+
+    // {§methods-worker-inbox} The accepted messages the worker has not yet observed ({§message-arrival}): durable the
+    // moment they are accepted, published at the next turn boundary of the loop holding them, which a terminal loop
+    // never reaches.
+    static async inbox(db: Db, args: { workspaceId: number; workerId: number }): Promise<ApplicationInboxMessage[]> {
+        const rows = await db.message_inbox.all<{ path: string; source: string | null; body: string; loop_id: number; loop_status: number }>({
+            workspace_id: args.workspaceId, worker_id: args.workerId,
+        });
+        return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
     }
 
     static async read(db: Db, args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
