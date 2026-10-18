@@ -2,6 +2,14 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run build:info   (a step of npm run build, from plurnk-core)
+Build step: records the build's package version and commit for the executable and makes the installed bin executable.
+Reads: package.json and git.
+Writes: dist/build-info.json and the bin's mode.
+`);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));

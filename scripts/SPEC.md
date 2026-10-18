@@ -27,6 +27,21 @@ shared `.oxlintrc.json`. The gate fails on errors.
 | Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
 | Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |
 
+## §script-help Every entry point explains itself
+
+A script that a package.json names answers `--help` (and `-h`) before it does anything else,
+through the one seam `scripts/usage.mjs`:
+
+| Line | Content |
+| --- | --- |
+| first | `usage:` followed by how to run it, by its npm script name with its arguments |
+| then | what it does, in one or two sentences, citing the tag it serves |
+| `Reads:` | the environment and files it consults |
+| `Writes:` | what it produces, or `nothing` |
+
+`scripts/script-help.test.mjs` runs every named script with `--help` and fails on a missing part, a
+non-zero exit, or any other output; `plurnk-core/src/service.ts` answers through its own usage.
+
 ## §package-release-contract Independent versions
 
 | Surface | Contract |

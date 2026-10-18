@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { exerciseRuntimeNeutralWorker } from "./runtime-neutral-worker-control.mjs";
 import { packRecords } from "../../scripts/npm-json.mjs";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run release:check   (from plurnk-providers)
+Bundles the runtime-neutral contracts into a browser Worker to prove neither gained a dependency unavailable there.
+Reads: this checkout's packed contracts.
+Writes: nothing kept; exit 1 when the bundle fails.
+`);
 
 const run = promisify(execFile);
 const cleanEnv = Object.fromEntries(

@@ -9,6 +9,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: node scripts/env-surface-policy.mjs   (a step of npm run root:lint)
+Counts every number and choice in the sources against the packages' .env.defaults: the cascading environment is the only home for a choice ({§operator-config-env-defaults}).
+Reads: plurnk-*/src, every .env.defaults, scripts/env-surface-allowance.json.
+Writes: violations to stdout; exit 1 on any.
+`);
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ALLOWANCE_PATH = join(ROOT, "scripts/env-surface-allowance.json");

@@ -17,6 +17,14 @@ import {
     redactText,
     sensitiveValuesFromEnv,
 } from "./providers-ping.mjs";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run probe:tokens -- --alias <alias>... [--max-output-tokens n] [--prompt-chars n] [--fill c] [--reasoning r] [--timeout-ms n] [--dry-run] [--measure-only] [--label name]   (from plurnk-providers)
+Probes a route's token accounting envelope with real requests and records what each provider charged against what was measured.
+Reads: the named aliases' declarations and credentials from the operator environment.
+Writes: a record under the benchmark home ({§test-artifact-retention}) and one line per alias to stdout.
+`);
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 

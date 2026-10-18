@@ -21,6 +21,14 @@ import SqlRite from "@possumtech/sqlrite";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 import Launch from "@plurnk/plurnk-service/launch";
 import { resolveClientCheckout } from "./project-topology.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run test:client-conformance
+Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§agui-first-party-client-conformance}).
+Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's packed packages.
+Writes: a sandbox under the test artifact home; exit 1 on a failed journey.
+`);
 
 const run = promisify(execFile);
 const root = resolve(import.meta.dirname, "..");

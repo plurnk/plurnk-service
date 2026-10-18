@@ -1,6 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: node scripts/host-path-policy.mjs   (a step of npm run root:lint)
+Every daemon host path is formed in HostPaths.ts and the benchmark home in benchmarks-root.mjs ({§test-artifact-retention}); no other source spells one.
+Reads: every tracked text source.
+Writes: violations to stdout; exit 1 on any.
+`);
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const IGNORED_DIRECTORIES = new Set([".git", ".tmp", "coverage", "dist", "node_modules"]);

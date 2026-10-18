@@ -13,6 +13,14 @@ import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import { runTier, stampTierRun, tierArguments, tierEnvironment } from "./live.mjs";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run test:demo | npm run test:demo:specimen -- <story-name-pattern>   (from plurnk-core)
+Drives the demo stories through a real model, every story or the ones a pattern selects; the pattern must select at least one ({§tier-census}).
+Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
+Writes: <benchmark home>/tier-demo-<stamp>/ with census.md and each worker's evidence.
+`);
 
 const workspace = resolve(import.meta.dirname, "..");
 const demoDirectory = resolve(workspace, "test/demo");

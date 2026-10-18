@@ -7,6 +7,14 @@ import {
     LanguageVariant,
     SyntaxKind,
 } from "typescript/unstable/ast";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run diagnostics:inventory
+Lists every Problem code and Notice the production sources mint, by package, read lexically from the TypeScript.
+Reads: plurnk-*/src (tracked files).
+Writes: the inventory to stdout.
+`);
 
 const PRODUCTION_SOURCE = /^plurnk-[^/]+\/src\/.*\.ts$/;
 const EXCLUDED_SOURCE = /(?:\.test\.ts$|\/generated\/|\/types\.generated\.ts$)/;

@@ -5,6 +5,14 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run types:sqlrite | npm run types:sqlrite:check   (from plurnk-core)
+Regenerates the SqlRite statement typings from the SQL registry with --write; without it, fails when the committed typings differ.
+Reads: src/**/*.sql.
+Writes: SqlRite.d.ts and SqlRite.test.d.ts with --write.
+`);
 
 const exec = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");

@@ -2,6 +2,14 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run packages:types [-- --only <workspace-dir>]
+Checks that every package's exported types resolve from a consumer's view.
+Reads: every workspace's package.json exports.
+Writes: findings to stdout; exit 1 on any.
+`);
 
 // Exported documents are resolvable assets, not type-importable code modules.
 const excludedEntrypoints = {

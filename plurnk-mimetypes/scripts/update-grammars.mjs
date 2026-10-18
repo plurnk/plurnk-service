@@ -5,6 +5,14 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run grammars:check | npm run grammars:update   (from plurnk-mimetypes)
+Coordinated grammar package maintenance ({§grammar-package-lifecycle}): check reports what an update would change; update regenerates the packages and commits them, signed.
+Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the grammar sources.
+Writes: with update, the grammar packages and one signed commit.
+`);
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_PREFIX = "@plurnk/plurnk-mimetypes-grammar-";

@@ -5,6 +5,14 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { usage } from "../usage.mjs";
+
+usage(`
+usage: npm run audit:clones
+Copy-paste audit: jscpd over every workspace's runtime source, cross-package pairs only (#891). A report, never a gate.
+Reads: plurnk-*/src.
+Writes: the report to stdout.
+`);
 
 const root = resolve(import.meta.dirname, "../..");
 const packageOf = (file) => file.split("/")[0];

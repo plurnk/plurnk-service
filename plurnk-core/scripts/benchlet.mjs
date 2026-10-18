@@ -8,6 +8,14 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run test:benchlet -- [benchlet arguments]   (from plurnk-core)
+Runs the DeepSWE benchlet from the bench checkout against this checkout; the benchlet owns the task, the model loop, the oracle and the digest.
+Reads: PLURNK_BENCH_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
+Writes: what the benchlet writes under the benchmark home.
+`);
 
 const serviceRoot = resolve(import.meta.dirname, "../..");
 const benchRoot = process.env.PLURNK_BENCH_ROOT ?? resolve(serviceRoot, "../plurnk-bench");

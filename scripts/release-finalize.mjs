@@ -4,6 +4,14 @@ import { promisify } from "node:util";
 import { canonicalForgeOrigin } from "./release-authority.mjs";
 import { readCandidate, readJson } from "./release-candidate.mjs";
 import { viewManifest } from "./npm-json.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run release:finalize -- <artifact-directory>
+Creates the tags and GitHub release records a qualified, published artifact directory is still missing ({§release-finalization}); publishes nothing to the registry.
+Reads: the retained qualification evidence and the registry's view of each package.
+Writes: signed tags on the canonical forge and the mirror, GitHub release records.
+`);
 
 const exec = promisify(execFile);
 const output = async (command, args, cwd) => (await exec(command, args, {

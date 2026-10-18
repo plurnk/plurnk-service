@@ -5,6 +5,14 @@ import { pathToFileURL } from "node:url";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { Share } from "@plurnk/plurnk-digest";
 import { sqlFunctionPaths } from "../src/core/sql-functions.ts";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run report:sql -- <database.db> [specimens.json]   (from plurnk-core)
+Workload query report over a consistent snapshot of the named database: plans the registry's statements and reports what the workload exercised ({§db-query-report}). On demand, never a gate.
+Reads: the named database, copied under {§share-snapshot}.
+Writes: the report to stdout.
+`);
 
 const sourceDirectory = resolve(import.meta.dirname, "../src");
 const failure = (error) => ({ error: error instanceof Error ? error.message : String(error) });

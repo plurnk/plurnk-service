@@ -3,6 +3,14 @@ import { glob, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { cruise } from "dependency-cruiser";
 import configuration from "./dependency-cruiser.mjs";
+import { usage } from "../usage.mjs";
+
+usage(`
+usage: npm run audit:direction
+Runtime import-direction audit with dependency-cruiser over the built output: runtime imports are the compiler's output, not a second reading of TypeScript (#1053). On demand, never a gate.
+Reads: each workspace's dist/.
+Writes: violations to stdout; exit 1 on any.
+`);
 
 export const inspectDirections = async (root) => {
     const { workspaces } = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));

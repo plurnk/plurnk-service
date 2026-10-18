@@ -6,6 +6,14 @@ import { execFile } from "node:child_process";
 import { promisify, parseArgs } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run release:gate [-- --only <package-dir>]...
+Candidate-only release checks: dependency and packed-artifact facts plus the package-specific checks that have no ordinary test-tier meaning.
+Reads: the workspaces and the installed tree.
+Writes: findings to stdout; exit 1 on any.
+`);
 
 const run = promisify(execFile);
 const { values } = parseArgs({ options: { only: { type: "string", multiple: true } } });

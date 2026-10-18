@@ -2,6 +2,14 @@
 // because this only runs after `node --test` has already exited 0.
 import { rm } from "node:fs/promises";
 import { testArtifactPath } from "./test-artifacts.ts";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: node scripts/reclaim-green-run.mjs <lane>   (after a green test:intg)
+Removes the lane's stamped run directory under the benchmark home: a green suite leaves nothing behind, a red one is never touched ({§test-artifact-retention}).
+Reads: PLURNK_TEST_RUN, the stamp of the run that just passed.
+Writes: nothing; deletes the run directory.
+`);
 
 const [lane] = process.argv.slice(2);
 if (lane === undefined) throw new Error("name the lane whose green run to reclaim");

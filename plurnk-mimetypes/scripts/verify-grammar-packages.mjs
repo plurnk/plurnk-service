@@ -5,6 +5,14 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run grammars:verify [-- --contract-only] [-- --only <grammar>]   (from plurnk-mimetypes)
+Grammar package acceptance: each shipped grammar rebuilds reproducibly and honours its contract ({§grammar-package-reproducibility}).
+Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the shipped grammar packages.
+Writes: findings to stdout; exit 1 on any.
+`);
 
 const PACKAGE_PREFIX = "@plurnk/plurnk-mimetypes-grammar-";
 const DIRECTORY_PREFIX = "plurnk-mimetypes-grammar-";

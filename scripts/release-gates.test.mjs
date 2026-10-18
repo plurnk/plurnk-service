@@ -25,6 +25,7 @@ test("{§release-candidate-graph} the root release command checks its selection,
         scripts: { "release:gate": rootManifest.scripts["release:gate"] },
     });
     await writeFile(path.join(cwd, "scripts", "release-gates.mjs"), await readFile(gates));
+    await writeFile(path.join(cwd, "scripts", "usage.mjs"), await readFile(path.join(import.meta.dirname, "usage.mjs")));
     await writeFile(path.join(cwd, "scripts", "deps-preflight.mjs"),
         'throw new Error("An unrelated upstream update must not block this release");');
     for (const name of ["alpha", "beta", "excluded"]) {

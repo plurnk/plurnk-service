@@ -4,6 +4,14 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run deps:audit [-- --strict]   (from plurnk-core)
+Audits the composed dependency tree and routes each advisory to the @plurnk package that pulls it in ({§install-root-advisory-ownership}).
+Reads: npm audit --json over the installed tree.
+Writes: the routed report to stdout; --strict exits 1 on any advisory.
+`);
 
 interface Advisory {
     source?: number;

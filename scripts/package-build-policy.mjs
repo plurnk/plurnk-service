@@ -1,5 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: node scripts/package-build-policy.mjs   (a step of npm run root:lint)
+Every dist-shipping workspace owns build:clean, begins build with it, keeps emission in build:dist and builds from prepack.
+Reads: every workspace's package.json.
+Writes: violations to stdout; exit 1 on any.
+`);
 
 export const shipsDist = (manifest) => Array.isArray(manifest.files)
     && manifest.files.some((entry) => typeof entry === "string"

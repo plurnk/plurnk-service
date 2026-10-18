@@ -3,6 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { TREE_SITTER_REGISTRY } from "../plurnk-mimetypes/src/treesitter/registry.ts";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: node scripts/dependency-policy.mjs   (a step of npm run root:lint)
+Checks the dependency graph: a framework never depends on an extension of its kind ({§core-extension-composition}), every package with install scripts is reviewed, no cycles.
+Reads: every package.json and the installed tree.
+Writes: violations to stdout; exit 1 on any.
+`);
 
 const run = promisify(execFile);
 

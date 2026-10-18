@@ -4,6 +4,14 @@ import { output, readCandidate } from "./release-candidate.mjs";
 import { verifyConsumer } from "./release-consumer.mjs";
 import { publishCandidates } from "./release-registry.mjs";
 import { assertReleaseHosting, finalizeCandidate, packageReleaseNotes } from "./release-finalize.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run release:publish -- <qualified-artifact-directory>
+Publishes the retained archives in dependency order, verifies the installed composition, carries the GitHub mirror to the canonical main and creates signed tags and release records ({§release-finalization}, {§release-mirror}). Retry with the same directory; never rebuild.
+Reads: npm publisher and forge authority, the artifact directory.
+Writes: the registry, tags on both remotes, GitHub release records, the mirror's main.
+`);
 
 const [destination, ...extra] = process.argv.slice(2);
 if (destination === undefined || extra.length !== 0) throw new Error("usage: release-publish.mjs <qualified-artifact-directory>");

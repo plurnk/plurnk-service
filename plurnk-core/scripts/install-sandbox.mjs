@@ -8,6 +8,14 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run build:local:install | npm run build:local:uninstall   (from plurnk-core)
+Packs every workspace and installs the service into a sandbox outside the repository as a consumer would; also the engine of test:installation.
+Reads: the built workspaces.
+Writes: the sandbox under the OS temporary directory.
+`);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monoRoot = resolve(root, "..");

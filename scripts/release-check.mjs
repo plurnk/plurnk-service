@@ -5,6 +5,14 @@ import { assertClean, output, packCandidate, readJson, selectPackages, writeJson
 import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
 import { assertReleaseHosting, packageReleaseNotes } from "./release-finalize.mjs";
 import { verifyConsumer } from "./release-consumer.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run release:check -- <new-artifact-directory> <package-directory>...
+Qualifies the named packages from clean canonical checkouts: packs them, builds the consumer against the archives and runs the package-specific release checks ({§release-candidate-graph}).
+Reads: clean canonical main checkouts, npm publisher authority, the registry.
+Writes: the artifact directory, which must not exist yet: retained archives and qualification evidence.
+`);
 
 const [destination, ...directories] = process.argv.slice(2);
 if (destination === undefined || directories.length === 0) throw new Error("usage: release-check.mjs <new-artifact-directory> <package-directory>...");

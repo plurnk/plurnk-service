@@ -1,4 +1,12 @@
 import { copyFile, mkdir } from "node:fs/promises";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run build:assets   (a step of npm run build, from plurnk-mcp)
+Build step: copies the module's watchdog script beside dist/.
+Reads: src/mcp-watchdog.mjs.
+Writes: dist/mcp-watchdog.mjs.
+`);
 
 await mkdir(new URL("../dist/", import.meta.url), { recursive: true });
 await copyFile(

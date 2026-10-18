@@ -4,6 +4,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { providers as source, generatedAt } from "@opencode-ai/models/snapshot";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run generate   (from plurnk-models)
+Projects the locked models.dev snapshot into the shipped catalog ({§model-catalog-build}).
+Reads: @opencode-ai/models/snapshot.
+Writes: src/catalog.json and src/providers.json.
+`);
 
 // Package mechanics are the only support boundary. Vendor membership comes
 // entirely from models.dev: every provider using an SDK package we ship is

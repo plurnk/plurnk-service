@@ -6,6 +6,14 @@ import { parseArgs, promisify } from "node:util";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
 import { projectTarball, resolveProjected } from "./package-projection.mjs";
 import { packRecords } from "./npm-json.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run metadata:check | npm run metadata:write   (--write, --pack, --only <workspace-dir>)
+Records each package's source identity and packed-artifact projection ({§release-candidate-graph}); without --write it compares the recorded facts with the tree.
+Reads: git and npm pack --json for each workspace.
+Writes: the provenance records with --write; drift to stdout otherwise, exit 1 on any.
+`);
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");

@@ -7,6 +7,14 @@ import { collectLiveTestNames } from "../test/live-test.ts";
 import HostPaths from "../src/core/HostPaths.ts";
 import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 import { tierRunPath } from "../../scripts/test-artifacts.ts";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run test:live | npm run test:live:specimen -- "<exact specimen name>"   (from plurnk-core)
+Drives every live specimen of the daemon, the client interface and the providers through a real model, or one specimen by its exact name ({§tier-census}).
+Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
+Writes: <benchmark home>/tier-live-<stamp>/ with census.md and each worker's evidence.
+`);
 
 const workspace = resolve(import.meta.dirname, "..");
 // Every package's live specimens: the daemon's, the client interface's and the providers' rails.

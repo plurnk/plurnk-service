@@ -16,6 +16,14 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { evaluateOrientation } from "./orientation-verdict.mjs";
 import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
+import { usage as explain } from "./usage.mjs";
+
+explain(`
+usage: npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]
+Boots a daemon on a fresh project, sends the orientation prompt through the client and grades the reply: metaproject readiness as an operator would meet it.
+Reads: PLURNK_ACCEPTANCE_TIMEOUT, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
+Writes: the transcript under the benchmark home and the verdict to stdout.
+`);
 
 const serviceRoot = resolve(import.meta.dirname, "..");
 const operatorEnv = new HostPaths().configFile;

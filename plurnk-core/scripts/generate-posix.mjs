@@ -2,6 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import ServiceHelp from "../src/core/ServiceHelp.ts";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run build:posix   (a step of npm run build, from plurnk-core)
+Build step: generates the shell completions from the executable's own --help.
+Reads: the built executable's usage.
+Writes: dist/posix/*.
+`);
 
 const root = resolve(import.meta.dirname, "..");
 const roffEscape = (text) => text.replaceAll("\\", "\\\\")

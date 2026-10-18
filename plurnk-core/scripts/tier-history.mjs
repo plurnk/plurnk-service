@@ -6,6 +6,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { benchmarksRoot } from "../../scripts/test-artifacts.ts";
+import { usage } from "../../scripts/usage.mjs";
+
+usage(`
+usage: npm run tier:history [-- live|demo]   (from plurnk-core)
+Ledgers every tier run's census under the benchmark home, one row per specimen with its verdicts over time ({§tier-census}). Read-only.
+Reads: the benchmark home.
+Writes: the table to stdout.
+`);
 
 export const censuses = (home) => {
     if (!existsSync(home)) return [];

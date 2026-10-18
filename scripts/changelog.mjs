@@ -6,6 +6,14 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run changelog -- [--write | --check | --pending]
+Generates CHANGELOG.md from conventional commit subjects between release tags; the file is never edited by hand.
+Reads: git tags and the commit log.
+Writes: CHANGELOG.md with --write; --check exits 1 when the file differs from the generated text; --pending prints the notes since the last tag.
+`);
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");

@@ -3,6 +3,14 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { publint } from "publint";
 import { formatMessage, formatMessagePath } from "publint/utils";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run packages:publint [-- --only <workspace-dir>]
+Runs publint over every workspace's manifest and shipped files.
+Reads: every workspace's package.json and files.
+Writes: findings to stdout; exit 1 on any.
+`);
 
 const { values } = parseArgs({
     options: {

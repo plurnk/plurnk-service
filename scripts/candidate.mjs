@@ -7,6 +7,14 @@ import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 import { pathToFileURL } from "node:url";
 import { gateResourceEnvironment } from "./gate-environment.mjs";
+import { usage } from "./usage.mjs";
+
+usage(`
+usage: npm run candidate [-- <client arguments>]
+Boots a source-built daemon and the terminal client from this checkout under a fresh state directory and runs the whole-platform candidate journey ({§candidate-pinned-runtime}).
+Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk), PLURNK_CANDIDATE_CLIENT_ENV, PLURNK_CANDIDATE_SKIP_BUILD, PLURNK_CANDIDATE_GRADE_DEADLINE_SEC; the model and credentials of the operator environment.
+Writes: <benchmark home>/candidate-*/ with the daemon's database, workspace and digest.
+`);
 
 const root = resolve(import.meta.dirname, "..");
 const { clientRoot, benchmarks, candidateDir } = resolveCandidateTopology(root, process.env);
