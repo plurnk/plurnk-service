@@ -227,22 +227,15 @@ durable storage. Core owns the socket continuously; it answers 503 until daemon
 activation admits it after every module has started ({§module-http-mounts}), so
 early ownership introduces neither traffic nor a close/rebind race.
 
-§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP
-listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
-`registerHttpRoute(prefix, handler)` and `httpAddress()` on the application port
-({§application-port}). The listener is bound before any module sets up, so the setup seam
-offers `httpAddress()` too ({§module-host-capabilities}). A prefix is an absolute pathname. Each request goes to the
-longest mounted prefix; a prefix claims itself and the subtree beneath it, never
-a longer sibling name; `/` is the root and receives whatever nothing more
-specific claimed when a module mounts it. An admitted listener returns an HTTP
-`404 route-not-found` Problem for any path without a mounted handler; a root mount
-is not required. Until daemon activation admits it the listener answers `503
-service-starting` to every request: the service has not admitted its client
-interface. Adapters claim their prefixes before setup and mount them at
-`start()`, after durable lifecycle recovery ({§module-http-mounts}), and
-none opens a socket of its own. The standards
-address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the
-well-known card and its endpoint path, on the same address.
+§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the well-known card and its endpoint path, on the same address.
+
+| Routing | Rule |
+| --- | --- |
+| A prefix | an absolute pathname; it claims itself and the subtree beneath it, never a longer sibling name; `/` is the root and receives whatever nothing more specific claimed when a module mounts it |
+| A request | goes to the longest mounted prefix |
+| No mounted handler | an admitted listener returns an HTTP `404 route-not-found` Problem; a root mount is not required |
+| Before activation | until daemon activation admits it the listener answers `503 service-starting` to every request: the service has not admitted its client interface |
+| Mounting | adapters claim their prefixes before setup and mount them at `start()`, after durable lifecycle recovery ({§module-http-mounts}) |
 
 §http-request-origin **A request's origin is the address the caller used, and what the daemon advertises follows it.** A request's
 origin is the address its `Host` names, over http, or the listener's own for a request that names
@@ -3707,7 +3700,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 | {§exec-tool-fall-through} | A tool run as a shell command is named at the failure site. |
 | {§exec-source-temporary} | Resource execution preserves source identity. |
 | {§exec-scratch-directory} | A realized source is readable by its executor for the execution's lifetime. |
-| {§exec-registry-resolves} | The execution's `runtime` selects an executor from the workspace snapshot at its dispatch point. |
+| {§exec-registry-resolves} | The execution's `runtime` resolves to an executor from the workspace snapshot at its dispatch point. |
 | {§exec-near-miss} | An execution id under the wrong runtime names its address. |
 | {§exec-lifetime} | An execution's lifetime is one metadata field on its fence. |
 | {§exec-host-proposes} | An executor's declared effect gates it: a host effect proposes. |
@@ -3811,20 +3804,13 @@ has settled. A removal failure is reported to daemon diagnostics with its
 complete cause; it cannot rewrite the execution result, stream state, or
 completion wake.
 
-§exec-scratch-directory **A realized source is readable by its executor for the execution's
-lifetime.** The standalone file is written under the one scratch directory
-`PLURNK_SERVICE_EXEC_SCRATCH` names: empty, it is `$XDG_RUNTIME_DIR/plurnk` when
-`XDG_RUNTIME_DIR` is set and the platform temporary directory otherwise; an explicit value is
-an absolute directory (`~` expands), and a relative one fails at boot by name. The directory
-is created on first use with mode `0700`; each file is created exclusively with mode `0600`
-under a unique name. An executor that runs in another filesystem namespace — a container that
-mounts only the repository — is given a directory both sides can see by pointing the knob at
-it. Admission ensures the directory: one the daemon cannot create or write refuses the
-execution, 400 `scratch-unavailable`, whose detail names the directory, the knob and the
-failure code, and whose recovery has the operator point the knob at a writable absolute
-directory the executor can also read and, meanwhile, has the writer target a program file the
-executor can reach or run the command beneath a targetless heading. An execution never fails
-mid-run for this reason.
+§exec-scratch-directory **A realized source is readable by its executor for the execution's lifetime.** The standalone file is written under the one scratch directory `PLURNK_SERVICE_EXEC_SCRATCH` names; an executor that runs in another filesystem namespace — a container that mounts only the repository — is given a directory both sides can see by pointing the knob at it. An execution never fails mid-run for this reason.
+
+| Fact | Rule |
+| --- | --- |
+| The knob | empty, the directory is `$XDG_RUNTIME_DIR/plurnk` when `XDG_RUNTIME_DIR` is set and the platform temporary directory otherwise; an explicit value is an absolute directory (`~` expands), and a relative one fails at boot by name |
+| Modes | the directory is created on first use with mode `0700`; each file is created exclusively with mode `0600` under a unique name |
+| Admission | ensures the directory: one the daemon cannot create or write refuses the execution, 400 `scratch-unavailable`, whose detail names the directory, the knob and the failure code, and whose recovery has the operator point the knob at a writable absolute directory the executor can also read and, meanwhile, has the writer target a program file the executor can reach or run the command beneath a targetless heading |
 
 Loop-flag authority follows the selected runtime's declaration:
 
@@ -3847,24 +3833,15 @@ unchanged for proposal policy, application, stream registration, and
 effect-qualified hold policy. The post-acceptance materialization path never
 triggers reclassification.
 
-§exec-registry-resolves The execution's `runtime` selects an executor from
-the workspace snapshot at its dispatch point. Explicit invocations parse without requiring
-registration ({§executor-heading}); a preceding accepted subsystem command may publish the
-name they invoke in that same program ({§functionality-model-mutation}). A failed or rejected
-command grants nothing; subsequent invocations resolve the unchanged snapshot, unless the
-producer requested fail-on-error and stopped the program. Installed siblings form the immutable base:
-they are discovered and probed at startup, and availability is cached.
-Workspace Functionality providers may atomically overlay additional names under
-{§module-workspace-capabilities}; a name has one owner within a workspace, while
-independent workspaces may use the same name. The fence name selects exactly
-that registered executable tool. Unknown tags are refused 400 with the
-advertised catalogue and are never reinterpreted as shell command words.
-A runtime unavailable after an ordinary probe is 501 with the probe `detail`.
-Typed configuration failures preserve the declaration, with no executor instance
-or output scheme; invocation returns the exact 503 configuration Problem
-({§configuration-repair-path}). No executor, including `sh`, is required for
-daemon startup. Internal constructor defects remain failures, not unavailable
-configuration verdicts.
+§exec-registry-resolves **The execution's `runtime` resolves to an executor from the workspace snapshot at its dispatch point.** Explicit invocations parse without requiring registration ({§executor-heading}); a preceding accepted subsystem command may publish the name they invoke in that same program ({§functionality-model-mutation}). A failed or rejected command grants nothing; subsequent invocations resolve the unchanged snapshot, unless the producer requested fail-on-error and stopped the program. No executor, including `sh`, is required for daemon startup.
+
+| Fact | Rule |
+| --- | --- |
+| The base | installed siblings form the immutable base: discovered and probed at startup, availability cached |
+| Overlays | workspace Functionality providers may atomically overlay additional names under {§module-workspace-capabilities}; a name has one owner within a workspace, while independent workspaces may use the same name |
+| The fence name | selects exactly that registered executable tool; unknown tags are refused 400 with the advertised catalogue and are never reinterpreted as shell command words |
+| Unavailable after an ordinary probe | 501 with the probe `detail` |
+| Typed configuration failures | preserve the declaration, with no executor instance or output scheme; invocation returns the exact 503 configuration Problem ({§configuration-repair-path}); internal constructor defects remain failures, not unavailable configuration verdicts |
 
 For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
 validates the one executor-owned snapshot used by packet presentation,
@@ -5156,23 +5133,14 @@ transfer, or remove ownership of workspace tools or shared resources.
 | Named and commons scratch | Workspace |
 | Log | Worker |
 
-§module-workspace-quiescence **A Functionality snapshot changes between
-workspace operations.** Mutation admission, external installation/removal,
-preparation, and publication hold the same exclusive gate. Every mutation or
-background refresh acquires that gate before the family's serialization lane;
-turn-admission refresh uses its already-held gate. A queued background refresh
-cannot own the family lane while waiting for a turn that needs that lane.
-Settling the coordinator includes accepted refreshes waiting for that gate,
-not only work already inside a family lane.
-Explicit client mutations use `try` and fail 409 before effects while the workspace is held.
-Refused mutations reserve no queue position; a client retry is a new admission.
-An accepted operation mutation uses `wait`: its turn yields the shared lease
-at that operation, awaits exclusive publication, and reacquires its lease before
-dispatching the next operation. Concurrent publishers yield independently; no
-publisher waits while retaining the shared lease it needs released. Activation and turn-admission refresh use `none` inside
-their already-held demand boundary. Providers reject replacement while active
-requests, input exchanges, or Tasks depend on the old snapshot; infrastructure
-watches may be replaced. These are concurrency constraints, not creator privileges.
+§module-workspace-quiescence **A Functionality snapshot changes between workspace operations.** Mutation admission, external installation/removal, preparation, and publication hold the same exclusive gate. Every mutation or background refresh acquires that gate before the family's serialization lane; turn-admission refresh uses its already-held gate. A queued background refresh cannot own the family lane while waiting for a turn that needs that lane. Settling the coordinator includes accepted refreshes waiting for that gate, not only work already inside a family lane. These are concurrency constraints, not creator privileges.
+
+| Acquirer | Mode |
+| --- | --- |
+| An explicit client mutation | `try`: fails 409 before effects while the workspace is held; a refused mutation reserves no queue position, and a client retry is a new admission |
+| An accepted operation mutation | `wait`: its turn yields the shared lease at that operation, awaits exclusive publication, and reacquires its lease before dispatching the next operation; concurrent publishers yield independently, and no publisher waits while retaining the shared lease it needs released |
+| Activation and turn-admission refresh | `none`, inside their already-held demand boundary |
+| Providers | reject replacement while active requests, input exchanges, or Tasks depend on the old snapshot; infrastructure watches may be replaced |
 
 §module-workspace-sharing **Workspace sharing: workers share Functionality by reference.**
 There is one effective definition for each workspace, family, and alias.
@@ -5770,24 +5738,16 @@ creation and fork apply {§worker-name-minting} before lookup or creation. A cli
 name lies outside `WORKER_NAME`) or create a worker under a spelling model worker control
 could not mint.
 
-§capability-admission **One admission path owns external authority.** Core
-derives one or more `CapabilityDescriptor` demands from each routed statement,
-then evaluates the service and workspace policy layers. Every demand of a composed operation must
-survive before execution or proposal creation. A denial is an exact terse 403
-identifying the denied descriptor and owning policy scope; it never guesses the
-model's intent or recommends an alternate operation. COPY demands observation
-of its source and mutation of its destination; MOVE additionally demands
-mutation of its source; a resource-backed execution demands its runtime plus source
-observation. Unknown schemes, runtimes,
-and tools continue to their ordinary resolver so capability policy cannot turn
-absence into a misleading restriction. The same resolver shapes generated
-scheme references, worker tool documents, and Turn0 surveys. NOTE, lifecycle declarations, log KILL,
-and label or targetless SEND are log/program control rather than routed
-external demands and therefore remain outside capability selectors.
-Runtime mutations of owned generated entries ({§worker-generated-subtree})
-likewise maintain intrinsic state. Producer identity alone grants no exemption:
-source observations and other effects in the same operation retain their
-independent demands, and harness-authored initialization obeys workspace policy.
+§capability-admission **One admission path owns external authority.** Core derives one or more `CapabilityDescriptor` demands from each routed statement, then evaluates the service and workspace policy layers. Every demand of a composed operation must survive before execution or proposal creation. A denial is an exact terse 403 identifying the denied descriptor and owning policy scope; it never guesses the model's intent or recommends an alternate operation.
+
+| Statement | Demands |
+| --- | --- |
+| COPY | observation of its source and mutation of its destination |
+| MOVE | additionally mutation of its source |
+| A resource-backed execution | its runtime plus source observation |
+| Unknown schemes, runtimes and tools | continue to their ordinary resolver, so capability policy cannot turn absence into a misleading restriction; the same resolver shapes generated scheme references, worker tool documents, and Turn0 surveys |
+| NOTE, lifecycle declarations, log KILL, and label or targetless SEND | log/program control rather than routed external demands, so outside capability selectors; runtime mutations of owned generated entries ({§worker-generated-subtree}) likewise maintain intrinsic state |
+| Producer identity | grants no exemption: source observations and other effects in the same operation retain their independent demands, and harness-authored initialization obeys workspace policy |
 
 §workspace-capability-policy **The workspace is the access boundary.**
 `workspaces.settings.capabilities` is the one mutable access policy under the
@@ -6429,7 +6389,7 @@ Stream progress remains owned by {§exec-stream}.
 | {§members-functionality} | File membership is one workspace Functionality family. |
 | {§members-configuration} | *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>` declares one service-origin rule (`!glob` excludes),… |
 | {§members-model-scope} | *The model's authority.* A model's `add` is admitted against `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the… |
-| {§members-projection} | The members projection is one overlay. |
+| {§members-projection} | The members projection is one overlay of the workspace's enabled definitions. |
 | {§plurnk-skill} | Plurnk's own reference is an ordinary service-provided skill. |
 | {§schemes-directory} | Scheme references are ordinary workspace entries at `worker:///_plurnk/plurnk/<scheme>.md`. |
 | {§inject} | system.inject — the operator injection |
@@ -6819,23 +6779,15 @@ the paths that remain; `root` admits patterns inside the root; `namespace` admit
 so the family bounds the model without a second grammar; an admission a read earns
 ({§membership-auto-add}) is that same `operation` add and meets the same ceiling.
 
-§members-projection **The members projection is one overlay.** Definitions are desired state per workspace
-({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its
-enabled definitions: inclusions union and an exclusion wins. Worker creation copies no
-membership state; accepted changes reach every worker. Human-authored definitions project with source
-`members`, model-proposed ones with source `model`; the same pattern from both keeps
-`members`. A `model` inclusion is a pattern scan like a human one but never admits a path
-the repository ignores ({§membership-model-universe}). The engine's creation records
-(`source: "create"`, {§fs-create-record}) are not definitions: the projection never
-overwrites or retires them. Projection happens at the family's publication commit and
-re-resolves membership; workspace cooling changes nothing, because desired state is
-durable. Each enabled definition is one generated document at
-`worker:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as
-one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin,
-provenance, and what it resolved to — surveyed at turn 0 like every family's enabled
-definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is
-not a member before it asks. There is no other membership path: the client's `/members`
-verbs are these verbs.
+§members-projection **The members projection is one overlay of the workspace's enabled definitions.** Definitions are desired state per workspace ({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its enabled definitions: inclusions union and an exclusion wins. There is no other membership path: the client's `/members` verbs are these verbs.
+
+| Fact | Rule |
+| --- | --- |
+| Workers | worker creation copies no membership state; accepted changes reach every worker |
+| Source | human-authored definitions project with source `members`, model-proposed ones with source `model`; the same pattern from both keeps `members`; a `model` inclusion is a pattern scan like a human one but never admits a path the repository ignores ({§membership-model-universe}) |
+| Creation records | the engine's (`source: "create"`, {§fs-create-record}) are not definitions: the projection never overwrites or retires them |
+| When | at the family's publication commit, re-resolving membership; workspace cooling changes nothing, because desired state is durable |
+| Documents | each enabled definition is one generated document at `worker:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin, provenance, and what it resolved to — surveyed at turn 0 like every family's enabled definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is not a member before it asks |
 
 The skills module owns the Agent Skills family ({§skills-functionality}) and its resource trees
 ({§skills-resources}); core supplies the Plurnk reference through {§provided-skills-module-slice}.
@@ -7094,24 +7046,16 @@ One/two-coordinate line shorthand is newline-aware so deleting a line does not
 leave an empty line. A terminal position after a final newline is an exact
 insertion anchor, not an additional whole line. `<1,-1>` selects all content.
 
-§zero-width-column-one-insert **An authored zero-width column-1 scope inserts whole lines.**
-Core prepares that fenced EDIT body once, using `wholeLineBody`, before handing
-literal replacements to the scheme. Mutation, receipt, and anchor-continuity
-calculation all consume that same prepared body. At `<L,1,L,1>`,
-an anchored `<@hash,1,@hash,1>`, or `L` = final line + 1 when the content ends with a
-newline, a non-empty body that does not end in a newline is inserted with the content's
-line separator appended, so `X` at `<2,1,2,1>` into `a\nb` yields `a\nX\nb`. An empty
-body inserts nothing. A zero-width region at any other column stays a byte-exact insert with
-nothing appended. A pattern's generated coordinates select exact matches, not
-authored line-insertion syntax: `/^/` inserts a literal prefix without adding
-a newline. COPY and MOVE transfer source bytes and are likewise untouched.
-The runtime also tolerates an authored three-coordinate
-`<startLine,startColumn,endLine>` scope, immediately lowers it to the complete
-four-coordinate region ending after the final code point of `endLine`, and
-reports that exact normalization only in a use-triggered Notice. This fallback
-is not canonical producer syntax. Other negative values, decimal text
-coordinates, inverted regions, out-of-range coordinates, and other arities are
-416.
+§zero-width-column-one-insert **An authored zero-width column-1 scope inserts whole lines.** Core prepares that fenced EDIT body once, using `wholeLineBody`, before handing literal replacements to the scheme; mutation, receipt, and anchor-continuity calculation all consume that same prepared body.
+
+| Scope | Effect |
+| --- | --- |
+| `<L,1,L,1>`, an anchored `<@hash,1,@hash,1>`, or `L` = final line + 1 when the content ends with a newline | a non-empty body that does not end in a newline is inserted with the content's line separator appended, so `X` at `<2,1,2,1>` into `a\nb` yields `a\nX\nb`; an empty body inserts nothing |
+| A zero-width region at any other column | a byte-exact insert with nothing appended |
+| A pattern's generated coordinates | exact matches, not authored line-insertion syntax: `/^/` inserts a literal prefix without adding a newline |
+| COPY and MOVE | transfer source bytes and are likewise untouched |
+| An authored three-coordinate `<startLine,startColumn,endLine>` scope | tolerated: immediately lowered to the complete four-coordinate region ending after the final code point of `endLine`, that exact normalization reported only in a use-triggered Notice; not canonical producer syntax |
+| Other negative values, decimal text coordinates, inverted regions, out-of-range coordinates, and other arities | 416 |
 
 Every successful scoped READ carries its complete resolved `region` in the
 operation result and packet metadata. The body remains coordinate-prefixed from
@@ -7290,17 +7234,14 @@ execution. The ledger and classification taxonomy live in
 distinct from model failures and repeated stochastic failures separately from
 stable ones, never with weakened assertions.
 
-§test-artifact-retention **Test artifact retention: every harness writes its run into one home.** A file-backed test
-database is a benchmark artifact like any other: the lane's run directory lives under
-`PLURNK_BENCHMARKS` (`~/benchmarks` by default) beside live, demo and benchlet runs, and the
-checkout holds source only — never run output. `test:intg` stamps `PLURNK_TEST_RUN` once and every
-test process inherits it, so one suite's databases land in one directory without a pretest step, a
-marker file or a sweep; an unstamped invocation is not a special case with its own rules, it is
-simply an unstamped run with its own directory. A lane whose suite boots Core through Core's test
-harness also exports `PLURNK_TEST_LANE`, its own lane name, so the daemon it boots writes into that
-lane's run directory and the lane's reclaim takes all of it; an unnamed run is Core's. A stamped run
-that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
-caller's own run directory.
+§test-artifact-retention **Test artifact retention: every harness writes its run into one home.** A file-backed test database is a benchmark artifact like any other: the lane's run directory lives under `PLURNK_BENCHMARKS` (`~/benchmarks` by default) beside live, demo and benchlet runs, and the checkout holds source only — never run output.
+
+| Fact | Rule |
+| --- | --- |
+| The stamp | `test:intg` stamps `PLURNK_TEST_RUN` once and every test process inherits it, so one suite's databases land in one directory without a pretest step, a marker file or a sweep; an unstamped invocation is not a special case with its own rules, it is simply an unstamped run with its own directory |
+| The lane | a lane whose suite boots Core through Core's test harness also exports `PLURNK_TEST_LANE`, its own lane name, so the daemon it boots writes into that lane's run directory and the lane's reclaim takes all of it; an unnamed run is Core's |
+| Reclaim | a stamped run that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it |
+| Fixture reuse | a cross-package test may reuse Core's migration fixture only by passing a path inside the caller's own run directory |
 
 §tier-census **A real-model tier run is one directory with its census.** The live and demo drivers stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every worker the run claims lands inside `PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests, tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the workers it claimed, turns, requests and cost; a run never deletes or moves any of it. `tier:history` ledgers every census under the home: per specimen, its verdicts over runs and its last reason.
 
