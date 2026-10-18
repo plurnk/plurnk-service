@@ -976,21 +976,16 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 | Binary without projection          | Empty marker under the source binary mimetype        | READ uses source bytes under {§read-bytes}; text EDIT remains 415.                |
 | Failed or oversized acquisition    | Empty marker carrying the producer failure           | The operation preserves that failure under {§membership-materialization-limit}. |
 
-§membership-materialization-limit **The materialization limit: a pathological member degrades, never the
-workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive
-byte ceiling over one disk source before Core reads it into the canonical file
-snapshot. Its valid range is `1..104857600`, bounded by the channel storage
-contract. An oversized path remains a real member
-with an empty body channel carrying a durable 413 producer result; no diagnostic
-sentinel impersonates file content. READ therefore names the path, observed bytes,
-ceiling, and recovery through the ordinary result contract, while EDIT returns the
-same 413 instead of diffing against a fictitious empty baseline. Core records the
-materialization disposition and ceiling privately; an unchanged oversized marker
-is reconsidered when the policy changes and otherwise remains stat-gated.
-Ordinary members follow {§membership-change-gated-sync}.
-The file write gate independently stats the source against the same ceiling,
-so safety does not depend on a background warm winning a client-operation race.
-Whole-file deletion does not need a materialized body ({§file-delete-revision}).
+§membership-materialization-limit **The materialization limit: a pathological member degrades, never the workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive byte ceiling over one disk source before Core reads it into the canonical file snapshot; its valid range is `1..104857600`, bounded by the channel storage contract. Ordinary members follow {§membership-change-gated-sync}.
+
+| An oversized path | Rule |
+| --- | --- |
+| Membership | remains a real member with an empty body channel carrying a durable 413 producer result; no diagnostic sentinel impersonates file content |
+| READ | names the path, observed bytes, ceiling, and recovery through the ordinary result contract |
+| EDIT | returns the same 413 instead of diffing against a fictitious empty baseline |
+| Reconsideration | Core records the materialization disposition and ceiling privately; an unchanged oversized marker is reconsidered when the policy changes and otherwise remains stat-gated |
+| The write gate | independently stats the source against the same ceiling, so safety does not depend on a background warm winning a client-operation race |
+| Whole-file deletion | needs no materialized body ({§file-delete-revision}) |
 
 §derivation-dedup-parallel **The index dedups, then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior and applicable search exclusion, and identical projections share one FTS row and one symbol graph without copying:
 
@@ -1474,19 +1469,13 @@ Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it is spent the 
 **Contract Strikes**: every turn with one or more contract violations earns a
 strike; a turn without any contract violations clears the strikes.
 
-§strike-progress-immunity **Progress immunity from strikes: a turn in which at least one operation succeeded is
-immune to the hard-result source** (operator ruling, 2026-09-26, #853): its hard
-failures keep their exact rows, but the turn counts as progress — it earns no strike
-and clears the streak. A successful operation is any admitted operation that acts on the
-task — executions included — whose result status is `< 400`. Operations that steer the
-loop never qualify: NOTE (it cannot fail; reasoning NOTEs are filed as NOTEs, and outside
-text is no operation at all, {§outside-text}), WAIT and a targetless SEND; a turn
-of failures beside a WAIT still strikes. The cycle source is not exempted: a repeating
-turn's operations succeed by construction, and the backstop exists to catch exactly
-that ({§engine-cycle-evidence}).
-The streak counts consecutive violating turns; `PLURNK_SERVICE_MAX_STRIKES` is the
-threshold, crossed ON the strike that reaches it; the crossing turn terminates at **508
-Loop Detected** when cycle-detected, otherwise **500**.
+§strike-progress-immunity **Progress immunity from strikes: a turn in which at least one operation succeeded is immune to the hard-result source** (operator ruling, 2026-09-26, #853): its hard failures keep their exact rows, but the turn counts as progress — it earns no strike and clears the streak. The streak counts consecutive violating turns; `PLURNK_SERVICE_MAX_STRIKES` is the threshold, crossed ON the strike that reaches it; the crossing turn terminates at **508 Loop Detected** when cycle-detected, otherwise **500**.
+
+| Operation | Counts as progress |
+| --- | --- |
+| Any admitted operation that acts on the task, executions included, whose result status is `< 400` | yes |
+| NOTE (it cannot fail; reasoning NOTEs are filed as NOTEs, and outside text is no operation at all, {§outside-text}), WAIT and a targetless SEND | never: they steer the loop, and a turn of failures beside a WAIT still strikes |
+| A repeating turn's operations | not exempted from the cycle source: they succeed by construction, and the backstop exists to catch exactly that ({§engine-cycle-evidence}) |
 
 The contracts, and the violation of each that strikes:
 
@@ -1901,7 +1890,13 @@ At `project_root=/`, `/src/x.md` and `src/x.md` resolve to the same key. Without
 
 Folders and globs select members in those same filesystem coordinates. Parent-directory selectors may include in-root and outside-root members; they never scan or admit unrelated disk contents. Catalog paths and grouped subtree selectors use the reusable spelling in {§file-url}.
 
-§file-path-normalization **A path inside the root is spelled relative; a path beyond it is spelled absolute.** A key inside the project root renders as the key; a key beyond the root renders as the absolute path it names, never as a `../` climb, and either spelling resolves to the same key. An authored model file operation whose spelling is not its path's canonical address — an absolute or home-relative spelling of a path inside the root, or a home-relative spelling of one beyond it — receives a `scheme:file/path_normalized` warning Notice naming that address; an absolute spelling of a path beyond the root is already canonical and earns none. COPY/MOVE cover each such operand. The Notice neither changes the operation result nor causes a strike, and does not repeat for automatic observations or spellings already canonical. Root-mounted workspaces and spellings that must remain file URLs ({§file-url}) need no such notice. It never suggests that an unadmitted path has become a member.
+§file-path-normalization **A path inside the root is spelled relative; a path beyond it is spelled absolute.** A key inside the project root renders as the key; a key beyond the root renders as the absolute path it names, never as a `../` climb, and either spelling resolves to the same key.
+
+| Authored model file operation (COPY/MOVE cover each operand) | Notice |
+| --- | --- |
+| An absolute or home-relative spelling of a path inside the root, or a home-relative spelling of one beyond it | a `scheme:file/path_normalized` warning Notice naming the canonical address; it neither changes the operation result nor causes a strike, never suggests that an unadmitted path has become a member, and does not repeat for automatic observations or spellings already canonical |
+| An absolute spelling of a path beyond the root | already canonical: none |
+| Root-mounted workspaces and spellings that must remain file URLs ({§file-url}) | none needed |
 
 §fs-canonical-name **One canonical identity: the literal Git-relative key.** Member keys follow gitformat-index(5) verbatim (reference edition: git 2.47.3): relative to the workspace `project_root`, without leading slash, `/`-separated, no trailing slash or NUL. Directories are never entries and the root needs no name. When `project_root` is below the containing repository's top level, Git members above it naturally use the same `../`-prefixed CWD-relative names that `git ls-files` emits without `--full-name`; these are not outside-repository mounts. The database stores that root-relative key directly because workspace identity is rooted at the access point. Authored spellings resolve before storage or comparison; stored keys are lexical fixpoints, never reinterpreted as authored input. Rendering quotes target-slot syntax ({§path-parentheses}) and home-like literal names ({§fs-home}), spells a key beyond the root as the absolute path it names ({§file-path-normalization}), and uses a file URL where necessary ({§file-url}); resolving the rendered spelling returns the same key.
 
@@ -3784,22 +3779,12 @@ selected entry's invocation—not the runtime's structural fallback—owns body
 requiredness and roles. The executor independently rejects an unregistered
 target at its run boundary.
 
-§exec-source-temporary **Resource execution preserves source identity.** After
-acceptance, Core reparses the complete authored address and resolves one exact `<1,-1>` READ through
-{§universal-read-composition}; internal source consumption never borrows the
-model-facing preview ({§body-projection}). For the default channel, a source owner supplying
-a native file through {§scheme-source-bytes} supplies the executor target:
-its filename, extension, sibling imports, and source-relative assets remain
-intact. This neither bypasses admission nor changes the executor's working
-directory. A disappeared native source fails; it never runs a stale projection.
-Other resources and derived channels supply standalone source, not a filesystem:
-Core creates one file under the scratch directory ({§exec-scratch-directory}), preserving the
-source extension, with an exclusive, process- and database-coordinate-independent identity. No
-sibling tree is copied and no relative-resource filesystem is emulated. The file lives through
-the executor run and core removes it after the subscription's terminal result
-has settled. A removal failure is reported to daemon diagnostics with its
-complete cause; it cannot rewrite the execution result, stream state, or
-completion wake.
+§exec-source-temporary **Resource execution preserves source identity.** After acceptance, Core reparses the complete authored address and resolves one exact `<1,-1>` READ through {§universal-read-composition}; internal source consumption never borrows the model-facing preview ({§body-projection}). This neither bypasses admission nor changes the executor's working directory.
+
+| Source | The executor target |
+| --- | --- |
+| The default channel of a source owner supplying a native file through {§scheme-source-bytes} | the native file itself: its filename, extension, sibling imports, and source-relative assets remain intact; a disappeared native source fails and never runs a stale projection |
+| Any other resource or a derived channel | standalone source, not a filesystem: one file under the scratch directory ({§exec-scratch-directory}), preserving the source extension, with an exclusive, process- and database-coordinate-independent identity; no sibling tree is copied and no relative-resource filesystem is emulated; the file lives through the executor run and core removes it after the subscription's terminal result has settled, a removal failure reported to daemon diagnostics with its complete cause and never rewriting the execution result, stream state, or completion wake |
 
 §exec-scratch-directory **A realized source is readable by its executor for the execution's lifetime.** The standalone file is written under the one scratch directory `PLURNK_SERVICE_EXEC_SCRATCH` names; an executor that runs in another filesystem namespace — a container that mounts only the repository — is given a directory both sides can see by pointing the knob at it. An execution never fails mid-run for this reason.
 
@@ -4831,17 +4816,13 @@ the manual or enabling completion is explicit and documented in `INSTALL.md`.
 
 ### Loop limits
 
-§turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
-calls.** The owner is the current loop of the topmost ancestor-or-self worker that has
-one, excluding the runtime actor (origin `_plurnk`): for a tree a client started,
-the root worker's loop current when this loop began (its
-`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no
-such ancestor owns its own budget. Every model call on the owner's loop and on any later
-loop of the owner's descendants spends it, emission turns and BARE calls alike, open or
-settled, one per call however many physical requests it took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
-terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
-429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
-child loop inherits the value and binds the same count.
+§turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model calls.**
+
+| Fact | Rule |
+| --- | --- |
+| The owner | the current loop of the topmost ancestor-or-self worker that has one, excluding the runtime actor (origin `_plurnk`): for a tree a client started, the root worker's loop current when this loop began (its `max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no such ancestor owns its own budget; a child loop inherits the value and binds the same count |
+| What spends it | every model call on the owner's loop and on any later loop of the owner's descendants, emission turns and BARE calls alike, open or settled, one per call however many physical requests it took |
+| The ceiling | `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429 terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused 429 `max-turns` before any provider call, so one turn cannot spend past it with a batch |
 
 The runtime actor supplies no ceiling and does not combine otherwise independent model
 subtrees into one allowance. Its descendants still share their own model tree's ceiling.
@@ -4899,7 +4880,16 @@ the policy renders in exactly one packet section. Every other tier runs the
 test cascade, so shipped-default regressions are otherwise invisible by
 construction.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), server approval set to accept ({§worker-owner-resolution}), and ambient MCP/A2A and schedules default disabled. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. No operator file is rewritten; definitions remain inspectable. Its exact allowlist is limited to gate-wide service posture that is identical on every machine:
+
+- complete catalog orientation;
+- automatic Git membership when the operator ceiling permits Git;
+- ambient operator-file docs/packet notes cleared;
+- the operator's installed skills and plugins left unread ({§agent-roots});
+- server approval set to accept ({§worker-owner-resolution});
+- ambient MCP/A2A and schedules default disabled; the drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file, and Mock-tier bootstrap clears these ambient families before loading its fixture floor.
+
+Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -5377,20 +5367,20 @@ what it published, so a change `list` saw first is still published at the next t
 definitions do not capture its published content, such as a skill's files, republishes
 unconditionally when that content changed. An unchanged family dispatches nothing.
 
-§agent-plugins-hosting **Installed Agent Plugins are found like skills.** A workspace's plugins are
-the immediate child directories of its project's `.agents/plugins`, then
-`$XDG_CONFIG_HOME/plurnk/plugins` (plurnk alone), then `~/.agents/plugins` (every agent), loaded and
-validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}), followed by standard plugin
-bundles in the installed npm graph. An earlier source shadows a later plugin of the same manifest
-name, regardless of distribution or directory name. Native discovery uses that same cascade with
-the project root omitted; workspace discovery includes it. A plugin's `PLUGIN_DATA` is
-`$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`, kept across in-place updates and
-moved with a state root ({§state-root}). Distinct installations never share data by name alone;
-workspaces referencing the same canonical installation share its data. Modules receive a workspace's plugins,
-in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes
-exactly when a plugin, its manifest, its MCP configuration, or its skills change
-({§functionality-hotload}), and the roots the workspace has. This read-only source loader does
-not install or delete plugins. MCP's own lifecycle is independent ({§mcp-definitions}).
+§agent-plugins-hosting **Installed Agent Plugins are found like skills.** A workspace's plugins are, in precedence order, loaded and validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}):
+
+1. the immediate child directories of its project's `.agents/plugins`;
+2. `$XDG_CONFIG_HOME/plurnk/plugins` (plurnk alone);
+3. `~/.agents/plugins` (every agent);
+4. standard plugin bundles in the installed npm graph.
+
+| Fact | Rule |
+| --- | --- |
+| Shadowing | an earlier source shadows a later plugin of the same manifest name, regardless of distribution or directory name |
+| Native discovery | the same cascade with the project root omitted; workspace discovery includes it |
+| `PLUGIN_DATA` | `$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`, kept across in-place updates and moved with a state root ({§state-root}); distinct installations never share data by name alone, and workspaces referencing the same canonical installation share its data |
+| Modules | receive a workspace's plugins, in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes exactly when a plugin, its manifest, its MCP configuration, or its skills change ({§functionality-hotload}), and the roots the workspace has |
+| The loader | read-only: it does not install or delete plugins; MCP's own lifecycle is independent ({§mcp-definitions}) |
 
 Portable components use each family's existing management and publication path. Within a source
 scope, standalone definitions precede bundled components; nearer scopes precede farther scopes,
@@ -5508,22 +5498,15 @@ only enabledness, never a copied value. Active, unavailable, and authorization-r
 outcomes, not durable desired state. The configuration cascade contributes
 defaults; one workspace snapshot is effective authority.
 
-§functionality-publication **Functionality publication is one replacement of a family's state and runtimes.** The
-coordinator prepares, then replaces state and runtimes through
-{§module-workspace-capabilities}, with the manager followed by any runtimes the
-adapter prepared ({§module-workspace-residency-facet}).
-Admission, tools, documents, Turn 0, and client status consume that publication.
-The coordinator's synchronous `publish` participates in the registry commit;
-its returned undo restores the previous view before rollback reconciles documents.
-The adapter's `publish` runs inside that same callback, so the family view, the
-registry and the adapter's live candidate change in one instant, and its undo
-composes with the view's; the adapter's `commit` follows a committed publication.
-Neither callback performs fallible I/O. Publication failure restores the preceding
-configuration/runtime snapshot; it cannot roll back an external effect of preparation,
-such as a fetched skill source. A failed external effect retains its cause and must not be
-reported as a successful configuration change.
-`settleFunctionality` joins queued
-publications before inspection or shutdown.
+§functionality-publication **Functionality publication is one replacement of a family's state and runtimes.** The coordinator prepares, then replaces state and runtimes through {§module-workspace-capabilities}, with the manager followed by any runtimes the adapter prepared ({§module-workspace-residency-facet}). Admission, tools, documents, Turn 0, and client status consume that publication. `settleFunctionality` joins queued publications before inspection or shutdown.
+
+| Callback | Rule |
+| --- | --- |
+| The coordinator's synchronous `publish` | participates in the registry commit; its returned undo restores the previous view before rollback reconciles documents |
+| The adapter's `publish` | runs inside that same callback, so the family view, the registry and the adapter's live candidate change in one instant, and its undo composes with the view's |
+| The adapter's `commit` | follows a committed publication |
+| Neither callback | performs fallible I/O |
+| Publication failure | restores the preceding configuration/runtime snapshot; it cannot roll back an external effect of preparation, such as a fetched skill source, and a failed external effect retains its cause and must not be reported as a successful configuration change |
 
 §functionality-documents **Generated documents describe the shared snapshot.**
 Documents are projected through the existing worker generated subtree
@@ -5606,7 +5589,7 @@ teaches, so a wrong example fails boot rather than the model.
 | {§owner-interaction-ring} | An interaction tool is offered only where an answer can come from. |
 | {§model-catalog} | Model discovery is a bounded local projection, not provider activity. |
 | {§worker-model-selection} | Worker-owned model selection. |
-| {§worker-effort} | Reasoning is a durable worker policy. |
+| {§worker-effort} | Reasoning effort is a durable worker policy. |
 | {§worker-effort-source} | The effort source: a default never masquerades as a choice. |
 | {§methods-loop-run-model} | Per-loop model selection. |
 | {§methods-loop-run-child-provider} | Child-provider selection is one durable subcall policy. |
@@ -5806,21 +5789,14 @@ A client-created branch copies the source worker's durable model, spawn
 override, and effort by value alongside its history. It retains no
 live policy link to the source worker.
 
-§worker-effort **Reasoning is a durable worker policy.** Each selected
-worker model has exactly one member of the shared `{§effort-wire}`;
-a modelless worker has none. A declared alias's scoped environment value—or the
-global provider value for an exact route—seeds the policy only when the worker
-first receives its model. Model identity and reasoning
-policy are persisted atomically, while visibility of returned reasoning and
-token ceilings remain separate concerns. An explicit policy change validates
-the exact policy against both the worker model and its optional spawn model and
-is refused while the worker owns a live or parked loop. Effort is identity-grade:
-every client-visible model route carries the worker's durable policy as
-`effort`, omitted only when the cataloged model has no reasoning
-dimension. Client inspection
-returns the supported-policy intersection of those two routes. Inspection or
-mutation materializes the daemon-default model and policy onto an uninitialized
-model worker before answering; a deliberately modelless daemon remains unset.
+§worker-effort **Reasoning effort is a durable worker policy.** Each selected worker model has exactly one member of the shared `{§effort-wire}`; a modelless worker has none. Model identity and reasoning policy are persisted atomically, while visibility of returned reasoning and token ceilings remain separate concerns.
+
+| Fact | Rule |
+| --- | --- |
+| Seeding | a declared alias's scoped environment value — or the global provider value for an exact route — seeds the policy only when the worker first receives its model; inspection or mutation materializes the daemon-default model and policy onto an uninitialized model worker before answering, and a deliberately modelless daemon remains unset |
+| An explicit change | validates the exact policy against both the worker model and its optional spawn model and is refused while the worker owns a live or parked loop |
+| Identity-grade | every client-visible model route carries the worker's durable policy as `effort`, omitted only when the cataloged model has no reasoning dimension |
+| Inspection | returns the supported-policy intersection of those two routes |
 
 §worker-effort-source **The effort source: a default never masquerades as a choice.** The worker row records
 `effort_source` beside `effort`: `default` when the value was seeded from the alias
