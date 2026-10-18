@@ -954,18 +954,16 @@ and never re-fetch a match.
   | FIND by an indexed dialect (`~`, `&`) | Members only: nothing unadmitted is indexed |
   | A binary or oversized candidate | Listed; matched from disk by no dialect; admitted by READ |
 
-  Tracked files are ambient members with `git` origin; an untracked file is never an ambient member — it enters
-  membership only by this admission, with `constraint` origin and `model` source. An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
-  Admission is the Worker's own `members (add)` of the exact path — provenance `model-proposal`,
-  under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so
-  scope `none` admits nothing and the read is refused as it is with the knob off — published before
-  the operation runs again ({§functionality-model-mutation}), and announced by one `member_added`
-  notice per file ({§notice-directive}). The admission proposal is settled as every host effect is
-  ({§proposal-disposition}): by policy where nobody reviews, by the reviewer under `review`; `reject`
-  refuses every admission. A path the repository ignores, a path an exclusion matches, a
-  directory and anything beyond the root are not in the universe: their refusals are unchanged
-  ({§membership-read-refusal}, {§file-directory-target}). A person's client operation reads
-  members only. `PLURNK_MEMBERS_AUTO_ADD=0` restores the baseline exactly.
+  | Fact | Rule |
+  | --- | --- |
+  | Ambient membership | Tracked files are ambient members with `git` origin; an untracked file never is — it enters membership only by this admission, with `constraint` origin and `model` source. |
+  | An accepted creation | Incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}). |
+  | The admission | The Worker's own `members (add)` of the exact path, provenance `model-proposal`, under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so scope `none` admits nothing and the read is refused as it is with the knob off; published before the operation runs again ({§functionality-model-mutation}) and announced by one `member_added` notice per file ({§notice-directive}). |
+  | Its settlement | As every host effect is ({§proposal-disposition}): by policy where nobody reviews, by the reviewer under `review`; `reject` refuses every admission. |
+  | Outside the universe | A path the repository ignores, a path an exclusion matches, a directory and anything beyond the root: their refusals are unchanged ({§membership-read-refusal}, {§file-directory-target}). |
+  | A person's client operation | Reads members only. |
+  | `PLURNK_MEMBERS_AUTO_ADD=0` | Restores the baseline exactly. |
+
 - §membership-overlay-include **`include`** — admit a file Git misses through a targeted pattern scan (files only), with `constraint` origin. `source: "members"` is a projected human definition, `source: "model"` a projected model definition, `source: "create"` the exact durable record of an accepted creation. Only `members` inclusions override active Git ignore. In a Git-absent root, inclusions are the sole file-membership source.
 - §membership-overlay-exclude **`exclude`** — a `!glob` definition removes a tracked or included file: resolution drops matches ({§path-glob-matching}) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-oversized or sensitive tracked file; exclusions mask creation records without deleting their provenance ({§fs-create-masked}).
 - §membership-reconcile-sets **Reconciliation is two set statements.** Once the desired set is composed — `(git ls-files ∪ include) − exclude`, glob evaluation and Git shell-outs being the process's own — it lands as one `INSERT … SELECT FROM json_each` with the same idempotent provenance update as a single registration, and every overlay-owned member outside it leaves in one `DELETE … WHERE pathname NOT IN (json_each) RETURNING`, its prior body riding out of the statement. A path that also left disk truth (no longer a candidate at all) becomes a divergence from that prior content; an exclusion is silent. No per-path statement, no set difference outside the database.
@@ -1023,27 +1021,13 @@ Every completed artifact records one terminal disposition: `indexed`, `excluded`
 `failed` (a typed {§mimetype-error-policy} invalid-source failure, or the
 handler's own defect on that one member — {§derivation-member-failure}).
 
-§derivation-member-failure **One member's derivation failure never ends the
-pass or the model's turn.** A handler defect on one member — a
-`MimetypeDerivationError` under {§mimetype-derivation-evidence}, the exception
-being a cancellation — is that member's terminal `failed` disposition, whose
-`reason` is the handler's invocation context followed by the exact original
-cause (`Mimetype derivation failed for "/x.js" ("text/javascript").
-RuntimeError: …`). The pass continues, attaches every other member, and
-completes; its terminal `search_progress` notice is `complete` at `level: warn`,
-naming the first failed member and carrying the count. A failed member is
-terminal for that exact content, handler revision, and configuration identity
-({§derivation-dedup-parallel}); a change to any of those derives it again.
-Everything that is not a handler's derivation of one member stays fatal to the
-pass exactly as before: a grammar that is not installed, an index-persistence
-or contract failure, and cancellation, each leaving the artifact `building` for
-retry.
-Cancellation and implementation, loading, database and index-persistence failures
-remain `building`, unattached, and retryable; Core never guesses that an arbitrary
-projection exception is bad content. The digest reports exceptional dispositions
-with their reasons. Successful optional projection degradations continue indexing
-and surface their framework Notice once per identical observation in a maintenance
-pass.
+§derivation-member-failure **One member's derivation failure never ends the pass or the model's turn.**
+
+| Failure | Disposition |
+| --- | --- |
+| A handler defect on one member: a `MimetypeDerivationError` under {§mimetype-derivation-evidence}, the exception being a cancellation | that member's terminal `failed` disposition, whose `reason` is the handler's invocation context followed by the exact original cause (`Mimetype derivation failed for "/x.js" ("text/javascript"). RuntimeError: …`); the pass continues, attaches every other member, and completes, and its terminal `search_progress` notice is `complete` at `level: warn`, naming the first failed member and carrying the count |
+| The failed member afterwards | terminal for that exact content, handler revision and configuration identity ({§derivation-dedup-parallel}); a change to any of those derives it again |
+| Everything that is not a handler's derivation of one member: a grammar that is not installed, an index-persistence or contract failure, and cancellation | fatal to the pass exactly as before, each leaving the artifact `building` for retry |
 
 §membership-change-gated-sync **Projection is idempotent and change-gated.** Membership checks every member's physical identity and raw-byte digest within the materialization ceiling; timestamps alone never establish content identity. Unchanged source revision and policy avoid projection and database publication. Binary projections also compare their reader identity. Input-limited markers remain stat-gated because they expose no acquired body. An acquisition whose observed file identity or metadata changes is discarded and retried on the next pass. An observed absence removes stale channels and records `absent`; reappearance is a divergence, not first sight. This is observed state subject to {§file-external-race}, not an instantaneous snapshot of a concurrently changing project.
 
@@ -1117,7 +1101,7 @@ explicit.
 | {§turn-ops-selection-snapshot} | The selection snapshot: an admitted program cannot select log rows it emits while executing. |
 | {§engine-notifications} | Engine notifications: one bundle of daemon callbacks |
 | {§engine-rails} | Engine rails |
-| {§engine-cycle-evidence} | Cycle identity contains the ordered executed operations and their dispatch results, including complete… |
+| {§engine-cycle-evidence} | Cycle identity is a turn's executed operations and their results: an exact-repetition backstop, never a… |
 | {§provider-recovery} | A recoverable provider failure never ends a loop. |
 | {§strike-progress-immunity} | Progress immunity from strikes: a turn in which at least one operation succeeded is immune to the hard-result… |
 | {§loop-rail-continuity} | Rail state belongs to the durable loop, not its execution segment. |
@@ -1475,24 +1459,15 @@ A `425` not-ready result describes unfinished work, not a contract violation.
 It retains its exact receipt, without scheduling side effects ({§join-blocking-collect});
 other violations in the same turn still strike normally.
 
-§engine-cycle-evidence Cycle identity contains the ordered executed operations
-and their dispatch results, including complete operands, scopes, bodies, and
-scheme metadata, including the complete NOTE and response bodies. Source
-positions and asides are excluded. Engine-assigned
-Problem `instance` addresses and NOTE's assigned storage `resource` coordinate
-are excluded from results; the complete note body still distinguishes activity. Object member order is
-irrelevant; operation and array order are preserved. Only the configured
-`MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
-alone are not a cycle: changing inputs or observations distinguish activity.
-A turn that executed nothing has no activity to identify, so an empty turn's
-identity is its **text** ({§empty-turn}) — the same principle, applied to the only
-output it produced. Identifying it by its absent program instead makes every empty
-turn identical, and changing words then read as a repeating one. A turn whose final emission the
-output allowance cut has no identity: the engine's ceiling, not the model, ended its output, so it
-is no repetition evidence and closes the window ({§loop-rail-continuity}).
-This is an exact-repetition backstop, not a semantic judgment of task progress;
-new asynchronous invocation identities do not prove repetition of their eventual
-effects. Ordinary contract strikes and operator budgets remain independent.
+§engine-cycle-evidence **Cycle identity is a turn's executed operations and their results: an exact-repetition backstop, never a judgment of task progress.** Only the configured `MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained; ordinary contract strikes and operator budgets remain independent.
+
+| Identity | Holds |
+| --- | --- |
+| In | the ordered executed operations and their dispatch results, including complete operands, scopes, bodies and scheme metadata, the complete NOTE and response bodies among them; operation and array order are preserved |
+| Out | source positions and asides; engine-assigned Problem `instance` addresses and NOTE's assigned storage `resource` coordinate, the complete note body still distinguishing activity; object member order |
+| An empty turn | its **text** ({§empty-turn}): a turn that executed nothing has no activity to identify, so the same principle applies to the only output it produced; identifying it by its absent program instead makes every empty turn identical, and changing words then read as a repeating one |
+| A turn the output allowance cut | no identity: the engine's ceiling, not the model, ended its output, so it is no repetition evidence and closes the window ({§loop-rail-continuity}) |
+| Not a cycle | repeated addresses alone, since changing inputs or observations distinguish activity; new asynchronous invocation identities, which do not prove repetition of their eventual effects |
 
 §provider-recovery **A recoverable provider failure never ends a loop.** An isolated BARE call ({§bare-inference}) takes the same recovery as the loop's own inference: each re-issue is its own model call on the ledger, and a spent window leaves the operation's result as the provider's exact failure. When a model call fails with a kind the provider marks `retryable` ({§provider-retryable-truth}: network failure, rate limit, deadline, interrupted resource, dropped output) after the provider's own retries:
 
@@ -1645,7 +1620,13 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Lost boundary before any closed operation | Reject the attempt; outside text is no substitute for a closed operational statement. An admitted reasoning operation is one ({§reasoning-operations}). |
 | Outside text carrying a log-entry heading, other than an emission row's | Reject the attempt ({§fabricated-log-entry}). |
 
-§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: it names the worker's own source ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading is dropped from the text beside the operations ({§outside-text}), counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
+§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them.
+
+| Heading in outside text | Disposition |
+| --- | --- |
+| Any leaf but `emission` | the attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}); its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. `` |
+| Leaf `emission` | exempt: it names the worker's own source ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading is dropped from the text beside the operations ({§outside-text}), counted by the digest as an echo |
+| Inside an operation body | not examined, so a SEND or KILL may quote a receipt |
 
 Warnings and closer recovery ({§closer-fallback}) do not reject. `finish=length`
 discloses truncation and precludes completion; it is not independently a rejection.
@@ -2794,7 +2775,14 @@ AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMar
 
 KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. An emission row is curated whole ({§emission-row}): the unscoped KILL retires it; a line scope on its exact coordinate is 422 `emission-curated-whole`, whose recovery names the unscoped KILL; a sweep leaves it intact. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}).
 
-§log-target-tolerances **The log target reader accepts four near-misses of the taught form and reads each as the one target it can only have meant.** The card teaches `KILL (log:///1/[1-7]/*/{READ,emission})`; none of the following is taught, and no diagnostic text accompanies any of them. A `|` between complete KILL targets, each a coordinate, prefix or glob ({§log-coordinate-hierarchy}) written bare or as a full `log:///` address, is their union: `log:///1/25/2/EDIT|log:///1/24/3/EDIT` retires both rows; a piece that is none of those refuses the whole target, 400 `kill-failed`, naming the piece; a list that selects nothing is the sweep's 204 unless every piece is an exact coordinate, when it is the exact miss's 404. `|` is not a character of a coordinate, and file paths, where it is one, are untouched. For KILL and FIND alike: a bracketed comma list in a numeric slot is a set, `log:///1/[19,24]/**/sh` reading as `log:///1/{19,24}/**/sh`, since a character class can never match a turn number; a non-numeric literal in a numeric slot, after at least one numeric slot, is the leaf with the missing slots `*`, `log:///1/*/READ` reading as `log:///1/*/*/READ`; and `*` segments between the sequence and the leaf are dropped, `log:///1/3/3/*/READ` reading as `log:///1/3/3/READ`, since no coordinate holds a segment there.
+§log-target-tolerances **The log target reader accepts four near-misses of the taught form and reads each as the one target it can only have meant.** The card teaches `KILL (log:///1/[1-7]/*/{READ,emission})`; none of the following is taught, and no diagnostic text accompanies any of them.
+
+| Near-miss | Read as | Example |
+| --- | --- | --- |
+| KILL only: `\|` between complete targets, each a coordinate, prefix or glob ({§log-coordinate-hierarchy}) written bare or as a full `log:///` address | their union; a piece that is none of those refuses the whole target, 400 `kill-failed`, naming the piece; a list that selects nothing is the sweep's 204 unless every piece is an exact coordinate, when it is the exact miss's 404; `\|` is not a character of a coordinate, and file paths, where it is one, are untouched | `log:///1/25/2/EDIT\|log:///1/24/3/EDIT` retires both rows |
+| KILL and FIND: a bracketed comma list in a numeric slot | a set, since a character class can never match a turn number | `log:///1/[19,24]/**/sh` reads as `log:///1/{19,24}/**/sh` |
+| KILL and FIND: a non-numeric literal in a numeric slot, after at least one numeric slot | the leaf, with the missing slots `*` | `log:///1/*/READ` reads as `log:///1/*/*/READ` |
+| KILL and FIND: `*` segments between the sequence and the leaf | dropped, since no coordinate holds a segment there | `log:///1/3/3/*/READ` reads as `log:///1/3/3/READ` |
 
 §log-target-shape **The refusal of a log target nothing can read shows the working form.** A malformed KILL or FIND target, 400, carries as its recovery the one sentence `` A log target is `log:///<loop>/<turn>/<sequence>` with an optional `/<op>` leaf; a shorter path is a prefix, and `*`, `**`, `[1-7]` or `{a,b}` may stand in any segment. `` It names the shape and presumes nothing about what the author meant ({§diagnostic-observation}). A sweep that matches nothing stays the bare 204 of {§log-curation-folder-idiom} and an exact miss beside rows that exist names them ({§log-near-miss}); neither carries the sentence, so no text rides the packet for the ordinary case.
 
@@ -4988,7 +4976,7 @@ a fresh-user configuration.
 | --- | --- |
 | {§module-lifecycle} | Module lifecycle and setup seam |
 | {§module-discovery} | Daemon modules compose through their shared lifecycle. |
-| {§module-shutdown-order} | Module shutdown order: |
+| {§module-shutdown-order} | Module shutdown is four phases in order under one deadline. |
 | {§crash-only-stop} | The settle sequence is deadline-bounded (`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans… |
 | {§module-host-capabilities} | The coordinator's host interface is core's own. |
 | {§module-workspace-provider} | `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` — Registers one extension-unique… |
@@ -5084,27 +5072,20 @@ An invalid module object, factory result or lifecycle member is an implementatio
 not configuration, and fails loudly. What a module contributes registers through its owning public
 interfaces and is released during {§module-lifecycle} resource teardown.
 
-§module-shutdown-order **Module shutdown order:** `Daemon.stop()` first rejects new capability demand, cancels preparation
-under {§functionality-preparation-cancellation}, and
-aborts proposals, branches, derivations, and worker scopes. It begins module
-`stop()` calls in reverse registration order without serially awaiting them,
-so every producer is asked to stop even if another stalls. Core settles drains,
-whole workspace activation and cooling transitions, capability publications, module producers, streaming producers, derivations,
-mimetypes, schemes, and the final worker-settlement barrier while observers
-remain subscribed. Only then does it begin and join module `close()` calls in
-reverse order. Failures do not skip later phases and join one shutdown aggregate.
-The supervisor owns each asynchronous cancellation and wake task from
-acceptance through settlement, including immediately acknowledged and explicitly
-awaited cancellation; a task failure participates in the shutdown aggregate.
-After asynchronous selection, the supervisor rechecks shutdown before creating
-a drain or installing a timer; parked-loop wake mutations also recheck worker
-cancellation under {§worker-lifecycle-durable-disposition}.
-The database remains available through observer closure and final maintenance.
-Residency transitions are retained from stop admission through settlement, including failed
-transitions; one failure does not stop the join of other workspaces. Expected preparation
-cancellation is not a shutdown failure; genuine preparation and cleanup failures are.
-The shared deadline bounds every phase, including observer delivery; forced
-shutdown may therefore lose notifications and reports the unfinished phase.
+§module-shutdown-order **Module shutdown is four phases in order under one deadline.** `Daemon.stop()`:
+
+1. rejects new capability demand, cancels preparation under {§functionality-preparation-cancellation}, and aborts proposals, branches, derivations, and worker scopes;
+2. begins module `stop()` calls in reverse registration order without serially awaiting them, so every producer is asked to stop even if another stalls;
+3. settles drains, whole workspace activation and cooling transitions, capability publications, module producers, streaming producers, derivations, mimetypes, schemes, and the final worker-settlement barrier while observers remain subscribed;
+4. only then begins and joins module `close()` calls in reverse order.
+
+| Rule | What |
+| --- | --- |
+| Failures | do not skip later phases and join one shutdown aggregate; expected preparation cancellation is not a shutdown failure, genuine preparation and cleanup failures are |
+| Supervisor tasks | the supervisor owns each asynchronous cancellation and wake task from acceptance through settlement, including immediately acknowledged and explicitly awaited cancellation, and a task failure participates in the shutdown aggregate; after asynchronous selection it rechecks shutdown before creating a drain or installing a timer, and parked-loop wake mutations also recheck worker cancellation under {§worker-lifecycle-durable-disposition} |
+| The database | remains available through observer closure and final maintenance |
+| Residency transitions | are retained from stop admission through settlement, including failed transitions; one failure does not stop the join of other workspaces |
+| The deadline | the shared deadline bounds every phase, including observer delivery; forced shutdown may therefore lose notifications and reports the unfinished phase |
 
 §crash-only-stop The settle sequence is deadline-bounded
 (`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans daemon drains
@@ -5670,7 +5651,7 @@ teaches, so a wrong example fails boot rather than the model.
 | {§capability-admission} | One admission path owns external authority. |
 | {§workspace-capability-policy} | The workspace is the access boundary. |
 | {§workspace-capability-inspection} | Client inspection uses the admission resolver. |
-| {§question-tool} | The native request-user-input tool. |
+| {§question-tool} | The `question` tool asks the worker's owner and waits for the answer the client-interaction lifecycle… |
 | {§worker-tool-admission} | Tool visibility and execution share admission. |
 | {§owner-interaction-ring} | An interaction tool is offered only where an answer can come from. |
 | {§model-catalog} | Model discovery is a bounded local projection, not provider activity. |
@@ -5826,28 +5807,15 @@ and packet shaping. Replacement preserves unrelated workspace settings. Before t
 or observation, existing workers reconcile generated references against it. It requires no selected
 bound worker and returns the complete fresh projection.
 
-§question-tool **The native request-user-input tool.** Core registers one
-in-process `question` runtime at boot and offers it only to a worker whose owner
-would receive it ({§owner-interaction-ring}). Its body is the MCP2 2026-07-28
-form-elicitation shape verbatim — `{ message, requestedSchema }`. An
-optional literal target is a descriptive label only: it neither routes the
-question nor changes the body or recipient. The
-`results` channel carries the standard `ElicitResult`
-(`{ action: "accept", content }` or `{ action: "cancel" }`). The executor maps
-`requestedSchema` to the contracts-owned `ClientInteractionRequest.responseSchema`
-(toolName `question`); the client returns that exact answer object, and the
-executor constructs the `ElicitResult`. Answer fields are data, including fields
-named `action` or `content`. The executor awaits the shared
-client-interaction lifecycle — durable pause, reconnect discovery,
-cancellation, and the answer-as-resolution all come from
-{§client-interactions}; there is no loopback MCP and no proposal masquerade.
-Answer and cancellation resume the same waiting loop whether resolved before
-or after it parks; the next packet contains the result without replaying the execution.
-Effect `read`: the tool observes the human's answer and is never
-proposal-gated. Its runtime declares the `interaction` trait, which the shared
-resolver projects as access class `interact`; any capability-policy layer may
-therefore admit or deny it. The ordinary executor policy also applies:
-`PLURNK_EXECS_QUESTION=0` disables registration and teaching ({§executor-policy}).
+§question-tool **The `question` tool asks the worker's owner and waits for the answer the client-interaction lifecycle delivers.** Core registers one in-process `question` runtime at boot and offers it only to a worker whose owner would receive it ({§owner-interaction-ring}).
+
+| Facet | Rule |
+| --- | --- |
+| Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; an optional literal target is a descriptive label only, which neither routes the question nor changes the body or recipient |
+| Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content }` or `{ action: "cancel" }`): the executor maps `requestedSchema` to the contracts-owned `ClientInteractionRequest.responseSchema` (toolName `question`), the client returns that exact answer object, and the executor constructs the `ElicitResult`; answer fields are data, including fields named `action` or `content` |
+| Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§client-interactions}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
+| Effect | `read`: the tool observes the human's answer and is never proposal-gated |
+| Admission | its runtime declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny it; the ordinary executor policy also applies, `PLURNK_EXECS_QUESTION=0` disabling registration and teaching ({§executor-policy}) |
 
 §worker-tool-admission **Tool visibility and execution share admission.** The
 reserved tool tree's FIND/READ faces drop a runtime or tool document whenever
