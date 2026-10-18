@@ -687,7 +687,13 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 | `READ`    | existing literal name       | Collect the named worker's deliverable. |
 | `KILL`    | existing literal name  | Terminate the named worker or caller.   |
 
-- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop; a person's operation starts a root worker that person owns instead ({§actor-boundary-client-operations}). WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination. A WORK whose name a worker already holds is the voice door ({§worker-scheme-irc}): its body is delivered to that worker as a message, nothing is created, the receipt names the worker and `delivered: message`, and an `env` option is refused by name since a message takes none. A FORK whose name a worker holds is `409 worker-name-conflict` whose recovery names the working forms, WORK or `SEND (worker://<name>)` to message the live worker, or a name no worker holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure.
+- §worker-scheme-spawn **Spawn** — ```` ```WORK (worker://<name>)? ```` with a task body creates a new child worker (empty log) and starts it with that task on its first loop; a person's operation starts a root worker that person owns instead ({§actor-boundary-client-operations}). WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Worker rows, including after termination.
+
+  | A name a worker already holds | Result |
+  | --- | --- |
+  | WORK | the voice door ({§worker-scheme-irc}): its body is delivered to that worker as a message, nothing is created, the receipt names the worker and `delivered: message`, and an `env` option is refused by name since a message takes none |
+  | FORK | `409 worker-name-conflict`, whose recovery names the working forms — WORK or `SEND (worker://<name>)` to message the live worker, or a name no worker holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure |
+
 - §worker-spawn-prompt-resource **The spawn slot is overloaded by scheme.** A `worker://` path is
   the child's address and keeps the address rules ({§worker-control-addressing}). A path of any
   other scheme is the child's prompt resource: it is read whole (`<1,-1>`) under the caller's read capabilities, composed with
@@ -714,23 +720,17 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 - §worker-scheme-fork-scratch **Forked scratch.** Named scratch and evidence are copied under the new name through {§machine-processes-entry-inheritance}. Parent and branch can edit either scratch namespace; their copies diverge independently.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
-- §worker-scheme-collect **Collect** — each concluded child loop reaches its direct
-  parent as an `_plurnk` READ of `ops://<name>/<sequence>` ({§loop-answer}), not a message,
-  and that row carries what the child said.
-  The occurrence retains that loop's exact terminal result; the READ uses ordinary
-  bounded projection of {§loop-answer}. The original delegated answer reaches the
-  parent here, not as a duplicate reply ({§message-reply-delivery}); other message
-  replies remain independent deliveries. Failures and
-  cancellations retain their exact status, Problem, and visible explanation,
-  including a spawn that fails before its first turn. Observation and wake-up
-  follow {§env-delta-child-termination}; a later child loop cannot replace the
-  retained result. The **pull** side mirrors the push: a path-absent
-  ```` ```READ (worker://<name>) ```` collects that same result on demand for a
-  concluded worker and names its canonical loop URI in `resource`; **unfinished loops** have not concluded, so the READ
-  returns **425** (Too Early). An explicit lifecycle declaration chooses whether to continue
-  or wait for that worker ({§join-blocking-collect}). A
-  missing name is 404. The model therefore reads the worker itself for its
-  outcome or a wait rather than guessing a scratch path to "check on" it.
+- §worker-scheme-collect **Collect** — each concluded child loop reaches its direct parent as an `_plurnk` READ of `ops://<name>/<sequence>` ({§loop-answer}), not a message, and that row carries what the child said. The occurrence retains that loop's exact terminal result; the READ uses ordinary bounded projection of {§loop-answer}. The model therefore reads the worker itself for its outcome or a wait rather than guessing a scratch path to "check on" it.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Delivery | the original delegated answer reaches the parent here, not as a duplicate reply ({§message-reply-delivery}); other message replies remain independent deliveries |
+  | Failures and cancellations | retain their exact status, Problem, and visible explanation, including a spawn that fails before its first turn |
+  | Observation and wake-up | follow {§env-delta-child-termination}; a later child loop cannot replace the retained result |
+  | The pull side | mirrors the push: a path-absent ```` ```READ (worker://<name>) ```` collects that same result on demand for a concluded worker and names its canonical loop URI in `resource` |
+  | An unfinished loop | has not concluded, so the READ returns **425** (Too Early); an explicit lifecycle declaration chooses whether to continue or wait for that worker ({§join-blocking-collect}) |
+  | A missing name | 404 |
+
 - §worker-loop-result `ops://<name>/<sequence>` selects one worker-local positive safe-integer
   loop sequence ({§loop-answer}; one address serves both what a loop said and how it ended). It is a read-only resource, not an actor control
   address: READ, FIND and COPY use ordinary projections; EDIT, MOVE-source, and KILL cannot change
@@ -855,23 +855,14 @@ and never re-fetch a match.
   | Every exception | a named clause in the register ({§membership-model-universe}), admits files by an exact record with recorded provenance, and never by `git add` |
   | The one exception that admits on a read | the operator's own ruling, `PLURNK_MEMBERS_AUTO_ADD` ({§membership-auto-add}, #1154), and its knob is the guard |
 
-- §membership-model-universe **The exception register — files in the model's universe.**
-  Admitted by exact creation records (`source: "create"`, origin `constraint`), never
-  staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
-  ({§membership-create-parents}). Admitted by a published standard as projected
-  instruction documents — never as members: (3) the project's `AGENTS.md` and nested
-  `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
-  and materialized as `worker:///_plurnk/AGENTS.md` and
-  `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
-  only when tracked or added, and the standard never overrides the operator's
-  exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
-  is not projected. (4) A definition the model proposes through the `members`
-  family ({§members-functionality}), admitted only under the operator's ceiling
-  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}), projected with source
-  `model`, and never admitted past the repository's ignore rules or an exclusion. (5) Under
-  `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND
-  pattern matches, admitted as that same model definition of the exact path once the read's
-  admission proposal is accepted ({§membership-auto-add}). Nothing else.
+- §membership-model-universe **The exception register — files in the model's universe.** Nothing else is in it.
+
+  | Admitted | As | The exceptions |
+  | --- | --- | --- |
+  | By exact creation records (`source: "create"`, origin `constraint`), never staged | members | (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination ({§membership-create-parents}) |
+  | By a published standard | projected instruction documents — never as members | (3) the project's `AGENTS.md` and nested `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status and materialized as `worker:///_plurnk/AGENTS.md` and `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member only when tracked or added, and the standard never overrides the operator's exclusions — an `AGENTS.md` the repository ignores or an exclusion matches is not projected |
+  | By the model's own proposal | a `members` definition projected with source `model` | (4) a definition the model proposes through the `members` family ({§members-functionality}), admitted only under the operator's ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}) and never past the repository's ignore rules or an exclusion; (5) under `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND pattern matches, admitted as that same model definition of the exact path once the read's admission proposal is accepted ({§membership-auto-add}) |
+
 - §membership-git-membership The workspace owns the Git repository containing
   `project_root`. Its tracked files (`git ls-files` semantics) are members with
   no explicit overlay; when the root is a package inside a monorepo, the
@@ -1320,7 +1311,15 @@ observe their terminal results. No effect is replayed across an unknown
 boundary.
 
 - §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. Fresh-loop sequence allocation and insertion are one mutation under that same lock; fresh loops receive distinct increasing sequence numbers. Recipient selection follows {§worker-message-admission}, not whether callers started concurrently.
-- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel` and worker `KILL` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Shutdown reaps process-local streams while preserving parked work under {§worker-lifecycle-durable-disposition}. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model ```` ```KILL (sh:///stream) [code] ```` on one live stream instead delivers exactly that signal once (without a signal override it uses the executor's SIGHUP default; `[9]` uses SIGKILL).
+- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel` and worker `KILL` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Shutdown | reaps process-local streams while preserving parked work under {§worker-lifecycle-durable-disposition}; before it awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open |
+  | What is reaped | a stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel, alike |
+  | The teardown abort | bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) |
+  | A model ```` ```KILL (sh:///stream) [code] ```` on one live stream | delivers exactly that signal once (without a signal override it uses the executor's SIGHUP default; `[9]` uses SIGKILL) |
+
 - §worker-lifecycle-exec-epoch-bound **An execution's epoch bound: a stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
 - §worker-lifecycle-no-resurrection **No resurrection: cancelled work does not revive its scope.** A cancelled worker cannot be woken by its torn-down streams, stale timers, or cancelled unpublished messages. The evidence remains readable. A `499` result from cancelling only one stream is still a completion owed to a live waiting worker: result status is not proof of worker cancellation. Only an explicit new arrival admits new work after scope cancellation; terminal loops themselves remain immutable.
 - §worker-cancel-trigger **A cancellation is one bound statement.** `lifecycle_cancel_workers` writes the causal cutoff and the cancellation Problem onto every worker of the scope; `workers_cancel_live_loops` (an `INIT` process trigger beside the lifecycle statements, {§db-process-triggers}) retires each worker's live loops inside that statement — 499, waits cleared, message evidence left unchanged, the Problem instanced `loop://<worker>/<sequence>`, `terminated_by = 'cancel'` — so cutoff and cancellation cannot land apart and no value is string-interpolated. Execution consumption is measured by the process-local monotonic timers ({§loop-execution-allowance}) and lands first through `lifecycle_checkpoint_executions`; a wall clock cannot stand in for it, so the timer stays outside the database by design.
@@ -1336,7 +1335,14 @@ boundary.
 
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation. An already-active worker's next packet reads the durable terminal state. Ambient stream closure starts no loop for a concluded worker. The result remains available in the stream's own state under every case.
 - §worker-lifecycle-child-wake **Each child task completion notifies its parent.** Terminal-task publication, including failure and cancellation of a parked task, notifies the direct parent without injecting a prompt. Other unfinished tasks or streams in that child remain independent obligations; they cannot suppress notification. The parent's eligible waits requeue in place under {§loop-wake-identity} and the bounded {§worker-optimistic-settlement} opportunity. Durable revisioning covers completion-before-park and restart; drain teardown and whole-worker quiescence are not completion identities.
-- §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before program completion; separately, a stream conclusion, direct-child conclusion or addressed reply persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces arrivals within that window into at most one requeue per eligible loop. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. An arrival after provider dispatch begins retains its next wake, while poll, new-request and operator wakes never open this hold. Only packet/provider dispatch waits: durable state, client events, cancellation and the replying program do not. One redaction-safe span records elapsed time, quiescence versus deadline, and arrival count without entering the packet.
+- §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** Both forms use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. Only packet/provider dispatch waits: durable state, client events, cancellation and the replying program do not. One redaction-safe span records elapsed time, quiescence versus deadline, and arrival count without entering the packet.
+
+  | Form | Rule |
+  | --- | --- |
+  | An initiating turn | lets only the streams it started settle before program completion |
+  | A wake hold | a stream conclusion, direct-child conclusion or addressed reply persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live; the hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces arrivals within that window into at most one requeue per eligible loop; with no sibling obligation the wake is immediate, and at the deadline surviving work follows the ordinary monitored lifecycle |
+  | Arrivals | an arrival after provider dispatch begins retains its next wake, while poll, new-request and operator wakes never open this hold |
+
 - §worker-lifecycle-idle-is-concluded **Idle is not completion.** A loop concludes only under {§loop-completion}; an unanswered message remains an obligation even when nothing is running. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
@@ -2016,7 +2022,16 @@ Registration precedes loop affinity:
 
 - §op-synchronous **Operations are synchronous: decisive operations settle before the next.** The dispatcher awaits each operation and its proposal resolution, including subsystem commands ({§functionality-model-mutation}). Work remains in flight only when the operation's contract deliberately creates concurrency: FORK, WORK, external execution, and streaming READ after acquisition. Such a READ first establishes its durable subscription and returns `102`; a later operation may address that live owner. Dispatching an external execution before KILL does not wait for the process to finish using a resource. KILL of a worker synchronously ends its live loops before disposition checks the pending set; physical scope cleanup remains asynchronous.
 - §edit-execution **One resolved EDIT target is one mutation.** Each EDIT resolves against current resource state when dispatch reaches it, owns its proposal when gated, and records its own resulting revision. No later EDIT is prepared or applied in advance. Numeric scopes address current coordinates; an earlier EDIT may change what those numbers select. Rejection applies only to that operation, not its successful siblings.
-- §edit-anchor-continuity **Own EDITs preserve untouched hash targets within one program.** Core carries an anchor through exact, successfully applied EDIT splices when its line survives unchanged, even if its ordinal or neighborhood changes. Scoped entry KILL uses the same deletion path. Target-line replacement or deletion invalidates that binding. Continuity is private to the admitted program and canonical resource/channel; it is not a new published anchor format. The complete normalized line content must match the expected result of the preceding recorded EDIT, otherwise retained bindings are discarded and ordinary current-state validation applies. Reviewer replacement and results without an applied EDIT receipt do not carry bindings forward. A retained binding resolves alone: a twin neighbourhood this program's own splice created elsewhere does not make the carried anchor ambiguous, and an anchor the program never bound resolves against current state. Normalization is the same line-content representation used by READ and line hashing; file-write revision checks remain independent. No approximate text matching is used. Lowered coordinates retain a current-anchor precondition at the mutation owner; ambiguous matches and concurrent changes remain collisions.
+- §edit-anchor-continuity **Own EDITs preserve untouched hash targets within one program.** Core carries an anchor through exact, successfully applied EDIT splices when its line survives unchanged, even if its ordinal or neighborhood changes; scoped entry KILL uses the same deletion path. Continuity is private to the admitted program and canonical resource/channel; it is not a new published anchor format. No approximate text matching is used.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Invalidation | target-line replacement or deletion invalidates that binding; the complete normalized line content must match the expected result of the preceding recorded EDIT, otherwise retained bindings are discarded and ordinary current-state validation applies |
+  | Not carried | reviewer replacement and results without an applied EDIT receipt do not carry bindings forward |
+  | Resolution | a retained binding resolves alone: a twin neighbourhood this program's own splice created elsewhere does not make the carried anchor ambiguous, and an anchor the program never bound resolves against current state |
+  | Normalization | the same line-content representation used by READ and line hashing; file-write revision checks remain independent |
+  | Lowered coordinates | retain a current-anchor precondition at the mutation owner; ambiguous matches and concurrent changes remain collisions |
+
 - §anchor-offset **An anchor offset is tolerated, never taught (#749).** A line mark may carry an offset from its anchor (`@abcde+1`, `@abcde-2`), and a bare `+N` after an anchor counts from that anchor (`<@abcde,+1>`). The anchor resolves as usual and the offset is added; a result before line 1 is an invalid mark, and past the end is the ordinary range refusal. Continuity and current-anchor preconditions check the anchor's own line. `plurnk.md` keeps its two anchor forms. Numeric relative endpoints normalize under {§scope-range-recovery}; a reversed range produced by anchor resolution is never reinterpreted as a count.
 - §edit-batch **An edit batch is one compound operation of atomic splices.** The scheme's `editBatch` primitive validates all supplied numeric edits against one snapshot and commits one revision or none. Core supplies one statement per resolved EDIT target; same-resource MOVE can supply multiple splices as one operation. This primitive does not group separate targets or authored operations. Its replacement, insertion, conflict, and receipt rules remain owned by the shared Slicer.
 - §edit-batch-receipt **An edit batch's refusal receipt describes its own unapplied work.** An anchor collision lists every distinct unresolved anchor in that EDIT, including both range endpoints, in `unresolvedAnchors` (`anchor`, `kind: missing | ambiguous`, and matching `lines` when ambiguous). Missing is not proof of earlier validity or subsequent change. It carries `editCount: 1`, `applied: 0`, and recovery directing a READ for current coordinates; it makes no claim about other operations. A refused compound splice batch lists all conflicting pairs in `conflicts`, non-conflicting regions in `cleanRegions`, its first pair in `conflictingRegions`, and its own `editCount` and `applied: 0`.
@@ -3544,20 +3559,14 @@ accounting and model-visible failure evidence remain separately owned by
   `ops://<worker>/<loop>/<turn>`
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
-- §empty-turn **An empty turn, one with no operations, resolves no messages.**
-  Count parsed content operations and admitted reasoning operations ({§reasoning-operations}), a NOTE in
-  either channel among them; outside text ({§outside-text}) never enters the count. When none exist,
-  no boundary was lost, and messages remain unresolved or the emission is known incomplete,
-  retain the turn and its raw sources and count one progress-contract strike, whether or not
-  the turn carried text. Once messages are resolved, an intact operation-free turn is adjudicated
-  normally under {§loop-completion}; absence of operations is not a new lifecycle signal.
-  The strike sends no notice of its own: the turn records one `_plurnk`
-  error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
-  any failure ({§operation-result-uniform-error-channel}); the threshold terminal still says why ({§engine-rails}).
-  An empty turn the output allowance did not cut uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
-  different empty programs are not a repeated cycle merely because neither contained
-  operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
-  token or private retry is invented here.
+- §empty-turn **An empty turn, one with no operations, resolves no messages.** Count parsed content operations and admitted reasoning operations ({§reasoning-operations}), a NOTE in either channel among them; outside text ({§outside-text}) never enters the count. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation token or private retry is invented here.
+
+  | When none exist and | Rule |
+  | --- | --- |
+  | No boundary was lost, and messages remain unresolved or the emission is known incomplete | retain the turn and its raw sources and count one progress-contract strike, whether or not the turn carried text; the strike sends no notice of its own: the turn records one `_plurnk` error row, `422` `The turn performed no operation.`, which rides the next packet's errors like any failure ({§operation-result-uniform-error-channel}), and the threshold terminal still says why ({§engine-rails}) |
+  | Messages are resolved | an intact operation-free turn is adjudicated normally under {§loop-completion}; absence of operations is not a new lifecycle signal |
+  | The output allowance did not cut it | its exact text is the cycle fingerprint ({§engine-cycle-evidence}); different empty programs are not a repeated cycle merely because neither contained operations |
+
 - §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.** Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model never declared. What a terminal may not do is discard the last thing the model said. Attachment is owned by the one terminal seam.
 
   | The loop's last inference turn | The terminal's Problem Details |
@@ -6136,7 +6145,14 @@ flowchart TD
 - §context-own-rows-fit **The model's own rows take the same receipt.** When a request is over the wall by either measure ({§context-wall-measure}), its newest rows that still carry a body or a native part — NOTEs, receipts, delivered results, pictures — render bodiless in the fit rule's receipt shape, newest first and only as many as it takes for the request to fit: the heading, the facts, and `size`, the lines and tokens of what the row stood for. The optional emission history has already been omitted whole ({§emission-history}); an emission record has no body to take. A row whose receipt would weigh no less than its body stays whole. Every body stays stored and readable at its address, the verbs restore the room ({§context-verbs}), and each packet decides afresh from its own newest rows. The daemon chooses nothing to summarize and hides nothing silently.
 - §tokenomics-weight-stored-at-write **Curation weight, stored at write.** `entry_channels.weight` weighs the complete channel content. `log_entries.weight` weighs the complete canonical `LogBody` content before coordinate and packet presentation; persistence `tx`/`rx` envelopes contribute nothing merely by existing, and proposal settlement recomputes the value when the canonical result changes. Bodyless rows therefore weigh zero. The stored number is a stable content-depth measurement, not a provider-token prediction. `entry_channels.lines` is the channel's line count beside it, a stored generated column SQLite keeps on every write as the persisted mirror of {§logical-line-count} (a trailing newline terminates the last line; empty content has none), so a catalog lists extent without reading bodies.
 - §tokenomics-render-weight-budget **Packet curation budget.** `tokens` measures the *complete assembled packet* after section transforms and readout substitution, each rendered message (including {§emission-history}) and native attachments; it is not a sum of stored row weights ({§tokenomics-weight-stored-at-write}). Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns final values into those widths; final substitution is length-invariant and the displayed total equals the stored request weight. Receipt, FIND-item, pressure-inventory, total, and ceiling figures all use the same curation ruler. A `SUM` of stored content weights measures a different artifact and cannot substitute for packet render weight.
-- §tokenomics-calibrated-readout **The calibrated readout converts capacity, never content costs; one factor per loop.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. A loop's first sample from the answering model fixes the conversion factor `reported / weight` for the rest of that loop. Until then the loop's packets use that model's most recently fixed factor, from any loop or worker, and a model that has none uses 1. The budget therefore changes at most once in a loop, when its first response settles. `floor(inputCapacity / factor)` converts provider capacity into curation units, the budget ({§context-budget}); the same factor converts the packet's weight into the wall's estimate ({§context-wall-measure}). Zero means no whole curation unit fits; unknown input capacity remains `null`. The built packet captures this allowance and its factor once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
+- §tokenomics-calibrated-readout **The calibrated readout converts capacity, never content costs; one factor per loop.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
+
+  | Fact | Rule |
+  | --- | --- |
+  | The factor | a loop's first sample from the answering model fixes the conversion factor `reported / weight` for the rest of that loop; until then the loop's packets use that model's most recently fixed factor, from any loop or worker, and a model that has none uses 1; the budget therefore changes at most once in a loop, when its first response settles |
+  | The conversion | `floor(inputCapacity / factor)` converts provider capacity into curation units, the budget ({§context-budget}); the same factor converts the packet's weight into the wall's estimate ({§context-wall-measure}); zero means no whole curation unit fits, and unknown input capacity remains `null` |
+  | The packet | captures this allowance and its factor once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance |
+
 - §tokenomics-window-partition **The window partition: one capacity derivation, no service-side token budget.** The provider owns model limits, the configured output reservation, and each call's response grant. Its resolved `inputCapacity` supplies the physical denominator exposed to clients and the boundary conversion into curation units ({§tokenomics-calibrated-readout}). Core shapes context in curation units; provider request-shaped evidence alone admits or rejects physical I/O. Local and custom deployments tune context window, total output budget and optional reasoning subset at their owning layers.
 - §tokenomics-window-unpollable-deliberate **An unpollable window is deliberate: unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, there is no budget: the gauge carries `tokens` alone, every result arrives whole, and the provider remains the capacity oracle ({§provider-capacity-admission}). Core never invents a stand-in.
 
