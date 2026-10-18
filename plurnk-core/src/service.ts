@@ -29,7 +29,6 @@ import { workspacePaths } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
-import { startObservability, validateObservabilityConfiguration } from "./observe/init.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
@@ -126,7 +125,6 @@ export default class Service {
             ...modules.flatMap(({ module }) => (module.contained ?? []).map(({ key, message }) => new ConfigurationError(key, message))),
         ];
         if (causes.length > 0) throw new Error(causes.map(({ message }) => message).join("\n"), { cause: causes[0] });
-        validateObservabilityConfiguration();
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
@@ -236,10 +234,8 @@ export default class Service {
         const listener = await HttpListener.bind({ host, port });
         let db: Db | null = null;
         let daemon: Daemon | null = null;
-        let observability: Awaited<ReturnType<typeof startObservability>> = null;
         const teardown = new ServiceTeardown(
             async (deadline) => { await daemon?.stop(deadline); },
-            ["observability shutdown", async () => { await observability?.shutdown(); }],
             ["database close", async () => { await db?.close(); }],
             ["HTTP listener close", async () => { await listener.close(); }],
         );
@@ -247,9 +243,8 @@ export default class Service {
             // {§startup-admission-order}: after listener ownership, persistence
             // and its exclusive owner precede capability activation.
             db = await Service.#openDb(dbPath, true);
-            // {§observability-boundary} — config is normalized before any SDK
-            // implementation loads; teardown already owns the admitted DB.
-            observability = await configuration.capture("observability", () => startObservability());
+            // {§observability-boundary} — the SDK is the plurnk-otel module's, discovered and set up with every
+            // other module ({§otel-module}); the service loads none.
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             // {§module-discovery} — the service composes no module: the daemon discovers every one,
             // and the socket never closes or rebinds between admission and readiness.

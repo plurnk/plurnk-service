@@ -1,0 +1,75 @@
+{
+    "name": "@plurnk/plurnk-otel",
+    "version": "0.0.0",
+    "description": "Register the OpenTelemetry trace and metric providers OTEL_* selects for a Plurnk daemon.",
+    "keywords": [
+        "plurnk",
+        "opentelemetry",
+        "observability",
+        "tracing",
+        "metrics"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-otel#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-otel"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "dependencies": {
+        "@opentelemetry/context-async-hooks": "^2.12.0",
+        "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
+        "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+        "@opentelemetry/resources": "^2.12.0",
+        "@opentelemetry/sdk-metrics": "^2.12.0",
+        "@opentelemetry/sdk-trace-base": "^2.12.0",
+        "@plurnk/plurnk-meta": "^2.0.0"
+    },
+    "peerDependencies": {
+        "@opentelemetry/api": "^1.9.1",
+        "@plurnk/plurnk-modules": "^4.0.0"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    }
+}

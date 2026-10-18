@@ -72,6 +72,8 @@ extensions included in the default installation. The terminal client is a separa
   implements and the base setup seam. Each framework owns the slice for what
   modules contribute to its kind.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
+- `plurnk-otel` owns the OpenTelemetry SDK: the trace and metric providers `OTEL_*` selects,
+  registered as a module; the daemon instruments itself on the API alone.
 - `plurnk-digest` owns forensic reports, consistent snapshots and interviews;
   core supplies canonical evidence through its public reader.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and

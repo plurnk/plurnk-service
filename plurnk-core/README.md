@@ -69,10 +69,11 @@ database. Existing output and overlapping input/output paths are refused.
 - `@plurnk/plurnk-mimetypes` — content handling contract.
 - `@plurnk/plurnk-execs` — executable capability contract.
 - `@plurnk/plurnk-hooks` — selected lifecycle events delivered to exact commands.
+- `@plurnk/plurnk-otel` — the OpenTelemetry trace and metric providers `OTEL_*` selects.
 
 ## Observability
 
-The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment ({§observability-boundary}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or extension payloads.
+The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment, registered by the `@plurnk/plurnk-otel` module of the default installation ({§observability-boundary}, {§otel-module}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or extension payloads.
 
 ## Full-text search
 

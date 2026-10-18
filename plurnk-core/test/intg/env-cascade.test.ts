@@ -416,7 +416,7 @@ for (const built of [false, true]) {
         for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
             ["module:@plurnk/plurnk-a2a", "PLURNK_A2A_ENDPOINT_PATH"],
-            ["observability", "OTEL_TRACES_EXPORTER"],
+            ["module:@plurnk/plurnk-otel", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],
             ["model-child", "PLURNK_MODEL_CHILD"],
             ["effect-policy", "PLURNK_SERVICE_EFFECT_HOST"],

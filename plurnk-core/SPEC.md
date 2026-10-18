@@ -157,16 +157,9 @@ package map. The default installed composition is specified in {§bundled-set}.
 
 ### §observability-boundary Observability boundary
 
-OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
+OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages and the daemon itself depend on the OTel API only; the `@plurnk/plurnk-otel` module, discovered like every other, constructs the explicitly configured trace and metric providers ({§otel-module}). A process without the module, unconfigured or standards-valid disabled loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
 
-Configuration uses the standard `OTEL_*` environment. OTel Logs and direct draft semantic-convention use are excluded. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
-
-| Variable | Effect |
-| --- | --- |
-| `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` | select `otlp` or `console` per signal; a missing or `none` value keeps that signal off, and no SDK default selects an exporter; an unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}), and offline checking rejects the same input before loading an SDK |
-| `OTEL_SERVICE_NAME` | names the service (default `plurnk-service`) |
-| `OTEL_SDK_DISABLED` | case-insensitive `true` turns the boundary off |
-| `OTEL_EXPORTER_OTLP_*` | honored by the OTLP exporters |
+Configuration is the standard `OTEL_*` environment, read and documented by the module ({§otel-module}); an unknown exporter name is that module's contained configuration ({§otel-contained}). Direct draft semantic-convention use is excluded. Exporter failure cannot change product results or client lifecycle. Telemetry shutdown is the module's `stop` under {§module-shutdown-order}; daemon and database teardown remain independent reverse-ownership phases, every phase runs, and aggregate failure preserves every cause.
 
 | Recorded | Rule |
 | --- | --- |
