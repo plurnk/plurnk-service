@@ -51,7 +51,7 @@ test("{§model-catalog-projection} lookup: an unknown/local model is a miss (nul
     assert.equal(lookup("nonprovider", "whatever"), null);     // unknown provider
 });
 
-test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
+test("{§model-catalog-projection} resolveModel: a unique provider-native suffix resolves to its catalog id", () => {
     // The fixture derives from the catalog: Models.dev retires ids, and a literal rots.
     const fireworks = Object.keys(catalogSnapshot()["fireworks-ai"]);
     const native = fireworks.find((id) => id.startsWith("accounts/fireworks/models/")

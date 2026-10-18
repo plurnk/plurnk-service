@@ -190,7 +190,7 @@ test("{§model-fact-resolution} contextWindowFromEnv: reads PLURNK_PROVIDERS_CON
     assert.equal(contextWindowFromEnv({}, "openai"), null);
 });
 
-test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
+test("{§provider-configuration} scopeEnvToAlias: a caller's knob list scopes only that caller's knobs", async () => {
     const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"];
     const env = {
         PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",

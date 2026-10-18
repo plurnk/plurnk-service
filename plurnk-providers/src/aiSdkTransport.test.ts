@@ -355,7 +355,7 @@ test("{§provider-request-authority} request extensions cannot replace SDK-owned
     );
 });
 
-test("the adapter maps leading system messages to AI SDK instructions", async () => {
+test("{§provider-sdk-boundary} a leading system message reaches the wire as the request's system message", async () => {
     const calls: Record<string, unknown>[] = [];
     const fetch: typeof globalThis.fetch = async (_url, init) => {
         calls.push(JSON.parse(requestBody(init)) as Record<string, unknown>);

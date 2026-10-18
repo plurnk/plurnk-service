@@ -17,3 +17,4 @@
 | Models | Retain models with positive context windows and valid required capability facts. Preserve independent input/output limits, reasoning controls, modalities, optional capabilities, and available rate groups. |
 | Missing facts | Omit unavailable optional facts; do not infer one limit or rate from another. Invalid required facts fail generation. |
 | Runtime | Read-only lookup; precedence and operator overrides belong to {§model-fact-resolution}. |
+| Native ids | `resolveModel` resolves a provider-native id, or a suffix unique within that provider's catalog, to its catalog id; no PLURNK vendor table stands between. |

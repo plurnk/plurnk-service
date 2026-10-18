@@ -916,6 +916,10 @@ servers are composition evidence only.
 | `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
 | `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). |
 | `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call. |
+| `resource-address-invalid` | 400 | The MCP resource address is invalid (a malformed encoded address); not retryable. |
+| `resource-part-not-found` | 404 | The resource response does not contain this part. |
+| `resource-read-failed` | 502 | MCP resource preparation failed; retryable, with the bounded upstream diagnostic. |
+| `resource-find-failed` | 502 | MCP resource listing failed; retryable, with the bounded upstream diagnostic. |
 | `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant. |
 | `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
 | `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. |

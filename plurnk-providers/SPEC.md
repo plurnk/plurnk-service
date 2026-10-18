@@ -6,6 +6,14 @@ ordinary provider protocols.
 
 ## §1 Ownership
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-runtime-neutral-accounting} | `@plurnk/plurnk-providers/accounting` — Provider-request aggregation, Models.dev cost estimation, and their… |
+| {§provider-runtime-neutral-errors} | `@plurnk/plurnk-providers/errors` — Normalized `ProviderError`, `ProviderErrorKind`, and the types of its… |
+| {§provider-runtime-neutral-openai} | `@plurnk/plurnk-providers/openai` — The OpenAI-compatible provider: SDK transport, request capture,… |
+<!-- /map -->
+
 The provider stack has four owners:
 
 1. Models.dev supplies a release-time snapshot of provider package, API
@@ -22,14 +30,15 @@ model prefix, context window, price, or vendor request shape into a PLURNK
 table. A missing or wrong catalog fact is fixed upstream, overridden through a
 provider declaration, or left explicitly unknown.
 
-The package exposes two runtime-neutral public surfaces:
+The package exposes three runtime-neutral public surfaces:
 
 | Surface | Contract |
 | --- | --- |
 | §provider-runtime-neutral-accounting `@plurnk/plurnk-providers/accounting` | Provider-request aggregation, Models.dev cost estimation, and their wire types. |
 | §provider-runtime-neutral-errors `@plurnk/plurnk-providers/errors` | Normalized `ProviderError`, `ProviderErrorKind`, and the types of its attempt, accounting, and capacity evidence. |
+| §provider-runtime-neutral-openai `@plurnk/plurnk-providers/openai` | The OpenAI-compatible provider: SDK transport, request capture, accounting, capacity and error normalization, reaching no Node built-in. |
 
-Both surfaces re-export the package's sole implementations without evaluating
+All three re-export the package's sole implementations without evaluating
 Node-only provider discovery, filesystem defaults, or runtime construction.
 The package root remains the Node provider-runtime composition surface and is
 not a Worker entrypoint.
@@ -339,7 +348,8 @@ Models.dev-declared AI SDK package.
 Standard request shaping, streaming, usage, and vendor error parsing belong to
 the SDK. PLURNK supplies cancellation and deadline signals and owns the sole
 cross-attempt scheduler so every physical request remains observable and
-accountable.
+accountable. The adapter hands the SDK the conversation as authored: a leading
+system message reaches the wire as the request's system message.
 
 | Usage input | Normalization |
 | --- | --- |
@@ -524,7 +534,10 @@ openai-compatible (DeepInfra, Together) write `reasoning_effort` from their own
 §provider-configuration Every operational value is an environment knob
 documented in `.env.defaults`.
 There are no hidden tuning constants. Every `PLURNK_PROVIDERS_*` knob may be
-scoped to an alias by appending `_<alias>`; the scoped value wins.
+scoped to an alias by appending `_<alias>`; the scoped value wins, and the alias
+segment folds case. The scoping takes a closed list of knob names: a consumer
+scopes its own knobs by passing its list, and neither list reaches the other's
+knobs.
 Each projection reads one fresh environment snapshot without modifying its
 source; later projections observe later configuration, never a cached view.
 
@@ -845,7 +858,10 @@ into an empty model turn or reduced to a message plus a generic status.
 Upstream diagnostic text is bounded by
 `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT`; the committed `.env.defaults` owns its
 normal value. Retry exhaustion is preserved as `attempts` and
-`retryExhausted`; it does not change the Problem's `retryable`.
+`retryExhausted`; it does not change the Problem's `retryable`. A provider's
+producer id is `provider:<name>`, the name folded to the `source` grammar of
+`Notice.json` (lower-case words and hyphens; a leading digit is prefixed
+`p-`); an empty name is refused.
 
 §provider-retryable-truth **`retryable` states what happens next.** A Problem's
 `retryable` is exactly membership of its kind in the exported

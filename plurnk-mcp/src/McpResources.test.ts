@@ -241,7 +241,7 @@ test("{§mcp-prompt-content} prompt content keeps roles and order while exposing
     assert.equal(entries.get(pathname)!.channels.body.content, root.channels.body.content, "reconstructed resources keep their names");
 });
 
-test("resource facet rejects malformed encoded addresses as non-retryable client errors", async () => {
+test("{§problems-mcp} the resource facet refuses a malformed encoded address as resource-address-invalid, 400, not retryable", async () => {
     const { connection, resources } = await configured();
     try {
         const result = await resources.prepareRepresentation(

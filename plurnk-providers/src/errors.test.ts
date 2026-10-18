@@ -31,7 +31,7 @@ test("{§provider-request-rejection} HTTP request rejection preserves its cause 
     assert.equal(classifyProviderError(apiError(200)).kind, "invalid_response", "a malformed successful response still violates the response contract");
 });
 
-test("providerSource produces a schema-valid colon-namespaced source", () => {
+test("{§provider-failure-normalization} providerSource folds a provider name into the colon-namespaced source grammar", () => {
     assert.equal(providerSource("openai"), "provider:openai");
     assert.match(providerSource("openrouter"), SOURCE_PATTERN);
     assert.equal(providerSource("@scope/custom_provider"), "provider:scope-custom-provider");
