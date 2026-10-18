@@ -307,21 +307,16 @@ that prefix. Before the line the listener answers `503 service-starting`; after 
 failure is an exit with the originating address error and means *occupied*, not *foreign* — another
 plurnk-service may be starting there, and only `discover` says which.
 
-§daemon-launch **The service ships its own launcher; launchers own policy.** `@plurnk/plurnk-service/launch`
-spawns a daemon argv with the caller's environment, an optional {§state-root}, host and port, and
-resolves on the readiness line with the published address, database path, route and a `stop()` that
-is SIGTERM, a stated grace, then SIGKILL, resolving when the process has ended. It holds no timing of
-its own: the caller states the readiness timeout and the stop grace. A start that fails — spawn error,
-exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind
-and both output streams; the helper never creates, keeps or removes state. A shared daemon survives
-the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it); a
-private daemon is its launcher's child and ends with it under managed shutdown. The launcher
-spawns either: `lifetime: "private"` (the default) pipes both streams to the launcher; `lifetime:
-"shared"` puts the daemon in its own process group with both streams appended to the caller's
-`logFile`, reads readiness from that file, and releases the process once ready, so the launcher may
-exit while the daemon runs on and no output accumulates in a launcher that has left; until
-readiness the launcher owns it either way, and `stop()` ends it while the launcher lives. Shell and container
-launchers consume the same contract by reading the line themselves.
+§daemon-launch **The service ships its own launcher; launchers own policy.** `@plurnk/plurnk-service/launch` spawns a daemon argv with the caller's environment, an optional {§state-root}, host and port, and resolves on the readiness line with the published address, database path, route and a `stop()` that is SIGTERM, a stated grace, then SIGKILL, resolving when the process has ended. Shell and container launchers consume the same contract by reading the line themselves.
+
+- The helper holds no timing of its own: the caller states the readiness timeout and the stop grace. It never creates, keeps or removes state.
+- A start that fails — spawn error, exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind and both output streams.
+- Until readiness the launcher owns the daemon either way, and `stop()` ends it while the launcher lives.
+
+| `lifetime` | The daemon |
+| --- | --- |
+| `"private"` (the default) | is its launcher's child and ends with it under managed shutdown; both streams pipe to the launcher |
+| `"shared"` | survives the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it): its own process group, both streams appended to the caller's `logFile`, readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
 
 ## §actor-boundary Workers and workspace boundaries
 
@@ -549,7 +544,12 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` operation turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program — the READ/FIND surveys, opened by one NOTE and closed by another when the surveys run — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning and reads none back. The two NOTEs show the card's NOTE practice in the example turn, both carrying the aside of the card's plan example, `<!-- plan -->`: the opening one is the worker's plan in numbered steps, each with its purpose: survey what exists, read the Open Message and restate what it asks for and what will show it is done, then do the work saving all new facts, ideas and plans in NOTEs for later turns; the closing one names the next step and reads `Read and resolve the Open Message.` No emission row is fabricated ({§emission-row}): the first request sees the NOTEs and the surveys' ordinary results, never an assistant-content copy of the program. The initial message arrives as an inbound SEND in the first model turn ({§message-arrival}); initialization never READs it, and neither initialization nor later turns manufacture a task inventory. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` operation turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}; every orienting row is structurally classified `_plurnk` and `init`, and the namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+
+- Its program — the READ/FIND surveys, opened by one NOTE and closed by another when the surveys run — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning and reads none back.
+- The two NOTEs show the card's NOTE practice in the example turn, both carrying the aside of the card's plan example, `<!-- plan -->`: the opening one is the worker's plan in numbered steps, each with its purpose — survey what exists, read the Open Message and restate what it asks for and what will show it is done, then do the work saving all new facts, ideas and plans in NOTEs for later turns; the closing one names the next step and reads `Read and resolve the Open Message.`
+- No emission row is fabricated ({§emission-row}): the first request sees the NOTEs and the surveys' ordinary results, never an assistant-content copy of the program.
+- The initial message arrives as an inbound SEND in the first model turn ({§message-arrival}); initialization never READs it, and neither initialization nor later turns manufacture a task inventory.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -2856,21 +2856,11 @@ byte write, a member past the materialization bound, or a row settled before thi
 nothing is reconstructed for them: such a row has no `patch` channel, and whatever reads one, a
 rollback included, fails by name rather than inventing one.
 
-§rollback **Rollback reverses a worker's settled file mutations, latest first, through ordinary
-operations.** `rollback({ workspaceId, workerId, actor, to })` (`workspace.rollback { to,
-workerId? }` for a client) names a log coordinate of `workerId`, `<loop>/<turn>/<item>`; the state
-after that item is what remains. Every settled EDIT, COPY, MOVE or KILL row after it, latest first,
-has its patch ({§log-mutation-patch}) reversed against the file as it is now and written back within
-one client operation of `actor` ({§connection-lifecycle}), that person's decision already: a rewrite
-as `EDIT <1,-1>`, a removed file as a creating `EDIT`, a created file as `KILL`. Each reversal is a
-row and a patch of its own, so a rollback is inspectable afterwards and reversible by the same
-means. The report (`RollbackReport`) lists what was restored, the rows skipped because they
-kept no patch or were reversed already (the file is in the state before that mutation, as an earlier
-rollback left it), and where it stopped: `drift`, the file no longer holds what that mutation wrote,
-leaves that file and everything earlier untouched; `refused` carries the reversing operation's
-Problem. A coordinate that is not one of the worker's rows is `404 coordinate-not-found`, a
-malformed one `400 coordinate-invalid`, and a workspace without a project root `400
-project-root-required`. Nothing is reconstructed for a patchless row, and the log is never rewritten.
+§rollback **Rollback reverses a worker's settled file mutations, latest first, through ordinary operations.** `rollback({ workspaceId, workerId, actor, to })` (`workspace.rollback { to, workerId? }` for a client) names a log coordinate of `workerId`, `<loop>/<turn>/<item>`; the state after that item is what remains. A coordinate that is not one of the worker's rows is `404 coordinate-not-found`, a malformed one `400 coordinate-invalid`, and a workspace without a project root `400 project-root-required`. Nothing is reconstructed for a patchless row, and the log is never rewritten.
+
+- Every settled EDIT, COPY, MOVE or KILL row after it, latest first, has its patch ({§log-mutation-patch}) reversed against the file as it is now and written back within one client operation of `actor` ({§connection-lifecycle}), that person's decision already: a rewrite as `EDIT <1,-1>`, a removed file as a creating `EDIT`, a created file as `KILL`.
+- Each reversal is a row and a patch of its own, so a rollback is inspectable afterwards and reversible by the same means.
+- The report (`RollbackReport`) lists what was restored, the rows skipped because they kept no patch or were reversed already (the file is in the state before that mutation, as an earlier rollback left it), and where it stopped: `drift`, the file no longer holds what that mutation wrote, leaves that file and everything earlier untouched; `refused` carries the reversing operation's Problem.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
@@ -5639,27 +5629,11 @@ A family that ships no file has a header-only document. Registration also
 validates the adapter's taught `add` example against the `add` input schema it
 teaches, so a wrong example fails boot rather than the model.
 
-§functionality-model-mutation **The model's mutations of a Functionality family settle in authored order.**
-Every manager verb, including inspection, completes before dispatch proceeds;
-later operations observe earlier successful configuration changes. These
-core-owned commands use ordinary proposals and durable execution outputs, but
-not the background-execution slot pool. Preparation and publication share the
-family's serialized lane. Resident publication uses the lease handoff in
-{§module-workspace-quiescence}; context-only families retain their existing
-scope-local serialization. The invoking operation and its output remain pending
-until settlement; they never acknowledge merely starting a future commit.
-It then reports `active`, `unavailable`, or `authorization-required`, or the exact
-publication failure. Resource readiness is not execution liveness: a mutation's
-`202 authorization-required` body remains exact, while the finished manager
-execution closes with `200`. It does not wait for sign-in. A preparation failure may publish enabled-but-unavailable
-state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Result observation uses the ordinary execution lifecycle, without a
-separate deferred-commit queue. An explicit client action publishes now, rejects
-a failed preparation, and fails 409 while the workspace is held
-({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and
-publishes nothing. Cancellation removes queued publication and aborts preparation
-before publication; an already-started atomic publication is joined, never
-abandoned partway through. Shell commands, remote tools, WORK/FORK and streaming
-READ retain their deliberately asynchronous contracts ({§op-synchronous}).
+§functionality-model-mutation **The model's mutations of a Functionality family settle in authored order.** Every manager verb, including inspection, completes before dispatch proceeds; later operations observe earlier successful configuration changes. The invoking operation and its output remain pending until settlement, and never acknowledge merely starting a future commit; settlement reports `active`, `unavailable`, or `authorization-required`, or the exact publication failure. Resource readiness is not execution liveness: a mutation's `202 authorization-required` body remains exact, while the finished manager execution closes with `200`; it does not wait for sign-in. Shell commands, remote tools, WORK/FORK and streaming READ retain their deliberately asynchronous contracts ({§op-synchronous}).
+
+- These core-owned commands use ordinary proposals and durable execution outputs, but not the background-execution slot pool. Preparation and publication share the family's serialized lane; resident publication uses the lease handoff in {§module-workspace-quiescence}, and context-only families retain their existing scope-local serialization.
+- A preparation failure may publish enabled-but-unavailable state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Result observation uses the ordinary execution lifecycle, without a separate deferred-commit queue.
+- An explicit client action publishes now, rejects a failed preparation, and fails 409 while the workspace is held ({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and publishes nothing. Cancellation removes queued publication and aborts preparation before publication; an already-started atomic publication is joined, never abandoned partway through.
 
 ## §methods Application interface
 
@@ -6593,7 +6567,15 @@ of section weights for the rendered request weight.
 | a row the wall took | its size and address, no body and no native part ({§context-own-rows-fit}) |
 | bodyless row | heading and any facts; no coordinate lines; `tokens` includes any selected native part |
 
-§markerless-first-page **What the model did not ask for in size arrives as its first page.** A READ or FIND without a scope, a stream delivered when a command closes, a peer worker's message, an environment delta, an extension's body and a rejected emission shown back all arrive as their first page: `PLURNK_SERVICE_PREVIEW_LINES` lines and at most `PLURNK_SERVICE_PREVIEW_CHARS` characters, in the projection's own units — lines of text, bytes of a byte view ({§read-bytes}), results of a FIND — with one fact in one notation stating the page and the whole, `<1,100> of 4812 lines` (`range` on a retrieval, `preview` on a stored body, {§packet-extent-metadata}). What the model authored stands whole: a NOTE, a WAIT, the body of its SEND, the prompt of its WORK or FORK, and the command it handed an executor. Its own reasoning, when it lands as a row, stands whole only when it fits the row's page and otherwise takes its last page ({§reasoning-row}). What it asked for exactly stands whole: an explicit scope — `<a,b>`, `<1,-1>`, a pattern — and an EDIT receipt, bounded by its own rule ({§edit-result-receipt-truth}). The operator's message keeps its own rule ({§message-projection}) and emission rows remain folded ({§emission-row}); those are the only exceptions, so the model can reason about every page the same way. A page lands under {§context-fit} like any result: whole when it fits the remaining budget, otherwise the prefix and receipt. Retrievals take their page at the source, before storage, and the packet applies no second cut to a stored result; a stored body takes its page in the packet, and the rest stays readable at the row's address. No operation carries a page size of its own.
+§markerless-first-page **What the model did not ask for in size arrives as its first page.** A READ or FIND without a scope, a stream delivered when a command closes, a peer worker's message, an environment delta, an extension's body and a rejected emission shown back all arrive as their first page: `PLURNK_SERVICE_PREVIEW_LINES` lines and at most `PLURNK_SERVICE_PREVIEW_CHARS` characters, in the projection's own units — lines of text, bytes of a byte view ({§read-bytes}), results of a FIND — with one fact in one notation stating the page and the whole, `<1,100> of 4812 lines` (`range` on a retrieval, `preview` on a stored body, {§packet-extent-metadata}). No operation carries a page size of its own.
+
+| Rule | What |
+| --- | --- |
+| stands whole | what the model authored — a NOTE, a WAIT, the body of its SEND, the prompt of its WORK or FORK, and the command it handed an executor — and what it asked for exactly: an explicit scope (`<a,b>`, `<1,-1>`, a pattern) and an EDIT receipt, bounded by its own rule ({§edit-result-receipt-truth}) |
+| takes its page | what it did not ask for in size, as above; its own reasoning, when it lands as a row, stands whole only when it fits the row's page and otherwise takes its last page ({§reasoning-row}) |
+| the only exceptions | the operator's message keeps its own rule ({§message-projection}) and emission rows remain folded ({§emission-row}), so the model can reason about every page the same way |
+
+A page lands under {§context-fit} like any result: whole when it fits the remaining budget, otherwise the prefix and receipt. Retrievals take their page at the source, before storage, and the packet applies no second cut to a stored result; a stored body takes its page in the packet, and the rest stays readable at the row's address.
 
 READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). When a visible projection differs from its canonical body, metadata carries `preview` under {§packet-extent-metadata}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
