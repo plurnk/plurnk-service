@@ -1,7 +1,7 @@
 // {§digest-requiem-evidence-budget} — quoted evidence is budgeted to the witness window;
 // overflow elides the oldest attempts behind an explicit marker and the interview succeeds.
 import test from "node:test";
-import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";

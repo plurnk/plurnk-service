@@ -7,7 +7,7 @@ import {
     LanguageVariant,
     SyntaxKind,
 } from "typescript/unstable/ast";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run diagnostics:inventory

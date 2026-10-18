@@ -1,13 +1,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { candidateDaemonArgs } from "./candidate-daemon.mjs";
-import { pinRuntime } from "./candidate-runtime.mjs";
-import { resolveCandidateTopology } from "./project-topology.mjs";
-import { parseCandidateClientEnv } from "./candidate-env.mjs";
+import { candidateDaemonArgs } from "./lib/candidate-daemon.mjs";
+import { pinRuntime } from "./lib/candidate-runtime.mjs";
+import { resolveCandidateTopology } from "./lib/project-topology.mjs";
+import { parseCandidateClientEnv } from "./lib/candidate-env.mjs";
 import { pathToFileURL } from "node:url";
-import { gateResourceEnvironment } from "./gate-environment.mjs";
-import { usage } from "./usage.mjs";
+import { gateResourceEnvironment } from "./lib/gate-environment.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run candidate [-- <client arguments>]
@@ -67,7 +67,7 @@ const finalize = () => {
     finalizing = (async () => {
         await Promise.all([stop(client), daemon?.stop()]);
         run(process.execPath, [
-            resolve(root, "scripts", "candidate-digest.mjs"),
+            resolve(root, "scripts", "lib", "candidate-digest.mjs"),
             runtime,
             dbPath,
             resolve(stateDir, "digest"),

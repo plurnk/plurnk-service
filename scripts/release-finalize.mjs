@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { canonicalForgeOrigin } from "./release-authority.mjs";
-import { readCandidate, readJson } from "./release-candidate.mjs";
-import { viewManifest } from "./npm-json.mjs";
-import { usage } from "./usage.mjs";
+import { canonicalForgeOrigin } from "./lib/release-authority.mjs";
+import { readCandidate, readJson } from "./lib/release-candidate.mjs";
+import { viewManifest } from "./lib/npm-json.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:finalize -- <artifact-directory>

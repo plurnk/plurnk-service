@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeDiagnosticSource } from "./diagnostic-inventory.mjs";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: node scripts/problem-codes.mjs   (a step of npm run root:lint)

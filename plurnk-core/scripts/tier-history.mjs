@@ -5,8 +5,8 @@
 // table instead of reconstructed from memory. Read-only; nothing under the home is touched.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { benchmarksRoot } from "../../scripts/test-artifacts.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { benchmarksRoot } from "../../scripts/lib/test-artifacts.ts";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run tier:history [-- live|demo]   (from plurnk-core)

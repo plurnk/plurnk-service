@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { usage } from "../usage.mjs";
+import { usage } from "../lib/usage.mjs";
 
 usage(`
 usage: npm run audit:clones

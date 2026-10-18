@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run build:info   (a step of npm run build, from plurnk-core)

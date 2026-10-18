@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
-import { tierRunPath } from "../../scripts/test-artifacts.ts";
+import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 import { aliasesSatisfying, requirementsOfSkip } from "../test/live-requirements.ts";
 
 const failureReason = (error) => {

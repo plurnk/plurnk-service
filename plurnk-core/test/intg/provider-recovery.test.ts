@@ -9,7 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { requestBody } from "../../../scripts/test-fetch.ts";
+import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
 // A provider whose next `failures` calls drop with a transient network failure.
 class Flaky extends Mock {

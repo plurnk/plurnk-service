@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run changelog -- [--write | --check | --pending]

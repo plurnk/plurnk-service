@@ -47,7 +47,7 @@ import WebFetcher, {
     MATERIALIZER_ENV,
     MATERIALIZER_ID_HEADER,
 } from "./WebFetcher.ts";
-import { requestUrl } from "../../scripts/test-fetch.ts";
+import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
 

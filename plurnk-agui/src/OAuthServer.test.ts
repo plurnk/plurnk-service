@@ -11,7 +11,7 @@ import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "./Module.ts";
 import type { AguiEvent } from "./types.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { requestBody } from "../../scripts/test-fetch.ts";
+import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 type Authority = ApplicationPort["credentials"];

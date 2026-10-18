@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
-import { requestBody } from "../../../scripts/test-fetch.ts";
+import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
 for (const capture of [false, true]) {
     test(`{§provider-request-evidence} recovery and digest retain failed output without executing or merging it; capture=${capture}`, async () => {

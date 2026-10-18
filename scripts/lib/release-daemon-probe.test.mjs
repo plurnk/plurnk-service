@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
 
-const fixture = fileURLToPath(new URL("./fixtures/release-daemon.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL("../fixtures/release-daemon.mjs", import.meta.url));
 const silent = () => {};
 
 const runProbe = (env, options = {}) => probeInstalledDaemon({

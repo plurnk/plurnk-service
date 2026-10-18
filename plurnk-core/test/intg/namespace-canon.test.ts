@@ -13,7 +13,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";

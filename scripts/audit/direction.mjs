@@ -2,8 +2,8 @@
 import { glob, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { cruise } from "dependency-cruiser";
-import configuration from "./dependency-cruiser.mjs";
-import { usage } from "../usage.mjs";
+import configuration from "../lib/dependency-cruiser.mjs";
+import { usage } from "../lib/usage.mjs";
 
 usage(`
 usage: npm run audit:direction

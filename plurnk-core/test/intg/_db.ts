@@ -4,7 +4,7 @@ import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { MessageOpener } from "../../src/core/ChannelWrite.ts";
 import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";

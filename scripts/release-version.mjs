@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:version

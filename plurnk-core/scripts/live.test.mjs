@@ -10,7 +10,7 @@ import { censuses, history } from "./tier-history.mjs";
 import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
 import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
 import { failAfterCleanup } from "../test/live-failure.ts";
-import { tierRunPath } from "../../scripts/test-artifacts.ts";
+import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
 test("live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
     const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;

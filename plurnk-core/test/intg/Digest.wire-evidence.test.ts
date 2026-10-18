@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AiSdkProvider, Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";

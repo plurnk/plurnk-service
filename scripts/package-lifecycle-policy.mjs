@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run lifecycle:check

@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "../test/intg/_rpc.ts";
 import { parseLogRecords } from "../test/LogRecords.ts";
 import { contentWeight } from "../src/core/content-weight.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run report:floor   (from plurnk-core)

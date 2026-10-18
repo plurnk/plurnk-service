@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { assessRequestCapacity } from "@plurnk/plurnk-providers";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";

@@ -6,7 +6,7 @@ import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts"
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import { requestBody } from "../../scripts/test-fetch.ts";
+import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 type Protocol = "chat" | "responses" | "messages" | "generate-content";
 

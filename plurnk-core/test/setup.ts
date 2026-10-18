@@ -12,7 +12,7 @@
 // This bootstrap is the Mock tier's parallel and overrides that selection with a fake `mocktest`
 // alias (Mocks are injected, so it's never dialed) whose fixture-scaled reserves no real model sees.
 import { join } from "node:path";
-import { testArtifactPath } from "../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../scripts/lib/test-artifacts.ts";
 
 // Mock fixtures declare their own resources after bootstrap, never operator services or schedules.
 for (const key of Object.keys(process.env)) {

@@ -1,8 +1,8 @@
 // {§test-artifact-retention} — a green suite leaves nothing behind; a red one is never touched,
 // because this only runs after `node --test` has already exited 0.
 import { rm } from "node:fs/promises";
-import { testArtifactPath } from "./test-artifacts.ts";
-import { usage } from "./usage.mjs";
+import { testArtifactPath } from "./lib/test-artifacts.ts";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: node scripts/reclaim-green-run.mjs <lane>   (after a green test:intg)

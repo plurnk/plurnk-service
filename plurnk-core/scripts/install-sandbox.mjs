@@ -8,7 +8,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run build:local:install | npm run build:local:uninstall   (from plurnk-core)

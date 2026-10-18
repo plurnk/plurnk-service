@@ -38,7 +38,7 @@ import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
-import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const env = withProviderDefaults({
     ...OPERATOR_MODEL_OPTIONS,

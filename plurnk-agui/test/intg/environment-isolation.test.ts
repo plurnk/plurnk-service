@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { benchmarksRoot } from "../../../scripts/test-artifacts.ts";
+import { benchmarksRoot } from "../../../scripts/lib/test-artifacts.ts";
 
 test("{§operator-config-real-model-profile} deterministic AG-UI Runs never start operator MCP servers", { timeout: 60_000 }, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-agui-isolation-"));

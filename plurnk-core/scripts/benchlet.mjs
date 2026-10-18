@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run test:benchlet -- [benchlet arguments]   (from plurnk-core)

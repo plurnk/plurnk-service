@@ -4,7 +4,7 @@ import { packageArtifactViolations } from "./package-artifacts.mjs";
 
 test("{§mimetype-query-assets} packed MIME queries are complete", async () => {
     const { readdir } = await import("node:fs/promises");
-    const assets = (await readdir(new URL("../plurnk-mimetypes/queries/", import.meta.url)))
+    const assets = (await readdir(new URL("../../plurnk-mimetypes/queries/", import.meta.url)))
         .filter((name) => name.endsWith(".scm")).map((name) => `queries/${name}`);
     assert.ok(assets.length > 0);
     assert.deepEqual(packageArtifactViolations("plurnk-mimetypes", assets), []);

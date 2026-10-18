@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: node scripts/host-path-policy.mjs   (a step of npm run root:lint)
@@ -17,7 +17,7 @@ const PATH_OWNER = "plurnk-core/src/core/HostPaths.ts";
 // {§test-artifact-retention} — the benchmark home is an evidence location, not a daemon host path,
 // and the candidate launcher ({§candidate-pinned-runtime}) must resolve it without TypeScript: its
 // one resolver forms exactly one path, `~/benchmarks`, and is the one other owner.
-const BENCHMARK_HOME_OWNER = "scripts/benchmarks-root.mjs";
+const BENCHMARK_HOME_OWNER = "scripts/lib/benchmarks-root.mjs";
 const OWNERS = new Set([PATH_OWNER, BENCHMARK_HOME_OWNER]);
 
 const isTest = (name) => /(?:^|\/)(?:test|tests)\//u.test(name) || /\.test\.[^.]+$/u.test(name);

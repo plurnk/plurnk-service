@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { benchmarksRoot } from "../../scripts/benchmarks-root.mjs";
+import { benchmarksRoot } from "../../scripts/lib/benchmarks-root.mjs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -15,8 +15,8 @@ import {
     providerCatalogSnapshot,
     resolveModel,
 } from "@plurnk/plurnk-models";
-import { usage } from "../../scripts/usage.mjs";
-import { applyRealModelEnvironment } from "../../scripts/environment.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
+import { applyRealModelEnvironment } from "../../scripts/lib/environment.mjs";
 
 usage(`
 usage: npm run test:providersPing   (from plurnk-providers)

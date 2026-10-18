@@ -8,7 +8,7 @@
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const repository = resolve(import.meta.dirname, "..");
+const repository = resolve(import.meta.dirname, "../..");
 
 // The committed real-model gate profile: the posture that is the same on every machine.
 export const gateProfile = (root = repository) => join(root, "plurnk-core", ".env.test");

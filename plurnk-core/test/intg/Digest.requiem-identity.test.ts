@@ -1,6 +1,6 @@
 // {§digest-requiem} — a synthetic interview carries a complete self-root identity.
 import test from "node:test";
-import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

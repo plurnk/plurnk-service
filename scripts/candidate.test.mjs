@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { pinRuntime } from "./candidate-runtime.mjs";
+import { pinRuntime } from "./lib/candidate-runtime.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 

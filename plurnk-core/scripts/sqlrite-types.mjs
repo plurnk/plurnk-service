@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run types:sqlrite | npm run types:sqlrite:check   (from plurnk-core)

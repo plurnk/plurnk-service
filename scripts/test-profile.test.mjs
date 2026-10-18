@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import { liveInvocation } from "../plurnk-core/scripts/live.mjs";
-import { candidateDaemonArgs } from "./candidate-daemon.mjs";
-import { gateProfile } from "./environment.mjs";
+import { candidateDaemonArgs } from "./lib/candidate-daemon.mjs";
+import { gateProfile } from "./lib/environment.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const profilePath = resolve(root, "plurnk-core", ".env.test");

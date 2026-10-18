@@ -144,7 +144,7 @@ Build inputs are runtime package inputs. Keep test-only and private harness
 helpers under their test or bench owner rather than compiling them into `dist`.
 When runtime code loads a module by exact path instead of through an export,
 assert that path in the root packed-artifact projection. The manifest a tarball
-carries is a projection too: `scripts/package-projection.mjs` strips the
+carries is a projection too: `scripts/lib/package-projection.mjs` strips the
 monorepo's `plurnk-dev` export condition from every tarball the platform packs
 (the provenance gate, the conformance harness, the publish machine) and refuses
 any remaining export whose target the tarball does not ship (#797).
@@ -156,7 +156,7 @@ before adding a constant, a flag, a parameter default or a settings field.** The
 cascading environment is the only home for a choice; code holds mechanism only.
 What follows here is only the order the layers apply in.
 
-The order the layers apply in is {§environment-layers}, and `scripts/environment.mjs` is its
+The order the layers apply in is {§environment-layers}, and `scripts/lib/environment.mjs` is its
 code: the shell, then `plurnk-core/.env.test` (the committed gate profile), then the operator file
 `$XDG_CONFIG_HOME/plurnk/.env`, then each package's `.env.defaults`, then the assembled floor.
 `loadEnvFile` is set-if-unset and the last `--env-file-if-exists` flag wins; the module encodes

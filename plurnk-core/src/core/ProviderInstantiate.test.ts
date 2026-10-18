@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, type AddressInfo } from "node:net";
 import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
-import { requestUrl } from "../../../scripts/test-fetch.ts";
+import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
 // A loopback port the kernel just handed out and this process released: closed, by evidence.
 const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {

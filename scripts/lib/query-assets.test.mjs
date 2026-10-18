@@ -12,7 +12,7 @@ import { packRecords } from "./npm-json.mjs";
 const run = promisify(execFile);
 
 test("{§mimetype-query-assets} built query loading is contained in the packed package", async () => {
-    const workspace = fileURLToPath(new URL("../plurnk-mimetypes/", import.meta.url));
+    const workspace = fileURLToPath(new URL("../../plurnk-mimetypes/", import.meta.url));
     const directory = await mkdtemp(join(tmpdir(), "plurnk-query-assets-"));
     try {
         const { stdout } = await run("npm", ["pack", "--json", "--pack-destination", directory], { cwd: workspace });

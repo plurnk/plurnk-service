@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { ollamaProviderFromEnv } from "./ollama.ts";
-import { requestUrl } from "../../scripts/test-fetch.ts";
+import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const env = Object.freeze({
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",

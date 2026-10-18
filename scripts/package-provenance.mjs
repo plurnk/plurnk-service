@@ -3,10 +3,10 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
-import { packageArtifactViolations } from "./package-artifacts.mjs";
-import { projectTarball, resolveProjected } from "./package-projection.mjs";
-import { packRecords } from "./npm-json.mjs";
-import { usage } from "./usage.mjs";
+import { packageArtifactViolations } from "./lib/package-artifacts.mjs";
+import { projectTarball, resolveProjected } from "./lib/package-projection.mjs";
+import { packRecords } from "./lib/npm-json.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run metadata:check | npm run metadata:write   (--write, --pack, --only <workspace-dir>)

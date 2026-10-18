@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { publishCandidates } from "./release-registry.mjs";
+import { publishCandidates } from "./lib/release-registry.mjs";
 
 const records = () => [
     { name: "consumer", version: "4.3.0", manifest: { name: "consumer", version: "4.3.0", dependencies: { contract: "^2.0.0" } } },
@@ -103,7 +103,7 @@ test("{§release-candidate-graph} incompatible candidate edges cannot publish pa
 
 test("release qualification audits the installed composition and retains package-owned checks", async () => {
     const gates = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
-    const consumer = await readFile(new URL("./release-consumer.mjs", import.meta.url), "utf8");
+    const consumer = await readFile(new URL("./lib/release-consumer.mjs", import.meta.url), "utf8");
     assert.match(consumer, /\["install", "--no-audit", "--no-fund", "--include=peer", \.\.\.specs\]/);
     assert.match(consumer, /await auditProduction\(cwd\)/);
     assert.match(consumer, /\["audit", "--audit-level=moderate", "--omit=dev"\]/);

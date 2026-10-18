@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { exerciseRuntimeNeutralWorker } from "./runtime-neutral-worker-control.mjs";
-import { packRecords } from "../../scripts/npm-json.mjs";
-import { usage } from "../../scripts/usage.mjs";
+import { packRecords } from "../../scripts/lib/npm-json.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run release:check   (from plurnk-providers)

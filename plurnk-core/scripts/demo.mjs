@@ -13,7 +13,7 @@ import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import { runTier, stampTierRun, tierArguments, tierEnvironment } from "./live.mjs";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run test:demo | npm run test:demo:specimen -- <story-name-pattern>   (from plurnk-core)

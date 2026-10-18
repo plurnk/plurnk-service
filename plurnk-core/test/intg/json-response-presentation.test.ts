@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { requestUrl } from "../../../scripts/test-fetch.ts";
+import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
 test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();

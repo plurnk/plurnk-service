@@ -16,7 +16,7 @@ protocol support.
 
 ## §lint-gate Lint is a gate
 
-`oxlint` runs beside `tsc` in the lint tier (`npm run lint:oxlint`, part of root
+`oxlint` runs beside `tsc` in the lint tier (`npm run source:check`, part of root
 `test:lint`), over every workspace's sources, tests and `scripts/`, from the one
 shared `.oxlintrc.json`. The gate fails on errors.
 
@@ -30,7 +30,7 @@ shared `.oxlintrc.json`. The gate fails on errors.
 ## §script-help Every entry point explains itself
 
 A script that a package.json names answers `--help` (and `-h`) before it does anything else,
-through the one seam `scripts/usage.mjs`:
+through the one seam `scripts/lib/usage.mjs`:
 
 | Line | Content |
 | --- | --- |
@@ -42,11 +42,28 @@ through the one seam `scripts/usage.mjs`:
 `scripts/script-help.test.mjs` runs every named script with `--help` and fails on a missing part, a
 non-zero exit, or any other output; `plurnk-core/src/service.ts` answers through its own usage.
 
+## §scripts-layout One directory lists what a person runs
+
+`ls scripts` is the map of the repository's own tooling: every code file at its top level and under
+`audit/` is an entry point that a package.json script or a git hook names, and nothing names a module
+under `lib/`. `scripts/layout.test.mjs` fails on either violation.
+
+| Directory | Holds |
+| --- | --- |
+| `scripts/` | the entry points; `SPEC.md`; the data files a policy step reads |
+| `scripts/lib/` | the modules the entry points and the workspaces import |
+| `scripts/audit/` | the on-demand audits (`npm run audit:*`) and their configuration |
+| `scripts/anatomy/` | the refactoring tools, run by hand; their README is their map |
+| `scripts/fixtures/` | the data the witnesses read |
+
+A witness sits beside the file it proves (`scripts/lib/npm-json.test.mjs` beside `npm-json.mjs`); a
+witness of several files, or of the repository, sits at the top level.
+
 ## §environment-layers The environment, layered once
 
 A real-model run (the live and demo tiers, the providers' probes, the candidate) is configured by
-these layers, highest precedence first; `scripts/environment.mjs` is their one statement, and
-`scripts/environment.test.mjs` proves the order.
+these layers, highest precedence first; `scripts/lib/environment.mjs` is their one statement, and
+`scripts/lib/environment.test.mjs` proves the order.
 
 | Layer | Where | Sets |
 | --- | --- | --- |

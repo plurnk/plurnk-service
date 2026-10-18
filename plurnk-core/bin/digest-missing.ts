@@ -8,8 +8,8 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { benchmarksRoot } from "../../scripts/test-artifacts.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { benchmarksRoot } from "../../scripts/lib/test-artifacts.ts";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run digest:missing   (from plurnk-core)

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { Share } from "@plurnk/plurnk-digest";
 import { sqlFunctionPaths } from "../src/core/sql-functions.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run report:sql -- <database.db> [specimens.json]   (from plurnk-core)

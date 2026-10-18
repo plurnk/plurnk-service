@@ -1,7 +1,7 @@
 // {§digest-forensic-fidelity} — settled requests without any usage are named on the
 // worker's Cost line instead of silently pricing the run as if they were free.
 import test from "node:test";
-import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

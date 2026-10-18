@@ -12,16 +12,16 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import { projectTarball } from "./package-projection.mjs";
-import { packRecords } from "./npm-json.mjs";
+import { projectTarball } from "./lib/package-projection.mjs";
+import { packRecords } from "./lib/npm-json.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRite from "@possumtech/sqlrite";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 import Launch from "@plurnk/plurnk-service/launch";
-import { resolveClientCheckout } from "./project-topology.mjs";
-import { usage } from "./usage.mjs";
+import { resolveClientCheckout } from "./lib/project-topology.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run test:client-conformance

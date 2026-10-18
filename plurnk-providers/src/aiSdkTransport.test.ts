@@ -11,7 +11,7 @@ import {
     transportFailureOutputObserved,
     transportFailureEvidence,
 } from "./aiSdkTransport.ts";
-import { requestBody } from "../../scripts/test-fetch.ts";
+import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 const request = {
     url: "https://example.test/v1/chat/completions",

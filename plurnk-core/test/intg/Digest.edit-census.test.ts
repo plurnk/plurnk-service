@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
+import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest, DigestRender } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";

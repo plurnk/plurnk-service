@@ -1,11 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { assertClean, output, packCandidate, readJson, selectPackages, writeJson } from "./release-candidate.mjs";
-import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
+import { assertClean, output, packCandidate, readJson, selectPackages, writeJson } from "./lib/release-candidate.mjs";
+import { assertNpmPublisher, assertReleaseRepository } from "./lib/release-authority.mjs";
 import { assertReleaseHosting, packageReleaseNotes } from "./release-finalize.mjs";
-import { verifyConsumer } from "./release-consumer.mjs";
-import { usage } from "./usage.mjs";
+import { verifyConsumer } from "./lib/release-consumer.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:check -- <new-artifact-directory> <package-directory>...

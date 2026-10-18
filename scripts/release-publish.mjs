@@ -1,10 +1,10 @@
 import path from "node:path";
-import { assertNpmPublisher, assertReleaseRepository } from "./release-authority.mjs";
-import { output, readCandidate } from "./release-candidate.mjs";
-import { verifyConsumer } from "./release-consumer.mjs";
-import { publishCandidates } from "./release-registry.mjs";
+import { assertNpmPublisher, assertReleaseRepository } from "./lib/release-authority.mjs";
+import { output, readCandidate } from "./lib/release-candidate.mjs";
+import { verifyConsumer } from "./lib/release-consumer.mjs";
+import { publishCandidates } from "./lib/release-registry.mjs";
 import { assertReleaseHosting, finalizeCandidate, packageReleaseNotes } from "./release-finalize.mjs";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:publish -- <qualified-artifact-directory>

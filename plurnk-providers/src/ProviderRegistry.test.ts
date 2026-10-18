@@ -25,7 +25,7 @@ const catalogRatesOf = (provider: string, model: string) => {
     };
 };
 import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
-import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), grammarStyles: new Map() });

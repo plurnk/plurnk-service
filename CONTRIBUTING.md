@@ -174,7 +174,7 @@ it is not a release gate.
   - `PLURNK_ACCEPTANCE_PROJECT_ROOT`, the assembled forest with its root `AGENTS.md`;
   - `PLURNK_CLIENT_CHECKOUT`, the built outside client;
   - a clean service checkout.
-- **Verdict** (`scripts/orientation-verdict.mjs`): the report must be terminal and
+- **Verdict** (`scripts/lib/orientation-verdict.mjs`): the report must be terminal and
   must have inspected the repository, including a READ. It must cover the service,
   the contracts, the client and AG-UI, the repository topology, current work (or the
   forge's unavailability) and its own gaps.

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { initializeDemoRepository } from "./_git.ts";
-import { usage } from "../../../scripts/usage.mjs";
+import { usage } from "../../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run fixture:demo [-- <label>]   (from plurnk-core)

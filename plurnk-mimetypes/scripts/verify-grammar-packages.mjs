@@ -5,7 +5,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run grammars:verify [-- --contract-only] [-- --only <grammar>]   (from plurnk-mimetypes)

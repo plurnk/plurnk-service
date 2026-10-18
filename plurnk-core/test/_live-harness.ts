@@ -13,7 +13,7 @@ import { after } from "node:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { benchmarksRoot, tierRunPath } from "../../scripts/test-artifacts.ts";
+import { benchmarksRoot, tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 import { join } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";

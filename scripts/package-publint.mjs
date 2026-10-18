@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { publint } from "publint";
 import { formatMessage, formatMessagePath } from "publint/utils";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run packages:publint [-- --only <workspace-dir>]

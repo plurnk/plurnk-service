@@ -7,7 +7,7 @@ import { HttpAgent } from "@ag-ui/client";
 import type { Message, RunAgentInput } from "@ag-ui/core";
 import { Mock } from "@plurnk/plurnk-providers";
 import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 
 const conversation = (messages: readonly Message[]) => messages.flatMap((message) =>
     (message.role === "user" || message.role === "assistant") && typeof message.content === "string"

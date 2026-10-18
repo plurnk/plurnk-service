@@ -1,5 +1,5 @@
-import { selectPackages } from "./release-candidate.mjs";
-import { usage } from "./usage.mjs";
+import { selectPackages } from "./lib/release-candidate.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:order -- <package-directory>...

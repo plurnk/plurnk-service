@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { packRecords } from "../scripts/npm-json.mjs";
+import { packRecords } from "../scripts/lib/npm-json.mjs";
 
 const run = promisify(execFile);
 const declare = (tag) => `§${tag}`;

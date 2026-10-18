@@ -5,7 +5,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Guard, { GuardBlockedError } from "./Guard.ts";
-import { requestUrl } from "../../scripts/test-fetch.ts";
+import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 test("isPublicAddress: blocks RFC-reserved v4 ranges", () => {
     for (const ip of ["0.0.0.0", "10.0.0.1", "127.0.0.1", "169.254.169.254", "172.16.0.1", "172.31.255.255", "192.168.1.1", "100.64.0.1", "100.127.0.1"]) {

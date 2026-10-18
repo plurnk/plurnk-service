@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify, parseArgs } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm run release:gate [-- --only <package-dir>]...

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import ModelCall from "../../src/core/ModelCall.ts";
 import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";

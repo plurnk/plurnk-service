@@ -9,7 +9,7 @@ import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
-import { requestBody } from "../../scripts/test-fetch.ts";
+import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 const KEYS = {
     OPENAI_API_KEY: "k", GROQ_API_KEY: "k", CEREBRAS_API_KEY: "k", MISTRAL_API_KEY: "k",

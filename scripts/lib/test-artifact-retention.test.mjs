@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { benchmarksRoot, testArtifactDirectory, testArtifactPath, tierRunPath } from "./test-artifacts.ts";
 
-const root = new URL("../", import.meta.url);
+const root = new URL("../../", import.meta.url);
 const LANES = ["plurnk-core", "plurnk-agui", "plurnk-schedule"];
 
 test("{§test-artifact-retention} a run's databases live under the one artifact home, never in the checkout", (t) => {

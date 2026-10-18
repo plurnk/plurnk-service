@@ -19,7 +19,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { requestUrl } from "../../../scripts/test-fetch.ts";
+import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
 class PreparedDataScheme implements SchemeHandler {
     static manifest: SchemeManifest = {

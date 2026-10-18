@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { parseEnv } from "node:util";
-import { serviceDefinitions } from "../plurnk-mcp/src/config.ts";
+import { serviceDefinitions } from "../../plurnk-mcp/src/config.ts";
 import { gateResourceEnvironment } from "./gate-environment.mjs";
 
 test("{§operator-config-real-model-profile} personal resources stay inspectable but do not activate in disposable runs", async (t) => {

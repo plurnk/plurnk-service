@@ -1,5 +1,5 @@
 import { copyFile, mkdir } from "node:fs/promises";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run build:assets   (a step of npm run build, from plurnk-mcp)

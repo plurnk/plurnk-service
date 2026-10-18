@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { loadActiveProvider } from "./ProviderRegistry.ts";
-import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const baseEnv = {
     PLURNK_MODEL: "sample_box",

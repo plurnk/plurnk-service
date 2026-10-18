@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { requestUrl } from "../../../scripts/test-fetch.ts";
+import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
 const readHttp = (
     http: Http,

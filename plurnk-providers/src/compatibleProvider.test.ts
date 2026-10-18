@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
-import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const env = {
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",

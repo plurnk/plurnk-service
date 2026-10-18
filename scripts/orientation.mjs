@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { benchmarksRoot as artifactHome } from "./benchmarks-root.mjs";
+import { benchmarksRoot as artifactHome } from "./lib/benchmarks-root.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import {
     appendFileSync,
@@ -14,9 +14,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { evaluateOrientation } from "./orientation-verdict.mjs";
+import { evaluateOrientation } from "./lib/orientation-verdict.mjs";
 import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
-import { usage as explain } from "./usage.mjs";
+import { usage as explain } from "./lib/usage.mjs";
 
 explain(`
 usage: npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]

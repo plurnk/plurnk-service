@@ -13,7 +13,7 @@ import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Policy } from "@plurnk/plurnk-execs";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./installed-grammars.mjs";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run test:installation   (from plurnk-core)

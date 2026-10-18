@@ -5,10 +5,10 @@ import { mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import HostPaths from "../src/core/HostPaths.ts";
-import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
-import { realModelNodeFlags } from "../../scripts/environment.mjs";
-import { tierRunPath } from "../../scripts/test-artifacts.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { gateResourceEnvironment } from "../../scripts/lib/gate-environment.mjs";
+import { realModelNodeFlags } from "../../scripts/lib/environment.mjs";
+import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run test:live | npm run test:live:specimen -- "<exact specimen name>"   (from plurnk-core)

@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { usage } from "./usage.mjs";
+import { usage } from "./lib/usage.mjs";
 
 usage(`
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)

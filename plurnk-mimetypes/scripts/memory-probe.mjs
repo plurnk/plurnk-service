@@ -8,7 +8,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import v8 from "node:v8";
 import Mimetypes from "../src/Mimetypes.ts";
-import { usage } from "../../scripts/usage.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(`
 usage: npm run memory:probe   (from plurnk-mimetypes)

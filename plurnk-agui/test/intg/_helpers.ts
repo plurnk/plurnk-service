@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import type { Db } from "../../../plurnk-core/src/core/Db.ts";
 
 export const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");

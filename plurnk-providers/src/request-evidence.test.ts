@@ -6,7 +6,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import AiSdkProvider from "./AiSdkProvider.ts";
 import { createSdkModel } from "./sdkModels.ts";
 import type { ProviderRequestAccounting } from "./types.ts";
-import { requestBody } from "../../scripts/test-fetch.ts";
+import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 for (const native of [false, true]) {
     for (const capture of [false, true]) {

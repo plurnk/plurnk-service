@@ -11,7 +11,7 @@ import RequestFields from "./RequestFields.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import InferenceAdmission from "./InferenceAdmission.ts";
-import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const wireConfig = (env: NodeJS.ProcessEnv) => {
     const requestFields = new RequestFields("test", withProviderDefaults(env));

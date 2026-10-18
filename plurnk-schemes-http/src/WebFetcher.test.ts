@@ -15,7 +15,7 @@ import WebFetcher, {
     WebMaterializationError,
 } from "./WebFetcher.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
-import { requestUrl } from "../../scripts/test-fetch.ts";
+import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const PUB = "https://93.184.216.34/x";
 const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");

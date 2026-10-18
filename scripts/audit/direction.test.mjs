@@ -4,7 +4,7 @@ import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { inspectDirections } from "./audit/direction.mjs";
+import { inspectDirections } from "./direction.mjs";
 
 const fixture = async (t, sources) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-direction-"));

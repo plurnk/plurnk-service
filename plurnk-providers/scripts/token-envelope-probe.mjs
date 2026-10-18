@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { benchmarksRoot } from "../../scripts/benchmarks-root.mjs";
+import { benchmarksRoot } from "../../scripts/lib/benchmarks-root.mjs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -17,8 +17,8 @@ import {
     redactText,
     sensitiveValuesFromEnv,
 } from "./providers-ping.mjs";
-import { usage } from "../../scripts/usage.mjs";
-import { applyRealModelEnvironment } from "../../scripts/environment.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
+import { applyRealModelEnvironment } from "../../scripts/lib/environment.mjs";
 
 usage(`
 usage: npm run probe:tokens -- --alias <alias>... [--max-output-tokens n] [--prompt-chars n] [--fill c] [--reasoning r] [--timeout-ms n] [--dry-run] [--measure-only] [--label name]   (from plurnk-providers)
