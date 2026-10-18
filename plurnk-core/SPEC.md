@@ -4204,7 +4204,7 @@ filter those explicit bindings or create a second approval path.
 | {§proposal-projection} | One durable proposal, one client projection |
 | {§client-interactions} | Client-owned interaction lifecycle |
 | {§proposal-ownership-notification} | The notification carries the selected `ProposalDisposition`, not policy inputs. |
-| {§proposal-disposition} | Settlement authority and precedence |
+| {§proposal-disposition} | Proposal disposition: settlement authority and precedence |
 | {§runtime-bookkeeping-policy} | Runtime bookkeeping cannot acquire new authority. |
 <!-- /map -->
 
@@ -4300,7 +4300,7 @@ removes ownerless rows without fabricating cancellation, payload, or replay.
 addressed to their owner identity; they never reconstruct authority from the
 operation, message sender, or attrs.
 
-### §proposal-disposition Settlement authority and precedence
+### §proposal-disposition Proposal disposition: settlement authority and precedence
 
 | First applicable condition | Disposition |
 | --- | --- |
@@ -4342,13 +4342,13 @@ provider failure ({§provider-recovery}).
 | {§subscription-finalization} | Executors and scheme subscriptions share the durable close boundary. |
 | {§subscriptions-causal-resource} | A subscription's causal Worker belongs to the entry's workspace. |
 | {§subscriptions-fold-keeps-subscription} | A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. |
-| {§chunk-accumulation-chunks-accumulate} | SSE event types, WS message types, exec stdout/stderr each map to a named channel. |
+| {§chunk-accumulation-chunks-accumulate} | Chunks accumulate into named channels. |
 | {§no-chunk-rows} | No per-chunk log rows |
 | {§no-chunk-rows-log-captures-lifecycle-only} | Channels are the source of truth for chunk content. |
 | {§stream-control} | Stream control and writes |
 | {§stream-asked-stop} | A stop that was asked for is no failure. |
 | {§stream-constraints} | Engine constraints |
-| {§stream-constraints-engine-one-cap} | All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call… |
+| {§stream-constraints-engine-one-cap} | The engine imposes one cap. |
 | {§live-updates} | Live updates for clients (between turns) |
 | {§live-updates-stream-event-fires-on-chunk} | Daemon emits `stream/event` notifications ({§notifications}) when channel content changes; clients use them… |
 <!-- /map -->
@@ -4394,7 +4394,7 @@ live executor's current declaration.
 
 ### Chunk accumulation
 
-§chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, curation `weight`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
+§chunk-accumulation-chunks-accumulate **Chunks accumulate into named channels.** SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, curation `weight`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
 
 ### §no-chunk-rows No per-chunk log rows
 
@@ -4414,7 +4414,7 @@ Model sees lifecycle events in the `log` section per turn.
 
 ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `contents.content` and on an active stream's `entry_channel_rows.buffer` in `migrations/005_entries.sql` ({§content-store}). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
 
-§stream-constraints-engine-one-cap All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else.
+§stream-constraints-engine-one-cap **The engine imposes one cap.** All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else.
 
 ### §live-updates Live updates for clients (between turns)
 
@@ -4433,12 +4433,12 @@ The model is NOT a stream/event consumer — turn-based only; sees whatever's in
 | {§db-durability} | Connection durability |
 | {§db-schema-baseline} | Baseline — Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`,… |
 | {§db-migrations} | Migrations — A released version is frozen: only its comments may change. |
-| {§validation-topology} | Where an invariant is enforced — The SQL core owns each invariant: a chapter's CHECK constraints and guard… |
+| {§validation-topology} | Validation topology: where an invariant is enforced — The SQL core owns each invariant: a chapter's CHECK… |
 | {§db-process-triggers} | Processes beside their owners — A trigger that writes rows — a cascade, a capture, an ambient event, a… |
 | {§db-fk-indexes} | Foreign-key indexes — Every foreign-key column a delete, cascade, or parent replacement can check carries an… |
 | {§db-index-owners} | Every index has an owner — An explicit index earns its place one of three ways: a registry statement's plan… |
 | {§db-maintenance-optimize} | Statistics at shutdown — The daemon's last database step before the caller closes SQLite is `PRAGMA optimize`… |
-| {§db-space-reclamation} | The daemon keeps its own file healthy — `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) names the mode… |
+| {§db-space-reclamation} | Space reclamation: the daemon keeps its own file healthy — `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or… |
 | {§content-store} | Every body is stored once — `contents` holds each settled body once, addressed by its SHA-256, however many… |
 | {§retention-policy} | Retention separates evidence classes — `Retention` reads the owning `.env.defaults` policy at daemon start… |
 | {§native-content-lifetime} | Native snapshots remain while any retained READ result, message attachment (inbound or outbound), or stored… |
@@ -4483,13 +4483,13 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 |---|---|
 | §db-schema-baseline Baseline | Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`, `002_workers`, `003_loops`, `004_inference`, `005_entries`, `006_log`, `007_subscriptions`, `008_interactions` — each one `MIGRATE` block whose version is the file's numeric prefix. They create the shape 1.21.1 shipped: tables, indexes, views, the constraint triggers that are a table's invariants (guards that only `RAISE`), and a view's `INSTEAD OF` write path. No migration holds an `INIT` block or a trigger that writes a row. |
 | §db-migrations Migrations | A released version is frozen: only its comments may change. Every shape change is one new file at the next version, applied by sqlrite above the database's `PRAGMA user_version`, ascending, each in its own transaction with its version bump. A fresh database takes the same path as an existing one. Each migration carries upgrade coverage: `test/intg/schema-baseline.test.ts` pins the released shape's fingerprint and migrates a released database, asserting its rows survive. A process trigger's change needs no migration: its `INIT` block re-declares it on the next open ({§db-process-triggers}). Foreign keys stay enforced. Prefer column changes or guard-trigger replacement; rebuilding a referenced table requires copying its complete referencing subgraph first and replacing children before parents, with retained-row and foreign-key coverage. Dropping a parent alone would cascade away its children. |
-| §validation-topology Where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` and `subscriptions_result_contract_update` hold the settled-result rule as one text, `011_settled`). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-agui's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
+| §validation-topology Validation topology: where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` and `subscriptions_result_contract_update` hold the settled-result rule as one text, `011_settled`). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-agui's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
 | Open failure | A missing table or column after migration means the file's shape disagrees with its version: a database from a newer release, or one from an unreleased development build. The daemon refuses to open it and names both remedies. |
 | §db-process-triggers Processes beside their owners | A trigger that writes rows — a cascade, a capture, an ambient event, a publication cursor, a landed curation — is a process, not shape. It is declared as an `-- INIT: <trigger name>` block in the `.sql` file beside the statements that fire it (`ambient.sql` for the ambient feed, `LoopLifecycle.sql`, `Turn.sql`, `Engine.sql` for model calls, `_entry-crud.sql`, `Log.sql`, `ChannelWrite.sql`), as `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER`, so the definition is current on every open of a database whose shape is current. `MIGRATE` always precedes `INIT` and `INIT` runs on the writer only, so a process may reference any table regardless of file order and never runs on the read pool. `test/intg/schema-composition.test.ts` fails on a baseline trigger that writes, an `INIT` trigger that only guards, a block not named after its trigger or not dropping first, and a live trigger set that differs from the declared set after a first and a second open. |
 | §db-fk-indexes Foreign-key indexes | Every foreign-key column a delete, cascade, or parent replacement can check carries an index (partial where the column is nullable), and no registry statement's plan scans a growing table: `test/intg/schema-query-plans.test.ts` runs `EXPLAIN QUERY PLAN` over every `-- PREP` statement against the baseline and fails on a `SCAN` of a growing table, except statements that read a whole table by design (digest, startup recovery, whole-workspace listings, scheduled-loop claims). An index claim is a plan, never a grep of index names. |
 | §db-index-owners Every index has an owner | An explicit index earns its place one of three ways: a registry statement's plan uses it, its leading column is a foreign key whose check it serves, or it enforces uniqueness. The same test fails on any other index, naming it: an index nobody reads is a write on every insert. A column no statement reads is not stored. |
 | §db-maintenance-optimize Statistics at shutdown | The daemon's last database step before the caller closes SQLite is `PRAGMA optimize` on the writer (`maintenance_optimize`), so `sqlite_stat1` reflects tables the connection planned against, bounded by SQLite's own analysis limit; a failure there is a reported shutdown error, never silent. Retention runs before it under the operator's policy ({§retention-policy}) and ends with a WAL truncation ({§db-space-reclamation}); no periodic `ANALYZE` runs. |
-| §db-space-reclamation The daemon keeps its own file healthy | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) names the mode the daemon keeps its file in. At start, before any drain, a database in another mode is converted (set the mode, one `VACUUM`, which rewrites the file and needs free disk about its size) and the journal says so with page counts before and after. Under `incremental`, every retention pass ends by stepping `PRAGMA incremental_vacuum` to completion once free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES` (0 = every pass), and reports `reclaimedPages`; below the floor, free pages stay for SQLite to reuse. Under `none` the file never shrinks and freed pages are reused. No operator step is involved beyond the knobs. The WAL stays bounded by SQLite's automatic checkpoint (#764). |
+| §db-space-reclamation Space reclamation: the daemon keeps its own file healthy | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) names the mode the daemon keeps its file in. At start, before any drain, a database in another mode is converted (set the mode, one `VACUUM`, which rewrites the file and needs free disk about its size) and the journal says so with page counts before and after. Under `incremental`, every retention pass ends by stepping `PRAGMA incremental_vacuum` to completion once free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES` (0 = every pass), and reports `reclaimedPages`; below the floor, free pages stay for SQLite to reuse. Under `none` the file never shrinks and freed pages are reused. No operator step is involved beyond the knobs. The WAL stays bounded by SQLite's automatic checkpoint (#764). |
 | §content-store Every body is stored once | `contents` holds each settled body once, addressed by its SHA-256, however many channels, workspaces, forks or derivations carry it; rows are immutable. `entry_channel_rows` points a settled channel at its body and keeps an active stream's body as a private buffer until it settles, when it is interned. Every reader and writer uses the `entry_channels` view, whose `INSTEAD OF` triggers intern bodies, refuse a bound `content_hash` that is not the content's, and write each column group only when it changed, so a search attachment is never a representation write. SQLite counts no changes for a view, so a write that must know whether its channel exists returns the channel's name; an outer join cannot flatten the view, so the two statements that need one read `entry_channel_rows` and `contents` directly. `derivation_fts` is an external-content index over `derivation_texts` (a derivation joined to its body); `derivations.content_id` names the indexed text, and the triggers in `_entry-fts.sql` move the index with it and forget it on delete. A body no channel holds and no derivation indexes is collected by retention under `PLURNK_SERVICE_COLLECT_CONTENTS`. Witnesses: `test/intg/retention.test.ts`, `test/intg/entries.test.ts`, `test/intg/fulltext-index.test.ts`. |
 | §retention-policy Retention separates evidence classes | `Retention` reads the owning `.env.defaults` policy at daemon start and runs on its configured cadence and at shutdown. Packet count/age controls retire completed turns' `turn_sections`. Response controls atomically retire a logical call's normalized response and every physical-request payload, including failed retries; its immutable retirement timestamp remains. Count means the newest payload-bearing logical calls per loop, not individual retries, and retired calls retain their chronological place. Either bound can expire an item; `-1` disables only that bound. Open turns, calls and requests are excluded. Messages, log rows, turn sources, approval decisions, request identities, status, admission, failure, capacity and accounting follow their containing history's lifetime. Collectors remove unreferenced packet items, derivations, text and native contents ({§native-content-lifetime}); derivation deletion removes its search projections. These controls are not a whole-database size bound or content-erasure policy: canonical history can retain text also captured in a retired payload. Invalid policy withholds retention and storage conversion, reports a configuration diagnostic and leaves the repair environment available ({§configuration-repair-path}); storage I/O failures remain failures. Reclamation follows {§db-space-reclamation}. |
 
@@ -4672,15 +4672,15 @@ language definition.
 | {§host-path-layout} | Host filesystem layout |
 | {§state-root} | A private daemon has one root. |
 | {§operator-config-precedence} | Configuration is one environment cascade. |
-| {§operator-config-env-defaults} | Every package owns its knobs — one assembled floor. |
+| {§operator-config-env-defaults} | The environment defaults: every package owns its knobs, one assembled floor. |
 | {§operator-config-undeclared-key} | A key no panel declares is reported, never refused. |
 | {§operator-config-only-home} | The cascading environment is the only home for a choice. |
-| {§operator-config-source-errors} | An optional member file may be absent; other read failures surface with the owning package and original… |
+| {§operator-config-source-errors} | A configuration source's errors surface. |
 | {§operator-config-discovery} | The conventional `plurnk-service config` command family is a view over the environment cascade, never another… |
 | {§operator-config-offline-validation} | `config check` and runtime use the same owning configuration readers, with different failure boundaries. |
 | {§systemd-user-unit} | The service package ships `plurnk.service` as an example systemd user unit. |
 | {§nginx-example} | The service package ships `plurnk.nginx.conf`, an example nginx front, beside the unit and under the same… |
-| {§operator-config-shared-keys} | `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` — The daemon-owned listener's… |
+| {§operator-config-shared-keys} | Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` — The daemon-owned… |
 | {§operator-config-git-ceiling} | `PLURNK_SERVICE_GIT_ALLOWED` — Hard service ceiling: only `1` admits Git membership and status; every other… |
 | {§operator-config-file-create-scope} | `PLURNK_SERVICE_FILE_CREATE_SCOPE` — Hard file-creation ceiling: `none < root < namespace`. |
 | {§operator-config-loop-timeout} | `PLURNK_SERVICE_LOOP_TIMEOUT` — Positive ms of cumulative active execution per loop… |
@@ -4693,7 +4693,7 @@ language definition.
 | {§operator-config-workspace-settings} | Client open-context (per workspace). |
 | {§operator-config-workspace-files-items} | `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens… |
 | {§operator-config-workspace-max-commands} | `settings.maxCommands` (number) **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the… |
-| {§operator-config-workspace-max-commands-floor} | The cap bounds *actions* only. |
+| {§operator-config-workspace-max-commands-floor} | **The max-commands floor bounds *actions* only.** WAIT is never counted and always dispatch, so `0` is a… |
 | {§operator-config-workspace-git} | `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the… |
 | {§operator-config-workspace-file-create-scope} | `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root <… |
 | {§operator-config-workspace-capabilities} | `settings.capabilities` is one workspace-stable `CapabilityPolicy` layer in {§capability-admission}. |
@@ -4749,7 +4749,7 @@ project's variables reach its commands through the workspace environment ({§wor
 
 Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 
-§operator-config-env-defaults **Every package owns its knobs — one assembled floor.**
+§operator-config-env-defaults **The environment defaults: every package owns its knobs, one assembled floor.**
 
 | Source | Panel | Admission |
 |---|---|---|
@@ -4802,7 +4802,7 @@ it, `config check` still passes, and it never enters a model's packet.
 
 Reading the system environment directly is the mechanism and never a finding. The allowance file is a ratchet — new debt is refused, and so is a paid debt left on the books — and it is empty. The register is not a debt: it is the reviewed list of deliberate non-knobs, each with its reason, and an entry whose number is gone is refused.
 
-§operator-config-source-errors An optional member file may be absent; other read failures surface with the
+§operator-config-source-errors **A configuration source's errors surface.** An optional member file may be absent; other read failures surface with the
 owning package and original cause, never as an incomplete successful catalog.
 
 §operator-config-discovery The conventional `plurnk-service config` command
@@ -4860,7 +4860,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§agui-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
+| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§agui-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
@@ -4960,7 +4960,7 @@ leak into another.
   **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the
   workspace: a client tightens the runaway-op guard and never raises it past
   the operator's.
-- §operator-config-workspace-max-commands-floor The cap bounds *actions* only.
+- §operator-config-workspace-max-commands-floor **The max-commands floor bounds *actions* only.**
   WAIT is never counted and always dispatch, so `0` is a valid
   floor, admitting lifecycle intent with zero actions. Dropped actions still prevent
   successful completion under {§turn-disposition}.
@@ -5025,7 +5025,7 @@ a fresh-user configuration.
 | --- | --- |
 | {§module-lifecycle} | Module lifecycle and setup seam |
 | {§module-discovery} | Daemon modules compose through their shared lifecycle. |
-| {§module-shutdown-order} | `Daemon.stop()` first rejects new capability demand, cancels preparation under… |
+| {§module-shutdown-order} | Module shutdown order: |
 | {§crash-only-stop} | The settle sequence is deadline-bounded (`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans… |
 | {§module-host-capabilities} | The coordinator's host interface is core's own. |
 | {§module-workspace-provider} | `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` — Registers one extension-unique… |
@@ -5033,7 +5033,7 @@ a fresh-user configuration.
 | {§module-workspace-capabilities} | `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` — Atomically replaces one… |
 | {§workspace-environment-sharing} | The workspace owns its shared environment. |
 | {§module-workspace-quiescence} | A Functionality snapshot changes between workspace operations. |
-| {§module-workspace-sharing} | Workers share Functionality by reference. |
+| {§module-workspace-sharing} | Workspace sharing: workers share Functionality by reference. |
 | {§module-workspace-residency} | Persistence is not residency. |
 | {§module-workspace-residency-facet} | Residency is the workspace's; processes are one family's facet. |
 <!-- /map -->
@@ -5121,7 +5121,7 @@ An invalid module object, factory result or lifecycle member is an implementatio
 not configuration, and fails loudly. What a module contributes registers through its owning public
 interfaces and is released during {§module-lifecycle} resource teardown.
 
-§module-shutdown-order `Daemon.stop()` first rejects new capability demand, cancels preparation
+§module-shutdown-order **Module shutdown order:** `Daemon.stop()` first rejects new capability demand, cancels preparation
 under {§functionality-preparation-cancellation}, and
 aborts proposals, branches, derivations, and worker scopes. It begins module
 `stop()` calls in reverse registration order without serially awaiting them,
@@ -5230,7 +5230,7 @@ their already-held demand boundary. Providers reject replacement while active
 requests, input exchanges, or Tasks depend on the old snapshot; infrastructure
 watches may be replaced. These are concurrency constraints, not creator privileges.
 
-§module-workspace-sharing **Workers share Functionality by reference.**
+§module-workspace-sharing **Workspace sharing: workers share Functionality by reference.**
 There is one effective definition for each workspace, family, and alias.
 Workers neither inherit module-state copies nor publish private tool registries.
 A conflicting alias is rejected explicitly; it never produces a hidden second
@@ -5292,8 +5292,8 @@ registry. Deleting the workspace cascades its state; worker lifecycle does not.
 | {§functionality-publication} | Functionality publication is one replacement of a family's state and runtimes. |
 | {§functionality-documents} | Generated documents describe the shared snapshot. |
 | {§functionality-model-projection} | The model's projection of a Functionality family is one workspace manager executor. |
-| {§functionality-document-body} | A family's teaching is an authored file beneath its generated header. |
-| {§functionality-model-mutation} | Subsystem commands settle in authored order. |
+| {§functionality-document-body} | A family's document body is an authored file beneath its generated header. |
+| {§functionality-model-mutation} | The model's mutations of a Functionality family settle in authored order. |
 <!-- /map -->
 
 §functionality-coordinator **One coordinator owns the common lifecycle.**
@@ -5660,7 +5660,7 @@ Expected adapter failures retain their exact status and Problem in both client
 actions and the model operation's stream/result ({§problem-error-carrier}). An
 unexpected exception remains an executor fault, not a managed refusal.
 
-§functionality-document-body **A family's teaching is an authored file beneath
+§functionality-document-body **A family's document body is an authored file beneath
 its generated header.** The adapter names its package directory (`docsDir`);
 that package's `docs/<family>.md` is read once, by the same rule runtimes use
 for `docs/<tag>.md` ({§executor-discovery}: the authoring title `# <family>` is
@@ -5671,7 +5671,7 @@ A family that ships no file has a header-only document. Registration also
 validates the adapter's taught `add` example against the `add` input schema it
 teaches, so a wrong example fails boot rather than the model.
 
-§functionality-model-mutation **Subsystem commands settle in authored order.**
+§functionality-model-mutation **The model's mutations of a Functionality family settle in authored order.**
 Every manager verb, including inspection, completes before dispatch proceeds;
 later operations observe earlier successful configuration changes. These
 core-owned commands use ordinary proposals and durable execution outputs, but
@@ -5707,7 +5707,7 @@ READ retain their deliberately asynchronous contracts ({§op-synchronous}).
 | {§methods-loop-run} | Loops — `runLoop({ workspaceId, workerId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?,… |
 | {§message-idempotency} | Message admission — `messageAdmission({ workspaceId, address, body })` |
 | {§methods-loop-cancel} | Loops — `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? |
-| {§methods-op-mirror} | Client dispatch — `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? |
+| {§methods-op-mirror} | Op mirror: client dispatch — `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? |
 | {§methods-log-read} | Reads — `readLog({ workspaceId, workerId, ...coordinate })` |
 | {§methods-entry-read} | Reads — `readEntry({ workspaceId, workerId, target, channel?, offset? |
 | {§methods-workspace-create} | Workspace lifecycle — `createWorkspace({ name?, projectRoot?, settings? |
@@ -5723,7 +5723,7 @@ READ retain their deliberately asynchronous contracts ({§op-synchronous}).
 | {§methods-worker-accounting} | Worker spend — `workerAccounting({ workspaceId, workerId })` |
 | {§methods-loop-run-fold-consistency} | A folded prompt cannot silently reconfigure its loop. |
 | {§methods-loop-run-open-paths} | Workspace paths are core-owned context reads. |
-| {§methods-rebind} | Binding belongs to the client-interface module. |
+| {§methods-rebind} | Rebinding: binding belongs to the client-interface module. |
 | {§methods-worker-name-admission} | Worker-name admission. |
 | {§capability-admission} | One admission path owns external authority. |
 | {§workspace-capability-policy} | The workspace is the access boundary. |
@@ -5734,15 +5734,15 @@ READ retain their deliberately asynchronous contracts ({§op-synchronous}).
 | {§model-catalog} | Model discovery is a bounded local projection, not provider activity. |
 | {§worker-model-selection} | Worker-owned model selection. |
 | {§worker-effort} | Reasoning is a durable worker policy. |
-| {§worker-effort-source} | A default never masquerades as a choice. |
+| {§worker-effort-source} | The effort source: a default never masquerades as a choice. |
 | {§methods-loop-run-model} | Per-loop model selection. |
 | {§methods-loop-run-child-provider} | Child-provider selection is one durable subcall policy. |
 | {§methods-log-coordinate} | Log coordinate. |
 | {§methods-log-entry-wire} | Log entry wire fidelity. |
 | {§methods-readable-reasoning} | Readable provider reasoning remains derived provider evidence. |
-| {§methods-invocation} | A row that discharges an obligation names the operation that opened it. |
-| {§methods-answering} | A reply names the operation that sent the message it answers. |
-| {§notifications} | Core events |
+| {§methods-invocation} | `invocation`: a row that discharges an obligation names the operation that opened it. |
+| {§methods-answering} | `answering`: a reply names the operation that sent the message it answers. |
+| {§notifications} | Notifications: core events |
 | {§notifications-operation-event} | `operation/event` — `ApplicationOperationEvent`: `{ workerId, loopId, turnId, sequence, origin, projectRoot,… |
 | {§notifications-log-entry-notify} | `log/entry` — `{ entry: LogEntry }` |
 | {§notifications-loop-terminated} | `loop/terminated` — `{ workerId, loopId, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight,… |
@@ -5756,7 +5756,7 @@ READ retain their deliberately asynchronous contracts ({§op-synchronous}).
 | {§notifications-outside-event} | `outside/event` — `{ workerId, loopId, turnId, coordinate, text, tokens }` |
 | {§notifications-reasoning-event} | `reasoning/event` — `{ workerId, loopId, turnId, modelCallId, requestSequence, phase, delta? |
 | {§notifications-stream-event-failure-isolation} | The extension-facing `NotifyCaps.streamEvent()` remains a synchronous advisory call while core resolves its… |
-| {§notifications-envelope-carries-workspaceid} | Event scope is explicit. |
+| {§notifications-envelope-carries-workspaceid} | The notification envelope carries its workspaceId: event scope is explicit. |
 | {§worker-external-reference} | External worker references |
 | {§connection-lifecycle} | Client operations and their connection lifetime |
 | {§actor-boundary-client-operations} | A client operation acts on workspace resources, attributes messages to its person, and reads a log in the… |
@@ -5778,7 +5778,7 @@ Core's behavior behind them.
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model worker and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§loop-addressed-admission}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §message-idempotency Message admission           | `messageAdmission({ workspaceId, address, body })` | A client message's address is its idempotency key ({§message-source-scheme}): `new` when nothing is accepted there, `accepted` when the same body is, so a repeat attaches to what the message started instead of admitting it twice; another body under an accepted address is refused, 422 `message-address-reused`, creating nothing. `runLoop` refuses every repeat it is handed: other words 422 `message-address-reused`, the same words 409 `message-already-accepted`, a duplicate racing the original. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime worker shares its scope. |
-| §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextWorkerId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
+| §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextWorkerId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
@@ -5834,7 +5834,7 @@ address whose resource is absent produces the ordinary READ failure.
 If an unpublished message is promoted into subsequent work under
 {§message-loop-containment}, its selected paths travel with it.
 
-§methods-rebind **Binding belongs to the client-interface module.** Core's
+§methods-rebind **Rebinding: binding belongs to the client-interface module.** Core's
 workspace lifecycle calls return exactly the workspace (`workspaceId`,
 `workspaceName`, `projectRoot`, `projectLabel`); they carry no worker, bound-worker
 or operation-loop binding. Core retains no connection, thread, or current-workspace
@@ -5986,7 +5986,7 @@ returns the supported-policy intersection of those two routes. Inspection or
 mutation materializes the daemon-default model and policy onto an uninitialized
 model worker before answering; a deliberately modelless daemon remains unset.
 
-§worker-effort-source **A default never masquerades as a choice.** The worker row records
+§worker-effort-source **The effort source: a default never masquerades as a choice.** The worker row records
 `effort_source` beside `effort`: `default` when the value was seeded from the alias
 or provider configuration, `explicit` only after `worker.effort.set`. `worker.effort.get`
 returns `source`, and a projected `ModelRoute` carries `effortSource` exactly when it carries
@@ -6050,7 +6050,7 @@ watched stream; history a FORK inherited was streamed by no request of this work
 core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 
-§methods-invocation **A row that discharges an obligation names the operation that opened it.** `readLog`
+§methods-invocation **`invocation`: a row that discharges an obligation names the operation that opened it.** `readLog`
 and `log/entry` project `invocation`, the log address of that operation ({§worker-obligations}), on every
 row that discharges one, so a client pairs the answer with its call without matching addresses:
 
@@ -6065,13 +6065,13 @@ A message names an invocation only to the worker whose operation sent it; histor
 same invocation as its original, at the same coordinate. The row's own `source` keeps its attribution meaning
 ({§env-delta-attribution}). An obligation whose opener was not recorded, and every other row, omits the field.
 
-§methods-answering **A reply names the operation that sent the message it answers.** `readLog` and `log/entry`
+§methods-answering **`answering`: a reply names the operation that sent the message it answers.** `readLog` and `log/entry`
 project `answering` on a reply delivered to the worker whose operation sent the message ({§message-reply-delivery}):
 that operation's log address, whether the reply completes the message or reports progress. A completion reply
 names the same address as its `invocation`. A reply to a message this worker did not send, such as another actor
 answering a message in this worker's inbox, omits the field, as does every other row.
 
-### §notifications Core events
+### §notifications Notifications: core events
 
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
@@ -6100,7 +6100,7 @@ resolves its entry identity asynchronously.
 | Entry and notifier remain present | One `stream/event` is emitted.                                                                  |
 | Lookup or notifier throws          | Daemon diagnostics receive the complete cause; no rejection or engine-state transition escapes. |
 
-§notifications-envelope-carries-workspaceid **Event scope is explicit.**
+§notifications-envelope-carries-workspaceid **The notification envelope carries its workspaceId: event scope is explicit.**
 `subscribeToEvents` supplies `(workspaceId, event, payload)`: `workspaceId` is
 the authoritative scope and is `null` only for a global event. Core does not
 mutate each payload to repeat it. A transport module stamps that scope onto any
@@ -6179,8 +6179,8 @@ FORK is 404 `fork-unaddressed`.
 | {§paired-receipt} | A paired receipt reports execution information, not a second copy of its request. |
 | {§packet-cache-monotone} | Default order and cache locality |
 | {§packet-extension-transform} | Trusted whole-list extension seam |
-| {§tokenomics} | The context budget: one room, one gauge, one rule |
-| {§tokenomics-context-envelope-admission} | Provider input capacity — Provider model limits, the configured output reservation and the output floor, in… |
+| {§tokenomics} | Tokenomics: one room, one gauge, one rule |
+| {§tokenomics-context-envelope-admission} | Context envelope admission: provider input capacity — Provider model limits, the configured output… |
 | {§context-admission} | Context admission fits one request through the room: estimated, then measured. |
 | {§context-budget} | The context budget is one room for the whole packet. |
 | {§context-gauge} | One gauge. |
@@ -6192,9 +6192,9 @@ FORK is 404 `fork-unaddressed`.
 | {§context-own-rows-fit} | The model's own rows take the same receipt. |
 | {§tokenomics-weight-stored-at-write} | Curation weight, stored at write. |
 | {§tokenomics-render-weight-budget} | Packet curation budget. |
-| {§tokenomics-calibrated-readout} | Convert capacity, never content costs; one factor per loop. |
-| {§tokenomics-window-partition} | One capacity derivation; no service-side token budget. |
-| {§tokenomics-window-unpollable-deliberate} | Unknown provider capacity stays unknown. |
+| {§tokenomics-calibrated-readout} | The calibrated readout converts capacity, never content costs; one factor per loop. |
+| {§tokenomics-window-partition} | The window partition: one capacity derivation, no service-side token budget. |
+| {§tokenomics-window-unpollable-deliberate} | An unpollable window is deliberate: unknown provider capacity stays unknown. |
 | {§tokenomics-client-gauge} | Clients receive curation and physical occupancy as separate pairs. |
 | {§membership-binary-sniff} | Binary truth beats a text label. |
 | {§tokenomics-agnostic-ruler} | One model-agnostic curation ruler. |
@@ -6203,14 +6203,14 @@ FORK is 404 `fork-unaddressed`.
 | {§loop-terminals} | A loop's terminal status is an HTTP status, exact to its outcome. |
 | {§env-delta} | The environment delta: what changed since the model last looked |
 | {§env-delta-log-pull} | Pull the event record, never a workspace snapshot. |
-| {§env-delta-worker-entry-visibility} | The commons is global; every other resource follows lineage. |
+| {§env-delta-worker-entry-visibility} | Worker-entry visibility: the commons is global; every other resource follows lineage. |
 | {§env-delta-child-activity} | Direct-child activity — Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and… |
 | {§env-delta-child-termination} | Direct-child termination — The child's exact terminal loop result, except loops containing only `_plurnk`… |
 | {§env-delta-commons-mutation} | Commons mutation — One successful resolved operation whose landed effects touch `worker:///...`. |
-| {§env-delta-filesystem-narration} | Project-file divergence — Runtime-owned reconciliation evidence remains in the runtime actor's own log. |
+| {§env-delta-filesystem-narration} | Filesystem narration: project-file divergence — Runtime-owned reconciliation evidence remains in the runtime… |
 | {§env-delta-entry-materialization} | Executor `entry()` sink — The runtime records typed materialization evidence under its owning actor. |
-| {§env-delta-attribution} | Ownership, authorship, and cause are independent. |
-| {§env-delta-no-coalescing} | Activity is never coalesced. |
+| {§env-delta-attribution} | Attribution: ownership, authorship, and cause are independent. |
+| {§env-delta-no-coalescing} | No coalescing: activity is never coalesced. |
 | {§env-delta-passive} | Passive observation never forces a turn. |
 <!-- /map -->
 
@@ -6336,7 +6336,7 @@ trust gate; an external client action cannot invoke it. Whole-list transformatio
 the fork-avoidance valve for alternate packet shapes, while
 overflow recovery and packet projection remain closed engine concerns.
 
-### §tokenomics The context budget: one room, one gauge, one rule
+### §tokenomics Tokenomics: one room, one gauge, one rule
 
 Token accounting distinguishes the artifact being measured, the unit, and the
 time of measurement.
@@ -6344,7 +6344,7 @@ time of measurement.
 | Fact | Owner and unit | Time | Contract |
 |:-----|:---------------|:-----|:---------|
 | Core curation weight | `contentWeight = ceil(chars/2)` over channel content, canonical log bodies, and each rendered message (including the optional emission history) | Write/build | Stable, model-independent measure; never a tokenizer claim. The model meets it as `tokens`. |
-| §tokenomics-context-envelope-admission Provider input capacity | Provider model limits, the configured output reservation and the output floor, in provider tokens | Before every logical request | The reservation `min(maxInputTokens, contextWindow − outputBudget)` sizes the room; the wall `min(maxInputTokens, contextWindow − outputFloor)` decides admission ({§provider-capacity-admission}). The provider alone measures the complete request and admits it — with the grant flexed when the prompt is over the reservation — defers it, or rejects it at the wall. |
+| §tokenomics-context-envelope-admission Context envelope admission: provider input capacity | Provider model limits, the configured output reservation and the output floor, in provider tokens | Before every logical request | The reservation `min(maxInputTokens, contextWindow − outputBudget)` sizes the room; the wall `min(maxInputTokens, contextWindow − outputFloor)` decides admission ({§provider-capacity-admission}). The provider alone measures the complete request and admits it — with the grant flexed when the prompt is over the reservation — defers it, or rejects it at the wall. |
 | Provider generation envelope | Provider response grant and optional reasoning subset, in provider tokens | Before every logical request | The reservation includes hidden reasoning; its strict reasoning subset is never additive. The response grant follows {§provider-flexed-allowance}. |
 | Provider usage and cost | Provider-reported input/output/cache/reasoning tokens and monetary evidence | After every physical request | Durable physical-request forensics under {§provider-usage}; never curation state or a preflight estimate. |
 
@@ -6374,9 +6374,9 @@ flowchart TD
 - §context-own-rows-fit **The model's own rows take the same receipt.** When a request is over the wall by either measure ({§context-wall-measure}), its newest rows that still carry a body or a native part — NOTEs, receipts, delivered results, pictures — render bodiless in the fit rule's receipt shape, newest first and only as many as it takes for the request to fit: the heading, the facts, and `size`, the lines and tokens of what the row stood for. The optional emission history has already been omitted whole ({§emission-history}); an emission record has no body to take. A row whose receipt would weigh no less than its body stays whole. Every body stays stored and readable at its address, the verbs restore the room ({§context-verbs}), and each packet decides afresh from its own newest rows. The daemon chooses nothing to summarize and hides nothing silently.
 - §tokenomics-weight-stored-at-write **Curation weight, stored at write.** `entry_channels.weight` weighs the complete channel content. `log_entries.weight` weighs the complete canonical `LogBody` content before coordinate and packet presentation; persistence `tx`/`rx` envelopes contribute nothing merely by existing, and proposal settlement recomputes the value when the canonical result changes. Bodyless rows therefore weigh zero. The stored number is a stable content-depth measurement, not a provider-token prediction. `entry_channels.lines` is the channel's line count beside it, a stored generated column SQLite keeps on every write as the persisted mirror of {§logical-line-count} (a trailing newline terminates the last line; empty content has none), so a catalog lists extent without reading bodies.
 - §tokenomics-render-weight-budget **Packet curation budget.** `tokens` measures the *complete assembled packet* after section transforms and readout substitution, each rendered message (including {§emission-history}) and native attachments; it is not a sum of stored row weights ({§tokenomics-weight-stored-at-write}). Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns final values into those widths; final substitution is length-invariant and the displayed total equals the stored request weight. Receipt, FIND-item, pressure-inventory, total, and ceiling figures all use the same curation ruler. A `SUM` of stored content weights measures a different artifact and cannot substitute for packet render weight.
-- §tokenomics-calibrated-readout **Convert capacity, never content costs; one factor per loop.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. A loop's first sample from the answering model fixes the conversion factor `reported / weight` for the rest of that loop. Until then the loop's packets use that model's most recently fixed factor, from any loop or worker, and a model that has none uses 1. The budget therefore changes at most once in a loop, when its first response settles. `floor(inputCapacity / factor)` converts provider capacity into curation units, the budget ({§context-budget}); the same factor converts the packet's weight into the wall's estimate ({§context-wall-measure}). Zero means no whole curation unit fits; unknown input capacity remains `null`. The built packet captures this allowance and its factor once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
-- §tokenomics-window-partition **One capacity derivation; no service-side token budget.** The provider owns model limits, the configured output reservation, and each call's response grant. Its resolved `inputCapacity` supplies the physical denominator exposed to clients and the boundary conversion into curation units ({§tokenomics-calibrated-readout}). Core shapes context in curation units; provider request-shaped evidence alone admits or rejects physical I/O. Local and custom deployments tune context window, total output budget and optional reasoning subset at their owning layers.
-- §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, there is no budget: the gauge carries `tokens` alone, every result arrives whole, and the provider remains the capacity oracle ({§provider-capacity-admission}). Core never invents a stand-in.
+- §tokenomics-calibrated-readout **The calibrated readout converts capacity, never content costs; one factor per loop.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. A loop's first sample from the answering model fixes the conversion factor `reported / weight` for the rest of that loop. Until then the loop's packets use that model's most recently fixed factor, from any loop or worker, and a model that has none uses 1. The budget therefore changes at most once in a loop, when its first response settles. `floor(inputCapacity / factor)` converts provider capacity into curation units, the budget ({§context-budget}); the same factor converts the packet's weight into the wall's estimate ({§context-wall-measure}). Zero means no whole curation unit fits; unknown input capacity remains `null`. The built packet captures this allowance and its factor once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
+- §tokenomics-window-partition **The window partition: one capacity derivation, no service-side token budget.** The provider owns model limits, the configured output reservation, and each call's response grant. Its resolved `inputCapacity` supplies the physical denominator exposed to clients and the boundary conversion into curation units ({§tokenomics-calibrated-readout}). Core shapes context in curation units; provider request-shaped evidence alone admits or rejects physical I/O. Local and custom deployments tune context window, total output budget and optional reasoning subset at their owning layers.
+- §tokenomics-window-unpollable-deliberate **An unpollable window is deliberate: unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, there is no budget: the gauge carries `tokens` alone, every result arrives whole, and the provider remains the capacity oracle ({§provider-capacity-admission}). Core never invents a stand-in.
 
 §tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest packet-bearing model-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. The curation pair is the packet's measured weight and captured allowance, exactly as displayed to the model, not a recalculation using newer usage evidence. Packetless chronology cannot erase an assembled-request gauge. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
@@ -6452,7 +6452,7 @@ terminal-stream rows emit the ordinary client notification
 ({§notifications-log-entry-notify}) before the next inference; an idempotent
 pull does not emit an existing row again.
 
-§env-delta-worker-entry-visibility **The commons is global; every other
+§env-delta-worker-entry-visibility **Worker-entry visibility: the commons is global; every other
 resource follows lineage.** A successful state-changing `EDIT`, `COPY`, `MOVE`,
 entry-path `KILL` whose landed effects touch `worker:///...` acquires the workspace
 audience and retains the commons address in its observer row. Mutations to
@@ -6465,10 +6465,10 @@ ordinary operation evidence still reaches that child's direct parent.
 | §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
 | §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§worker-scheme-collect}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
-| §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
+| §env-delta-filesystem-narration Filesystem narration: project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
 | §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§exec-entry-sink}). |
 
-§env-delta-attribution **Ownership, authorship, and cause are independent.**
+§env-delta-attribution **Attribution: ownership, authorship, and cause are independent.**
 
 | Field       | Meaning                                                                                                                                                                                 |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6476,7 +6476,7 @@ ordinary operation evidence still reaches that child's direct parent.
 | `origin`    | The actor tier that wrote the row; a materialized delta is `_plurnk`.                                                                                                                   |
 | `source`    | The attributed actor or subsystem: a lineage or commons observation uses canonical `worker://<producer>`; a subsystem observation may use its stable token (for example `file`). Self-authored rows omit it. Stream invocation correlation belongs to the subscription/publication relationship, not this field. |
 
-§env-delta-no-coalescing **Activity is never coalesced.** Each eligible child
+§env-delta-no-coalescing **No coalescing: activity is never coalesced.** Each eligible child
 action and each commons mutation has one occurrence identity. Combining
 them would destroy causal order and conflate event replay with a state
 comparison.
@@ -6509,7 +6509,7 @@ Stream progress remains owned by {§exec-stream}.
 | {§message-loop-containment} | A loop contains every message that arrives before it concludes; the next turn boundary publishes every inbox… |
 | {§completion-defers-to-messages} | Completion defers to messages: a conclusion does not cross an unobserved arrival. |
 | {§packet-catalog} | Catalogs are query results, not packet state. |
-| {§operation-results} | Model-facing failures and notices |
+| {§operation-results} | Operation results: model-facing failures and notices |
 | {§operation-result-uniform-error-channel} | One uniform error channel within an accepted turn. |
 | {§log-row-self-explains} | A log row self-explains: every ≥400 pointer names a record that states its why. |
 | {§notice-drain-on-read} | Notices |
@@ -6517,8 +6517,8 @@ Stream progress remains owned by {§exec-stream}.
 | {§continued-without-note} | A continuing turn that carried no NOTE is told so, in the card's own words. |
 | {§notice-callout} | A notice speaks in the card's callout form. |
 | {§notice-level} | Severity on the wire (`level`, required). |
-| {§operation-result-no-error-scheme} | Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). |
-| {§notice-event-notify} | Client surface. |
+| {§operation-result-no-error-scheme} | There is no error scheme. |
+| {§notice-event-notify} | Notices notify the client surface. |
 | {§loop-status-notice} | The loop status notice carries lifecycle and its observation deadline together. |
 | {§share} | A share is the database's record, ready to send. |
 | {§share-scope} | A share is unredacted. |
@@ -6526,16 +6526,16 @@ Stream progress remains owned by {§exec-stream}.
 | {§candidate-pinned-runtime} | Candidate runtime stays pinned. |
 | {§output-allowance-notice} | The output allowance is not disclosed; a ceiling cut names its cause. |
 | {§turn-lifecycle} | Turn-lifecycle liveness. |
-| {§turn-accounting-notice} | The completion beat carries the spend. |
+| {§turn-accounting-notice} | The turn accounting notice: the completion beat carries the spend. |
 | {§notice-content-offset-pointer} | Content-offset position. |
 | {§tools-resource-discovery} | Executable capability discovery uses ordinary Plurnk resources. |
 | {§tools-resource-materialization} | The runtime registry, workspace capability policy, tool resources, and dispatch use one effective workspace… |
-| {§tool-document-header-only} | A registry-less runtime whose declaration carries no supplemental details (no `docs/<tag>.md`, no inline… |
+| {§tool-document-header-only} | A header-only tool document: |
 | {§tools-summary-invocation} | A summary featuring one exact enabled tool invocation includes its compact input signature after literal `\n`… |
 | {§members-functionality} | File membership is one workspace Functionality family. |
 | {§members-configuration} | *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>` declares one service-origin rule (`!glob` excludes),… |
 | {§members-model-scope} | *The model's authority.* A model's `add` is admitted against `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the… |
-| {§members-projection} | *One overlay.* Definitions are desired state per workspace ({§functionality-state}); the workspace overlay… |
+| {§members-projection} | The members projection is one overlay. |
 | {§plurnk-skill} | Plurnk's own reference is an ordinary service-provided skill. |
 | {§schemes-directory} | Scheme references are ordinary workspace entries at `worker:///_plurnk/plurnk/<scheme>.md`. |
 | {§inject} | system.inject — the operator injection |
@@ -6543,7 +6543,7 @@ Stream progress remains owned by {§exec-stream}.
 | {§card-read-per-wake} | The card is read from disk at every loop start and wake, never held. |
 | {§policy} | system.policy — the client's policy injection |
 | {§policy-sections} | One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (unset… |
-| {§schemes-self-doc-materialization} | One generated reference tree per workspace. |
+| {§schemes-self-doc-materialization} | Self-documentation materializes one generated reference tree per workspace. |
 | {§packet-git-status} | The Git status section — compact repository state |
 | {§recap} | Optional Recap footer |
 | {§recap-lines} | The operator's recap lines lead the footer: every non-empty `PLURNK_SERVICE_RECAP_LINE_<alias>`, in alias… |
@@ -6726,7 +6726,7 @@ stores no materialized manifest. Complete and one-level entry directories,
 their row shape, and their ordering are ordinary FIND projections owned by
 {§find-result-projection}; persistent search derivation is a separate index.
 
-### §operation-results Model-facing failures and notices
+### §operation-results Operation results: model-facing failures and notices
 
 The model's runtime alert surface has two distinct kinds of information:
 
@@ -6806,9 +6806,9 @@ retain distinct contracts and lifetimes.
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `output_unaccounted` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 
-§operation-result-no-error-scheme Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, independently curatable and exactly READable while active. The `errors` section surfaces a derived pointer to each. Rejected emissions stay in the forensic model-call and admission relations. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
+§operation-result-no-error-scheme **There is no error scheme.** Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, independently curatable and exactly READable while active. The `errors` section surfaces a derived pointer to each. Rejected emissions stay in the forensic model-call and admission relations. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
 
-§notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
+§notice-event-notify **Notices notify the client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
 §loop-status-notice **The loop status notice carries lifecycle and its observation deadline together.**
 `notice/event` carries `{ workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil, packetCount, claimedAt } }`:
@@ -6840,7 +6840,7 @@ the same deadline through {§application-loop-observation}, not a restarted cloc
 
 §turn-lifecycle **Turn-lifecycle liveness.** Provider generation is the long, opaque window in a turn — one or more same-packet emission attempts may occur before the first committed op. A static client screen there is indistinguishable from a hang. The engine brackets the complete attempt window with two `notice/event` notices (`source: "engine:turn"`, `level: "info"`): `turn_awaiting_model` before the first call and `turn_generated` when an emission is accepted or the attempt budget is exhausted. The completion beat carries the spend ({§turn-accounting-notice}). Rejected content never rides the notice channel. Both are suppressed on an aborted loop and broadcast to the workspace like any notice ({§notice-event-notify}).
 
-§turn-accounting-notice **The completion beat carries the spend.** `turn_generated`
+§turn-accounting-notice **The turn accounting notice: the completion beat carries the spend.** `turn_generated`
 carries the turn's exact settled wire accounting — request count, exact nullable
 USD and token totals with separately named known subtotals across every physical exchange the turn paid for, failed
 calls included. It is the shared exact derivation from the ledger, never a second
@@ -6910,7 +6910,7 @@ automatically included in turn 0 or expanded-tool surveys.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 
-§tool-document-header-only A registry-less runtime whose declaration carries no
+§tool-document-header-only **A header-only tool document:** a registry-less runtime whose declaration carries no
 supplemental details (no `docs/<tag>.md`, no inline `details`) is a
 header-only document: its summary aside ends with `(invocation only)`, so
 the catalog row that advertises it says so and the model is not invited to
@@ -6965,7 +6965,7 @@ the paths that remain; `root` admits patterns inside the root; `namespace` admit
 so the family bounds the model without a second grammar; an admission a read earns
 ({§membership-auto-add}) is that same `operation` add and meets the same ceiling.
 
-§members-projection *One overlay.* Definitions are desired state per workspace
+§members-projection **The members projection is one overlay.** Definitions are desired state per workspace
 ({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its
 enabled definitions: inclusions union and an exclusion wins. Worker creation copies no
 membership state; accepted changes reach every worker. Human-authored definitions project with source
@@ -7040,7 +7040,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **One generated reference tree per workspace.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Each reference carries an H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies workspace capabilities to that source. One workspace materializer deletes vanished contributions and upserts current documents. Concurrent readers share the same reconciliation and outcome; independent workspaces do not serialize together. Ordinary runtime turns maintain {§worker-generated-subtree}, including under read-only workspace policy.
+§schemes-self-doc-materialization **Self-documentation materializes one generated reference tree per workspace.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Each reference carries an H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies workspace capabilities to that source. One workspace materializer deletes vanished contributions and upserts current documents. Concurrent readers share the same reconciliation and outcome; independent workspaces do not serialize together. Ordinary runtime turns maintain {§worker-generated-subtree}, including under read-only workspace policy.
 
 ### §packet-git-status The Git status section — compact repository state
 
@@ -7091,14 +7091,14 @@ shipped `recap.md` stays empty: it is the extension contract's source, not a hom
 | {§matcher-invalid-expression} | A malformed matcher Problem identifies the dialect and includes the bounded native parser cause as… |
 | {§matcher-dispatch-203-soft-fallback} | On parse failure, 203 returns raw content as the text primitive with `reason` so the model can use ordinary… |
 | {§derivation-in-flight} | In-flight derivation and query are live uses. |
-| {§matcher-selection-signal} | Matching carries navigation evidence |
+| {§matcher-selection-signal} | The matcher selection signal: matching carries navigation evidence |
 | {§matcher-index-readiness} | Indexed patterns require complete evidence. |
 | {§matcher-result-resource-selection} | A matcher selects resources; it never extracts a value or chooses a retrieval window. |
 | {§text-scope-runtime} | Text-scope runtime projection |
 | {§zero-width-column-one-insert} | An authored zero-width column-1 scope inserts whole lines. |
-| {§slice-semantics-compose-pattern} | One selection, independent of operation. |
+| {§slice-semantics-compose-pattern} | A composed pattern is one selection, independent of operation. |
 | {§ext-mimetype} | Path-extension declares mimetype |
-| {§ext-mimetype-extension-mimetype} | The same rule applies to every entry-bearing scheme when creating a channel without a per-call type… |
+| {§ext-mimetype-extension-mimetype} | A channel's mimetype by extension: |
 | {§render-rule-line-navigable-prefix} | Every textual content body with a source `startLine` renders with a coordinate prefix on each physical line,… |
 | {§render-rule-find-renders-result} | A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts,… |
 | {§markdown-primitive} | Mimetype primitive: text/markdown |
@@ -7191,7 +7191,7 @@ shutdown collects unattached artifacts under {§retention-policy}.
 
 ### Matcher selection and evidence
 
-- §matcher-selection-signal **Matching carries navigation evidence** - each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?,enclosingRegion?}`. `channel` identifies the entry channel and is absent for channel-less resources such as log rows ({§channel-selection-visibility}); `locator` preserves the structural address. `region` is the exact selection; `enclosingRegion` is presentation context only. Both use complete four-coordinate `TextRegion`s in the readable source. Exact duplicate evidence deduplicates. FIND projects this evidence as resource rows or flat locations ({§find-result-projection}); consumers never invent missing precision. An operation requiring exact source fragments refuses a selection containing unlocated or enclosing-only findings with 422 `pattern-source-unlocated`, before any mutation.
+- §matcher-selection-signal **The matcher selection signal: matching carries navigation evidence** - each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?,enclosingRegion?}`. `channel` identifies the entry channel and is absent for channel-less resources such as log rows ({§channel-selection-visibility}); `locator` preserves the structural address. `region` is the exact selection; `enclosingRegion` is presentation context only. Both use complete four-coordinate `TextRegion`s in the readable source. Exact duplicate evidence deduplicates. FIND projects this evidence as resource rows or flat locations ({§find-result-projection}); consumers never invent missing precision. An operation requiring exact source fragments refuses a selection containing unlocated or enclosing-only findings with 422 `pattern-source-unlocated`, before any mutation.
 
 §matcher-index-readiness **Indexed patterns require complete evidence.** A held
 resource snapshot whose search derivation is excluded or failed answers 422
@@ -7269,7 +7269,7 @@ down; overlaps and duplicate insertion boundaries are 409. This is the adopted
 SARIF region/replacement algebra for exact spans and same-snapshot ordering, not
 adoption of the SARIF interchange envelope.
 
-§slice-semantics-compose-pattern **One selection, independent of operation.**
+§slice-semantics-compose-pattern **A composed pattern is one selection, independent of operation.**
 A pattern runs over the canonical source channel, never a READ receipt's
 line-ending normalization, preview, coordinate prefixes, or other presentation.
 A match region uses the four-coordinate source scope. FIND reports it, READ
@@ -7304,7 +7304,7 @@ repair neighboring punctuation. Readable projections have their own coordinates.
 - `worker:///config.yaml` → `application/yaml`
 - Text EDIT of `worker:///users` (no suffix) → `text/markdown` (text primitive)
 
-§ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme when
+§ext-mimetype-extension-mimetype **A channel's mimetype by extension:** the same rule applies to every entry-bearing scheme when
 creating a channel without a per-call type declaration. EDIT and COPY/MOVE into
 an existing channel retain its stored type. Effective mimetype is stored in
 `entry_channels.mimetype` and drives matcher, projection, and binary handling.
@@ -7400,8 +7400,8 @@ KILL controls a process and refuses a content pattern (`kill-pattern-unsupported
 | Tag | Promise |
 | --- | --- |
 | {§live-harness-deadline} | The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT` as one whole-specimen deadline, including… |
-| {§provider-conformance-matrix} | Every configured model alias is exercised through a real PLURNK loop: the production packet, a model-selected… |
-| {§test-artifact-retention} | Every harness writes its run into one home. |
+| {§provider-conformance-matrix} | The provider conformance matrix: every configured model alias is exercised through a real PLURNK loop: the… |
+| {§test-artifact-retention} | Test artifact retention: every harness writes its run into one home. |
 | {§tier-census} | A real-model tier run is one directory with its census. |
 | {§fs-resource-state} | The resource-state harness — coverage that closes the class. |
 <!-- /map -->
@@ -7423,7 +7423,7 @@ and attempt every registered disposal.
 The provider whole-call deadline and recovery policy remain independent; a harness cancellation is
 not evidence that the provider's own deadline expired.
 
-§provider-conformance-matrix **Every configured model alias is exercised through a
+§provider-conformance-matrix **The provider conformance matrix: every configured model alias is exercised through a
 real PLURNK loop: the production packet, a model-selected operation, its
 materialized result, and completion.** Transport-only completions are not
 conformance evidence. Provider-exposed reasoning must survive in the durable
@@ -7436,7 +7436,7 @@ execution. The ledger and classification taxonomy live in
 distinct from model failures and repeated stochastic failures separately from
 stable ones, never with weakened assertions.
 
-§test-artifact-retention **Every harness writes its run into one home.** A file-backed test
+§test-artifact-retention **Test artifact retention: every harness writes its run into one home.** A file-backed test
 database is a benchmark artifact like any other: the lane's run directory lives under
 `PLURNK_BENCHMARKS` (`~/benchmarks` by default) beside live, demo and benchlet runs, and the
 checkout holds source only — never run output. `test:intg` stamps `PLURNK_TEST_RUN` once and every
