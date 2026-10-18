@@ -638,6 +638,56 @@ export default class Dispatcher {
             origin,
             onDispatch,
         } = context;
+        const routed = await this.#route(context, schemeCtx, targetsResolved);
+        let { result } = routed;
+        const { resolved, curationPlan } = routed;
+        // Child dispatch includes persistence and proposal settlement; their failures are
+        // internal, not exceptions from a scheme handler.
+        if (resolved !== null) return this.#dispatchSelection(context, resolved);
+        if (result === undefined) throw new Error("Operation dispatch produced neither targets nor a result.");
+        result = await this.#fitResult(context, statement, result);
+        // {§configuration-repair-path}: decide admission before persisting a proposed row.
+        const admission = this.#proposalAdmission(statement, result, workspaceId, origin);
+        const { autoAccept } = admission;
+        result = admission.result;
+        // {§bulk-resource-targeting} — a row on behalf of a glob names the statement it came from.
+        if (context.fanout !== undefined) {
+            const attrs = typeof result.attrs === "object" && result.attrs !== null ? result.attrs as Record<string, unknown> : {};
+            result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
+        }
+        // Persist log curation for forensics; packet rendering suppresses its
+        // successful receipts while the exact state effects remain durable.
+        // A running-worker READ arms this turn's blocking collect.
+        // {§join-blocking-collect}
+        const logEntryId = await this.#logWriter.writeLog({
+            statement,
+            emissionIndex: context.emissionIndex,
+            result,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence,
+            origin,
+            curationPlan,
+            modelCallId: null,
+        });
+        onDispatch?.(logEntryId);
+        // {§proposal-202-pauses} A 202 that proposes (a WAIT parks instead — #isProposal) settles in its own step.
+        if (Dispatcher.#isProposal(statement, result)) return this.#settleProposedRow(context, schemeCtx, result, logEntryId, autoAccept);
+        await this.#notifySettled(context, logEntryId);
+        return Dispatcher.#singleExecution(result);
+    }
+
+    // {§op-methods-op-dispatch} The operation's owner, by statement: a refusal first — an unwritable target, a denied
+    // capability, an unreadable matcher — then the one handler whose result is the row's, or the target selection a
+    // glob resolves to. A scheme handler's exception is the row's 500 ({§scheme-surface-exception-500}), never a throw.
+    async #route(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved: boolean): Promise<{
+        result: DispatchResult | undefined;
+        resolved: Exclude<TargetSelection, { result: DispatchResult }> | null;
+        curationPlan: LogCurationPlan | null;
+    }> {
+        const { statement, workspaceId, workerId, loopId, turnId, sequence, origin } = context;
         let result: DispatchResult | undefined;
         let resolved: Exclude<TargetSelection, { result: DispatchResult }> | null = null;
         let curationPlan: LogCurationPlan | null = null;
@@ -725,12 +775,13 @@ export default class Dispatcher {
                 }
             }
         }
-        // Child dispatch includes persistence and proposal settlement; their failures are
-        // internal, not exceptions from a scheme handler.
-        if (resolved !== null) return this.#dispatchSelection(context, resolved);
-        if (result === undefined) throw new Error("Operation dispatch produced neither targets nor a result.");
-        result = await this.#fitResult(context, statement, result);
-        // {§configuration-repair-path}: decide admission before persisting a proposed row.
+        return { result, resolved, curationPlan };
+    }
+
+    // {§configuration-repair-path} {§runtime-bookkeeping-policy} Whether a proposal settles itself under the effect
+    // policy, decided before its row is persisted: an execution or a runtime-scheme SEND must declare its effect, the
+    // runtime actor never grants itself authority, and a policy the configuration cannot read is the row's failure.
+    #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { autoAccept: boolean; result: DispatchResult } {
         let autoAccept = false;
         if (Dispatcher.#isProposal(statement, result)) {
             const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
@@ -748,79 +799,19 @@ export default class Dispatcher {
                 }
             }
         }
-        // {§bulk-resource-targeting} — a row on behalf of a glob names the statement it came from.
-        if (context.fanout !== undefined) {
-            const attrs = typeof result.attrs === "object" && result.attrs !== null ? result.attrs as Record<string, unknown> : {};
-            result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
-        }
-        // Persist log curation for forensics; packet rendering suppresses its
-        // successful receipts while the exact state effects remain durable.
-        // A running-worker READ arms this turn's blocking collect.
-        // {§join-blocking-collect}
-        const logEntryId = await this.#logWriter.writeLog({
-            statement,
-            emissionIndex: context.emissionIndex,
-            result,
-            workspaceId,
-            workerId,
-            loopId,
-            turnId,
-            sequence,
-            origin,
-            curationPlan,
-            modelCallId: null,
-        });
-        onDispatch?.(logEntryId);
-        // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a WAIT parks rather
-        // than proposing — #isProposal), the entry is written
-        // state='proposed'; dispatch then PAUSES on a per-entry waiter until
-        // resolution arrives via Engine.resolveProposal (from a client-interface resume,
-        // core-owned disposition, or timeout). The post-resolution status replaces 202 in the
-        // result the caller sees, so runTurn never branches on a pending state.
-        if (Dispatcher.#isProposal(statement, result)) {
-            if (autoAccept) {
-                await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
-                const initialSettlement = await this.#applyProposal(context, schemeCtx, result, { decision: "accept" }, logEntryId);
-                const effective = await this.#resourceMutations.settleProposal({
-                    statement,
-                    result,
-                    settlement: initialSettlement,
-                    ctx: schemeCtx,
-                    ids: { workspaceId, workerId, loopId, turnId, logEntryId },
-                });
-                const post = await this.#proposals.applyResolution(logEntryId, effective);
-                await this.#notifySettled(context, logEntryId);
-                return Dispatcher.#singleExecution(post);
-            }
-            // Register the resolution waiter SYNCHRONOUSLY before any await
-            // yields. A same-tick resolveProposal() (e.g. from a test that
-            // awaits the onDispatch callback and immediately resolves) must
-            // find the waiter registered — adding an await between insert
-            // and waiter-registration would open a race window.
-            // Core derives one validated projection from the durable row for both
-            // this live event and reconnect discovery ({§proposal-projection}). Its
-            // disposition is also the one automatic settlement decision: policy is
-            // not an observer and cannot silently degrade into client ownership.
-            let resolutionPromise: Promise<AppliedProposalResolution>;
-            try {
-                resolutionPromise = this.#proposals.awaitResolution(logEntryId, this.#loopSignal(loopId));
-                const event = await this.#proposals.pending(logEntryId);
-                if (event !== null) {
-                    this.#proposals.settleOwned(event);
-                    this.#proposals.notifyPending(event);
-                }
-            } catch (cause) {
-                await this.#proposals.failPreparation(logEntryId, cause);
-                await this.#notifySettled(context, logEntryId);
-                throw cause;
-            }
-            const resolution = await resolutionPromise;
-            // Run the scheme's applyResolution hook on accept (writes the
-            // file, spawns the process, etc.). Its operation result is
-            // preserved: an apply failure keeps its original status and
-            // Problem Details instead of masquerading as a client rejection.
-            const initialSettlement = await this.#applyProposal(context, schemeCtx, result, resolution, logEntryId);
+        return { autoAccept, result };
+    }
+
+    // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). A
+    // side-effecting op that returned 202 was written state='proposed'; an automatic acceptance applies at once,
+    // otherwise dispatch PAUSES on a per-entry waiter until resolution arrives via Engine.resolveProposal (a client
+    // resume, core-owned disposition, or timeout). The post-resolution status replaces 202 in the result the caller
+    // sees, so runTurn never branches on a pending state.
+    async #settleProposedRow(context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, logEntryId: number, autoAccept: boolean): Promise<DispatchExecution> {
+        const { statement, workspaceId, workerId, loopId, turnId } = context;
+        if (autoAccept) {
+            await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
+            const initialSettlement = await this.#applyProposal(context, schemeCtx, result, { decision: "accept" }, logEntryId);
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,
@@ -832,8 +823,44 @@ export default class Dispatcher {
             await this.#notifySettled(context, logEntryId);
             return Dispatcher.#singleExecution(post);
         }
+        // Register the resolution waiter SYNCHRONOUSLY before any await
+        // yields. A same-tick resolveProposal() (e.g. from a test that
+        // awaits the onDispatch callback and immediately resolves) must
+        // find the waiter registered — adding an await between insert
+        // and waiter-registration would open a race window.
+        // Core derives one validated projection from the durable row for both
+        // this live event and reconnect discovery ({§proposal-projection}). Its
+        // disposition is also the one automatic settlement decision: policy is
+        // not an observer and cannot silently degrade into client ownership.
+        let resolutionPromise: Promise<AppliedProposalResolution>;
+        try {
+            resolutionPromise = this.#proposals.awaitResolution(logEntryId, this.#loopSignal(loopId));
+            const event = await this.#proposals.pending(logEntryId);
+            if (event !== null) {
+                this.#proposals.settleOwned(event);
+                this.#proposals.notifyPending(event);
+            }
+        } catch (cause) {
+            await this.#proposals.failPreparation(logEntryId, cause);
+            await this.#notifySettled(context, logEntryId);
+            throw cause;
+        }
+        const resolution = await resolutionPromise;
+        // Run the scheme's applyResolution hook on accept (writes the
+        // file, spawns the process, etc.). Its operation result is
+        // preserved: an apply failure keeps its original status and
+        // Problem Details instead of masquerading as a client rejection.
+        const initialSettlement = await this.#applyProposal(context, schemeCtx, result, resolution, logEntryId);
+        const effective = await this.#resourceMutations.settleProposal({
+            statement,
+            result,
+            settlement: initialSettlement,
+            ctx: schemeCtx,
+            ids: { workspaceId, workerId, loopId, turnId, logEntryId },
+        });
+        const post = await this.#proposals.applyResolution(logEntryId, effective);
         await this.#notifySettled(context, logEntryId);
-        return Dispatcher.#singleExecution(result);
+        return Dispatcher.#singleExecution(post);
     }
 
     // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;
