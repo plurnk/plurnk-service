@@ -150,7 +150,7 @@ test("{§edit-pattern} a full-text pattern replaces SQLite's located token occur
 });
 
 for (const matcher of [{ dialect: "glob", raw: "foo" }, regex("foo"), { dialect: "fts", raw: "~foo" }] as const) {
-    test(`a four-coordinate scope bounds ${matcher.dialect} EDIT without broadening to the line`, async () => {
+    test(`{§edit-pattern} a four-coordinate scope bounds ${matcher.dialect} EDIT without broadening to the line`, async () => {
         const { db, dispatch, body } = await setup("foo foo foo");
         try {
             const r = await dispatch(editStmt(target, "bar", { marks: [1, 5, 1, 8] }, matcher));

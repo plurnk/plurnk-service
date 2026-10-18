@@ -46,7 +46,7 @@ describe("default grammar composition ({§default-extension-ownership})", () => 
     }
 });
 
-describe("dependency policy install-script review", () => {
+describe("dependency policy install-script review ({§package-graph-policy})", () => {
     it("accepts a tree with no unreviewed install scripts", () => {
         assert.deepEqual(installScriptViolations({ allowScripts: [] }), []);
     });
@@ -68,7 +68,7 @@ describe("dependency policy install-script review", () => {
     });
 });
 
-describe("dependency policy configuration ownership", () => {
+describe("dependency policy configuration ownership ({§package-graph-policy})", () => {
     it("rejects workspace-local npm configuration with an actionable owner", () => {
         assert.deepEqual(workspaceNpmConfigViolations(["plurnk-core/.npmrc"]), [
             "plurnk-core/.npmrc: npm ignores workspace-local configuration; declare repository policy in the root .npmrc",

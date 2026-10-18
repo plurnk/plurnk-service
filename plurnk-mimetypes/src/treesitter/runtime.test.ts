@@ -5,7 +5,7 @@ import { initRuntime, loadLanguage } from "./runtime.ts";
 
 const deferred = <T>() => { let resolve!: (v: T) => void; let reject!: (e: unknown) => void; const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; };
 
-test("concurrent first callers share one runtime initialization", async () => {
+test("{§treesitter-runtime-gate} concurrent first callers share one runtime initialization", async () => {
     let inits = 0;
     const gate = deferred<void>();
     const ts = { Parser: { init: () => { inits++; return gate.promise; } }, Language: { load: async (p: string) => ({ p }) } };
@@ -16,7 +16,7 @@ test("concurrent first callers share one runtime initialization", async () => {
     assert.equal(inits, 1);
 });
 
-test("grammar loads run one at a time, and a failed load does not block the next", async () => {
+test("{§treesitter-runtime-gate} grammar loads run one at a time, and a failed load does not block the next", async () => {
     const order: string[] = [];
     const first = deferred<unknown>();
     const ts = {
