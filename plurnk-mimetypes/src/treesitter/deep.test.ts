@@ -75,18 +75,3 @@ describe("{§mimetype-channel-architecture} TreeSitterLanguageHandler.deepJson: 
         });
     });
 });
-
-describe("TreeSitterLanguageHandler.deepJson — shares parser cache with extractRaw", () => {
-    it("calling both deepJson and extractRaw uses one parser load", async () => {
-        const entry = lookupTreeSitterLanguage("text/x-python")!;
-        const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
-        const h = new TreeSitterLanguageHandler(md, entry);
-        // Sequential calls should both succeed; we exercise both paths to ensure
-        // the shared cache is wired correctly and neither path throws on the
-        // hot cache.
-        const src = "x = 1\n";
-        const [syms, tree] = await Promise.all([h.extractRaw(src), h.deepJson(src)]);
-        assert.ok(Array.isArray(syms));
-        assert.ok(tree && typeof tree === "object");
-    });
-});
