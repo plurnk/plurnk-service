@@ -82,5 +82,5 @@ test("{§agent-plugins-components} unreadable component paths preserve other com
     assert.deepEqual(plugin?.skills.map(({ document }) => document.name), ["usable"]);
     assert.equal(plugin.mcpServers, null);
     assert.deepEqual(reports.map(({ path, outcome }) => ({ path, outcome })), [{ path: "mcp.json", outcome: "invalid" }]);
-    assert.match(reports[0]!.message, /ELOOP/);
+    assert.match(reports[0].message, /ELOOP/);
 });

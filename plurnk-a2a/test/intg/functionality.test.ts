@@ -24,7 +24,7 @@ const preparation = (workspaceId: number, enabled: Record<string, object>, optio
 const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; status: number; detail: string; diagnostic?: string }> => {
     try { await run(); } catch (error) {
         assert.ok(error instanceof A2aFunctionalityError, `expected an A2aFunctionalityError, got ${String(error)}`);
-        return error.problem as { type: string; status: number; detail: string; diagnostic?: string };
+        return error.problem;
     }
     assert.fail("expected a Problem");
 };
@@ -142,10 +142,10 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
         assert.equal(unavailable?.state, "unavailable");
         assert.equal((unavailable as { problem: { type: string } }).problem.type, "https://problems.plurnk.xyz/a2a/functionality/card-unreachable");
         assert.deepEqual(first.documents.map(({ pathname }) => pathname), ["a2a/researcher.md"]);
-        assert.equal(first.documents[0]!.content, renderAgent("researcher", agent.card));
-        assert.match(first.documents[0]!.content, /^# researcher\n\n## Summary\n\na2a:\/\/researcher — Plurnk A2A protocol witness v1\.0\.0: Independent deterministic A2A v1 test agent\n/u);
-        assert.doesNotMatch(first.documents[0]!.content, /## Skills/u, "skills live only in the pulled card");
-        assert.match(first.documents[0]!.content, /```SEND \(a2a:\/\/researcher\)/u);
+        assert.equal(first.documents[0].content, renderAgent("researcher", agent.card));
+        assert.match(first.documents[0].content, /^# researcher\n\n## Summary\n\na2a:\/\/researcher — Plurnk A2A protocol witness v1\.0\.0: Independent deterministic A2A v1 test agent\n/u);
+        assert.doesNotMatch(first.documents[0].content, /## Skills/u, "skills live only in the pulled card");
+        assert.match(first.documents[0].content, /```SEND \(a2a:\/\/researcher\)/u);
 
         // Before commit the Worker resolves nothing; after commit it resolves its own aliases only.
         assert.equal(family.resolve("researcher", 7), null);

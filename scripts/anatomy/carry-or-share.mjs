@@ -5,7 +5,7 @@ const text = readFileSync(spec.file, "utf8").split("\n");
 const spans = spec.members.map((m) => { const head = text.findIndex((l) => new RegExp(`^    (static )?(async )?#?${m}\\(`).test(l)); if (head < 0) throw new Error(`member ${m}`); let end = head, d = 0, seen = false; for (let i = head; i < text.length; i++) { for (const ch of text[i]) { if (ch === "{") { d++; seen = true; } if (ch === "}") d--; } if (seen && d === 0) { end = i; break; } } return [head, end]; });
 const inside = (i) => spans.some(([a, b]) => i >= a && i <= b);
 const blockRange = (n) => { const defIdx = text.findIndex((l) => new RegExp(`^(export )?const ${n}\\b`).test(l)); if (defIdx < 0) throw new Error(`const ${n}`); let to = defIdx, d = 0; for (;;) { for (const ch of text[to]) { if ("([{".includes(ch)) d++; if (")]}".includes(ch)) d--; } if (d === 0 && /;\s*$/.test(text[to])) break; to++; } return [defIdx, to]; };
-const topConsts = text.map((l, i) => { const m = l.match(/^(?:export )?const ([A-Za-z_][A-Za-z0-9_]*)/); return m && i < text.findIndex((x) => /^export default class /.test(x)) ? m[1] : null; }).filter(Boolean);
+const topConsts = text.map((l, i) => { const m = l.match(/^(?:export )?const ([A-Za-z_][A-Za-z0-9_]*)/); return m && i < text.findIndex((x) => x.startsWith("export default class ")) ? m[1] : null; }).filter(Boolean);
 for (let grew = true; grew;) { grew = false; for (const n of [...names]) { const [a, b] = blockRange(n); for (const c of topConsts) if (!names.includes(c) && text.slice(a, b + 1).some((l) => new RegExp(`(?<![A-Za-z0-9_.#])${c}(?![A-Za-z0-9_])`).test(l))) { names.push(c); grew = true; } } }
 const nameRanges = names.map(blockRange); const insideAny = (i) => inside(i) || nameRanges.some(([a, b]) => i >= a && i <= b);
 const carry = [], share = [];
@@ -18,7 +18,7 @@ if (share.length) {
   const importsEnd = text.reduce((last, l, i) => (/^import |^} from "/.test(l) ? i : last), 0);
   const rel = "./" + sharedPath.split("/").pop();
   text.splice(importsEnd + 1, 0, `import { ${share.toSorted().join(", ")} } from "${rel}";`);
-  const imports = []; for (let i = 0; i <= importsEnd; i++) { if (!/^import /.test(text[i])) continue; let j = i; imports.push(text[j]); while (!/;\s*$/.test(text[j])) { j++; imports.push(text[j]); } i = j; }
+  const imports = []; for (let i = 0; i <= importsEnd; i++) { if (!text[i].startsWith("import ")) continue; let j = i; imports.push(text[j]); while (!/;\s*$/.test(text[j])) { j++; imports.push(text[j]); } i = j; }
   writeFileSync(sharedPath, `${doc}\n${imports.join("\n")}\n\n${blocks.map((b) => b.join("\n").replace(/^const /m, "export const ")).join("\n\n")}\n`);
   writeFileSync(spec.file, text.join("\n"));
 }

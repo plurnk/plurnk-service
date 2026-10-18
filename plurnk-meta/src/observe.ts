@@ -28,7 +28,7 @@ const spanOptions = (attributes: Record<string, unknown>, options?: SpanOptions)
     ...options,
     attributes: {
         ...sanitize(attributes),
-        ...(options?.attributes === undefined ? {} : sanitize(options.attributes as Record<string, unknown>)),
+        ...(options?.attributes === undefined ? {} : sanitize(options.attributes)),
     },
 });
 

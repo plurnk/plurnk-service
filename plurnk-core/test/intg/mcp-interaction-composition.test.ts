@@ -92,7 +92,7 @@ const interaction = (events: readonly Event[], keys: readonly string[]): Interru
     const outcome = terminal.outcome as { type?: string; interrupts?: Interrupt[] };
     assert.equal(outcome.type, "interrupt");
     assert.equal(outcome.interrupts?.length, 1, "one MCP input set is one atomic client interaction");
-    const interrupt = outcome.interrupts![0]!;
+    const interrupt = outcome.interrupts[0];
     assert.ok(interrupt.id.length > 0);
     assert.match(interrupt.toolCallId, /^int:\d+$/u);
     assert.deepEqual(Object.keys(interrupt.responseSchema.properties as object).toSorted(), [...keys].toSorted());
@@ -115,7 +115,7 @@ const completed = (events: readonly Event[], provider: Mock, expected: RegExp): 
     assert.equal(terminal.type, "RUN_FINISHED", JSON.stringify(terminal));
     assert.equal((terminal.outcome as { type?: string }).type, "success");
     assert.equal(provider.received.length, 2, "client input wakes the original operation, not another inference loop");
-    const packet = provider.received[1]!.map(chatMessageText).join("\n");
+    const packet = provider.received[1].map(chatMessageText).join("\n");
     assert.match(packet, expected, "the server's actual terminal result reaches the model");
     assert.doesNotMatch(packet, /tool-call-failed|resource-read-failed/u);
 };
@@ -135,7 +135,7 @@ for (const cancel of [false, true]) {
             } }),
         }] });
         completed(events, provider, cancel ? /"action": "cancel"/u : /"name": "Ada"/u);
-        if (!cancel) assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /"action": "decline"/u);
+        if (!cancel) assert.match(provider.received[1].map(chatMessageText).join("\n"), /"action": "decline"/u);
     });
 }
 
@@ -286,7 +286,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         assert.ok(terminal);
         assert.equal((terminal.outcome as { type?: string }).type, "success", JSON.stringify(terminal));
         assert.equal(provider.received.length, 2, "the original worker receives one failure and continues normally");
-        const packet = provider.received[1]!.map(chatMessageText).join("\n");
+        const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /executor\/mcp\/tool-call-failed/);
         assert.match(packet, state === "failed" ? /task execution exploded/
             : state === "cancelled" ? /cancelled/ : /sampling\/createMessage/);
@@ -421,7 +421,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: waiting.workerId }),
             (loops) => loops.find(({ id }) => id === waiting.loopId)?.status === 200);
         assert.equal(provider.received.length, 2, "expiry resumes the same worker with the operation failure");
-        const packet = provider.received[1]!.map(chatMessageText).join("\n");
+        const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /operation timeout/u);
         assert.match(packet, tool ? /tool-call-failed/u : /resource-read-failed/u);
         const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });

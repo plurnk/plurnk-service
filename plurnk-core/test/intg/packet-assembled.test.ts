@@ -199,7 +199,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
             assert.deepEqual(
                 statement.position,
-                sourceFoists[index]!.position,
+                sourceFoists[index].position,
                 "the dispatched statement preserves its coordinate in the exact initialization source",
             );
         }
@@ -236,7 +236,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             ["log:///1/1/2/READ"],
             "turn 0 reads its own program as an ordinary row; it announces no emission ({§emission-row})",
         );
-        assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), []);
+        assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), []);
         const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 6).map(({ path: target }) => target),

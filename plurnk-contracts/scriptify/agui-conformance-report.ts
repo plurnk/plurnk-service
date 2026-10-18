@@ -19,7 +19,7 @@ const root = evidenceRoot === undefined
 const report = aguiConformanceReport(discovery, conformance);
 for (const row of report) {
     for (const citation of row.evidence) {
-        const path = citation.split(" — ", 1)[0]!;
+        const path = citation.split(" — ", 1)[0];
         try {
             await access(resolve(root, path));
         } catch (cause) {

@@ -45,7 +45,7 @@ for (const transport of ["text", "wire"] as const) {
                 assert.equal(result.result.status, 200);
                 assert.equal(requests, 2);
                 assert.equal(result.turnIds.length, 3, "one inference per ordinary turn, not provider retries");
-                const first = result.turnIds[1]!;
+                const first = result.turnIds[1];
                 const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
                 assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; status_rx: number }>({ turn_id: first });

@@ -73,10 +73,10 @@ test("{§context-fit}: a jumbo message lands folded with its size; Open Messages
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
             assert.ok(promptSection, "the messages section exists");
-            assert.equal(promptSection!.slot, "user", "the open-message pointers close the user-slot status clump");
-            assert.equal(promptSection!.header, "Open Messages");
-            assert.match(promptSection!.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
-            assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
+            assert.equal(promptSection.slot, "user", "the open-message pointers close the user-slot status clump");
+            assert.equal(promptSection.header, "Open Messages");
+            assert.match(promptSection.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
+            assert.doesNotMatch(promptSection.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });
 });

@@ -25,9 +25,9 @@ const decimalFromNumber = (value: number, subject: string): string => {
     if (!/[eE]/.test(source)) return source;
     const [coefficient, exponentSource] = source.toLowerCase().split("e");
     const exponent = Number(exponentSource);
-    const [integer, fraction = ""] = coefficient!.split(".");
+    const [integer, fraction = ""] = coefficient.split(".");
     const digits = `${integer}${fraction}`;
-    const point = integer!.length + exponent;
+    const point = integer.length + exponent;
     if (point <= 0) return `0.${"0".repeat(-point)}${digits}`;
     if (point >= digits.length) return `${digits}${"0".repeat(point - digits.length)}`;
     return `${digits.slice(0, point)}.${digits.slice(point)}`;

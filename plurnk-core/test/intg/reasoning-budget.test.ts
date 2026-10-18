@@ -40,7 +40,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             if (rx.content !== null) assert.ok(reasoning.startsWith(rx.content) && ((rx.problem as { delivered?: number } | undefined)?.delivered ?? 0) > 0, "the body is the longest prefix of lines that fit");
             assert.equal(rx.problem?.type, RESULT_EXCEEDS_BUDGET);
             assert.equal(rx.problem?.lines, 120, "the receipt names the size");
-            assert.ok(rx.problem!.tokens > rx.problem!.remaining, "and what remained");
+            assert.ok(rx.problem.tokens > rx.problem.remaining, "and what remained");
         }
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet;
         const provider = providerWithCapacity(capacity, [

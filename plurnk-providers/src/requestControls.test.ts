@@ -60,9 +60,9 @@ for (const streaming of [true, false]) {
         const result = await provider.generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] });
         assert.equal(result.assistant.content, "ok");
         assert.equal(bodies.length, 1);
-        assert.equal(bodies[0]!.service_tier, "priority", "the tier rides the SDK's documented option");
-        assert.equal(bodies[0]!.logprobs, true);
-        assert.equal(bodies[0]!.top_logprobs, 3);
+        assert.equal(bodies[0].service_tier, "priority", "the tier rides the SDK's documented option");
+        assert.equal(bodies[0].logprobs, true);
+        assert.equal(bodies[0].top_logprobs, 3);
         if (!streaming) assert.equal(result.assistant.logprobs?.[0]?.token, "ok", "the requested evidence comes back");
     });
 }
@@ -71,8 +71,8 @@ test("{§provider-request-controls} logprobs count 0 asks for the chosen token o
     t.after(() => mock.restoreAll());
     const bodies = captureBodies(openAiReply);
     await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0, streaming: false }).generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] });
-    assert.equal(bodies[0]!.logprobs, true);
-    assert.equal(bodies[0]!.top_logprobs, 0, "no alternative tokens are requested");
+    assert.equal(bodies[0].logprobs, true);
+    assert.equal(bodies[0].top_logprobs, 0, "no alternative tokens are requested");
 });
 
 // Each SDK that documents a service tier serializes the configured value; the reply need not parse.
@@ -106,8 +106,8 @@ test("{§provider-request-controls} a control the SDK does not document is named
         .catch(() => undefined);
     const named = warned.filter((line) => line.startsWith("PLURNK_REQUEST_CONTROL_UNSUPPORTED"));
     assert.equal(named.length, 2, "one warning per control, once per process");
-    assert.match(named[0]!, /PLURNK_PROVIDERS_SERVICE_TIER is not a provider option this route's SDK \(mistral\) documents, so it is not sent/u);
-    assert.match(named[1]!, /PLURNK_PROVIDERS_TOP_LOGPROBS/u);
+    assert.match(named[0], /PLURNK_PROVIDERS_SERVICE_TIER is not a provider option this route's SDK \(mistral\) documents, so it is not sent/u);
+    assert.match(named[1], /PLURNK_PROVIDERS_TOP_LOGPROBS/u);
     assert.doesNotMatch(JSON.stringify(bodies[0]), /tier|logprob/iu, "nothing undocumented reaches the wire");
 });
 
@@ -135,8 +135,8 @@ test("{§provider-request-controls} the catalog route carries the operator's tie
     }), "gpt-4.1-mini");
     assert.ok(provider);
     await provider.generate({ workerId: "w-1", messages: [{ role: "user", content: "hello" }] });
-    assert.equal(bodies[0]!.service_tier, "priority");
-    assert.equal(bodies[0]!.logprobs, true);
-    assert.equal(bodies[0]!.top_logprobs, 2);
-    assert.equal(bodies[0]!.prompt_cache_key, "w-1", "the controls merge into the namespace the cache key uses");
+    assert.equal(bodies[0].service_tier, "priority");
+    assert.equal(bodies[0].logprobs, true);
+    assert.equal(bodies[0].top_logprobs, 2);
+    assert.equal(bodies[0].prompt_cache_key, "w-1", "the controls merge into the namespace the cache key uses");
 });

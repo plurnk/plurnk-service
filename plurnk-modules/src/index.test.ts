@@ -20,7 +20,7 @@ test("the module contract holds only abstractions: nothing of it exists at runti
 });
 
 test("a module typed by the slices it uses is accepted by a host that offers more", () => {
-    const accepted: Assignable<DaemonModule<NarrowSetup, NarrowStart>, DaemonModule<HostSeam, ApplicationPort>> = true;
+    const accepted: Assignable<DaemonModule<NarrowSetup, NarrowStart>, DaemonModule<HostSeam>> = true;
     assert.equal(accepted, true);
 });
 

@@ -148,7 +148,7 @@ test("discover: an untrusted malformed attribution is withheld before validation
     });
     const result = await discover({
         cwd: root,
-        env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv,
+        env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
     });
     assert.equal(result.registry.size, 0);
     assert.equal(result.skipped.get("bad"), "@acme/provider-bad");
@@ -171,19 +171,19 @@ const trustFixture = (t: TestContext) => buildModules(t, {
 test("trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
     const root = await trustFixture(t);
     for (const gate of ["", "0"]) {
-        const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } as NodeJS.ProcessEnv });
+        const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } });
         assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
         assert.equal(skipped.size, 0);
     }
     // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
-    const { registry, skipped } = await discover({ cwd: root, env: {} as NodeJS.ProcessEnv });
+    const { registry, skipped } = await discover({ cwd: root, env: {} });
     assert.deepEqual([...registry.keys()].sort(), ["native"], "only the first-party provider survives the shipped gate");
     assert.equal(skipped.size, 1);
 });
 
 test("trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
     const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv });
+    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } });
     assert.deepEqual([...registry.keys()], ["native"]);              // @plurnk/* survives
     assert.equal(registry.has("foo"), false);                        // third party not registered
     assert.equal(skipped.get("foo"), "@acme/acme-provider-foo");     // …recorded for a precise error
@@ -191,7 +191,7 @@ test("trust gate ON: @plurnk/* always trusted; third party declined → skipped,
 
 test("trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
     const root = await trustFixture(t);
-    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } as NodeJS.ProcessEnv });
+    const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } });
     assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
     assert.equal(skipped.size, 0);
 });

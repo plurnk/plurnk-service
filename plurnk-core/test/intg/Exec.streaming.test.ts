@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";

@@ -84,7 +84,7 @@ test("{§unclosed-mutation-yields} glm run158: an unclosed EDIT never swallows t
     for (const statement of executed) assert.doesNotMatch(bodyOf(statement)!, /```EDIT/u, "no body carries an EDIT heading");
     const text2 = result.items.filter((item) => item.kind === "text").map((item) => item.kind === "text" ? item.content : "");
     assert.equal(text2.length, 1);
-    assert.match(text2[0]!, /Now verify with the existing and new tests:```sh/u, "the trailing prose and inline sh are outside text, not a body");
+    assert.match(text2[0], /Now verify with the existing and new tests:```sh/u, "the trailing prose and inline sh are outside text, not a body");
 });
 
 test("{§unclosed-mutation-yields} an EDIT body holds a same-width native heading only inside a wider fence; equal widths run it", () => {

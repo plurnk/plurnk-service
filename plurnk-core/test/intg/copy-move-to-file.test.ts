@@ -61,7 +61,7 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
 };
 
 const fileMember = async (ctx: Ctx, rel: string) =>
-    ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${rel}` });
+    ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel });
 
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });

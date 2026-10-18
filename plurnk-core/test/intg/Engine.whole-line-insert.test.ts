@@ -51,11 +51,11 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
             if (calls === 1) return await respond(PlurnkParser.frame(`READ (${FILE}) <790,800>`, null), args);
             if (calls === 2) {
                 const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ worker_id: workerId }))
-                    .filter(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200).at(-1);
+                    .findLast(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 assert.ok(row, "the model READ the file");
                 const anchors = (JSON.parse(row.rx) as { lineAnchors?: string[] }).lineAnchors;
                 assert.ok(Array.isArray(anchors) && anchors.length === 11, "the READ published one anchor per line 790..800");
-                return await respond(frames((line) => anchors[line - 790]!).join("\n\n"), args);
+                return await respond(frames((line) => anchors[line - 790]).join("\n\n"), args);
             }
             return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
         };
@@ -81,7 +81,7 @@ test("{§zero-width-column-one-insert} <795,1,795,1> with a body lacking a trail
     const lines = content.split("\n");
     assert.equal(lines.length, 804, "800 lines, three inserted, and the trailing split");
     assert.deepEqual(lines.slice(793, 798), ["line 794", ...BODY.split("\n"), "line 795"]);
-    assert.equal(rows[0]!.landed, "<795,1,798,1>", "the receipt lands the three whole lines");
+    assert.equal(rows[0].landed, "<795,1,798,1>", "the receipt lands the three whole lines");
 });
 
 test("{§zero-width-column-one-insert} the anchored <@h,1,@h,1> form inserts the same whole lines", async () => {

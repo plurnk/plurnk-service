@@ -34,7 +34,7 @@ test("{§resource-tree-scheme} a public module supplies live trees while the hos
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "resource-tree-witness" });
     const dispatch = async (statement: PlurnkStatement) =>
-        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
     const find = async (path: string, matcher: ReturnType<typeof regex> | null = null) => {
         const result = await dispatch({ ...findStmt(parsePath(path), matcher), lineMarker: { marks: [1, -1] } });
         assert.equal(result.status, 200, JSON.stringify(result));

@@ -6,7 +6,7 @@ import type { ExecArgs, ExecResult, Executor } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { packRecords } from "../scripts/npm-json.mjs";
 
 const run = promisify(execFile);
-const declare = (tag) => `${"§"}${tag}`;
+const declare = (tag) => `§${tag}`;
 const cite = (tag) => `{${declare(tag)}}`;
 
 test("{§spec-check-cli} packed CLI checks only the selected consumer tree", { timeout: 60_000 }, async (t) => {

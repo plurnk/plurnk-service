@@ -107,7 +107,7 @@ export default class HttpGet {
                 );
             }
         }
-        if (cached !== undefined && this.#fresh(cached.channels[HEADER]!.content)) {
+        if (cached !== undefined && this.#fresh(cached.channels[HEADER].content)) {
             return { status: 200 };
         }
 
@@ -156,7 +156,7 @@ export default class HttpGet {
                         },
                     );
                 }
-                const cachedHeader = cached.channels[HEADER]!.content;
+                const cachedHeader = cached.channels[HEADER].content;
                 if (this.#materializerIdentity(cachedHeader) !== undefined) {
                     return this.#bad(
                         502,
@@ -179,7 +179,7 @@ export default class HttpGet {
                     const channels: EntryData["channels"] = {
                         ...cached.channels,
                         [HEADER]: {
-                            ...cached.channels[HEADER]!,
+                            ...cached.channels[HEADER],
                             content: this.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
                         },
                     };

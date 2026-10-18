@@ -80,8 +80,8 @@ Continue the task.
                         workspaceId, actor: TEST_OWNER, contextWorkerId: run.modelWorkerId!,
                         statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
-                    assert.equal(recalled!.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
-                    assert.equal(recalled!.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
+                    assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
+                    assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }

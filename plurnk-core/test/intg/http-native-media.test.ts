@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { Mock, chatMessageText, type InputModality } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import { connect, rpcCall, waitForDb, withDaemon } from "./_rpc.ts";
@@ -45,7 +45,7 @@ for (const enabled of [true, false]) {
         const address = server.address();
         assert.ok(address && typeof address !== "string");
         const url = `http://127.0.0.1:${address.port}/media`;
-        const provider = new Mock({ contextWindow: 100_000, inputModalities: enabled ? [sample.kind as InputModality] : [], responses: [
+        const provider = new Mock({ contextWindow: 100_000, inputModalities: enabled ? [sample.kind] : [], responses: [
             turn(`\`\`\`\`READ (${url}) <1,3>\`\`\`\`\n${step()}`),
             turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
             turn(`\`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\`\n${step()}`),
@@ -61,9 +61,9 @@ for (const enabled of [true, false]) {
             assert.ok(Buffer.from(part.data).equals(sample.bytes), "HTTP native input preserves the exact source bytes");
         }
         const text = provider.received.map((messages) => messages.map(chatMessageText).join("\n"));
-        assert.match(text[1]!, new RegExp(`1:${sample.bytes[0]!.toString(16).padStart(2, "0")}\\n2:`));
-        assert.match(text[1]!, /"#readable":\d+/u, "the source READ advertises its readable projection");
-        assert.match(text[2]!, sample.facts);
+        assert.match(text[1], new RegExp(`1:${sample.bytes[0].toString(16).padStart(2, "0")}\\n2:`));
+        assert.match(text[1], /"#readable":\d+/u, "the source READ advertises its readable projection");
+        assert.match(text[2], sample.facts);
         assert.equal(requests.filter((value) => value === "GET /media").length, 1, "cached projections reuse the complete source");
     });
 }
@@ -102,7 +102,7 @@ test("{§http-binary-source} 304 revalidation preserves bytes and later replacem
     const expected = [original, original, updated];
     assert.equal(files.length, expected.length);
     for (const [index, part] of files.entries()) {
-        assert.ok(Buffer.from(part.data).equals(expected[index]!), `observation ${index + 1} retains its exact source version`);
+        assert.ok(Buffer.from(part.data).equals(expected[index]), `observation ${index + 1} retains its exact source version`);
     }
     assert.ok(files.every((part) => part.mediaType === "audio/wav"));
 });

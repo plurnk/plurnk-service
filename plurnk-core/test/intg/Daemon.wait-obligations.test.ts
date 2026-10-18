@@ -46,7 +46,7 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
                 (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("new message reached")));
             assert.equal(provider.received.length, 3);
             assert.ok(JSON.stringify(provider.received[2]).includes("A new message."));
-            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: accepted[1]!.loopId }))?.status, 202,
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: accepted[1].loopId }))?.status, 202,
                 "a message does not resume an unrelated wait");
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
     });

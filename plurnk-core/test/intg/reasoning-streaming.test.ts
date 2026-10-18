@@ -89,7 +89,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
                 const input = JSON.stringify(body.messages);
                 const owners = workers.filter(({ name }) => input.includes(`ONLY_${name}`));
                 assert.equal(owners.length, 1, "each request carries exactly its own prompt");
-                const { name } = owners[0]!;
+                const { name } = owners[0];
                 requests.set(name, body);
                 return new Response(new ReadableStream<Uint8Array>({ start(stream) {
                     streams.set(name, stream);
@@ -115,7 +115,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         for (const { name, workerId } of workers) assert.equal(observed.get(workerId)!.join(""), `Thinking ${name}.`);
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
-            const { name } = workers[index]!;
+            const { name } = workers[index];
             emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`SEND [200]
 ONLY_${name}
 \`\`\`\`` }, "stop", {
@@ -126,7 +126,7 @@ ONLY_${name}
         }
         const results = await Promise.all(running);
         for (const [index, { turnId, status }] of results.entries()) {
-            const { name, workerId } = workers[index]!;
+            const { name, workerId } = workers[index];
             assert.equal(status, 200);
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0]!.response);

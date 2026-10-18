@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { type UrlPath } from "@plurnk/plurnk-contracts";
 import NetworkAddress from "./NetworkAddress.ts";
 
 const network = (raw: string): NetworkAddress => {
     const parsed = parsePath(raw);
     assert.equal(parsed?.kind, "url");
-    return NetworkAddress.from(parsed as UrlPath);
+    return NetworkAddress.from(parsed);
 };
 
 test("network identity includes addressed scheme, canonical authority, path, and ordered query", () => {

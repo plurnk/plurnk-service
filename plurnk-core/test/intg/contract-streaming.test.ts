@@ -15,7 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import {
     Results,

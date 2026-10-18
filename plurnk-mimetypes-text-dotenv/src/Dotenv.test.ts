@@ -19,7 +19,7 @@ describe("{§mimetype-query}: value queries preserve lexical dotenv spans", () =
         it(`${dialect} selects ${JSON.stringify(selected)} from ${JSON.stringify(source)}`, async () => {
             const [match] = await h().query(source, dialect, dialect === "jsonpath" ? "$.VALUE" : "//VALUE");
             assert.equal(match.regions?.length, 1, JSON.stringify(match));
-            const region = match.regions![0];
+            const region = match.regions[0];
             const coordinates = new TextCoordinates(source);
             assert.equal(source.slice(coordinates.offsetAtPosition(region.startLine, region.startColumn), coordinates.offsetAtPosition(region.endLine, region.endColumn)), selected);
         });

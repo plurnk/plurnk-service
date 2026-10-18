@@ -8,7 +8,7 @@ export default class ThreadAddress {
         const match = /^([0-9]+)#(.*)$/su.exec(threadId);
         if (match === null) return null;
         const workspaceId = Number(match[1]);
-        const workerName = match[2]!;
+        const workerName = match[2];
         if (String(workspaceId) !== match[1] || !Number.isSafeInteger(workspaceId) || workspaceId < 1 || !WORKER_NAME.test(workerName)) {
             throw new HttpProblemError(httpProblem("thread-address-invalid", 400,
                 "The qualified thread address is not <workspace ID>#<worker name>.",

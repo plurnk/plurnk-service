@@ -278,7 +278,7 @@ export function scanDiff(text: string): DiffScan {
                 file.endLine = lineNo;
                 continue;
             }
-            if (/^Binary files /.test(line) || /^GIT binary patch/.test(line)) {
+            if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) {
                 file.binary = true;
                 file.endLine = lineNo;
                 continue;

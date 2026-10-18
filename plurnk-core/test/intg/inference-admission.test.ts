@@ -78,8 +78,8 @@ for (const delegated of ["WORK", "BARE"] as const) {
                 await rpcCall(client, 1, "workspace.create", { name: `admission-${crypto.randomUUID()}` });
                 const result = await runLoopToTerminal(client, 2, {
                     prompt: "Complete the delegated work and report the result.",
-                    selector: routes[0]!.alias,
-                    childSelector: routes[1]!.alias,
+                    selector: routes[0].alias,
+                    childSelector: routes[1].alias,
 
                 }, { timeoutMs: 12000 });
                 assert.equal(result.finalStatus, 200);

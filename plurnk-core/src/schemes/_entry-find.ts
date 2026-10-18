@@ -206,7 +206,7 @@ export const projectFindResult = (
     const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {
         if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
-        return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range }) as FindResult;
+        return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range });
     }
 
     if (statement.matcher !== null && matchingPathCount === 0) {
@@ -682,14 +682,14 @@ export default class EntryFind {
         }
         const empty = emptyFindFields();
         // {§membership-auto-add} — the FIND proposes the admission of the candidates its pattern matched.
-        if (match.status === 202 && match.proposal !== undefined) return { ...empty, ...match.proposal } as unknown as FindResult;
+        if (match.status === 202 && match.proposal !== undefined) return { ...empty, ...match.proposal };
         if (match.status !== 200) {
             if (match.problem !== undefined) {
                 return Results.assert({
                     status: match.status,
                     problem: match.problem,
                     ...empty,
-                }) as FindResult;
+                });
             }
             if (match.error === undefined) {
                 throw new Error(`EntryFind selection failed with status ${match.status} without Problem Details or a diagnostic.`);
@@ -782,6 +782,6 @@ export default class EntryFind {
                 ...producerResult,
                 ...projected,
                 status: producerResult.status,
-            }) as FindResult;
+            });
     }
 }

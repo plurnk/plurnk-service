@@ -936,7 +936,7 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
     const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
-    const catalogAmount = calculateCostUsdDecimal(catalogedResponse.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
+    const catalogAmount = calculateCostUsdDecimal(catalogedResponse.accounting[0].usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
     assert.match(String(catalogAmount), /^0\.0*[1-9]/, "the catalog prices this usage");
     assert.deepEqual(catalogedResponse.accounting[0]?.cost, {
         kind: "estimated",
@@ -979,7 +979,7 @@ test("#856: catalog implicit-cache pricing composes SDK usage without an operato
     const usage = response.accounting[0]?.usage;
     assert.deepEqual(usage?.inputTokenDetails, { noCacheTokens: 600, cacheReadTokens: 400, cacheWriteTokens: 0 });
     assert.equal(response.accounting.length, 1);
-    const amount = calculateCostUsdDecimal(usage!, catalogRatesOf("zai", "glm-5.3-flash"));
+    const amount = calculateCostUsdDecimal(usage, catalogRatesOf("zai", "glm-5.3-flash"));
     assert.notEqual(amount, null, "the catalog rate is applicable without inventing a cache-write count");
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated", amount: { amount, currency: "USD" }, source: "Models.dev catalog rates",
@@ -1013,8 +1013,8 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
         PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
     }, "deepseek-v4-flash");
     const response = await overridden!.generate({ workerId: "overridden", messages: [] });
-    const overriddenAmount = calculateCostUsdDecimal(response.accounting[0]!.usage!, { ...catalogRatesOf("deepseek", "deepseek-v4-flash"), input: 0.22, output: 0.66, cacheRead: 0.007 });
-    assert.notEqual(overriddenAmount, calculateCostUsdDecimal(response.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash")), "the override changes the price");
+    const overriddenAmount = calculateCostUsdDecimal(response.accounting[0].usage!, { ...catalogRatesOf("deepseek", "deepseek-v4-flash"), input: 0.22, output: 0.66, cacheRead: 0.007 });
+    assert.notEqual(overriddenAmount, calculateCostUsdDecimal(response.accounting[0].usage!, catalogRatesOf("deepseek", "deepseek-v4-flash")), "the override changes the price");
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",
         amount: { amount: overriddenAmount, currency: "USD" },
@@ -1043,8 +1043,8 @@ for (const name of ["deepinfra", "togetherai"]) {
             .map(([model]) => ({ model, efforts: catalogEffortsOf(name, model) }))
             .filter(({ efforts }) => efforts.length > 0);
         assert.ok(routes.length > 0, `the ${name} catalog documents no reasoning effort to witness`);
-        const { model, efforts } = routes.find((route) => route.efforts.includes("max")) ?? routes[0]!;
-        const effort = [...EFFORT_ORDER].reverse().find((value) => efforts.includes(value))!;
+        const { model, efforts } = routes.find((route) => route.efforts.includes("max")) ?? routes[0];
+        const effort = EFFORT_ORDER.findLast((value) => efforts.includes(value))!;
         const bodies: Record<string, unknown>[] = [];
         mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
             const body = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -1053,7 +1053,7 @@ for (const name of ["deepinfra", "togetherai"]) {
             return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
         });
         t.after(() => mock.restoreAll());
-        const credential = lookupProvider(name)!.env[0]!;
+        const credential = lookupProvider(name)!.env[0];
         for (const [policy, wire] of [[effort, effort], ["off", "none"]] as const) {
             const provider = catalogProviderFromEnv(name, withProviderDefaults({ [credential]: "test-key", PLURNK_PROVIDERS_EFFORT: policy }), model)!;
             await provider.generate({ workerId: "wire", messages: [{ role: "user", content: "hi" }] });
@@ -1083,8 +1083,8 @@ test("{§openrouter-app-attribution} attribution is the provider's declaration: 
     });
     t.after(() => mock.restoreAll());
     for (const name of ["openrouter", "standardcompute"]) {
-        const model = Object.keys(catalogSnapshot()[name] ?? {})[0]!;
-        const env = withProviderDefaults({ [lookupProvider(name)!.env[0]!]: "test-key" });
+        const model = Object.keys(catalogSnapshot()[name] ?? {})[0];
+        const env = withProviderDefaults({ [lookupProvider(name)!.env[0]]: "test-key" });
         await catalogProviderFromEnv(name, env, model)!.generate({ workerId: "w", messages: [{ role: "user", content: "hi" }] });
     }
     const [openrouter, other] = [...seen.values()];
@@ -1098,7 +1098,7 @@ test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, 
     const route = Object.keys(catalogSnapshot().alibaba ?? {}).find((model) => catalogEffortsOf("alibaba", model).length > 0
         && resolveModel("alibaba", model)?.info.reasoningOptions?.some((option) => option.type === "budget_tokens"));
     assert.ok(route !== undefined, "the alibaba catalog documents no effort-and-budget route to witness");
-    const effort = [...EFFORT_ORDER].reverse().find((value) => catalogEffortsOf("alibaba", route).includes(value))!;
+    const effort = EFFORT_ORDER.findLast((value) => catalogEffortsOf("alibaba", route).includes(value))!;
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
         bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);

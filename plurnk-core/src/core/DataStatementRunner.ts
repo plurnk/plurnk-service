@@ -299,7 +299,7 @@ export default class DataStatementRunner {
         // proposal admits it and runs this READ again.
         if (resolved !== null && storageScheme === "file" && ctx.ambientMembers !== undefined) {
             const proposal = await ctx.ambientMembers.propose([resolved.pathname]);
-            if (proposal !== null) return proposal as DispatchResult;
+            if (proposal !== null) return proposal;
         }
         return await this.#missRefusal(handler, resolved, ctx) ?? projected;
     }

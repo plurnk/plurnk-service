@@ -94,7 +94,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
         await run();
     } catch (error) {
         assert.ok(error instanceof ScheduleFunctionalityError, `expected a ScheduleFunctionalityError, got ${String(error)}`);
-        return error.problem as { type: string; status: number; detail: string; errors?: unknown };
+        return error.problem;
     }
     assert.fail("expected a Problem");
 };
@@ -257,7 +257,7 @@ test("{§schedule-environment} environment definitions are the service baseline 
 test("{§schedule-discovery-preview} the panel says how many occurrences a reading previews, and it is never a rule", async () => {
     const one = family(new FakeTime(), { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "1" });
     const [daily] = await one.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
-    assert.match(String(daily!.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
+    assert.match(String(daily.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
     assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
     await assert.rejects(
@@ -277,7 +277,7 @@ test("{§schedule-clock} discovery tells the time beside the rule it reads, in t
     }]);
     const [tokyo] = await adapter.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }, { env: { TZ: "Asia/Tokyo" } });
     assert.equal(
-        tokyo!.summary,
+        tokyo.summary,
         "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]; unbounded: add needs COUNT or UNTIL",
     );
     assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }, { env: { TZ: "Mars/Olympus" } }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
@@ -297,7 +297,7 @@ test("{§schedule-bound} admission canonicalizes the rule in the workspace's zon
     const byWorker = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1, workerId: 7 }, "operation");
     assert.equal((byWorker.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Worker's own TZ override wins over the workspace layer");
     const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, workerId: 7 });
-    assert.match(preview!.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Worker reads the time in its own zone");
+    assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Worker reads the time in its own zone");
     assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
     assert.equal((await problemOf(() => adapter.admit({ definition: HEARTBEAT }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
     const invalid = await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." } }, { workspaceId: 1 }));

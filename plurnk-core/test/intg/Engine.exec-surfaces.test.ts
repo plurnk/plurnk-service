@@ -32,7 +32,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect an unavailable executor." });
             assert.equal(finalStatus, 200);
             assert.equal(turnIds?.length, 5);
-            const packets = await Promise.all(turnIds!.slice(2).map(async (id) => {
+            const packets = await Promise.all(turnIds.slice(2).map(async (id) => {
                 const row = await db.test_get_packet.get<{ packet: string }>({ id });
                 return JSON.parse(row!.packet);
             }));
@@ -41,10 +41,10 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             assert.equal(invocation.status, 400);
             assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
             assert.match(packetSection(packets[0], "errors"), /log:\/\/\/1\/2\/2\/search-api2/);
-            const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
+            const dispatched = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });
             assert.equal(JSON.parse(dispatched.find((row) => isExecutionOp(row.op))!.rx).problem.instance, path,
                 "the durable Problem and model-facing pointer address the same receipt");
-            const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds![2]! });
+            const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
             assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
             assert.equal(retrievals.find((row) => row.op === "FIND")?.status_rx, 200);
             assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.logPath).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
@@ -67,11 +67,11 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
             await rpcCall(ws, 1, "workspace.create", { name: "executor-rejection-identity" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the proposal decision." });
             assert.equal(finalStatus, 200);
-            const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1] });
             const problem = JSON.parse(rows.find((row) => isExecutionOp(row.op))!.rx).problem;
             assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/rejected");
             assert.equal(problem.instance, "log:///1/2/2/sh");
-            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2] });
             const packet = JSON.parse(row!.packet);
             assert.ok(logEntries(packet).some((entry) => entry.logPath === problem.instance));
         } finally { ws.close(); }
@@ -134,7 +134,7 @@ test("a generated JSON result publishes whole with the extent through the next-t
             });
             assert.equal(finalStatus, 200);
 
-            const turn2 = turnIds![2]!;
+            const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{
                 scheme: string;
                 op: string;
@@ -305,7 +305,7 @@ test("a command that prints nothing on any channel lands exactly one bodyless co
             assert.equal(conclusions.length, 1, "one bodyless conclusion row for a silent stream");
             assert.equal(conclusions[0]?.terminal, true);
             assert.deepEqual(conclusions[0]?.channels, { "#stderr": 0 });
-            assert.equal("body" in conclusions[0]!, false);
+            assert.equal("body" in conclusions[0], false);
         } finally { ws.close(); }
     });
 });

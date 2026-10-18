@@ -936,12 +936,12 @@ export default class Portal {
                     recovery: "Refresh pending interrupts before resuming.",
                 }));
         }
-        const continuation = recorded[0]!.continuation;
+        const continuation = recorded[0].continuation;
         if (recorded.some((candidate) => candidate.continuation !== continuation)) {
             throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
                 "The resume combines interrupts from different Runs."));
         }
-        const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index]!.key }));
+        const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index].key }));
         await this.#hitl.resolve(workspaceId, bound.owner, resolutions, (resolution) => {
             if (continuation.workspaceId !== workspaceId
                 || continuation.owner !== bound.owner
@@ -959,7 +959,7 @@ export default class Portal {
         });
         // A client interaction is its own call, answered by the response; a proposal's call is answered by its
         // operation's settlement, which arrives as that row.
-        bound.emit(resolutions.filter((_entry, index) => recorded[index]!.kind === "interaction").map((entry) => ({
+        bound.emit(resolutions.filter((_entry, index) => recorded[index].kind === "interaction").map((entry) => ({
             type: EventType.TOOL_CALL_RESULT,
             toolCallId: entry.interruptId,
             messageId: `${entry.interruptId}/result`,

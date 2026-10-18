@@ -95,14 +95,14 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
         assert.deepEqual(parts.slice(0, 3).map((items) => items.length), [0, 0, 0], "discovery and parent READ do not attach media");
         for (const index of [3, 4, 6]) {
-            assert.equal(parts[index]!.length, Number(supported));
+            assert.equal(parts[index].length, Number(supported));
             if (supported) {
-                assert.equal(parts[index]![0]!.mediaType, media.mimetype);
-                assert.ok(Buffer.from(parts[index]![0]!.data).equals(media.bytes), "READ transmits the exact complete original bytes");
+                assert.equal(parts[index][0]!.mediaType, media.mimetype);
+                assert.ok(Buffer.from(parts[index][0]!.data).equals(media.bytes), "READ transmits the exact complete original bytes");
             }
         }
-        assert.equal(parts[5]!.length, 0, "curating the READ removes the attachment from context");
-        const userParts = provider.received[6]!.flatMap(({ role, content }) => role !== "user" ? []
+        assert.equal(parts[5].length, 0, "curating the READ removes the attachment from context");
+        const userParts = provider.received[6].flatMap(({ role, content }) => role !== "user" ? []
             : typeof content === "string" ? [content] : content.flatMap((part) => part.type === "text" ? [part.text] : []));
         const restoredRows = userParts.flatMap((text) => {
             const log = /(?:^|\n)(### log:\/\/\/[\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1];
@@ -110,14 +110,14 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         });
         const restoredRead = restoredRows.find((row) => /^log:\/\/\/1\/7\/\d+\/READ$/u.test(String(row.logPath)));
         assert.ok(restoredRead, "the reacquired source has an ordinary byte READ receipt");
-        assert.ok(provider.received[6]!.some(({ role, content }) => role === "assistant" && typeof content === "string" && content.includes(`READ (${resource}#bytes)`)), "the paired operation supplies its exact source address");
+        assert.ok(provider.received[6].some(({ role, content }) => role === "assistant" && typeof content === "string" && content.includes(`READ (${resource}#bytes)`)), "the paired operation supplies its exact source address");
         assert.equal(restoredRead.body, Array.from(media.bytes.subarray(0, 3), (byte, index) =>
             `${index + 1}:${byte.toString(16).padStart(2, "0")}\n`).join(""), "text-only and native routes expose the same exact selected octets");
         assert.ok(provider.received.every((messages) => !messages.map(chatMessageText).join("\n").includes(media.bytes.toString("base64"))), "base64 stays out of ordinary model text");
         const evidence = await daemon.readEntry({ workspaceId, workerId, target: parent!, channel: "json" });
         assert.equal(evidence.status, 200);
         assert.ok(evidence.entry !== null);
-        const part = JSON.parse(evidence.entry.channels.json!.content).parts[1] as { raw?: string; resource?: string; bytes?: number };
+        const part = JSON.parse(evidence.entry.channels.json.content).parts[1] as { raw?: string; resource?: string; bytes?: number };
         assert.deepEqual([part.raw, part.resource, part.bytes], [undefined, resource, media.bytes.length], "the protocol JSON names the resource and its byte count in place of base64");
         const pathname = new URL(resource!).pathname;
         // A person's READ, acting for the worker ({§actor-boundary-client-operations}).
@@ -125,8 +125,8 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             op: "READ", aside: null, matcher: null, metadata: null, body: null, position: { line: 1, column: 1 }, lineMarker: { marks: [1, -1] },
             target: { kind: "url", raw: `${resource}#bytes`, scheme: "a2a", username: null, password: null, hostname: "remote", port: null, pathname, query: null, fragment: "bytes" },
         }] });
-        assert.equal(exact!.status, 200);
-        assert.equal(exact!.content, ByteView.hexLines(media.bytes), "exact A2A evidence survives offline and after curation, as the resource's own bytes");
+        assert.equal(exact.status, 200);
+        assert.equal(exact.content, ByteView.hexLines(media.bytes), "exact A2A evidence survives offline and after curation, as the resource's own bytes");
     } finally {
         await daemon.stop();
         await db.close();

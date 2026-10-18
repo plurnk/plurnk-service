@@ -67,7 +67,7 @@ const afterFirstStatement = (
             };
         },
     });
-    return new Proxy(db as unknown as object, {
+    return new Proxy(db, {
         get(target, property) {
             return property === statementName ? wrapped : Reflect.get(target, property, target);
         },

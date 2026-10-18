@@ -22,7 +22,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { OutboundModule as A2aOutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
+import type { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
@@ -86,7 +86,7 @@ const isAbsent = (status: number): boolean => status >= 400;
 // A person's operation, acting for the context's model worker ({§actor-boundary-client-operations}).
 const dispatch = async (context: Context, statement: PlurnkStatement) => (await context.daemon.dispatchClientAction({
     workspaceId: context.workspaceId, actor: context.actor, contextWorkerId: context.modelWorkerId, statements: [statement],
-}))[0]!;
+}))[0];
 
 // Generated documents are workspace resources ({§worker-generated-subtree}): the client reads them,
 // leaving the model worker's packets to the loops under test.
@@ -281,7 +281,7 @@ const matrix = async (family: Family): Promise<void> => {
                 return await daemon.invokeModuleAction(`workspace.${family.family}.${verb}`, params, { scope: "workspace", workspaceId }) as T;
             } catch (error) {
                 const problem = (error as { problem?: ProblemDetails }).problem ?? (error as OperationFailureError).result?.problem;
-                if (problem?.type.endsWith("/workspace-busy") === true && attempt < 100) {
+                if (problem?.type.endsWith("/workspace-busy") && attempt < 100) {
                     await new Promise((r) => setTimeout(r, 20));
                     continue;
                 }
@@ -316,7 +316,7 @@ const matrix = async (family: Family): Promise<void> => {
         const outputsBefore = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" })).length;
         const pending = exec(program);
         await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
-        await daemon.resolveProposal(proposals[seen]!, { decision }, { workspaceId, address: TEST_OWNER });
+        await daemon.resolveProposal(proposals[seen], { decision }, { workspaceId, address: TEST_OWNER });
         const result = await pending;
         if (decision === "accept") {
             await waitForDb(async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: family.family, prefix: "/%" })).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
@@ -446,7 +446,7 @@ ${JSON.stringify({ alias: family.addable.alias })}
         assert.ok(refused.status >= 400);
         assert.equal(await stateOf(family.unreachable.alias), undefined, "a rejected client add persists nothing");
         if (family.collidingAlias !== undefined) {
-            await assert.rejects(() => add({ ...family.addable, alias: family.collidingAlias!, definition: { ...(family.addable.definition as object), name: family.collidingAlias } }));
+            await assert.rejects(() => add({ ...family.addable, alias: family.collidingAlias!, definition: { ...(family.addable.definition), name: family.collidingAlias } }));
             assert.equal(await stateOf(family.collidingAlias), undefined, "a publication the host refuses rolls back");
             assert.equal(await live(family.service), true, "the previous snapshot stays authoritative");
         }
@@ -488,7 +488,7 @@ ${JSON.stringify({ alias: family.addable.alias })}
             const seen = proposals.length;
             const execution = exec(PlurnkParser.frame("extra (legacy_echo)", JSON.stringify({ text: "replacement works" })));
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
-            await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+            await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             assert.equal((await execution).status, 200);
             const output = await waitForDb(async () => {
                 const entries = await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme: "extra", prefix: "/%" });

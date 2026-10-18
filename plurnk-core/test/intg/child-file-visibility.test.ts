@@ -114,7 +114,7 @@ test("a child's packet names its parent worker; the root's packet does not", asy
             const identity = JSON.parse(packetSection(childPacket, "worker"));
             assert.equal(identity.parent, `worker://${parent.name}`, "the child is told its actual parent's address");
             assert.equal(packetSection(childPacket, "parent-worker"), "", "no Parent Worker section exists");
-            const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1]! }))!.packet);
+            const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1] }))!.packet);
             assert.equal(JSON.parse(packetSection(rootPacket, "worker")).parent, null, "a root worker states parent: null rather than omitting it");
         } finally { ws.close(); }
     });

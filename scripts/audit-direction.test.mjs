@@ -52,10 +52,10 @@ test("runtime direction audit enforces owner boundaries on emitted imports", asy
         "plurnk-mimetypes-text-plain/src/index.ts": 'export { value } from "../../plurnk-core/dist/index.js";',
         "plurnk-schedule/src/index.ts": 'export { parse } from "../../plurnk-parser/dist/index.js";',
     });
-    const names = (await inspectDirections(root)).violations.map(({ rule }) => rule.name);
-    assert.ok(names.includes("no-leaf-to-core"));
-    assert.ok(names.includes("no-framework-to-own-leaf"));
-    assert.ok(names.includes("parser-only-where-declared"));
+    const names = new Set((await inspectDirections(root)).violations.map(({ rule }) => rule.name));
+    assert.ok(names.has("no-leaf-to-core"));
+    assert.ok(names.has("no-framework-to-own-leaf"));
+    assert.ok(names.has("parser-only-where-declared"));
 });
 
 test("runtime direction audit reports unresolved imports and refuses missing build output", async (t) => {

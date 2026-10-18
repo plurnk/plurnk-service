@@ -16,10 +16,10 @@ test("concrete core-operation examples in plurnk.md parse verbatim as one clean 
         .filter((match) => PLURNK_OPS.some((op) => op === match[3]));
     assert.ok(examples.length > 0, "the reference demonstrates concrete operations");
     for (const example of examples) {
-        const source = example[1]!;
+        const source = example[1];
         const parsed = PlurnkParser.parseStatements(source);
         assert.equal(parsed.items.length, 1, source);
-        const item = parsed.items[0]!;
+        const item = parsed.items[0];
         assert.equal(item.kind, "statement", source);
         if (item.kind === "statement") assert.equal(item.statement.op, example[3], source);
         assert.equal(parsed.unparsedTail, undefined, source);

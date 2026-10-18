@@ -7,7 +7,8 @@ import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughR
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
-import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant, WebMaterializationError } from "./WebFetcher.ts";
+import type { WebMaterializationError } from "./WebFetcher.ts";
+import WebFetcher, { CACHE_VARIANT_HEADER, MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER, cacheVariantEvidence, classifyCacheVariant } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
 import { requireNonNegativeIntegerEnv as requireNumEnv } from "./Config.ts";
 import { BODY, FETCHED_AT, HEADER, REQUEST_METHOD } from "./http-names.ts";
@@ -54,7 +55,7 @@ const splitHttpList = (value: string): string[] => {
     let quoted = false;
     let escaped = false;
     for (let index = 0; index < value.length; index += 1) {
-        const character = value[index]!;
+        const character = value[index];
         if (quoted) {
             if (escaped) escaped = false;
             else if (character === "\\") escaped = true;
@@ -90,7 +91,7 @@ const deltaMilliseconds = (argument: string | undefined): number | null => {
 const lastHeaderValue = (header: string, name: string): string | undefined => {
     const lines = header.split(/\r?\n/);
     for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index]!;
+        const line = lines[index];
         const colon = line.indexOf(":");
         if (colon < 0 || line.slice(0, colon).trim().toLowerCase() !== name) continue;
         return line.slice(colon + 1).trim();
@@ -102,7 +103,7 @@ const entityTag = (value: string): EntityTag | null => {
     const match = /^(W\/)?"([\x21\x23-\x7e\x80-\xff]*)"$/.exec(value);
     return match === null
         ? null
-        : { weak: match[1] !== undefined, opaque: match[2]! };
+        : { weak: match[1] !== undefined, opaque: match[2] };
 };
 
 const MONTHS: readonly string[] = [
@@ -148,13 +149,13 @@ const httpDate = (value: string, now = Date.now()): number | null => {
     const preferred = IMF_FIXDATE.exec(value);
     if (preferred !== null) {
         return utcHttpDate(
-            preferred[1]!,
-            preferred[2]!,
-            preferred[3]!,
+            preferred[1],
+            preferred[2],
+            preferred[3],
             Number(preferred[4]),
-            preferred[5]!,
-            preferred[6]!,
-            preferred[7]!,
+            preferred[5],
+            preferred[6],
+            preferred[7],
         );
     }
     const rfc850 = RFC850_DATE.exec(value);
@@ -162,26 +163,26 @@ const httpDate = (value: string, now = Date.now()): number | null => {
         let year = 2000 + Number(rfc850[4]);
         if (year > new Date(now).getUTCFullYear() + 50) year -= 100;
         return utcHttpDate(
-            rfc850[1]!,
-            rfc850[2]!,
-            rfc850[3]!,
+            rfc850[1],
+            rfc850[2],
+            rfc850[3],
             year,
-            rfc850[5]!,
-            rfc850[6]!,
-            rfc850[7]!,
+            rfc850[5],
+            rfc850[6],
+            rfc850[7],
         );
     }
     const asctime = ASCTIME_DATE.exec(value);
     return asctime === null
         ? null
         : utcHttpDate(
-            asctime[1]!,
-            asctime[3] ?? asctime[4]!,
-            asctime[2]!,
+            asctime[1],
+            asctime[3] ?? asctime[4],
+            asctime[2],
             Number(asctime[8]),
-            asctime[5]!,
-            asctime[6]!,
-            asctime[7]!,
+            asctime[5],
+            asctime[6],
+            asctime[7],
         );
 };
 
@@ -350,7 +351,7 @@ export default class Http implements SchemeHandler {
         let metadata = request.metadata;
         if (method === "DELETE") {
             const read = MetadataOptions.parse(metadata, "scheme:http");
-            if ("failure" in read) return read.failure as ProposalApplyResult;
+            if ("failure" in read) return read.failure;
             const { remote: _remote, ...headers } = read.options;
             metadata = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
         }
@@ -638,13 +639,13 @@ export default class Http implements SchemeHandler {
         let freshnessLifetimeMs: number | undefined;
         if (maxAges.length > 0) {
             freshnessLifetimeMs = maxAges.length === 1
-                ? deltaMilliseconds(maxAges[0]!.argument) ?? 0
+                ? deltaMilliseconds(maxAges[0].argument) ?? 0
                 : 0;
         } else {
             const expiresValues = Http.#originValues(fields, "expires");
             if (expiresValues.length > 0) {
                 const expires = expiresValues.length === 1
-                    ? httpDate(expiresValues[0]!)
+                    ? httpDate(expiresValues[0])
                     : null;
                 const fetchedAt = Http.#fetchedAt(header);
                 if (expires === null || fetchedAt === undefined) {
@@ -652,7 +653,7 @@ export default class Http implements SchemeHandler {
                 } else {
                     const dateValues = Http.#originValues(fields, "date");
                     const parsedDate = dateValues.length === 1
-                        ? httpDate(dateValues[0]!)
+                        ? httpDate(dateValues[0])
                         : null;
                     const generatedAt = parsedDate ?? fetchedAt;
                     freshnessLifetimeMs = Math.max(0, expires - generatedAt);
@@ -674,7 +675,7 @@ export default class Http implements SchemeHandler {
     static #currentAge(header: string, fetchedAt: number, now: number): number {
         const fields = Http.#originFields(header);
         const dateValues = Http.#originValues(fields, "date");
-        const date = dateValues.length === 1 ? httpDate(dateValues[0]!) : null;
+        const date = dateValues.length === 1 ? httpDate(dateValues[0]) : null;
         const apparentAge = date === null ? 0 : Math.max(0, fetchedAt - date);
         const ageMember = Http.#originValues(fields, "age").flatMap(splitHttpList)[0];
         const ageValue = deltaMilliseconds(ageMember) ?? 0;
@@ -797,7 +798,7 @@ export default class Http implements SchemeHandler {
             const storedTagValues = Http.#originValues(fields, "etag");
             const responseTag = entityTag(responseTagValue);
             const storedTag = storedTagValues.length === 1
-                ? entityTag(storedTagValues[0]!)
+                ? entityTag(storedTagValues[0])
                 : null;
             if (responseTag === null || storedTag === null) return false;
             // {§revalidation}: RFC 9111 §4.3.4 identifies stored responses;
@@ -812,7 +813,7 @@ export default class Http implements SchemeHandler {
             ? null
             : httpDate(responseModifiedValue);
         const storedModified = storedModifiedValues.length === 1
-            ? httpDate(storedModifiedValues[0]!)
+            ? httpDate(storedModifiedValues[0])
             : null;
         return responseModified !== null
             && storedModified !== null
@@ -827,19 +828,19 @@ export default class Http implements SchemeHandler {
         const fields = Http.#originFields(priorHeader);
         const out: Array<[string, string]> = [];
         const etags = Http.#originValues(fields, "etag");
-        if (etags.length === 1 && entityTag(etags[0]!) !== null) {
-            out.push(["If-None-Match", etags[0]!]);
+        if (etags.length === 1 && entityTag(etags[0]) !== null) {
+            out.push(["If-None-Match", etags[0]]);
         }
         const lastModified = Http.#originValues(fields, "last-modified");
-        if (lastModified.length === 1 && httpDate(lastModified[0]!) !== null) {
-            out.push(["If-Modified-Since", lastModified[0]!]);
+        if (lastModified.length === 1 && httpDate(lastModified[0]) !== null) {
+            out.push(["If-Modified-Since", lastModified[0]]);
         }
         return out;
     }
 
     static #passthrough(result: SchemeResult): PassthroughResult & ChannelProducerResult {
         return Results.assertChannelProducerResult(
-            { ...result, shape: "passthrough" } as PassthroughResult & ChannelProducerResult,
+            { ...result, shape: "passthrough" },
         );
     }
 

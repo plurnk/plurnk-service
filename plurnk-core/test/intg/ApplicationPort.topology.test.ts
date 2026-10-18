@@ -125,7 +125,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             });
             assert.equal(typeof own?.terminatedAt, "string");
             assert.equal(typeof own?.claimedAt, "string");
-            assert.ok(Date.parse(own!.claimedAt!) <= Date.parse(own!.terminatedAt!), "a loop first runs before it concludes");
+            assert.ok(Date.parse(own.claimedAt!) <= Date.parse(own.terminatedAt!), "a loop first runs before it concludes");
             const messages = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: task.workerId });
             assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["composed result"]);
             assert.deepEqual(packets, [{ workerId: task.workerId, loopId: accepted.loopId, packetCount: 1 }], "packet chronology broadcasts once when inference evidence becomes durable");

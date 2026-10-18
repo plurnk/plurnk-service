@@ -44,8 +44,8 @@ const baselineTriggers = async (): Promise<Array<{ name: string; when: string; w
         assert.deepEqual(text.match(/^-- MIGRATE: (\d+)/gm), [`-- MIGRATE: ${version}`], `${chapter}: one MIGRATE block, its version is the file's prefix`);
         assert.equal((text.match(/^-- (INIT|PREP|EXEC|TX): /gm) ?? []).length, 0, `${chapter}: a chapter holds shape only; processes live beside their owners`);
         const statements = [
-            ...[...text.matchAll(TRIGGER)].map((m) => ({ index: m.index, name: m[1]!, declared: { name: m[1]!, when: m[2]!, writes: WRITES.test(body(m[0])) } })),
-            ...[...text.matchAll(DROPPED)].map((m) => ({ index: m.index, name: m[1]!, declared: null })),
+            ...[...text.matchAll(TRIGGER)].map((m) => ({ index: m.index, name: m[1], declared: { name: m[1], when: m[2], writes: WRITES.test(body(m[0])) } })),
+            ...[...text.matchAll(DROPPED)].map((m) => ({ index: m.index, name: m[1], declared: null })),
         ].sort((a, b) => a.index - b.index);
         for (const { name, declared } of statements) {
             if (declared === null) triggers.delete(name);
@@ -60,12 +60,12 @@ const initTriggers = async (): Promise<Array<{ file: string; init: string; name:
     for (const path of await sqlFiles(resolve(PROJECT_ROOT, "src"))) {
         const text = await readFile(path, "utf8");
         for (const block of text.split(/^-- INIT: /m).slice(1)) {
-            const init = block.split("\n")[0]!.trim();
+            const init = block.split("\n")[0].trim();
             for (const m of block.matchAll(TRIGGER)) {
                 out.push({
                     file: path.slice(PROJECT_ROOT.length + 1),
                     init,
-                    name: m[1]!,
+                    name: m[1],
                     dropsFirst: new RegExp(`DROP TRIGGER IF EXISTS ${m[1]};\\s*\\nCREATE TRIGGER ${m[1]}\\b`).test(block),
                     writes: WRITES.test(body(m[0])),
                 });

@@ -23,7 +23,7 @@ const pointer = (raw: string | undefined, key: string, output = false): readonly
     if (raw === undefined || raw === "") return undefined;
     if (!raw.startsWith("/") || /~(?![01])/u.test(raw)) throw new TypeError(`${key} must be an RFC 6901 object-member pointer`);
     const path = raw.slice(1).split("/").map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
-    if (path.some((part) => unsafe.has(part)) || managed.has(path[0]!) && !(output && path.length === 1 && ["max_tokens", "max_completion_tokens"].includes(path[0]!))) {
+    if (path.some((part) => unsafe.has(part)) || managed.has(path[0]) && !(output && path.length === 1 && ["max_tokens", "max_completion_tokens"].includes(path[0]))) {
         throw new TypeError(`${key} cannot address a transport-owned field`);
     }
     return path;
@@ -138,7 +138,7 @@ export default class RequestFields {
             try { body = JSON.parse(raw); } catch (cause) { throw new TypeError(`${key} must be a JSON object`, { cause }); }
             if (!object(body)) throw new TypeError(`${key} must be a JSON object`);
             for (const path of leaves(body)) {
-                if (path.some((part) => unsafe.has(part)) || managed.has(path[0]!)) throw new TypeError(`${key} cannot override a transport-owned field`);
+                if (path.some((part) => unsafe.has(part)) || managed.has(path[0])) throw new TypeError(`${key} cannot override a transport-owned field`);
                 if (paths.some((dynamic) => (dynamic !== this.#effortPath || suffix === "REASONING_ON_BODY") && (prefixOf(path, dynamic) || prefixOf(dynamic, path)))) {
                     throw new TypeError(`${key} and dynamic request fields overlap`);
                 }
@@ -150,7 +150,7 @@ export default class RequestFields {
         this.#adaptive = readBody("REASONING_ADAPTIVE_BODY");
         this.#toggle = readBody("REASONING_TOGGLE_BODY");
         this.managedKeys = new Set([
-            ...paths.map((path) => path[0]!),
+            ...paths.map((path) => path[0]),
             ...[this.#on, this.#off, this.#adaptive, this.#toggle].flatMap((body) => Object.keys(body ?? {})),
         ]);
         const [controlKey, controls] = read("REASONING_CONTROLS");

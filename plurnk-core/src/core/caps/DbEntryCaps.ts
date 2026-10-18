@@ -68,13 +68,13 @@ export default class DbEntryCaps implements EntryCaps {
             this.#ctx,
             this.#manifest,
             this.#editPrecondition,
-        )) as EntryEditResult;
+        ));
     }
 
     async #find(statement: FindStatement): Promise<EntryFindResult> {
         return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, {
             authority: this.#authority,
-        })) as EntryFindResult;
+        }));
     }
 
     async #send(statement: SendStatement): Promise<SchemeResult> {

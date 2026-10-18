@@ -127,7 +127,7 @@ test("resolveActiveRoute: matches alias case-insensitively and retains its tunin
 test("resolveActiveRoute: accepts an exact provider/model route without manufacturing an alias", () => {
     const active = resolveActiveRoute({
         PLURNK_MODEL: "openrouter/anthropic/claude-sonnet-4",
-    } as NodeJS.ProcessEnv);
+    });
     assert.deepEqual(active, {
         provider: "openrouter",
         model: "anthropic/claude-sonnet-4",

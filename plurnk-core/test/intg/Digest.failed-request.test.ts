@@ -77,7 +77,7 @@ for (const capture of [false, true]) {
         if (capture) {
             assert.equal(failed.evidence.request.body, bodies[0]);
             assert.equal(recovered.evidence.request.body, bodies[1]);
-            assert.ok(failurePage.includes(bodies[0]!));
+            assert.ok(failurePage.includes(bodies[0]));
             assert.match(failurePage, /Exact serialized body/u);
         } else {
             assert.equal(failed.evidence.request, undefined);

@@ -15,15 +15,15 @@ test("#713: lifecycle verbs have literal bodies and retain tolerant disposition 
         const body = "A conclusion, not a JSON task inventory.";
         const parsed = operations([frame(op, body), frame("NOTE", "Keep this determination."), frame("READ (notes.md)")].join("\n\n"));
         assert.deepEqual(parsed.map((statement) => statement.op), [op, "NOTE", "READ"]);
-        assert.equal("body" in parsed[0]! ? parsed[0].body : undefined, body);
-        assert.equal("body" in parsed[1]! ? parsed[1].body : undefined, "Keep this determination.");
+        assert.equal("body" in parsed[0] ? parsed[0].body : undefined, body);
+        assert.equal("body" in parsed[1] ? parsed[1].body : undefined, "Keep this determination.");
     }
 });
 
 test("{§lifecycle-only-turn} #713: NOTE-only turns continue without a synthetic lifecycle declaration", () => {
     const parsed = operations(frame("NOTE", "The test failed before our change."));
     assert.equal(parsed.length, 1);
-    assert.equal(parsed[0]!.op, "NOTE");
+    assert.equal(parsed[0].op, "NOTE");
     assert.equal(PlurnkParser.stringify(parsed), frame("NOTE", "The test failed before our change."));
 });
 

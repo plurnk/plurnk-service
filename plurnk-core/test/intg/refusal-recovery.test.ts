@@ -9,7 +9,6 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -59,7 +58,7 @@ const runtime = async (t: TestContext) => {
         const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
-        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement as PlurnkStatement });
+        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
         const written = await db.log_read_by_coordinate.get<Row>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
         assert.ok(written, source);
         return { status: written.status_rx, problem: (JSON.parse(written.rx) as { problem?: Problem }).problem ?? {} };

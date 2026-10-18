@@ -29,9 +29,9 @@ export const parseLogRecords = (source: string): Array<Record<string, unknown>> 
         const heading = ADDRESS.exec(lines.shift() ?? "");
         assert.ok(heading, "packet log record is missing its address heading with its tokens charge");
         const modifiers = heading[2];
-        const op = heading[1]!.split("/").at(-1)!;
+        const op = heading[1].split("/").at(-1)!;
         let metadata: Record<string, unknown> = {};
-        if (lines.length > 0 && lines[0]!.startsWith("{")) {
+        if (lines.length > 0 && lines[0].startsWith("{")) {
             const parsed: unknown = JSON.parse(lines.shift()!);
             assert.ok(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed), "packet log metadata must be one JSON object");
             metadata = parsed as Record<string, unknown>;

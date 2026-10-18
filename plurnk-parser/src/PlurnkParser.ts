@@ -118,7 +118,7 @@ export default class PlurnkParser {
         for (const point of points) { lineOf.push(line); if (point === "\n") line += 1; }
         const quoted = new Set<number>();
         for (const { start, end } of lexer.takeQuotedSpans(points.length)) {
-            for (let index = start; index < end; index += 1) if (markup.has(lineOf[index]!)) quoted.add(lineOf[index]!);
+            for (let index = start; index < end; index += 1) if (markup.has(lineOf[index])) quoted.add(lineOf[index]);
         }
         return quoted;
     }
@@ -189,7 +189,7 @@ export default class PlurnkParser {
         // The grammar's end-of-input complaint only restates the absence; specific diagnostics
         // (an unclosed slot, a stray character) stay, so the host can tell prose from a malformed heading.
         const restatesAbsence = (item: ParseItem): boolean =>
-            item.kind === "error" && item.error.source === "parser" && /^unexpected end of input/u.test(item.error.message);
+            item.kind === "error" && item.error.source === "parser" && item.error.message.startsWith("unexpected end of input");
         const kept = items.filter((item) => !restatesAbsence(item));
         items.length = 0;
         items.push(...kept);
@@ -390,12 +390,12 @@ export default class PlurnkParser {
     }
 
     static #unfencedExecutor(tokens: readonly Token[], index: number, executors: ReadonlySet<string>): string | undefined {
-        const token = tokens[index]!;
+        const token = tokens[index];
         const match = /^([A-Za-z0-9_.+-]+)(\(?)/u.exec(token.text ?? "");
-        if (match === null || !executors.has(match[1]!.toLowerCase())) return undefined;
+        if (match === null || !executors.has(match[1].toLowerCase())) return undefined;
         if (match[2] === "(") return match[1];
         for (let next = index + 1; next < tokens.length; next += 1) {
-            const candidate = tokens[next]!;
+            const candidate = tokens[next];
             if (candidate.line !== token.line) return undefined;
             if (candidate.type === plurnkLexer.WS) continue;
             return candidate.type === plurnkLexer.TEXT && (candidate.text ?? "").startsWith("(") ? match[1] : undefined;

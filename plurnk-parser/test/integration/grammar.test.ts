@@ -20,7 +20,7 @@ const oneStatement = (input: string) => {
     assert.equal(result.unparsedTail, undefined, input);
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(statements.length, 1, input);
-    return statements[0]!.statement;
+    return statements[0].statement;
 };
 
 const firstError = (input: string): PlurnkParseError => {
@@ -685,7 +685,7 @@ test("{§unclosed-regex} a /pattern with no closing slash is the whole pattern w
     assert.equal(statement.matcher.flags, "");
     const advisories = errorsOf(source);
     assert.deepEqual(advisories.map(({ severity }) => severity), ["warning"]);
-    assert.match(advisories[0]!.message, /has no closing `\/`; it was read as the whole pattern with no flags/u);
+    assert.match(advisories[0].message, /has no closing `\/`; it was read as the whole pattern with no flags/u);
     // A heading ending in a lone slash has nothing to read ({§matcher-refusal}).
     const bare = refusedMatcher("````FIND (tests/staticfiles_tests/**) /\n````\n");
     assert.match(bare.message, /no pattern follows it/u);
@@ -711,7 +711,7 @@ test("a pattern with flags parses; an invalid one refuses only its own matcher (
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["FIND", "READ", "WAIT"]);
-    assert.equal(statements[0]!.op === "FIND" ? statements[0]!.matcher?.dialect : null, "unreadable");
+    assert.equal(statements[0].op === "FIND" ? statements[0].matcher?.dialect : null, "unreadable");
 });
 
 
@@ -775,13 +775,13 @@ test("the displayed row prefix copied whole — digits before the scope — read
         const result = PlurnkParser.parseStatements(input);
         const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.equal(ops.length, 1, input);
-        const marker = ops[0]!.op === "COPY" ? ops[0]!.destination.lineMarker : (ops[0] as { lineMarker: { marks: unknown[] } | null }).lineMarker;
+        const marker = ops[0].op === "COPY" ? ops[0].destination.lineMarker : (ops[0] as { lineMarker: { marks: unknown[] } | null }).lineMarker;
         assert.deepEqual(marker, { marks: [...marks] }, input);
         assert.equal((ops[0] as { matcher?: unknown }).matcher ?? null, null, `the digits are not a matcher: ${input}`);
         const advisories = result.items.filter((item) => item.kind === "error");
         assert.equal(advisories.length, 1, input);
-        assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
-        assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /was read as the scope `<@[0-9A-Za-z]{5}(?:,@[0-9A-Za-z]{5})?>`; a scope takes the anchor without its displayed line number/u);
+        assert.equal(advisories[0].kind === "error" ? advisories[0].error.severity : null, "warning");
+        assert.match(advisories[0].kind === "error" ? advisories[0].error.message : "", /was read as the scope `<@[0-9A-Za-z]{5}(?:,@[0-9A-Za-z]{5})?>`; a scope takes the anchor without its displayed line number/u);
     }
 });
 
@@ -903,7 +903,7 @@ test("a pattern that is not a string is the language's own diagnostic", () => {
         const result = PlurnkParser.parseStatements(section("FIND", ` (source/**) [${block}]`));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1, block);
-        assert.match(errors[0]!.error.message, /"pattern" must be a string matcher/u, block);
+        assert.match(errors[0].error.message, /"pattern" must be a string matcher/u, block);
         assert.equal(result.items.some((item) => item.kind === "statement"), false, block);
     }
 });

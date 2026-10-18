@@ -21,13 +21,13 @@ test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked
         try {
             await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }),
                 (loops) => loops.length === 2 && loops.every(({ status }) => status === 202));
-            const accepted = await daemon.runLoop({ workspaceId, workerId, loopId: second!.loopId, prompt: "addressed arrival" });
-            assert.equal(accepted.loopId, second!.loopId);
+            const accepted = await daemon.runLoop({ workspaceId, workerId, loopId: second.loopId, prompt: "addressed arrival" });
+            assert.equal(accepted.loopId, second.loopId);
             assert.equal(accepted.action, "injected_next_turn");
             await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }),
                 (loops) => provider.received.length === 3 && loops.every(({ status }) => status === 202));
-            assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === first!.loopId)?.status, 202);
-            const messages = await daemon.readMessages({ workspaceId, workerId, loopId: second!.loopId });
+            assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === first.loopId)?.status, 202);
+            const messages = await daemon.readMessages({ workspaceId, workerId, loopId: second.loopId });
             assert.ok(messages.some(({ body }) => body === "addressed arrival"));
         } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
     });

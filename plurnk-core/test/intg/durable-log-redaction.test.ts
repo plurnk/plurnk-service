@@ -72,7 +72,7 @@ const parseOperation = (source: string, op: PlurnkOp): PlurnkStatement => {
     const [item] = statements;
     if (item?.kind !== "statement") throw new Error(`No statement parsed from ${source}`);
     assert.equal(item.statement.op, op);
-    return item.statement as PlurnkStatement;
+    return item.statement;
 };
 
 const assertNoStructuralSecrets = (value: unknown, surface: string): void => {

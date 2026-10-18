@@ -16,7 +16,7 @@ const parse = (dsl: string): PlurnkStatement[] => {
     const result = PlurnkParser.parseStatements(dsl, { executors: fixtureExecutors(dsl) });
     return result.items
         .filter((i) => i.kind === "statement")
-        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+        .map((i) => i.statement);
 };
 
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {

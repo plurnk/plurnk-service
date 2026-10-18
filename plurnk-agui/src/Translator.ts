@@ -750,7 +750,7 @@ export default class Translator {
             return;
         }
         let at = call + 1;
-        while (at < messages.length && messages[at]!.role === "tool") at++;
+        while (at < messages.length && messages[at].role === "tool") at++;
         messages.splice(at, 0, result);
     }
 

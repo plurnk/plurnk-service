@@ -9,9 +9,9 @@ import {
 
 // {§spec-check-tags} {§spec-check-witnesses} {§spec-check-provenance}
 
-const cite = (tag) => `{${"§"}${tag}}`;
-const declare = (tag) => `${"§"}${tag}`;
-const issueShorthand = (repository, number) => `${repository}${"#"}${number}`;
+const cite = (tag) => `{§${tag}}`;
+const declare = (tag) => `§${tag}`;
+const issueShorthand = (repository, number) => `${repository}#${number}`;
 
 test("a repository issue shorthand is distinct from the valid citation forms", () => {
     const serviceReference = issueShorthand("plurnk-service", 240);

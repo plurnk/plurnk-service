@@ -107,7 +107,7 @@ const netErr = () => new ProviderError("provider:x", "network_failure", "down", 
 const authErr = () => new ProviderError("provider:x", "unauthorized", "no key", { status: 401 });
 const interruptedErr = () => new ProviderError("provider:x", "resource_interrupted", "generation interrupted");
 const gen = (p: Pool, workerId: string, extra: Record<string, unknown> = {}) =>
-    p.generate({ messages: [], workerId, ...extra } as Parameters<Provider["generate"]>[0]);
+    p.generate({ messages: [], workerId, ...extra });
 
 // --- construction / homogeneity ---
 

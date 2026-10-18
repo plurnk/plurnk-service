@@ -61,7 +61,7 @@ const runTask = async (
     ))) {
         events.push(event);
     }
-    const first = payload(events[0]!);
+    const first = payload(events[0]);
     assert.equal(first.$case, "task");
     if (first.$case !== "task") throw new Error("the composed A2A run did not create a Task");
     return { task: first.value, events };
@@ -123,14 +123,14 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
         const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const running = runTask(client, "Run the command, ask which branch, and report the answer.");
         const [proposal] = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
-        assert.equal(proposal!.owner, owner.address);
-        await daemon.resolveProposal(proposal!.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });
+        assert.equal(proposal.owner, owner.address);
+        await daemon.resolveProposal(proposal.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });
         const [interaction] = await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (items) => items.length === 1);
-        assert.equal(interaction!.recipient, owner.address, "the Task's question goes to its owner, never the A2A caller");
-        await assert.rejects(daemon.resolveClientInteraction(interaction!.interactionId,
+        assert.equal(interaction.recipient, owner.address, "the Task's question goes to its owner, never the A2A caller");
+        await assert.rejects(daemon.resolveClientInteraction(interaction.interactionId,
             { status: "resolved", payload: { branch: "wrong-authority" } }, { workspaceId, address: "a2a://anonymous/caller" }),
         (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/recipient-mismatch"));
-        await daemon.resolveClientInteraction(interaction!.interactionId,
+        await daemon.resolveClientInteraction(interaction.interactionId,
             { status: "resolved", payload: { branch: "main" } }, { workspaceId, address: owner.address });
         const answered = await running;
         const states = answered.events.flatMap((event) => {
@@ -320,14 +320,14 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Task workers thro
         const runtime = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { id: firstWorker.parentWorkerId } });
         assert.equal(runtime?.origin, "_plurnk");
         assert.equal(firstWorker.owner, "_plurnk");
-        const children = await daemon.listWorkers(workspace.workspaceId, { origin: "model", parentWorkerId: runtime!.id });
+        const children = await daemon.listWorkers(workspace.workspaceId, { origin: "model", parentWorkerId: runtime.id });
         assert.deepEqual(children.map(({ name }) => name).toSorted(), [first.task.id, second.task.id, asked.task.id, answered.task.id].toSorted());
         for (const child of children) {
             const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: child.id });
             assert.deepEqual(loops.map(({ promptSource }) => taskOf(promptSource)), [child.name]);
         }
         // {§a2a-inbound-exposure} One Context: the follow-up sees the request behind its question.
-        const followUp = provider.received[3]!.map(chatMessageText).join("\n");
+        const followUp = provider.received[3].map(chatMessageText).join("\n");
         assert.ok(followUp.includes("choose a branch"), "the follow-up Task sees the caller's earlier request");
         assert.ok(followUp.includes("Which branch should I use?"), "and the question it answers");
         const namedTasks: string[] = [];
@@ -399,7 +399,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
             "public Agent Card discovery remains passive",
         );
 
-        const endpoint = (listener as A2aExposure).agentCard({ headers: {} }).supportedInterfaces[0]!.url;
+        const endpoint = (listener as A2aExposure).agentCard({ headers: {} }).supportedInterfaces[0].url;
         for (const [path, expectedStatus] of [["/tasks", 200], ["/tasks/missing-task", 404]] as const) {
             const response = await fetch(`${endpoint}${path}`, { headers: { "a2a-version": "1.0" } });
             const result = await response.json();

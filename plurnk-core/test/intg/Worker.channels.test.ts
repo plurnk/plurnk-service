@@ -31,7 +31,7 @@ test("{§crud}: channel removal preserves siblings and removes only an empty ent
         const remaining = await EntryCrud.readEntry(coordinate, ctx, "worker");
         assert.equal(remaining.status, 200);
         assert.deepEqual(Object.keys(remaining.entry!.channels), ["notes"]);
-        assert.equal(remaining.entry!.channels.notes!.content, "retained");
+        assert.equal(remaining.entry!.channels.notes.content, "retained");
         const missing = await EntryCrud.deleteChannel(coordinate, "body", ctx, "worker");
         assert.equal(missing.status, 404);
         assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
@@ -58,7 +58,7 @@ test("{§crud}: empty-entry pruning preserves a channel published after an empty
         await db.crud_delete_empty_entry.run({ entry_id: written.entryId! });
         const retained = await EntryCrud.readEntry(coordinate, ctx, "worker");
         assert.equal(retained.status, 200);
-        assert.equal(retained.entry!.channels.body!.content, "new publication");
+        assert.equal(retained.entry!.channels.body.content, "new publication");
     } finally { await db.close(); }
 });
 

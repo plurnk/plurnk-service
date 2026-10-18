@@ -8,6 +8,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
+import type { Db } from "../../src/core/Db.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const url = (pathname: string): UrlPath => ({
@@ -41,7 +42,7 @@ const setup = async () => {
     return { db, workspaceId, workerId };
 };
 
-const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, entries: Array<[string, string]>) => {
+const seedEntries = async (db: Db, workspaceId: number, workerId: number, entries: Array<[string, string]>) => {
     const k = new Worker();
     for (const [pathname, body] of entries) {
         await k.edit(editStmt(url(pathname), body), makeSchemeCtx({ db, workspaceId, workerId }));

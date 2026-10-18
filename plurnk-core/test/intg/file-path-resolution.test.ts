@@ -47,7 +47,7 @@ test("{§fs-namei} file URLs preserve native filename identity through reads and
                 for (const row of rows) {
                     const target = renderTarget(row, root);
                     assert.ok(target);
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]!] }))[0]!;
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
                     assert.equal(read.status, 200, `reuse ${target}`);
                     assert.equal(read.content, `Content of ${row.pathname}\n`, `identity of ${target}`);
                 }
@@ -103,23 +103,23 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                     await assert.rejects(readFile(join(root, key(`copy-${name}`))), { code: "ENOENT" });
                     await assert.rejects(readFile(join(root, key(`moved-${name}`))), { code: "ENOENT" });
                     const address = renderTarget({ scheme: null, pathname: key(name) }, root)!;
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${address})`, null))[0]!] }))[0]!;
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${address})`, null))[0]] }))[0];
                     assert.equal(read.status, 200, address);
                     assert.equal(read.content, `Revised ${name}\n`);
-                    assert.ok(userText(provider.received[1]!).includes(address), "the exact FIND advertised a reusable address");
+                    assert.ok(userText(provider.received[1]).includes(address), "the exact FIND advertised a reusable address");
                     const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, workerId: loop.modelWorkerId!, target: address }));
                     assert.equal(entry.entry?.channels.body?.content, `Revised ${name}\n`, "the client entry API resolves the same resource");
                 }
                 const survey = JSON.parse(authored.find(({ op, pathname }) => op === "FIND" && pathname === "*")!.rx);
                 const groups = survey.results as Array<Array<{ path: string; items: number }>>;
                 assert.equal(groups.length, 1);
-                const folder = groups[0]![0]!;
+                const folder = groups[0][0];
                 assert.equal(folder.path, `${pathToFileURL(join(root, directory)).href}/**`);
                 assert.equal(folder.items, names.length);
                 const subtree = JSON.parse(authored.find(({ op, pathname }) => op === "FIND" && pathname === `${directory}/**`)!.rx);
                 assert.equal(subtree.status, 200);
                 assert.equal(subtree.matchingPathCount, names.length, "the grouped selector includes hidden members and preserves literal glob characters");
-                assert.ok(userText(provider.received[5]!).includes(glob), "the glob receipt retains the authored URI's syntax");
+                assert.ok(userText(provider.received[5]).includes(glob), "the glob receipt retains the authored URI's syntax");
                 const keys = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
                 assert.deepEqual(keys.map(({ pathname }) => pathname).sort(), names.map(key).sort(), "no encoded or double-decoded shadow identities");
             } finally { client.close(); }
@@ -257,16 +257,16 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-home} {
                 assert.equal(normalized.length, form === "literal" ? 1 : 10, "one notice per authored absolute/home operand, never per bound key or automatic observation");
                 assert.ok(normalized.every(({ source, level }) => source === "scheme:file" && level === "warn"));
                 if (form === "literal") {
-                    assert.equal(normalized[0]!.message, "Path resolved to './~/moved.txt'.");
-                    assert.ok(userText(provider.received[2]!).includes("./~/source.txt"), "literal keys are rendered as reusable addresses");
+                    assert.equal(normalized[0].message, "Path resolved to './~/moved.txt'.");
+                    assert.ok(userText(provider.received[2]).includes("./~/source.txt"), "literal keys are rendered as reusable addresses");
                 } else {
                     assert.ok(normalized.some(({ message }) => message === "Path resolved to 'source.txt'."));
                     assert.ok(normalized.some(({ message }) => message === "Path resolved to 'copied.txt'."));
-                    assert.match(userText(provider.received[2]!), /YOU SHOULD address the resolved path\. Path resolved to 'source\.txt'\. \[path_normalized\]/u, "the normalization reaches the next model packet");
+                    assert.match(userText(provider.received[2]), /YOU SHOULD address the resolved path\. Path resolved to 'source\.txt'\. \[path_normalized\]/u, "the normalization reaches the next model packet");
                 }
 
                 for (const target of [relativeSource, spelling("source.txt"), source, pathToFileURL(source).href]) {
-                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]!] }))[0]!;
+                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
                     assert.equal(result.status, 200, target);
                     assert.equal(result.content, "revised\n", target);
                 }
@@ -296,7 +296,7 @@ test("{§fs-home} {§file-path-normalization} normalization notices follow autho
             for (const [target, origin] of [["probe.txt", "model"], [absolute, "_plurnk"], [absolute, "model"], ["./~/literal.txt", "model"]] as const) {
                 const result = await engine.dispatch({
                     ...ids, sequence: ++sequence, origin,
-                    statement: parseDsl(PlurnkParser.frame(`READ (${target})`, null))[0]!,
+                    statement: parseDsl(PlurnkParser.frame(`READ (${target})`, null))[0],
                 });
                 assert.equal(result.status, projectRoot === null && target === absolute ? 404 : 200, `${projectRoot}: ${origin} ${target}`);
             }
@@ -307,7 +307,7 @@ test("{§fs-home} {§file-path-normalization} normalization notices follow autho
             for (const origin of ["_plurnk", "model"] as const) {
                 const result = await engine.dispatch({
                     ...ids, sequence: ++sequence, origin,
-                    statement: parseDsl(PlurnkParser.frame("READ (~/probe.txt)", null))[0]!,
+                    statement: parseDsl(PlurnkParser.frame("READ (~/probe.txt)", null))[0],
                 });
                 assert.equal(result.status, projectRoot === homedir() ? 200 : 404, `${projectRoot}: ${origin} ~/probe.txt`);
             }
@@ -320,7 +320,7 @@ test("{§fs-home} {§file-path-normalization} normalization notices follow autho
             notices.length = 0;
             // An absolute spelling of a path beyond the root is already its canonical address: no notice.
             const beyond = join(projectRoot === homedir() ? "/" : homedir(), `plurnk-beyond-${crypto.randomUUID()}.md`);
-            const miss = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(PlurnkParser.frame(`READ (${beyond})`, null))[0]! });
+            const miss = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(PlurnkParser.frame(`READ (${beyond})`, null))[0] });
             assert.equal(miss.status, 404, `${projectRoot}: ${beyond}`);
             assert.deepEqual(notices.filter(({ kind }) => kind === "path_normalized"), [], `${projectRoot}: an absolute spelling beyond the root earns no notice`);
         }

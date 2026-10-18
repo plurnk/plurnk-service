@@ -178,7 +178,7 @@ export default class Exposure {
     // oauth2 scheme, client credentials at the daemon's own token endpoint with the scope a2a; none otherwise.
     agentCard(req: Pick<IncomingMessage, "headers">): AgentCard {
         const card = structuredClone(this.#card);
-        card.supportedInterfaces[0]!.url = this.#endpointUrl ?? `${requestOrigin(req, this.#listener())}${this.#endpointPath}`;
+        card.supportedInterfaces[0].url = this.#endpointUrl ?? `${requestOrigin(req, this.#listener())}${this.#endpointPath}`;
         const face = this.#credentials.face();
         if (face === null) {
             card.securitySchemes = {};

@@ -39,7 +39,7 @@ const parseOne = (input: string): PlurnkStatement => {
 const clientOperation = async (daemon: Daemon, workspaceId: number, statement: PlurnkStatement, contextWorkerId?: number) =>
     (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [statement],
-    }))[0]!;
+    }))[0];
 
 const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
     namespaceOwner: OWNER,
@@ -642,7 +642,7 @@ test("{§functionality-preparation-visibility} aliases prepared at once are each
     await narrowed.promise;
     const second = daemon.workspacePreparationStatus(workspaceId);
     assert.deepEqual(second.map(({ alias }) => alias), ["web"], "an alias that settled leaves");
-    assert.equal(second[0]!.since, first[1]!.since, "the alias still preparing keeps the time it began");
+    assert.equal(second[0].since, first[1].since, "the alias still preparing keeps the time it began");
     resume.resolve();
     await demand;
     assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
@@ -662,7 +662,7 @@ test("{§functionality-inspection} a changed inherited definition never borrows 
     t.after(async () => { await daemon.stop(); await db.close(); });
     const workspaceId = await insertWorkspace(db, `inspection-replacement-${crypto.randomUUID()}`);
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
-    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0];
     await invoke("enable", { alias: "svc" });
     assert.equal((await listed()).state, "active");
     definition = { kind: "doc" };
@@ -703,7 +703,7 @@ test("{§functionality-adapter} interpretation context participates in runtime i
     await daemon.start();
     const workspaceId = await insertWorkspace(db, `interpretation-context-${crypto.randomUUID()}`);
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
-    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0];
     await invoke("enable", { alias: "svc" });
     assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
     assert.equal(Object.hasOwn(await listed(), "context"), false, "adapter preparation context is not another public configuration field");
@@ -740,7 +740,7 @@ test("{§configuration-provenance} inspection reports the winning source without
     t.after(async () => { await daemon.stop(); await db.close(); });
     const workspaceId = await insertWorkspace(db, `inspection-source-${crypto.randomUUID()}`);
     const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
-    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0];
     assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "dormant" });
     assert.deepEqual(log, [], "source inspection does not activate anything");
     await invoke("enable", { alias: "svc" });
@@ -1085,7 +1085,7 @@ test("{§functionality-publication} a candidate goes live at publish, inside the
     await daemon.invokeModuleAction("workspace.fx.add", { alias: "late", definition: { kind: "ok" } }, workspaceContext(workspaceId));
     const events = log.slice(mark).filter((event) => /^(publish|undo|commit|abort):/u.test(event));
     assert.deepEqual(events.map((event) => event.split(":")[0]), ["publish", "commit"], "publish precedes commit; no undo, no abort");
-    assert.equal(events[0]!.split(":")[1], events[1]!.split(":")[1], "both phases belong to the same candidate");
+    assert.equal(events[0].split(":")[1], events[1].split(":")[1], "both phases belong to the same candidate");
 });
 
 test("{§functionality-publication} a management stream reports publication refusal instead of premature success", { timeout: 30_000 }, async (t) => {
@@ -1194,7 +1194,7 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
         const seen = proposals.length;
         const result = await operate(program);
         assert.equal(proposals.length, seen + 1, "the host verb proposed");
-        assert.deepEqual(proposals[seen]!.disposition, { decision: "accept", outcome: "client_operation" });
+        assert.deepEqual(proposals[seen].disposition, { decision: "accept", outcome: "client_operation" });
         return result;
     };
     try {

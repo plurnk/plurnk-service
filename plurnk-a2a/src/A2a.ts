@@ -438,7 +438,7 @@ export default class A2a {
         } catch (cause) {
             // An unavailable alias carries its one exact preparation Problem.
             const exact = (cause as { problem?: ProblemDetails }).problem;
-            if (exact !== undefined) return { problem: { status: exact.status, problem: structuredClone(exact) } as SchemeResult };
+            if (exact !== undefined) return { problem: { status: exact.status, problem: structuredClone(exact) } };
             return { problem: A2a.#remoteProblem(authority, "connect", cause, true) };
         }
     }

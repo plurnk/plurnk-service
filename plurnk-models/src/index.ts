@@ -84,7 +84,7 @@ export const resolveModel = (
     const suffix = `/${model}`;
     const matches = Object.entries(models).filter(([candidate]) => candidate.endsWith(suffix));
     return matches.length === 1
-        ? { id: matches[0]![0], info: matches[0]![1] }
+        ? { id: matches[0][0], info: matches[0][1] }
         : null;
 };
 

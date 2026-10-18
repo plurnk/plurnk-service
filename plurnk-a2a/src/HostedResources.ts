@@ -14,7 +14,7 @@ export default class HostedResources {
         const match = /^\/contexts\/([^/]+)(?:\/|$)/u.exec(pathname);
         if (match === null) return null;
         let contextId: string;
-        try { contextId = decodeURIComponent(match[1]!); } catch { return null; }
+        try { contextId = decodeURIComponent(match[1]); } catch { return null; }
         const prefix = A2aProjection.contextPath(contextId);
         const bindings = (await HostedTasks.bindings(this.#port, workspaceId))
             .filter((binding) => binding.contextId === contextId).toReversed();
@@ -26,7 +26,7 @@ export default class HostedResources {
             const task = await HostedTasks.history(this.#port, binding);
             const projected = A2aProjection.taskEntry(task, "anonymous", prefix);
             resources.push(...projected.resources, { pathname: A2aProjection.taskPath(task.id, prefix), entry: projected.entry });
-            tasks.push(JSON.parse(projected.entry.channels.json!.content));
+            tasks.push(JSON.parse(projected.entry.channels.json.content));
             const state = taskStateToJSON(task.status?.state ?? 0).replace(/^TASK_STATE_/u, "").toLowerCase();
             body.push(`## Task ${task.id} — ${state}`);
             for (const message of task.history) {

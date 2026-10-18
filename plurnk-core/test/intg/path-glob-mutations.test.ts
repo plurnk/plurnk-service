@@ -206,7 +206,7 @@ for (const failOnOperationError of [false, true]) {
     test(`{§bulk-resource-targeting} anchors remain resource-specific during fan-out; fail-on-error=${failOnOperationError}`, async (t) => {
         const { dispatch, content, rows, engine, env } = await fixture(t, { "/a.txt": "first\nsecond", "/b.txt": "different", "/c.txt": "first\nsecond" });
         const read = await dispatch(readStmt(urlPath("worker", "/a.txt"), fullReplace));
-        const anchor = (read.lineAnchors as string[])[0]!;
+        const anchor = (read.lineAnchors as string[])[0];
         const execution = engine.executeAdmittedTurn({
             ...env, origin: "client", source: null, emission: null, fromSequence: 2, failOnOperationError,
             statements: TurnOps.parseInternal(PlurnkParser.frame(`EDIT (worker:///*.txt) <${anchor}>`, "updated")),

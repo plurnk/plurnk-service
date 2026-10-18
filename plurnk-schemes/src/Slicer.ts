@@ -212,7 +212,7 @@ export default class Slicer {
         }
         const pastEof = endLine > lines.length;
         const resolvedEndLine = pastEof ? lines.length : endLine;
-        const endLineData = lines[resolvedEndLine - 1]!;
+        const endLineData = lines[resolvedEndLine - 1];
         const maxEndColumn = [...content.slice(endLineData.start, endLineData.contentEnd)].length + 1;
         const endColumn = pastEof ? maxEndColumn : Math.min(rawEndColumn, maxEndColumn);
         let start: number;
@@ -235,7 +235,7 @@ export default class Slicer {
     static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly number[]): [number, number, number, number] {
         const [startLine, startColumn, endLine, endColumn] = marks as [number, number, number, number];
         const endOf = (line: number): number => {
-            const data = lines[Math.min(Math.max(line, 1), lines.length) - 1]!;
+            const data = lines[Math.min(Math.max(line, 1), lines.length) - 1];
             return [...content.slice(data.start, data.contentEnd)].length + 1;
         };
         const resolvedStart = startLine === -1 ? lines.length : startLine;
@@ -383,7 +383,7 @@ export default class Slicer {
     static #normalize(marker: LineMarker, totalLines: number, unit: RangeUnit): NormalizedMarker | ScopeError {
         // {§diagnostic-observation} — a window over another unit (a resource's bytes) names that unit.
         const noun = unit === "matchLocation" ? "match location" : unit;
-        const Noun = `${noun[0]!.toUpperCase()}${noun.slice(1)}`;
+        const Noun = `${noun[0].toUpperCase()}${noun.slice(1)}`;
         // {§slicer-text-algebra} The parser carries raw `marks: [number, ...]`;
         // this owner assigns roles: marks[0] = first/position, marks[1] = last
         // (range end). A single mark is a position/sentinel; two is a range.
@@ -693,7 +693,7 @@ export default class Slicer {
         for (let i = 0; i < indexed.length; i += 1) {
             for (let j = i + 1; j < indexed.length; j += 1) {
                 if (dropped.has(i) || dropped.has(j)) continue;
-                const a = indexed[i]!, b = indexed[j]!;
+                const a = indexed[i], b = indexed[j];
                 if (a.start === b.start && a.end === b.end && shape(a.body) === shape(b.body)) {
                     dropped.add(j); merges.push({ index: j, rule: "duplicate-of", of: i, ...(a.body === b.body ? {} : { whitespaceOnly: true as const }) }); continue;
                 }
@@ -716,9 +716,9 @@ export default class Slicer {
                     const occurrences = (block: string[]): number[] => { const at: number[] = []; if (block.length === 0) return at; for (let k = 0; k + block.length <= outerRows.length; k += 1) { if (block.every((row, o) => outerRows[k + o] === row)) at.push(k); } return at; };
                     const originalAt = occurrences(innerOriginal);
                     if (originalAt.length === 1) {
-                        const k = originalAt[0]!; const innerRows = inner.body.length === 0 ? [] : split(inner.body);
+                        const k = originalAt[0]; const innerRows = inner.body.length === 0 ? [] : split(inner.body);
                         const composed = [...outerRows.slice(0, k), ...innerRows, ...outerRows.slice(k + innerOriginal.length)].join("\n") + (outer.body.endsWith("\n") ? "\n" : "");
-                        indexed[outer.index] = { ...indexed[outer.index]!, body: composed };
+                        indexed[outer.index] = { ...indexed[outer.index], body: composed };
                         dropped.add(inner.index);
                         merges.push({ index: inner.index, rule: "contained-relocated", outer: outer.index, at: k + 1, authored: [...inner.marker.marks], originalLines: innerOriginal.length });
                         continue;
@@ -742,7 +742,7 @@ export default class Slicer {
                 const shrunkEndLine = shrunk === lo ? shrunk.endLine - 1 : shrunk.endLine;
                 const narrowed = Slicer.textReplacement(content, { marks: [shrunkStartLine, shrunkEndLine] }, shrunk.body);
                 if ("error" in narrowed) continue;
-                const target = indexed[shrunk.index]!;
+                const target = indexed[shrunk.index];
                 indexed[shrunk.index] = { ...target, start: narrowed.start, end: narrowed.end, startLine: narrowed.startLine, endLine: narrowed.endLine, marker: { marks: [shrunkStartLine, shrunkEndLine] } };
                 merges.push({ index: shrunk.index, rule: "shared-endpoint", line, text, authored: [...shrunk.marker.marks], applied: [shrunkStartLine, shrunkEndLine], claimedBy: keeper.index });
             }
@@ -755,8 +755,8 @@ export default class Slicer {
         const conflicted = new Set<number>();
         for (let i = 0; i < live.length; i += 1) {
             for (let j = i + 1; j < live.length; j += 1) {
-                const a = live[i]!;
-                const b = live[j]!;
+                const a = live[i];
+                const b = live[j];
                 const aInsertion = a.start === a.end;
                 const bInsertion = b.start === b.end;
                 const overlaps = aInsertion && bInsertion
@@ -788,7 +788,7 @@ export default class Slicer {
                 {},
                 {
                     stage: "mutation",
-                    conflictingRegions: conflicts[0]!.regions,
+                    conflictingRegions: conflicts[0].regions,
                     conflicts,
                     cleanRegions: clean,
                     editCount: replacements.length,

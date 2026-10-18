@@ -119,7 +119,7 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             const rows = logEntries(packet).filter((row) => String(row.logPath).startsWith("log:///1/2/"));
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
-            assert.deepEqual(provider.received[1]!.map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"],
+            assert.deepEqual(provider.received[1].map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"],
                 "{§emission-history}: content operations replay, while reasoning operations remain in their own channel");
             assert.equal(packetSection(packet, "emission-history"), content);
             if (content !== "") assert.ok(rows.some((row) => String(row.logPath).endsWith("/SEND") && row.body === undefined), "the delivered reply has a receipt without a duplicated answer");
@@ -220,9 +220,9 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(second.status, 200);
         assert.equal(requests.length, 2);
-        assert.match(JSON.stringify(requests[1]!.messages), /Established fact/u);
-        assert.deepEqual(requests[1]!.messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant").map(({ content: text }) => text), [content],
+        assert.match(JSON.stringify(requests[1].messages), /Established fact/u);
+        assert.deepEqual(requests[1].messages.map(({ role }) => role), ["system", "user", "assistant", "user"]);
+        assert.deepEqual(requests[1].messages.filter(({ role }) => role === "assistant").map(({ content: text }) => text), [content],
             "{§emission-history}: the content NOTE is the turn's replay; reasoning OPs stay in their receipts, not assistant history");
     } finally {
         release.resolve();

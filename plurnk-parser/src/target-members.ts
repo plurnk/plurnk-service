@@ -8,7 +8,7 @@ const splitTopLevel = (raw: string): string[] => {
     let braceDepth = 0;
 
     for (let index = 0; index < raw.length; index++) {
-        const char = raw[index]!;
+        const char = raw[index];
         if (char === "{") {
             braceDepth++;
             continue;
@@ -21,7 +21,7 @@ const splitTopLevel = (raw: string): string[] => {
 
         const member = raw.slice(memberStart, index).trim();
         if (member.length > 0) members.push(member);
-        while (index + 1 < raw.length && (raw[index + 1] === "," || /\s/u.test(raw[index + 1]!))) index++;
+        while (index + 1 < raw.length && (raw[index + 1] === "," || /\s/u.test(raw[index + 1]))) index++;
         memberStart = index + 1;
     }
 

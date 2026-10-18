@@ -184,17 +184,17 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
 
 test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
     const { dataCaptureFromEnv } = await import("./env.ts");
-    assert.deepEqual(dataCaptureFromEnv({} as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 3, rawBody: true });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({}, "x"), { topLogprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" }, "x"), { topLogprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" }, "x"), { topLogprobs: 3, rawBody: true });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "0" }, "x"), { topLogprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" }, "x"), { topLogprobs: null, rawBody: false });
 });
 
 test("contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when unset", async () => {
     const { contextWindowFromEnv } = await import("./env.ts");
-    assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" } as NodeJS.ProcessEnv, "openai"), 131072);
-    assert.equal(contextWindowFromEnv({} as NodeJS.ProcessEnv, "openai"), null);
+    assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" }, "openai"), 131072);
+    assert.equal(contextWindowFromEnv({}, "openai"), null);
 });
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
@@ -213,7 +213,7 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
     assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
     // custom list does NOT scope the providers' knobs (closed-list isolation both ways)
-    const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_EFFORT: "off", PLURNK_PROVIDERS_EFFORT_turboderp: "high" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
+    const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_EFFORT: "off", PLURNK_PROVIDERS_EFFORT_turboderp: "high" }, "turboderp", SERVICE_KNOBS);
     assert.equal(mixed.PLURNK_PROVIDERS_EFFORT, "off");
 });
 
@@ -279,7 +279,7 @@ test("generationEnvelopeFromEnv: output is total and reasoning is an optional su
             ...floor,
             PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
             PLURNK_PROVIDERS_REASONING_BUDGET: "4096",
-        } as NodeJS.ProcessEnv, "x", 100_000, 32_000),
+        }, "x", 100_000, 32_000),
         { outputBudget: 32_000, outputFloor: 10_000, reasoningBudget: 4096 },
     );
     assert.throws(() => generationEnvelopeFromEnv({ ...floor }, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_BUDGET must be set/);

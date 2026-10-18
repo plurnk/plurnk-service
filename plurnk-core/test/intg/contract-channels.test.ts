@@ -4,7 +4,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -217,7 +216,7 @@ test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's 
         const result = await EntryFind.findWorkspaceEntries(
             findStmt(
                 urlPath("multi", "/**", "contracts"),
-                { dialect: "fts", raw: "~exclusivecontractneedle" } as MatcherBody,
+                { dialect: "fts", raw: "~exclusivecontractneedle" },
             ),
             ctx,
             manifest,
@@ -281,7 +280,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
         const result = await EntryFind.findWorkspaceEntries(
             findStmt(
                 urlPath("multi", "/**", "contracts"),
-                { dialect: "graph", raw: "&<foo" } as MatcherBody,
+                { dialect: "graph", raw: "&<foo" },
             ),
             ctx,
             manifest,

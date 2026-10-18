@@ -82,7 +82,7 @@ test("{§worker-owner-creation}: unknown owners and parents from another workspa
         const first = await daemon.createWorkspace({ name: "owner-invalid-first" });
         const second = await daemon.createWorkspace({ name: "owner-invalid-second" });
         const parent = await daemon.createWorker({ workspaceId: second.workspaceId, name: "parent" });
-        const failure = (code: string) => (error: unknown): boolean => error instanceof OperationFailureError && error.result.problem?.type.endsWith(`/${code}`) === true;
+        const failure = (code: string) => (error: unknown): boolean => error instanceof OperationFailureError &&  error.result.problem?.type.endsWith(`/${code}`);
         await assert.rejects(daemon.createWorker({ workspaceId: first.workspaceId, name: "unowned", owner: owner.address }), failure("owner-not-found"));
         await assert.rejects(daemon.createWorker({ workspaceId: first.workspaceId, name: "wrong-parent", parentWorkerId: parent.workerId }), failure("worker-not-found"));
         assert.equal((await daemon.listWorkers(first.workspaceId)).some(({ name }) => name === "unowned" || name === "wrong-parent"), false);
@@ -103,16 +103,16 @@ test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, 
         const operation = modelOperation(daemon, db, { workspaceId, workerId, statement: statement.statement });
         try {
             const [proposal] = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
-            assert.equal(proposal!.owner, owner.address);
-            assert.deepEqual(proposal!.disposition, { decision: "review" });
+            assert.equal(proposal.owner, owner.address);
+            assert.deepEqual(proposal.disposition, { decision: "review" });
             await daemon.registerWorkerOwner(workspaceId, { ...owner, tools: [] });
             assert.deepEqual((await daemon.pendingProposals(workspaceId))[0]?.disposition, { decision: "review" },
                 "a later capability declaration cannot hide or reinterpret an outstanding review");
-            await assert.rejects(daemon.resolveProposal(proposal!.logEntryId, { decision: "accept" }, {
+            await assert.rejects(daemon.resolveProposal(proposal.logEntryId, { decision: "accept" }, {
                 workspaceId, address: "agui://somebody-else",
             }), (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/owner-mismatch"));
             assert.equal((await daemon.pendingProposals(workspaceId)).length, 1, "an unrelated sender does not consume the gate");
-            await daemon.resolveProposal(proposal!.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });
+            await daemon.resolveProposal(proposal.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });
             assert.equal((await operation).status, 200);
         } finally {
             await daemon.stop();

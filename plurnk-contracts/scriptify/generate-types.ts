@@ -38,7 +38,7 @@ for (const file of files) {
             resolve: {
                 http: false,
                 ...httpsResolver,
-            } as never,
+            },
         },
         declareExternallyReferenced: true,
         additionalProperties: false,

@@ -102,7 +102,7 @@ export const classifyProviderError = (
     if (APICallError.isInstance(err)) {
         const classified = classifyApiCallError(err, detailLimit);
         const cause = failureCause(err, detailLimit);
-        return cause === null ? classified : { ...classified, extensions: { ...(classified.extensions ?? {}), cause } };
+        return cause === null ? classified : { ...classified, extensions: { ...classified.extensions, cause } };
     }
     const wire = err as { message?: unknown; type?: unknown };
     if (wire?.type === "grammar_invalid") {
@@ -184,7 +184,7 @@ export const toProviderError = (
         status,
         cause: err,
         extensions: {
-            ...(classified.extensions ?? {}),
+            ...classified.extensions,
             ...(kind === "capacity_exceeded" ? { capacityStage: "upstream" } : {}),
             ...(capacity === undefined ? {} : { capacity }),
             ...(classified.attempts === undefined ? {} : { attempts: classified.attempts }),

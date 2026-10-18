@@ -11,7 +11,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";

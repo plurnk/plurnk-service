@@ -8,7 +8,6 @@ import BaseHandler from "../BaseHandler.ts";
 import TreeSitterExtractor from "../TreeSitterExtractor.ts";
 import TreeSitterLanguageHandler from "../treesitter/handler.ts";
 import type {
-    QueryConstructor,
     TreeSitterNode,
     TreeSitterParser,
     TreeSitterTree,
@@ -238,7 +237,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
             }
             class Handler extends TreeSitterExtractor {
                 protected async loadParser(): Promise<TreeSitterParser> {
-                    this.setQueryContext({}, Query as QueryConstructor);
+                    this.setQueryContext({}, Query);
                     return {
                         parse: () => ({ rootNode, delete() {} }),
                         delete: () => {
@@ -246,7 +245,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
                             order.push("parser");
                             if (failingDelete) throw parserFailure;
                         },
-                    } as TreeSitterParser & { delete(): void };
+                    };
                 }
 
                 protected extractFromTree(_tree: TreeSitterTree, _content: string): MimeSymbol[] {

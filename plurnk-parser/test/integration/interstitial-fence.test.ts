@@ -112,8 +112,8 @@ test("{§executor-case}: an executor tag in any case opens the registered execut
     const upper = PlurnkParser.parseStatements("````SH\necho hi\n````\n", { executors: ["sh", "python3"] });
     const ops = upper.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(ops.length, 1);
-    assert.equal(isExecution(ops[0]!), true);
-    assert.equal(isExecution(ops[0]!) ? ops[0]!.runtime : null, "sh", "the AST carries the registered spelling");
+    assert.equal(isExecution(ops[0]), true);
+    assert.equal(isExecution(ops[0]) ? ops[0].runtime : null, "sh", "the AST carries the registered spelling");
     const mixed = PlurnkParser.parseStatements("````Python3 (script.py)\nprint(1)\n````\n", { executors: ["sh", "python3"] });
     const py = mixed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(py[0] !== undefined && isExecution(py[0]) ? py[0].runtime : null, "python3");

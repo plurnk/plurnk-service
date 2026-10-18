@@ -91,7 +91,7 @@ test("{§module-discovery} the documented directory plugin loads its floor, publ
     await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
     const guide = await readFile(join(Paths.packageRoot, "INSTALL.md"), "utf8");
     const manifest = [...guide.matchAll(/^```json\n([\s\S]*?)^```/gmu)]
-        .map(([, body]) => JSON.parse(body!))
+        .map(([, body]) => JSON.parse(body))
         .find((value) => value.extensions?.["ai.plurnk"]?.module);
     assert.ok(manifest, "the installation guide supplies an executable native-module manifest");
     await writeFile(join(plugin, "plugin.json"), JSON.stringify(manifest));

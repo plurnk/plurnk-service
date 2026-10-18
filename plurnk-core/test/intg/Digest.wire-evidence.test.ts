@@ -46,7 +46,7 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
             cursor = at + message.content.length;
         }
     }
-    assert.deepEqual(provider.received[2]!.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"], "EDIT and READ each retain their own assistant/result boundary");
+    assert.deepEqual(provider.received[2].map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"], "EDIT and READ each retain their own assistant/result boundary");
 });
 
 test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {
@@ -93,7 +93,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
             assert.equal(result.result.status, 200);
             assert.equal(result.turnIds.length, 3, "initialization, one empty turn, then the answer");
-            const first = result.turnIds[1]!;
+            const first = result.turnIds[1];
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "no provider retry or parser rejection");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: first });

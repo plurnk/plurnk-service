@@ -42,7 +42,7 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 // References are workspace documents ({§worker-generated-subtree}): a person reads them
                 // ({§connection-lifecycle}), leaving the model worker's run under test.
                 const reference = async (runtime: string) => (await daemon.dispatchClientAction({ workspaceId: workspace.id, actor: TEST_OWNER,
-                    statements: [readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`))] }))[0]!;
+                    statements: [readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`))] }))[0];
                 assert.equal((await reference("node")).status, 200, "Node remains discoverable");
                 assert.equal((await reference("js")).status, 404, "the accepted spelling adds no reference document");
                 if (admission === "deny") {
@@ -54,13 +54,13 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3);
                 const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-                assert.equal(sources.find((row) => row.turn_id === turnIds![1] && row.kind === "ops")?.content, source,
+                assert.equal(sources.find((row) => row.turn_id === turnIds[1] && row.kind === "ops")?.content, source,
                     "forensic source retains the authored js spelling");
-                const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds![1]! });
+                const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });
                 const invocation = rows.find((row) => row.op === "node");
                 assert.ok(invocation, "the authored js fence becomes a canonical node receipt");
                 assert.equal(rows.some((row) => row.op === "js"), false);
-                const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });
+                const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[2] });
                 const packet = JSON.parse(packetRow!.packet);
                 if (admission === "accept") {
                     assert.equal(await readFile(witness, "utf8"), "executed");

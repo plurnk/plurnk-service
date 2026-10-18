@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import Launch, { LaunchError, READINESS_LINE, type LaunchedDaemon } from "../../src/launch/Launch.ts";
+import type { ChildProcess } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -109,7 +110,7 @@ test("{§daemon-launch}: two simultaneous starters on one address — one is rea
         const lost = settled.filter((result) => result.status === "rejected");
         assert.equal(ready.length, 1, "exactly one daemon owns the address");
         assert.equal(lost.length, 1);
-        assert.ok(lost[0]!.status === "rejected" && lost[0]!.reason instanceof LaunchError && lost[0]!.reason.kind === "exited");
+        assert.ok(lost[0].status === "rejected" && lost[0].reason instanceof LaunchError && lost[0].reason.kind === "exited");
         for (const result of ready) if (result.status === "fulfilled") await result.value.stop();
     } finally {
         await rm(home, { recursive: true, force: true });
@@ -119,7 +120,7 @@ test("{§daemon-launch}: two simultaneous starters on one address — one is rea
 test("{§daemon-launch}: a start that never becomes ready is stopped, awaited and reported as a timeout, leaving no process", { timeout: 60_000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-launch-timeout-"));
     try {
-        let child: import("node:child_process").ChildProcess | undefined;
+        let child: ChildProcess | undefined;
         await assert.rejects(
             Launch.start({
                 command: [process.execPath, "-e", "process.stdout.write('starting but never ready\\n'); setTimeout(() => {}, 60_000)"],

@@ -20,7 +20,7 @@ import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
 

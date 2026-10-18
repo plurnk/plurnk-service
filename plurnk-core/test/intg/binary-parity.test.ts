@@ -27,7 +27,7 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -313,11 +313,11 @@ test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather t
         const entry = { channels: { body: { content: "", bytes: Buffer.from(text), mimetype: "text/plain" } } };
         assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "worker")).status, 201);
         const stored = await EntryCrud.readEntry(coordinate, ctx, "worker");
-        assert.equal(stored.entry!.channels.body!.content, text);
+        assert.equal(stored.entry!.channels.body.content, text);
         await assert.rejects(EntryCrud.writeEntry(coordinate, {
             channels: { body: { ...entry.channels.body, bytes: new Uint8Array([0xff]) } },
         }, ctx, "worker"), /encoded data was not valid/u);
-        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker")).entry!.channels.body!.content, text, "invalid text bytes do not destroy the existing resource");
+        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker")).entry!.channels.body.content, text, "invalid text bytes do not destroy the existing resource");
     } finally { await db.close(); }
 });
 

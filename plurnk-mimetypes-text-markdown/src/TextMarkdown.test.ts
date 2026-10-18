@@ -71,9 +71,9 @@ describe("TextMarkdown", () => {
             "---------",
         ].join("\n");
         const symbols = h.extractRaw(src);
-        const names = symbols.map((s) => s.name);
-        assert.ok(names.includes("Title One"));
-        assert.ok(names.includes("Title Two"));
+        const names = new Set(symbols.map((s) => s.name));
+        assert.ok(names.has("Title One"));
+        assert.ok(names.has("Title Two"));
         const titleOne = symbols.find((s) => s.name === "Title One");
         const titleTwo = symbols.find((s) => s.name === "Title Two");
         assert.equal(titleOne?.level, 1);
@@ -192,11 +192,11 @@ describe("TextMarkdown", () => {
         assert.equal(tree.type, "document");
         const heading = tree.children.find((c) => c.type === "heading");
         assert.ok(heading);
-        assert.equal(heading!.level, 1);
-        assert.equal(heading!.text, "Top");
+        assert.equal(heading.level, 1);
+        assert.equal(heading.text, "Top");
         const code = tree.children.find((c) => c.type === "code");
         assert.ok(code);
-        assert.equal(code!.lang, "ts");
+        assert.equal(code.lang, "ts");
     });
 
     it("deepJson returns null for binary content", async () => {

@@ -36,8 +36,8 @@ describe("TreeSitterLanguageHandler.deepJson — Python", () => {
             if (cur.children) stack.push(...cur.children);
         }
         assert.ok(found, "should locate an identifier leaf");
-        assert.equal(found!.text, "x");
-        assert.equal(found!.children, undefined);
+        assert.equal(found.text, "x");
+        assert.equal(found.children, undefined);
     });
 
     it("returns null for binary content", async () => {

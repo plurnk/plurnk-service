@@ -22,7 +22,7 @@ import CapabilityResolver from "./CapabilityResolver.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
-import LoopLifecycle from "./LoopLifecycle.ts";
+import type LoopLifecycle from "./LoopLifecycle.ts";
 import Results, { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
@@ -198,7 +198,7 @@ export default class Dispatcher {
             admitRead: (statement, ctx) => this.#checkCapabilities(statement, ctx),
             prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
                 ...args,
-                handler: args.handler as SchemeWithEntryAddress & SchemeHandler,
+                handler: args.handler,
             }),
         });
         this.#resourceMutations = new ResourceMutations({
@@ -265,7 +265,7 @@ export default class Dispatcher {
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
+            return Results.assert(await handler.readEntry(pathname, handlerCtx));
         }
         const caps = handlerCtx?.entries;
         if (caps === undefined) {
@@ -294,7 +294,7 @@ export default class Dispatcher {
                         ? {}
                         : { attributes: { ...result.entry.attributes } }),
                 },
-        }) as ReadEntryResult;
+        });
     }
 
     async #writeEntry(scheme: string, address: ResolvedDataEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
@@ -302,7 +302,7 @@ export default class Dispatcher {
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
+            return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx));
         }
         const caps = handlerCtx?.entries;
         if (caps === undefined) {
@@ -319,7 +319,7 @@ export default class Dispatcher {
                 },
             ) as WriteEntryResult;
         }
-        return Results.assert(await caps.write(pathname, entry)) as WriteEntryResult;
+        return Results.assert(await caps.write(pathname, entry));
     }
 
     async #deleteEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
@@ -327,7 +327,7 @@ export default class Dispatcher {
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
+            return Results.assert(await handler.deleteEntry(pathname, handlerCtx));
         }
         const caps = handlerCtx?.entries;
         if (caps === undefined) {
@@ -357,7 +357,7 @@ export default class Dispatcher {
         const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
+            return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx));
         }
         const caps = handlerCtx?.entries;
         if (caps === undefined) {
@@ -566,7 +566,7 @@ export default class Dispatcher {
     async #selectTargets(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<TargetSelection | null> {
         if (statement.op === "COPY" || statement.op === "MOVE") {
             if (![statement.source, statement.destination].some(({ target }) => Dispatcher.#globTarget(target))) return null;
-            let resolved = statement;
+            const resolved = { ...statement };
             for (const operand of ["source", "destination"] as const) {
                 const selection = statement[operand];
                 if (!Dispatcher.#globTarget(selection.target)) continue;
@@ -578,7 +578,7 @@ export default class Dispatcher {
                 if (found.targets.length !== 1) return { result: Dispatcher.#failure("target-cardinality", 400,
                     `${statement.op} ${operand} matched ${found.matched} resources; expected one.`, {},
                     { operand, matchingPathCount: found.matched, recovery: "Name one source and one destination per pair.", retryable: false }) };
-                resolved = { ...resolved, [operand]: { ...selection, target: found.targets[0]! } };
+                resolved[operand] = { ...selection, target: found.targets[0] };
             }
             return { statements: [resolved] };
         }
@@ -858,7 +858,7 @@ export default class Dispatcher {
             const prefix = resultPrefix(whole, count) as Record<string, unknown>;
             const carried = Object.fromEntries(["content", "mimetype", "startLine", "lineAnchors", "lineNumberWidth", "lineOrdinals", "matches", "range"]
                 .flatMap((key) => prefix[key] === undefined ? [] : [[key, prefix[key]]]));
-            return { ...receipt(count), ...carried } as DispatchResult;
+            return { ...receipt(count), ...carried };
         };
         // The longest prefix whose row, in its receipt shape, fits: the whole is known not to.
         let fits = 0;
@@ -934,7 +934,7 @@ export default class Dispatcher {
                 const binding = await ResourceBindings.resolve(target, boundCtx);
                 if (binding?.manifest.category !== "data") return null;
                 return this.#resolveDataEntryAddress({ target, routedScheme,
-                    handler: binding.handler as SchemeWithEntryAddress, manifest: binding.manifest, ctx: boundCtx });
+                    handler: binding.handler, manifest: binding.manifest, ctx: boundCtx });
             } catch (error) {
                 if (error instanceof OperationFailureError) return { address: null, result: error.result };
                 throw error;

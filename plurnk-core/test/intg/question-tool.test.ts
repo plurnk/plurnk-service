@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import QuestionTool, { questionRuntimeDecl } from "../../src/schemes/QuestionTool.ts";
 import StreamMock from "./_stream-mock.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -124,7 +124,7 @@ Waiting for your answer.
                         () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
                         (row) => row?.status === 202,
                     );
-                    await daemon.resolveClientInteraction(pending[0]!.interactionId, action === "accept"
+                    await daemon.resolveClientInteraction(pending[0].interactionId, action === "accept"
                         ? { status: "resolved", payload: { branch: "main" } }
                         : { status: "cancelled" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
                     await waitForDb(

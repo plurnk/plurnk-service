@@ -28,7 +28,7 @@ test("{§service-worker-composition} live workspaces expose a model worker's ref
             actor: TEST_OWNER,
             contextWorkerId: workerId,
             statements: [readStmt(parsePath(target), { marks: [1, -1] })],
-        }))[0]!;
+        }))[0];
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
@@ -98,9 +98,9 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
             source: "FREQ=HOURLY;COUNT=1",
         }));
         assert.equal(discovered.candidates.length, 1);
-        assert.match(discovered.candidates[0]!.summary ?? "", /now .+next/u);
+        assert.match(discovered.candidates[0].summary ?? "", /now .+next/u);
         const definition = {
-            ...discovered.candidates[0]!.definition,
+            ...discovered.candidates[0].definition,
             target: `worker://${worker.name}`,
             prompt: "Take the scheduled message.",
 
@@ -119,10 +119,10 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
         armed.clear();
         for (const callback of due) callback();
         await waitFor(() => completed, (events) => events.length === 1, { timeoutMs: 15_000 });
-        assert.equal(completed[0]!.result.status, 200);
-        assert.equal(await lastReply(workspace.db, completed[0]!.loopId), "Scheduled message received.");
+        assert.equal(completed[0].result.status, 200);
+        assert.equal(await lastReply(workspace.db, completed[0].loopId), "Scheduled message received.");
         assert.equal(inference.mock.callCount(), 1, "only the explicitly added fixture scheduled inference");
-        const rows = await workspace.db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null }>({ loop_id: completed[0]!.loopId });
+        const rows = await workspace.db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null }>({ loop_id: completed[0].loopId });
         assert.equal(rows.filter(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === "schedule://beat").length, 1,
             "the occurrence arrives through ordinary source-attributed worker messaging");
         await waitForDb(list, ({ definitions }) =>

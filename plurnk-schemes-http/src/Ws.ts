@@ -20,6 +20,7 @@ import type {
     ProposalResult,
     ProposalApplyRequest,
     ProposalApplyResult,
+    SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
@@ -675,9 +676,9 @@ export default class Ws implements SchemeHandler {
         return { channels };
     }
 
-    static #passthrough(result: import("@plurnk/plurnk-schemes").SchemeResult): PassthroughResult & ChannelProducerResult {
+    static #passthrough(result: SchemeResult): PassthroughResult & ChannelProducerResult {
         return Results.assertChannelProducerResult(
-            { ...result, shape: "passthrough" } as PassthroughResult & ChannelProducerResult,
+            { ...result, shape: "passthrough" },
         );
     }
 

@@ -45,7 +45,7 @@ export default class MutationEffects {
     ): LineAnchorPrecondition | null {
         const present = values.filter((value): value is LineAnchorPrecondition => value !== null);
         if (present.length === 0) return null;
-        const identity = present[0]!.identity;
+        const identity = present[0].identity;
         if (present.some((value) => value.identity !== identity)) {
             throw new TypeError("Line-anchor preconditions for one edit batch must share a resource identity.");
         }

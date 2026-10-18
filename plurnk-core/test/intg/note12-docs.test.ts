@@ -15,7 +15,7 @@ class DocStub {
 
 test("{§schemes-directory}: scheme references preserve documentation without redundant entries", async () => {
     const registry = new SchemeRegistry();
-    registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
+    registry.register("docstub", new DocStub());
 
     const docs = await registry.docs();
     const stub = docs.find((d) => d.name === "docstub");

@@ -52,5 +52,5 @@ export const readDefinition = (value: unknown): ScheduleDefinition => {
 export const targetWorkerName = (target: string): string => {
     const match = TARGET.exec(target);
     if (match === null) throw new TypeError(`'${target}' is not a worker:// target.`);
-    return match[1]!;
+    return match[1];
 };

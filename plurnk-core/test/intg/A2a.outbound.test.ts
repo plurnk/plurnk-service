@@ -67,8 +67,8 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
     const remote = await client.getTask({ tenant: "", id: taskId });
     assert.equal(remote.status?.state, TaskState.TASK_STATE_CANCELED, "KILL reaches the standard A2A cancellation endpoint");
     const settled = await waitFor(() => wakes, (events) => events.length === 1, { timeoutMs: 4_000 });
-    assert.equal(settled[0]!.target, resource);
-    assert.equal(settled[0]!.result.status, 200, "{§stream-asked-stop}: the stop its holder asked for settles the local obligation, not a cancellation");
+    assert.equal(settled[0].target, resource);
+    assert.equal(settled[0].result.status, 200, "{§stream-asked-stop}: the stop its holder asked for settles the local obligation, not a cancellation");
 });
 
 test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path", async (t) => {
@@ -100,9 +100,9 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
     assert.equal(typeof started.resource, "string");
     const resource = started.resource as string;
     const concluded = await waitFor(() => wakes, (events) => events.length === 1, { timeoutMs: 4_000 });
-    assert.equal(concluded[0]!.target, resource);
-    assert.equal(concluded[0]!.result.status, 200);
-    assert.match(concluded[0]!.summary, /completed/);
+    assert.equal(concluded[0].target, resource);
+    assert.equal(concluded[0].result.status, 200);
+    assert.match(concluded[0].summary, /completed/);
 
     const provider = new Mock({
         contextWindow: 100_000,

@@ -96,7 +96,7 @@ test("{§functionality-scope} a child starts with a copy of its parent's state, 
 
         // Depth is transitive and provenance names the origin, not the intermediate.
         const carol = await insertWorker(db, workspaceId, bob, "carol");
-        assert.equal((await definitionsOf(db, carol)).CARGO_TARGET_DIR!.inherited, "alice", "a grandchild still names the Worker that set the entry");
+        assert.equal((await definitionsOf(db, carol)).CARGO_TARGET_DIR.inherited, "alice", "a grandchild still names the Worker that set the entry");
 
         // A parentless Worker inherits nothing.
         const loner = await insertWorker(db, workspaceId, null, "loner");

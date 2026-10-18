@@ -395,7 +395,7 @@ test("{§proposal-outcome-terse-error} file.edit: rejection leaves file untouche
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate)
-        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${target}` });
+        await ctx.db.test_seed_entry_workspace.get({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
         await writeFile(join(root, target), "original\n", "utf8");
         await MembershipMaterialization.materializeMember(target, root, makeSchemeCtx({ ...ctx, mimetypes: DEFAULT_MIMETYPES }), new Map());
 
@@ -587,7 +587,7 @@ test("file.read: reads the materialized entry beside the edit path", async () =>
             db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, weigh: (t: string) => t.length,
         };
-        await EntryCrud.writeEntry({ authority: "", pathname: `${target}` }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: target }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({

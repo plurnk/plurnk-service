@@ -12,26 +12,26 @@ for (const op of ["READ", "FIND"]) {
             assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
             const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
             assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", op]);
-            assert.equal("body" in statements[0]! ? statements[0]!.body : undefined, body);
-            assert.equal("body" in statements[1]! ? statements[1]!.body : undefined, null);
-            assert.equal("matcher" in statements[1]! ? statements[1]!.matcher : undefined, null);
-            assert.equal(statements[1]!.aside, null);
+            assert.equal("body" in statements[0] ? statements[0].body : undefined, body);
+            assert.equal("body" in statements[1] ? statements[1].body : undefined, null);
+            assert.equal("matcher" in statements[1] ? statements[1].matcher : undefined, null);
+            assert.equal(statements[1].aside, null);
             const canonical = PlurnkParser.stringify(statements);
             assert.equal(canonical, `${PlurnkParser.frame("NOTE", body)}\n\n${PlurnkParser.frame(`${op} (config.ts)`, null)}`);
             const again = PlurnkParser.parse(canonical);
             assert.deepEqual(again.items.filter((item) => item.kind === "error"), []);
             const reasoning = PlurnkParser.parseReasoningOperations(source);
             assert.deepEqual(reasoning.map((statement) => statement.op), ["NOTE", op]);
-            assert.equal(reasoning[0]!.body, body);
+            assert.equal(reasoning[0].body, body);
         });
     }
     test(`{§retrieval-annotation}: ${op} keeps header selection independent of its annotation`, () => {
         const parsed = PlurnkParser.parse(PlurnkParser.frame(`${op} (config.ts) /timeout/ <!-- inspect -->`, "/not-a-selector/"));
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.equal("body" in statements[0]! ? statements[0]!.body : undefined, "/not-a-selector/");
-        assert.equal("matcher" in statements[1]! ? statements[1]!.matcher?.raw : undefined, "/timeout/");
-        assert.equal(statements[1]!.aside, "inspect");
+        assert.equal("body" in statements[0] ? statements[0].body : undefined, "/not-a-selector/");
+        assert.equal("matcher" in statements[1] ? statements[1].matcher?.raw : undefined, "/timeout/");
+        assert.equal(statements[1].aside, "inspect");
     });
 }
 
@@ -41,5 +41,5 @@ test("{§retrieval-annotation}: grouped READs retain one annotation; quoted oper
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", "READ", "READ"]);
-    assert.equal("body" in statements[0]! ? statements[0]!.body : undefined, body);
+    assert.equal("body" in statements[0] ? statements[0].body : undefined, body);
 });

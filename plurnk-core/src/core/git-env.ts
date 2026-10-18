@@ -47,7 +47,7 @@ export const declaredFilterProgram = async (repository: string, signal?: AbortSi
             cwd: repository, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv(repository),
         });
         const first = stdout.split("\n").find((line) => line.length > 0);
-        return first === undefined ? null : first.split(" ", 1)[0]!;
+        return first === undefined ? null : first.split(" ", 1)[0];
     } catch (cause) {
         if ((cause as { code?: unknown }).code === 1) return null; // no such key
         throw new Error(`Git configuration inspection failed for '${repository}'.`, { cause });

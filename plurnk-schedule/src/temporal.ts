@@ -3,7 +3,7 @@
 // Temporal surface and refuses to load on a runtime without it.
 import type { TemporalImplementation, TemporalZonedDateTime } from "rrule-temporal";
 
-export interface TemporalRuntime extends TemporalImplementation<TemporalZonedDateTime> {
+export interface TemporalRuntime extends TemporalImplementation {
     readonly Instant: {
         fromEpochMilliseconds(epochMilliseconds: number): {
             toZonedDateTimeISO(timeZone: string): TemporalZonedDateTime;

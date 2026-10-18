@@ -9,6 +9,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { seedEntryWithChannel } from "./_db.ts";
 import { namedModelWorker } from "./_workers.ts";
+import type { LoopUsage } from "../../src/core/Engine.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
@@ -232,7 +233,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: import("../../src/core/Engine.ts").LoopUsage }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: LoopUsage }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
@@ -412,7 +413,7 @@ test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme
             }>({ loop_id: result.loopId })).filter(({ op, origin }) => op === "READ" && origin === "_plurnk");
             assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === null && pathname === "literal (file).txt" && status_rx === 200));
             assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === "worker" && pathname === "/reference.txt" && status_rx === 200), JSON.stringify(reads));
-            const packet = mock.received[0]!.map(chatMessageText).join("\n");
+            const packet = mock.received[0].map(chatMessageText).join("\n");
             assert.match(packet, /local-file-evidence/u);
             assert.match(packet, /scheme-channel-evidence/u);
         } finally { ws.close(); }

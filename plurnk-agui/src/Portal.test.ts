@@ -87,7 +87,7 @@ const worker = (
     origin: "model",
     owner: OWNER,
     parentWorkerId,
-    kind: (parentWorkerId === null ? "root" : "work") as "root" | "fork" | "work",
+    kind: (parentWorkerId === null ? "root" : "work"),
     lifecycle: "idle" as const,
 });
 
@@ -209,9 +209,9 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     spent = 4;
     settled();
     assert.equal(held.length, 2);
-    held[1]!();
+    held[1]();
     await drain();
-    held[0]!();
+    held[0]();
     await drain();
     assert.deepEqual(spends(), [2, 4], "the later read is published; the earlier one, completing last, is not");
     hold = false;
@@ -260,8 +260,8 @@ test("{§agui-worker-owner} {§agui-proposal-resolve}: an idle owner receives a 
     await nextTask();
     assert.equal(owner.interrupts.length, 1, "the owner receives the gate");
     const [gate] = owner.interrupts;
-    assert.equal(gate!.toolCallId, undefined, "the owner's Run holds no call of that worker: the gate names none");
-    assert.deepEqual([gate!.metadata?.plurnk?.proposal?.worker, gate!.metadata?.plurnk?.proposal?.coordinate], ["worker-20", "1/1/5"],
+    assert.equal(gate.toolCallId, undefined, "the owner's Run holds no call of that worker: the gate names none");
+    assert.deepEqual([gate.metadata?.plurnk?.proposal?.worker, gate.metadata?.plurnk?.proposal?.coordinate], ["worker-20", "1/1/5"],
         "its interrupt carries Core's projection: the worker by name, the row by its coordinate");
     assert.equal(observer.interrupts.length, 0);
     portal.stop();
@@ -496,8 +496,8 @@ test("{§agui-gate-deferral}: a descendant gate arriving during the bound worker
     const gate = batches.findIndex(({ interrupts }) => interrupts.length > 0);
     assert.ok(gate >= 0, "the held gate is presented once the lifecycle ends");
     assert.ok(batches.slice(0, gate).some(({ events }) => events.some(({ type }) => type === EventType.REASONING_END)), "the reasoning message closes before the gate");
-    assert.ok(batches[gate]!.events.some(({ type }) => type === EventType.STEP_FINISHED), "the active step closes with the gate, before the interrupt ends the Run");
-    assert.deepEqual(batches[gate]!.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"], "the child's gate carries its projection");
+    assert.ok(batches[gate].events.some(({ type }) => type === EventType.STEP_FINISHED), "the active step closes with the gate, before the interrupt ends the Run");
+    assert.deepEqual(batches[gate].interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"], "the child's gate carries its projection");
     portal.stop();
 });
 
@@ -601,7 +601,7 @@ test("{§agui-proposal-resolve} a live proposal is the operation's call and an i
     m.fire(3, "log/entry", { entry: wireRow({ id: 42, worker_id: 10, loop_id: 7, sequence: 42, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
     assert.deepEqual(parts().slice(3), [["TOOL_CALL_START", "1/1/42"], ["TOOL_CALL_END", "1/1/42"], ["TOOL_CALL_RESULT", "1/1/42"]],
         "the operation's settlement folds onto the call the client holds, its arguments never resent, and answers it");
-    const settled = seen.filter(({ type }) => type === "TOOL_CALL_START").at(-1) as { metadata?: { plurnk?: { state?: unknown; status?: unknown } } };
+    const settled = seen.findLast(({ type }) => type === "TOOL_CALL_START") as { metadata?: { plurnk?: { state?: unknown; status?: unknown } } };
     assert.deepEqual([settled.metadata?.plurnk?.state, settled.metadata?.plurnk?.status], ["resolved", 200], "with the settled facts");
 
     assert.equal(portal.cancel(10), true);

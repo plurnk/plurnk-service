@@ -35,7 +35,7 @@ for (const separator of ["\n", "\r\n", "\r"]) {
     ]) test(`{§edit-anchor-continuity}: ${JSON.stringify(separator)} <${fixture.marks}> preserves an untouched line`, () => {
         const source = original.replaceAll("\n", separator);
         const sequence = new EditSequence();
-        const hash = LineAnchors.tokens(identity, source)[fixture.oldLine - 1]!;
+        const hash = LineAnchors.tokens(identity, source)[fixture.oldLine - 1];
         const updated = apply(sequence, source, { marks: fixture.marks as LineMarker["marks"] }, fixture.body.replaceAll("\n", separator));
         const snapshot = sequence.observe(identity, updated);
         assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, updated), { marks: [hash] }, snapshot.anchors), {
@@ -50,8 +50,8 @@ test("{§edit-anchor-continuity}: replaced lines stay invalid while adjacent tar
     const updated = apply(sequence, apply(sequence, original, { marks: [2] }, "TWO"), { marks: [0] }, "prefix");
     const snapshot = sequence.observe(identity, updated);
     const resolve = (hash: string) => LineAnchors.resolve(LineAnchors.tokens(identity, updated), { marks: [hash] }, snapshot.anchors);
-    assert.deepEqual(resolve(hashes[1]!), { ok: false, failure: { kind: "missing", anchor: hashes[1] } });
-    assert.deepEqual(resolve(hashes[2]!), { ok: true, marker: { marks: [4] } });
+    assert.deepEqual(resolve(hashes[1]), { ok: false, failure: { kind: "missing", anchor: hashes[1] } });
+    assert.deepEqual(resolve(hashes[2]), { ok: true, marker: { marks: [4] } });
 });
 
 test("{§edit-anchor-continuity}: a twin neighbourhood the program itself creates does not detach a carried binding", () => {
@@ -62,13 +62,13 @@ test("{§edit-anchor-continuity}: a twin neighbourhood the program itself create
     const snapshot = sequence.observe(identity, updated);
     const current = LineAnchors.tokens(identity, updated);
     assert.notEqual(current[2], current[8], "the new twins have distinct contextual anchors");
-    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }, snapshot.anchors), { ok: true, marker: { marks: [3] } }, "the binding names the line the packet published");
-    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }), { ok: false, failure: { kind: "missing", anchor: hashes[2] } }, "a different program cannot use the former ambiguous short window");
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]] }, snapshot.anchors), { ok: true, marker: { marks: [3] } }, "the binding names the line the packet published");
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]] }), { ok: false, failure: { kind: "missing", anchor: hashes[2] } }, "a different program cannot use the former ambiguous short window");
 });
 
 test("{§edit-anchor-continuity}: external drift and another program cannot reuse retained bindings", () => {
     const sequence = new EditSequence();
-    const hash = LineAnchors.tokens(identity, original)[2]!;
+    const hash = LineAnchors.tokens(identity, original)[2];
     const updated = apply(sequence, original, { marks: [2] }, "TWO");
     const drifted = updated.replace("four", "FOUR");
     for (const snapshot of [sequence.observe(identity, drifted), new EditSequence().observe(identity, updated)]) {
@@ -85,7 +85,7 @@ test("{§edit-anchor-continuity}: an unproved or reviewer-replaced result cannot
         { status: 200, receipt: projectEditReceipt(editReceipt(original, original.replace("five", "FIVE"), [{ marker: { marks: [5] }, body: "FIVE" }]), 0) },
     ]) {
         const sequence = new EditSequence();
-        const hash = LineAnchors.tokens(identity, original)[2]!;
+        const hash = LineAnchors.tokens(identity, original)[2];
         const updated = apply(sequence, original, { marks: [2] }, "TWO");
         sequence.settle(sequence.observe(identity, updated), statement({ marks: [5] }, "FIVE"), result);
         const snapshot = sequence.observe(identity, updated);
@@ -97,7 +97,7 @@ test("{§edit-anchor-continuity}: an unproved or reviewer-replaced result cannot
 
 test("{§edit-anchor-continuity}: retained bindings never cross resource identities", () => {
     const sequence = new EditSequence();
-    const hash = LineAnchors.tokens(identity, original)[2]!;
+    const hash = LineAnchors.tokens(identity, original)[2];
     const updated = apply(sequence, original, { marks: [2] }, "TWO");
     const other = "worker:///other.md";
     const snapshot = sequence.observe(other, updated);

@@ -87,7 +87,7 @@ test("{§provider-sdk-boundary} native cache accounting uses the SDK's total rat
                 inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 700, cacheWriteTokens: 200 },
             });
             assert.equal(result.usageRefusal, undefined);
-            assert.equal(calculateCostUsdDecimal(result.usage!, {
+            assert.equal(calculateCostUsdDecimal(result.usage, {
                 input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.2,
             }), "0.000126");
             assert.deepEqual(result.chargeEvidence.usage, streaming ? { output_tokens: 100 } : rawUsage);
@@ -137,7 +137,7 @@ test("{§provider-sdk-boundary} the transport performs exactly one physical requ
         }),
         (error) => APICallError.isInstance(error)
             && error.statusCode === 503
-            && error.isRetryable === false,
+            && ! error.isRetryable,
     );
     assert.equal(calls, 1);
 });

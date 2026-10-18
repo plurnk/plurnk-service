@@ -29,8 +29,8 @@ test("{§hooks-event-projection} operation phase/status select hooks without tre
     }
     const headless = EventProjection.project(42, "operation/event", { ...started, projectRoot: null });
     assert.equal(headless?.hook_event_name, "PreToolUse");
-    assert.equal(Object.hasOwn(headless!, "cwd"), false);
-    assert.equal(Object.hasOwn(headless!, "tool_response"), false);
+    assert.equal(Object.hasOwn(headless, "cwd"), false);
+    assert.equal(Object.hasOwn(headless, "tool_response"), false);
     assert.equal(EventProjection.project(42, "log/entry", { entry: { op: "READ" } }), null);
     assert.equal(EventProjection.project(42, "stream/concluded", { result: { status: 200 } }), null);
 });

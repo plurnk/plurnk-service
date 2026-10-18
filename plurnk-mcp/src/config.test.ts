@@ -49,10 +49,10 @@ test("{§mcp-plugin-configuration} plugin servers compose by scope, retain conte
         provenance: { kind: "plugin", source: join(root, "mcp.json"), reference: "/mcpServers/example" },
     }]);
     assert.equal(notices.length, 2);
-    assert.match(notices[0]!.message!, /server name must match/u);
-    assert.match(notices[1]!.message!, /legacy SSE transport is unsupported/u);
+    assert.match(notices[0].message!, /server name must match/u);
+    assert.match(notices[1].message!, /legacy SSE transport is unsupported/u);
     await writeFile(join(project, "mcp.json"), JSON.stringify({ mcpServers: { example: { command: "standalone" } } }));
-    const replaced = (await configuredDefinitions([project, global], floor, sources))[0]!;
+    const replaced = (await configuredDefinitions([project, global], floor, sources))[0];
     assert.equal(replaced.context, undefined);
     assert.deepEqual(replaced.definition, { name: "example", type: "stdio", command: "standalone" });
     const overridden = await configuredDefinitions([project, global], {

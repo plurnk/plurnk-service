@@ -244,7 +244,7 @@ export const providerFromSdkModel = ({
     }
     const rates = costOverride === null
         ? catalogRates
-        : { ...(catalogRates ?? {}), ...costOverride } as NonNullable<typeof catalogRates>;
+        : { ...catalogRates, ...costOverride } as NonNullable<typeof catalogRates>;
     const rateSource = costOverride === null
         ? "Models.dev catalog rates"
         : "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates";

@@ -16,8 +16,8 @@ for (const [tier, parse] of [
             assert.deepEqual(result.items.filter((item) => item.kind === "error" || item.kind === "text"), []);
             const ops = statements(result);
             assert.deepEqual(ops.map(writtenOp), ["SEND"]);
-            assert.equal(ops[0]!.op === "SEND" ? ops[0]!.body?.raw : null, body);
-            assert.deepEqual(ops[0]!.op === "SEND" ? ops[0]!.metadata : null, ["200"]);
+            assert.equal(ops[0].op === "SEND" ? ops[0].body?.raw : null, body);
+            assert.deepEqual(ops[0].op === "SEND" ? ops[0].metadata : null, ["200"]);
         }
     });
 
@@ -27,7 +27,7 @@ for (const [tier, parse] of [
             assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
             const ops = statements(result);
             assert.deepEqual(ops.map(writtenOp), ["SEND", "EDIT"]);
-            assert.equal(ops[1]!.op === "EDIT" ? ops[1]!.body : null, "replacement");
+            assert.equal(ops[1].op === "EDIT" ? ops[1].body : null, "replacement");
         }
     });
 

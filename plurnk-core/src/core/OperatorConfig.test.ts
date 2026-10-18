@@ -83,7 +83,7 @@ test("{§operator-config-discovery} concurrent first starts publish one complete
         }));
         assert.equal(starts.filter(({ created }) => created).length, 1);
         for (const start of starts) {
-            assert.equal(start.config, starts[0]!.config);
+            assert.equal(start.config, starts[0].config);
             assert.match(start.config, /^# PLURNK_SECRET=$/m);
             assert.equal(start.policy, "# Policy\nShared initial policy.\n");
         }

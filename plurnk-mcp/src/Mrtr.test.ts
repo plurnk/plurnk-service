@@ -44,12 +44,12 @@ test("one input_required round becomes one atomic client interaction", async () 
         assert.equal(JSON.stringify(requests[0]).includes("round-one"), false);
         assert.deepEqual(
             (requests[0]?.responseSchema.properties as Record<string, unknown> | undefined)
-                && Object.keys(requests[0]!.responseSchema.properties as object).toSorted(),
+                && Object.keys(requests[0].responseSchema.properties as object).toSorted(),
             ["approval", "profile"],
         );
-        const fields = requests[0]!.responseSchema.properties as Record<string, { description: string }>;
-        assert.equal(fields.profile!.description, "Who is making this request?");
-        assert.equal(fields.approval!.description, "Continue the batch operation?");
+        const fields = requests[0].responseSchema.properties as Record<string, { description: string }>;
+        assert.equal(fields.profile.description, "Who is making this request?");
+        assert.equal(fields.approval.description, "Continue the batch operation?");
         assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /Ada/);
     } finally {
         await connection.close();
@@ -116,7 +116,7 @@ test("form and URL responses are validated before retrying the origin", async ()
             undefined,
             async (request) => {
                 const fields = request.responseSchema.properties as Record<string, { description: string }>;
-                assert.equal(fields.authorize!.description, "Authorize the fixture in a browser.\nhttps://example.test/authorize");
+                assert.equal(fields.authorize.description, "Authorize the fixture in a browser.\nhttps://example.test/authorize");
                 assert.equal(
                     (request.arguments.requests as Record<string, { params?: { mode?: string } }>)
                         .authorize?.params?.mode,
@@ -136,7 +136,7 @@ test("resource reads and prompt retrievals share the same interaction contract",
     const operations: unknown[] = [];
     const interact: ClientInteractionHandler = async (request) => {
         operations.push(request.arguments.operation);
-        const key = Object.keys(request.arguments.requests as object)[0]!;
+        const key = Object.keys(request.arguments.requests as object)[0];
         return resolved({ [key]: { action: "accept", content: { confirm: true } } });
     };
     try {

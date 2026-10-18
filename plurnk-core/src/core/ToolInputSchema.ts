@@ -47,7 +47,7 @@ export default class ToolInputSchema {
             if (typeof value !== "object" || value === null) return;
             const ref = objectOf(value).$ref;
             if (typeof ref === "string") {
-                const id = ref.split("#", 1)[0]!;
+                const id = ref.split("#", 1)[0];
                 if (!documents.has(id)) {
                     const document = Validator.schemaByRef(id);
                     if (document !== null) {

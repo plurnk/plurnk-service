@@ -165,7 +165,7 @@ export default class Results {
         }
         if (hasRegion) Validator.assertTextRegion(record.region as TextRegion);
         if (hasEnclosingRegion) Validator.assertTextRegion(record.enclosingRegion as TextRegion);
-        return evidence as MatchEvidence;
+        return evidence;
     }
 
     static assertMatchEvidenceList(evidence: unknown): ReadonlyArray<MatchEvidence> {

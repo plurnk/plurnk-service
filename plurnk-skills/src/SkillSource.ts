@@ -57,7 +57,7 @@ const reason = (cause: unknown): string => {
     const failure = cause as { killed?: boolean; stderr?: unknown };
     if (failure.killed === true) return "it outran PLURNK_SKILLS_FETCH_TIMEOUT_MS";
     const text = typeof failure.stderr === "string" && failure.stderr.trim().length > 0 ? failure.stderr : messageOf(cause);
-    return text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0).at(-1) ?? messageOf(cause);
+    return text.split(/\r?\n/u).map((line) => line.trim()).findLast((line) => line.length > 0) ?? messageOf(cause);
 };
 
 export default class SkillSource {
@@ -145,7 +145,7 @@ export default class SkillSource {
         }
         const refs = new Map(listing.split("\n").filter((line) => line.includes("\t")).map((line) => {
             const [commit, name] = line.split("\t");
-            return [name!, commit!] as const;
+            return [name, commit] as const;
         }));
         const commit = ref === undefined
             ? refs.get("HEAD")
@@ -208,7 +208,7 @@ export default class SkillSource {
                         throw actionError("source-unreadable", 422, `'${located.location}' could not be unpacked: ${reason(cause)}`, { path: located.location, retryable: false }, cause);
                     }
                     const entries = await readdir(into, { withFileTypes: true });
-                    root = entries.length === 1 && entries[0]!.isDirectory() ? join(into, entries[0]!.name) : into;
+                    root = entries.length === 1 && entries[0].isDirectory() ? join(into, entries[0].name) : into;
                     break;
                 }
             }

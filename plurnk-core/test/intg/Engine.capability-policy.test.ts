@@ -17,7 +17,7 @@ import Turn from "../../src/core/Turn.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt, noteStmt } from "./_dsl.ts";

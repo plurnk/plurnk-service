@@ -4,7 +4,7 @@ import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./
 import { catalogSnapshot, resolveModel } from "@plurnk/plurnk-models";
 
 // Fireworks fixtures derive from the catalog: Models.dev retires ids, and a literal rots.
-const fireworksIds = Object.keys(catalogSnapshot()["fireworks-ai"]!);
+const fireworksIds = Object.keys(catalogSnapshot()["fireworks-ai"]);
 const fireworksNative = fireworksIds.find((id) => id.startsWith("accounts/fireworks/models/")
     && fireworksIds.filter((other) => other.endsWith(`/${id.split("/").at(-1)}`)).length === 1)!;
 const fireworksSuffix = fireworksNative.split("/").at(-1)!;
@@ -298,7 +298,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
         totalTokens: 12,
         inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 8, cacheWriteTokens: 0 },
     });
-    const expected = calculateCostUsdDecimal(response.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
+    const expected = calculateCostUsdDecimal(response.accounting[0].usage, catalogRatesOf("deepseek", "deepseek-v4-flash"));
     assert.match(String(expected), /^0\.0*[1-9]/, "the catalog prices this usage");
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",

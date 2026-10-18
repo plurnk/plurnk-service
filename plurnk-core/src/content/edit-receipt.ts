@@ -197,7 +197,7 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
             );
         }
         assertEffectReceipt(receipt.replacement);
-        return value as unknown as EditBatchReceipt;
+        return value as EditBatchReceipt;
     }
     exactFields(receipt, receiptFields(receipt, ["effects"]), "EDIT batch receipt");
     assertReceiptHead(receipt, "EDIT batch receipt");
@@ -205,7 +205,7 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
         throw new InvalidOperationResultError("EDIT batch receipt effects must be a non-empty array.");
     }
     for (const effect of receipt.effects) assertEffectReceipt(effect);
-    return value as unknown as EditBatchReceipt;
+    return value as EditBatchReceipt;
 };
 
 export const assertResourceEffects = (value: unknown): readonly ResourceEffect[] => {
@@ -314,7 +314,7 @@ const lineEffects = (
 ): EffectWithContextRange[] => {
     const before = splitLines(original);
     let offset = 0;
-    const effects: Array<EffectWithContextRange | undefined> = new Array(edits.length);
+    const effects = Array.from({ length: edits.length }, (): EffectWithContextRange | undefined => undefined);
     edits
         .map((edit, index) => ({
             edit,
@@ -379,7 +379,7 @@ const codePointEffects = (
     updated: string,
     edits: readonly ReceiptEdit[],
 ): EffectWithContextRange[] => {
-    const effects: Array<EffectWithContextRange | undefined> = new Array(edits.length);
+    const effects = Array.from({ length: edits.length }, (): EffectWithContextRange | undefined => undefined);
     let offset = 0;
     edits
         .map((edit, index) => {

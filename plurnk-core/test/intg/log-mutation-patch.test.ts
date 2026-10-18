@@ -10,7 +10,6 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { applyPatch, parsePatch, reversePatch } from "diff";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
@@ -63,7 +62,7 @@ const runtime = async (t: TestContext) => {
         const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
-        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement as PlurnkStatement });
+        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
         const written = await row(ids.workerId, sequence);
         assert.ok(written, source);
         const parsed = JSON.parse(written.rx) as { content?: unknown };
@@ -84,7 +83,7 @@ test("{§log-mutation-patch} every settled text mutation keeps its diff on its r
     assert.equal(await readFile(join(root, "a.md"), "utf8"), "one\nTWO\nthree\n");
     // The diff is exact enough to undo: reverse-apply it to the written file and the original returns.
     const [hunk] = parsePatch(edited.patch);
-    assert.equal(applyPatch("one\nTWO\nthree\n", reversePatch(hunk!)), ORIGINAL, "reverse-applying the row's patch restores the original text");
+    assert.equal(applyPatch("one\nTWO\nthree\n", reversePatch(hunk)), ORIGINAL, "reverse-applying the row's patch restores the original text");
     assert.doesNotMatch(edited.rx, /current\n\+\+\+/u, "the receipt carries no patch");
 
     const created = await dispatch("````EDIT (new.md)\nhello\n````");

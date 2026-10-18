@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { LineMarker, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { LineMarker, MatcherBody, ParsedPath, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
@@ -36,7 +36,7 @@ const readStatement = (opts: {
 
 const findStatement = (opts: {
     target?: ParsedPath | null; matcher?: MatcherBody | null; lineMarker?: LineMarker | null;
-}): import("@plurnk/plurnk-contracts").FindStatement => ({
+}): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
     target: opts.target ?? null,

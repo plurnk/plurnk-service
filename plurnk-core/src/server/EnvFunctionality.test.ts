@@ -78,9 +78,9 @@ test("{§env-functionality} admit refuses a non-string value", async () => {
 
 test("{§env-functionality} discover projects the configuration catalog as addable candidates", async () => {
     const [candidate] = await adapter.discover({ query: "PAGER" }, identity);
-    assert.equal(candidate!.alias, "PAGER");
-    assert.equal(valueOf(candidate!.definition), "cat");
-    assert.equal(candidate!.provenance.source, "@plurnk/plurnk-execs");
+    assert.equal(candidate.alias, "PAGER");
+    assert.equal(valueOf(candidate.definition), "cat");
+    assert.equal(candidate.provenance.source, "@plurnk/plurnk-execs");
 });
 
 test("{§env-functionality} discover distinguishes an unknown source from a known source with no matches", async () => {
@@ -117,7 +117,7 @@ test("{§env-functionality} available projects what the ceiling admits, enabled,
         assert.deepEqual(available.map(({ alias }) => alias), ["ALPHA_FIRST", "ZED_LAST"], "sorted by name");
         // Values are projected: the ceiling is the security boundary, not this projection, and any
         // admitted name is already readable by every command the worker runs.
-        assert.equal(valueOf(available[0]!.definition), "a");
+        assert.equal(valueOf(available[0].definition), "a");
         assert.ok(available.every(({ enabled }) => enabled), "an admitted name is enabled until the worker disables it");
     } finally {
         delete process.env.ALPHA_FIRST;

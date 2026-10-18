@@ -69,9 +69,9 @@ export default class SpawnAccounts {
         }
         if (answer.status !== 0) throw unresolved(answer.status === null ? `was ended by ${answer.signal ?? "a signal"}` : `exited ${answer.status}`);
         const fields = answer.stdout.trim().split(":");
-        if (fields.length < 7 || fields[0] !== value || !/^\d+$/u.test(fields[2]!) || !/^\d+$/u.test(fields[3]!)) {
+        if (fields.length < 7 || fields[0] !== value || !/^\d+$/u.test(fields[2]) || !/^\d+$/u.test(fields[3])) {
             throw unresolved("answered a record that is not this account's");
         }
-        return { name: fields[0], uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5] === "" ? null : fields[5]! };
+        return { name: fields[0], uid: Number(fields[2]), gid: Number(fields[3]), home: fields[5] === "" ? null : fields[5] };
     }
 }

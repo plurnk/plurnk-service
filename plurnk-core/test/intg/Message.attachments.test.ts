@@ -37,13 +37,13 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400), 200);
         assert.equal(remote.executor.received.length, 1, "no dispatch occurs on partial acquisition failure");
-        const parts = remote.executor.received[0]!.userMessage.parts;
+        const parts = remote.executor.received[0].userMessage.parts;
         assert.equal(parts.length, 2, "the unselected resource was never exported");
-        assert.deepEqual(parts[0]!.content, { $case: "text", value: "Review this." });
-        assert.equal(parts[1]!.content?.$case, "raw");
-        assert.equal(parts[1]!.filename, "selected.md");
-        assert.equal(parts[1]!.mediaType, "text/markdown");
-        assert.deepEqual(parts[1]!.content?.value, new Uint8Array(Buffer.from("original")));
+        assert.deepEqual(parts[0].content, { $case: "text", value: "Review this." });
+        assert.equal(parts[1].content?.$case, "raw");
+        assert.equal(parts[1].filename, "selected.md");
+        assert.equal(parts[1].mediaType, "text/markdown");
+        assert.deepEqual(parts[1].content?.value, new Uint8Array(Buffer.from("original")));
         const rows = await daemon.readLog({ workspaceId, workerId, loopId: started.loopId });
         const failed = rows.filter((row) => row.op === "SEND" && row.status_rx === 404);
         assert.equal(failed.length, 1, "the source failure is a visible ordinary SEND failure");
@@ -89,9 +89,9 @@ for (const body of ["Inspect this.", ""]) test(`{§send-resource-attachments}: $
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), (loops) => loops.some((loop) => loop.status === 200));
         const received = (await daemon.readMessages({ workspaceId, workerId: receiver.workerId })).filter(({ direction }) => direction === "inbound");
         assert.equal(received.length, 1, "invalid SEND metadata is not discarded to deliver a different message");
-        assert.equal(received[0]!.attachments.length, 1);
-        assert.equal(Buffer.from(received[0]!.attachments[0]!.bytes).toString(), "original peer report");
-        assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /original peer report/u);
+        assert.equal(received[0].attachments.length, 1);
+        assert.equal(Buffer.from(received[0].attachments[0].bytes).toString(), "original peer report");
+        assert.match(provider.received[1].map(chatMessageText).join("\n"), /original peer report/u);
     } finally {
         await daemon.stop();
         await db.close();

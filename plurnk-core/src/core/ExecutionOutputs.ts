@@ -30,7 +30,7 @@ export default class ExecutionOutputs {
         return OutputScheme.manifestFromRuntime({
             name: target.scheme,
             channels: exact ? Object.fromEntries(entries.map((entry) => [entry.channel, entry.mimetype])) : {},
-            defaultChannel: exact ? entries[0]!.default_channel : "",
+            defaultChannel: exact ? entries[0].default_channel : "",
         });
     }
 }

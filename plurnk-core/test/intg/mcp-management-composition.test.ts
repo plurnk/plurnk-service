@@ -332,7 +332,7 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
     assert.equal(served.grants(), 2, "the same attachment re-acquires after its access token is rejected");
     assert.equal(served.calls(), 1, "the server executes the tool once, after authorization succeeds");
     assert.equal(provider.received.length, 2);
-    const packet = provider.received[1]!.map(chatMessageText).join("\n");
+    const packet = provider.received[1].map(chatMessageText).join("\n");
     assert.match(packet, /Application response: application proof/);
     assert.doesNotMatch(packet, /fixture-app-secret|fixture-app-access-/);
     const listed = await action(workspace, "workspace.mcp.list");
@@ -413,7 +413,7 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
         const events = await running;
         assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
         assert.equal(provider.received.length, 2);
-        assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /Complete observation result/);
+        assert.match(provider.received[1].map(chatMessageText).join("\n"), /Complete observation result/);
         assert.equal(events.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.notice"
             && (event.value as { kind?: string })?.kind === "mcp_progress").length, 1);
     } finally {
@@ -471,7 +471,7 @@ Observe the result.
             assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
             assert.equal(calls, 1, "validation never replays the remote operation");
             assert.equal(provider.received.length, 2);
-            const packet = provider.received[1]!.map(chatMessageText).join("\n");
+            const packet = provider.received[1].map(chatMessageText).join("\n");
             if (outcome === "valid") {
                 assert.match(packet, /structured-result evidence/);
                 assert.doesNotMatch(packet, /tool-call-failed|tool-reported-error/);

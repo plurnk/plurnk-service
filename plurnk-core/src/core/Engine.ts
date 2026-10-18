@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -584,7 +584,7 @@ export default class Engine {
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
-        respondent: import("@plurnk/plurnk-contracts").ApplicationOwnerIdentity,
+        respondent: ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
         await this.#interactions.resolve(interactionId, resolution, respondent, message);

@@ -195,8 +195,8 @@ test("{§db-migrations} {§packet-wire-envelope}: role evolution retains histori
             { role: "system", content: "system" },
             { role: "user", content: `## Log\n\nfirst record\n\nsecond record\n\n## Worker\n{"turn":3}\n\n## Previous Emission\n\n${previous}` },
         ], "old authorship is not rewritten by the new projector");
-        const current = { ...packet, sections: [sections[0]!, sections[1]!,
-            { ...sections[3]!, slot: "assistant" as const, header: null }, sections[2]!] };
+        const current = { ...packet, sections: [sections[0], sections[1],
+            { ...sections[3], slot: "assistant" as const, header: null }, sections[2]] };
         const id = await insertPacketTurn(db, 1, 2, current, 200);
         const stored = StoredPacket.parse((await db.test_get_packet.get<{ packet: string }>({ id }))!.packet)!;
         assert.deepEqual(PacketWire.packetToWireMessages(stored), [

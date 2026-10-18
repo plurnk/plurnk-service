@@ -48,7 +48,7 @@ const openRequest = async (
     const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
     assert.equal(turn.sequence, turnSequence);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
-        turn_id: turn!.id,
+        turn_id: turn.id,
         kind: "emission",
         attributions: "[]",
         model: accounting.model,

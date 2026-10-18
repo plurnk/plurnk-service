@@ -54,7 +54,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(result.finalStatus, 200);
         assert.equal(calls, 1, "READs retrieve retained output without repeating the MCP tool call");
         const packet = async (index: number) => {
-            const stored = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![index]! });
+            const stored = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![index] });
             assert.ok(stored);
             return logEntries(JSON.parse(stored.packet));
         };
@@ -63,7 +63,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(invocation);
         assert.equal(invocation.lines, undefined);
         assert.equal(invocation.path, undefined, "the invoked tool is already named by its paired operation");
-        assert.ok(provider.received[1]!.some((message) => message.role === "assistant" && chatMessageText(message) === frame("fixture (inspect)", body)),
+        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === frame("fixture (inspect)", body)),
             "the complete invocation remains distinct from its output");
         const automatic = observed.find((row) => row.path === invocation.stream && String(row.logPath).endsWith("/READ"));
         assert.ok(automatic);
@@ -72,12 +72,12 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
         const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(String(row.logPath)) && row.status === 416);
         assert.ok(failed);
-        assert.ok(provider.received[2]!.some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${String(invocation.logPath)}) <17,40>`, null)));
+        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${String(invocation.logPath)}) <17,40>`, null)));
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
         if (body === null) assert.equal((failed.problem as { stream: string }).stream, invocation.stream);
         const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/READ$/u.test(String(row.logPath)) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
-        assert.ok(provider.received[3]!.some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${String(invocation.stream)}) <17,40>`, null)));
+        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${String(invocation.stream)}) <17,40>`, null)));
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");
         assert.equal(explicit.range, "<17,40> of 40 lines");
         assert.match(String(explicit.body), /40:result 40\n$/u);

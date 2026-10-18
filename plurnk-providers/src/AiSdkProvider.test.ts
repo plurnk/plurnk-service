@@ -1732,7 +1732,7 @@ test("{§diagnostic-observation} billed output tokens vastly beyond the visible 
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const escape = res.notices?.find((e) => e.kind === "output_unaccounted");
     assert.ok(escape, "escape notice attached");
-    assert.equal(escape!.message, "5000 output tokens billed; 1 visible across content and reasoning.", "the notice states the counts, never a cause ({§diagnostic-observation})");
+    assert.equal(escape.message, "5000 output tokens billed; 1 visible across content and reasoning.", "the notice states the counts, never a cause ({§diagnostic-observation})");
 });
 
 test("output_unaccounted is not reported without a transported grammar", async () => {
@@ -1902,7 +1902,7 @@ test("an operator grammar reaches the request body verbatim under llama style an
         const calls = installFetchJson({ ...jsonChoice, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
         const res = await p.generate({ workerId: "r", messages: [], grammar });
-        const body = JSON.parse(String(calls[0]!.init.body)) as { grammar?: unknown };
+        const body = JSON.parse(String(calls[0].init.body)) as { grammar?: unknown };
         if (grammarStyle === "llamacpp") {
             assert.equal(body.grammar, grammar, "the file's text, byte for byte");
             assert.deepEqual(res.grammarEvidence, { input: "ok", contentStart: 0, transported: true });
@@ -2097,7 +2097,7 @@ for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]])
         const calls = installFetch([{ choices: [{ delta: { content: "heard" } }] }]);
         const bytes = new Uint8Array([82, 73, 70, 70]);
         await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
-            { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: mediaType! },
+            { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: mediaType },
         ] }] });
         assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).messages, [{ role: "user", content: [
             { type: "text", text: "listen" },
@@ -2488,8 +2488,8 @@ test("rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob prese
     const p = testProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
     const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
     assert.deepEqual(res.rawBody, wire); // verbatim
-    assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].sampling_logprob, -0.1);
-    assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].token_id, 42);
+    assert.equal(res.rawBody.choices[0].logprobs.content[0].sampling_logprob, -0.1);
+    assert.equal(res.rawBody.choices[0].logprobs.content[0].token_id, 42);
     assert.equal(res.assistant.logprobs?.[0].token, "no"); // structured view still uses raw logprob
     mock.restoreAll();
 });
@@ -3047,7 +3047,7 @@ for (const streaming of [false, true]) {
             assert.equal(calls.length, 1, "one request, no retry");
             assert.equal(result.assistant.content, answer);
             assert.equal(result.assistant.finishReason, "stop");
-            assert.equal(result.assistant.reasoning, reasoning === "absent" ? null : parts[0]!.text);
+            assert.equal(result.assistant.reasoning, reasoning === "absent" ? null : parts[0].text);
             assert.equal(result.accounting[0]?.usage?.outputTokens, 520, "billed thoughts stay in the output count");
             assert.equal(result.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 500);
         });

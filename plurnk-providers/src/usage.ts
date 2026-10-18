@@ -211,7 +211,7 @@ export const normalizeUsage = (
     const missing = Object.entries(inputParts).filter(([, value]) => value === undefined);
     if (detailErrors.length === inputDetailErrors && inputTokens !== undefined && missing.length === 1) {
         const known = Object.values(inputParts).reduce<number>((sum, value) => sum + (value ?? 0), 0);
-        inputParts[missing[0]![0] as keyof typeof inputParts] = inputTokens - known;
+        inputParts[missing[0][0] as keyof typeof inputParts] = inputTokens - known;
     }
     const inputTokenDetails = nonEmptyDetails(inputParts);
     const outputTokenDetails = nonEmptyDetails({ textTokens, reasoningTokens: normalizedReasoning });

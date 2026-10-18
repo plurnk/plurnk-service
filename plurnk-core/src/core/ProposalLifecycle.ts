@@ -27,7 +27,7 @@ import Results, { OperationFailureError } from "./results.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
-import EntryAddressBinding from "./EntryAddressBinding.ts";
+import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { OrchestrationProposalAttrs } from "./mutation-types.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
@@ -630,8 +630,8 @@ export default class ProposalLifecycle {
             return {
                 resolution: {
                     ...withOutcome,
-                    ...(applyResult.body !== undefined ? { body: applyResult.body as string } : {}),
-                    ...(applyResult.result !== undefined ? { result: applyResult.result as object } : {}),
+                    ...(applyResult.body !== undefined ? { body: applyResult.body } : {}),
+                    ...(applyResult.result !== undefined ? { result: applyResult.result } : {}),
                 },
                 applied: applyResult,
             };

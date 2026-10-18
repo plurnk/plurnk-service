@@ -86,10 +86,10 @@ test("sister workers' initial messages have independent inbox rows and publicati
         const workerRows = await inboxOf(workerLoop);
         assert.equal(parentRows.length, 1, "the parent's message exists in its own loop's inbox");
         assert.equal(workerRows.length, 1, "the worker's message exists in ITS loop's inbox");
-        assert.equal(parentRows[0]!.body, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
-        assert.equal(workerRows[0]!.body, "the worker task");
-        assert.ok(parentRows[0]!.log_entry_id !== null && workerRows[0]!.log_entry_id !== null, "both were published");
-        assert.notEqual(parentRows[0]!.log_entry_id, workerRows[0]!.log_entry_id, "each became its own row");
+        assert.equal(parentRows[0].body, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
+        assert.equal(workerRows[0].body, "the worker task");
+        assert.ok(parentRows[0].log_entry_id !== null && workerRows[0].log_entry_id !== null, "both were published");
+        assert.notEqual(parentRows[0].log_entry_id, workerRows[0].log_entry_id, "each became its own row");
     } finally { await db.close(); }
 });
 

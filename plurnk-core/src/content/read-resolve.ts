@@ -30,7 +30,7 @@ export default class ReadResolve {
         if (visibleLines === undefined || visibleLines.length === 0) return preview;
         return { marks: preview.marks.map((mark, index) => {
             if (preview.marks.length === 4 && index % 2 === 1) return mark;
-            return visibleLines[Math.min(mark, visibleLines.length) - 1]!;
+            return visibleLines[Math.min(mark, visibleLines.length) - 1];
         }) as LineMarker["marks"] };
     }
 
@@ -71,7 +71,7 @@ export default class ReadResolve {
         const region = sliced.region === undefined || selectedContent === "" ? undefined : {
             ...sliced.region,
             ...(selection === undefined ? {} : {
-                startLine: selection.ordinals[0]!,
+                startLine: selection.ordinals[0],
                 endLine: selection.ordinals.at(-1)!,
                 ...(selection.ordinals[0] === sliced.region.startLine ? {} : { startColumn: 1 }),
                 ...(selection.ordinals.at(-1) === sliced.region.endLine ? {} : {
@@ -83,7 +83,7 @@ export default class ReadResolve {
             unit: sliced.range.unit,
             total: sliced.range.total,
             requested: sliced.range.requested,
-            ...(selection.ordinals.length === 0 ? {} : { returned: [selection.ordinals[0]!, selection.ordinals.at(-1)!] as [number, number] }),
+            ...(selection.ordinals.length === 0 ? {} : { returned: [selection.ordinals[0], selection.ordinals.at(-1)!] as [number, number] }),
         };
         return {
             status: selectedContent === "" ? 204 : 200,

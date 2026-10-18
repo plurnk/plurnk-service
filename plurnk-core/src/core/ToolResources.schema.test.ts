@@ -17,6 +17,7 @@ const schema = {
     },
     $defs: { selector: { oneOf: [{ type: "string" }, { type: "integer" }] } },
     if: { properties: { mode: { const: "all" } } },
+    // oxlint-disable-next-line unicorn/no-thenable -- JSON Schema's if/then keyword, not a thenable
     then: { required: ["page"] },
     additionalProperties: false,
 };
@@ -43,14 +44,14 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
-    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
-    assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
-    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
+    assert.doesNotMatch(family.content, /page|oneOf|Selection|minItems/);
+    const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
     assert.equal(parsed.title, "gitea: issue/read");
     assert.deepEqual(parsed.properties, schema.properties);
     assert.deepEqual(parsed.required, schema.required);
-    assert.doesNotMatch(detail!.content, /^## Summary$/m, "schema docs do not impersonate runtime summaries");
+    assert.doesNotMatch(detail.content, /^## Summary$/m, "schema docs do not impersonate runtime summaries");
     assert.deepEqual(schema, before, "projection never mutates a server's schema");
     assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.json");
 });
@@ -61,9 +62,9 @@ test("{§executor-input-schema-preview} complex conditional requirements stay in
         { properties: { second: { type: "number" } }, required: ["second"] },
     ] };
     const [family, detail] = render("conditional", conditional);
-    assert.match(family!.content, /-->\n\{\}\n/);
-    assert.doesNotMatch(family!.content, /first|second|oneOf/);
-    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    assert.match(family.content, /-->\n\{\}\n/);
+    assert.doesNotMatch(family.content, /first|second|oneOf/);
+    const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
 
@@ -89,16 +90,16 @@ test("{§executor-tool-catalog} links an exact JSON catalog without changing the
     assert.ok(catalog, "the family has a sibling JSON catalog");
     assert.deepEqual(JSON.parse(catalog.content), { tools: definitions });
     assert.equal(catalog.content, JSON.stringify({ tools: definitions }, null, 2));
-    assert.match(resources[0]!.content, /worker:\/\/\/_plurnk\/tools\/gitea\.json/);
-    assert.doesNotMatch(resources[0]!.content, /outputSchema|vendor|revision/);
+    assert.match(resources[0].content, /worker:\/\/\/_plurnk\/tools\/gitea\.json/);
+    assert.doesNotMatch(resources[0].content, /outputSchema|vendor|revision/);
     assert.deepEqual(resources.slice(1, 3).map(({ pathname }) => pathname), [
         "/_plurnk/tools/gitea/issue%2Fread.json", "/_plurnk/tools/gitea/issue_write.json",
     ], "individual input schemas remain separately readable");
     const withoutDefinitions = ToolResources.render({ ...source, registry: {
         tools: tools.map(({ target, summary, invocation }) => ({ target, summary, invocation })),
     } });
-    const summary = (content: string) => content.split("## Summary\n\n")[1]!.split("\n\n")[0];
-    assert.equal(summary(resources[0]!.content), summary(withoutDefinitions[0]!.content));
+    const summary = (content: string) => content.split("## Summary\n\n")[1].split("\n\n")[0];
+    assert.equal(summary(resources[0].content), summary(withoutDefinitions[0].content));
     assert.ok(!withoutDefinitions.some(({ pathname }) => pathname === catalog.pathname));
     assert.deepEqual(ToolResources.render({ ...source, registry: { tools: [] } }), []);
     assert.deepEqual(definitions, before);
@@ -117,7 +118,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
     const family = (summary: string) => ToolResources.render({
         runtime: "brave", summary, details: "", invocation: tool.invocation,
         registry: { tools: [tool, { ...tool, target: "news" }] },
-    })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
+    })[0].content.split("## Summary\n\n")[1].split("\n\n")[0];
     const heading = "```brave (search) <!-- Search documents -->";
     assert.equal(family(`${heading}\`\`\``), `${heading}\\n{"query": ""}\\n\`\`\``);
     for (const authored of [
@@ -131,7 +132,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
 
 test("{§tools-resource-discovery} aside normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
-    assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: worker://${detail.pathname} -->`));
 });
 
 test("{§executor-input-schema-preview} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -139,22 +140,22 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
         runtime: "query", summary: "Run a query.", details: description, registry: null,
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
     });
-    assert.equal(detail!.pathname, "/_plurnk/plurnk/query/input.json");
-    assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
-    assert.ok(family!.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
-    assert.deepEqual((JSON.parse(detail!.content) as Record<string, unknown>).properties, schema.properties);
+    assert.equal(detail.pathname, "/_plurnk/plurnk/query/input.json");
+    assert.ok(family.content.includes(`Schema: worker://${detail.pathname} -->`));
+    assert.ok(family.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
+    assert.deepEqual((JSON.parse(detail.content) as Record<string, unknown>).properties, schema.properties);
 });
 
 test("{§executor-input-schema-preview} includes original repository-owned referenced schemas without fetching external references", () => {
     const ref = "https://schemas.plurnk.xyz/v0/McpServerDefinition.json";
     const input = { type: "object", required: ["definition"], properties: { definition: { $ref: ref } } };
     const [, detail] = render("mcp", input);
-    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.properties, input.properties);
     assert.deepEqual((parsed.$defs as Record<string, unknown>)[ref], Validator.schemaByRef(ref));
     const external = { $ref: "https://not-a-server.invalid/schema.json" };
     const [, extDetail] = render("external", external);
-    assert.equal((JSON.parse(extDetail!.content) as Record<string, unknown>).$ref, external.$ref);
+    assert.equal((JSON.parse(extDetail.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
 test("{§executor-input-schema-preview} a required closed set of strings shows its values; a long or mixed set keeps its type (#762)", () => {
@@ -204,7 +205,7 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
                 },
             },
         }] },
-    })[0]!.content;
+    })[0].content;
     assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(\+2 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 
     const noOptions = ToolResources.render({
@@ -221,6 +222,6 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
                 },
             },
         }] },
-    })[0]!.content;
+    })[0].content;
     assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 });

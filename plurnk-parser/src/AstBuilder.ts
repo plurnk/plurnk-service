@@ -45,7 +45,8 @@ import type {
     ReadStatementContext,
     StatementContext,
     MidStatementContext,
-} from "./generated/plurnkParser.ts";
+
+    TargetWithMetadataContext } from "./generated/plurnkParser.ts";
 import {
     BodyContext,
     LineMarkerContext,
@@ -53,7 +54,6 @@ import {
     DispositionStatementContext,
     SendStatementContext,
     TargetContext,
-    TargetWithMetadataContext,
     plurnkParser,
 } from "./generated/plurnkParser.ts";
 import { PathSyntax, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
@@ -121,7 +121,7 @@ export default class AstBuilder {
             const charge = /\s+(\u00B7[ \t]*(?:[0-9]+(?:[ \t]+tokens)?)?)\s*$/u.exec(text);
             if (charge !== null && charge.index > 0) {
                 text = text.slice(0, charge.index).trim();
-                AstBuilder.#adviseTrailing(position, AstBuilder.chargeAdvisory(charge[1]!));
+                AstBuilder.#adviseTrailing(position, AstBuilder.chargeAdvisory(charge[1]));
                 continue;
             }
             const note: { matcher: string; aside: string } | null = aside === null ? AstBuilder.#dotNote(text) : null;
@@ -146,7 +146,7 @@ export default class AstBuilder {
                 continue;
             }
             const trailingBlock = /\s*\[(\{[\s\S]*\})\]\s*$/u.exec(text);
-            if (trailingBlock !== null && metadataFree && trailingBlock.index > 0 && AstBuilder.#isJsonArrayOfObjects(trailingBlock[1]!)) {
+            if (trailingBlock !== null && metadataFree && trailingBlock.index > 0 && AstBuilder.#isJsonArrayOfObjects(trailingBlock[1])) {
                 metadata = trailingBlock[1]!;
                 metadataFree = false;
                 text = text.slice(0, trailingBlock.index).trim();
@@ -158,7 +158,7 @@ export default class AstBuilder {
         if (text === "") return null;
         // {§heading-slot-order} — a sigil pattern quoted in single backticks is that pattern (#758).
         const ticked = /^`([^`]+)`$/u.exec(text);
-        if (ticked !== null && AstBuilder.#SIGIL.test(ticked[1]!)) text = ticked[1]!;
+        if (ticked !== null && AstBuilder.#SIGIL.test(ticked[1])) text = ticked[1]!;
         if (AstBuilder.#SIGIL.test(text)) return { text, aside, scope, metadata };
         if (op !== "FIND" && op !== "READ" && op !== "KILL") return null;
         // {§bare-option-object} — here the same text is the matcher, and one advisory says so.
@@ -194,7 +194,7 @@ export default class AstBuilder {
         if (close === -1) return null;
         const note = /^([A-Za-z]*)\s+\u00B7[ \t]*(\S.*)$/u.exec(text.slice(close + 1));
         if (note === null) return null;
-        return { matcher: text.slice(0, close + 1 + note[1]!.length), aside: note[2]!.trim() };
+        return { matcher: text.slice(0, close + 1 + note[1].length), aside: note[2].trim() };
     }
 
     // The index of the slash that closes a `/pattern/` regex, or -1: escapes and character classes hold slashes.
@@ -215,7 +215,7 @@ export default class AstBuilder {
         if (target !== null || inline === null) return;
         const text = inline.trim();
         if (text === "" || AstBuilder.#SIGIL.test(text) || /^[<[`{\u00B7]/u.test(text)) return;
-        const word = text.split(/\s/u, 1)[0]!;
+        const word = text.split(/\s/u, 1)[0];
         throw new PlurnkParseError(position.line, position.column, "visitor",
             `\`${op}\` has no target: \`${word}\` stands where the target goes.`, "error", StatementShape.workingForm(op, false));
     }
@@ -300,7 +300,7 @@ export default class AstBuilder {
         const attaches = channel !== null && target!.fragment == null;
         if (attaches) {
             target!.fragment = channel[1]!;
-            if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]!}`;
+            if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]}`;
         }
         return {
             matcher: attaches ? null : AstBuilder.#parseMatcherBody(bare.text, position),
@@ -420,7 +420,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        AstBuilder.#bareTarget("READ", slots[0]!.target, split.inline, position);
+        AstBuilder.#bareTarget("READ", slots[0].target, split.inline, position);
         const lifted = AstBuilder.#liftSelections("READ", slots, position, split.inline);
         AstBuilder.#ignoreUnread("READ", AstBuilder.#unread(lifted.consumed, split.inline, null), position);
         const aside = AstBuilder.#asideOf(ctx) ?? lifted.aside;
@@ -453,7 +453,7 @@ export default class AstBuilder {
         aside: string | null;
         consumed: boolean;
     } {
-        const sole = slots.length === 1 ? slots[0]! : null;
+        const sole = slots.length === 1 ? slots[0] : null;
         if (sole !== null) {
             const lifted = AstBuilder.#liftMatcher(op, sole.metadata, position, raw, sole.lineMarker !== null, sole.target);
             return {
@@ -617,7 +617,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
-        const first = slots[0]!;
+        const first = slots[0];
         if (first.target === null) throw new PlurnkParseError(position.line, position.column, "parser", "KILL requires a target.");
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const shape = StatementShape.body("KILL", first);
@@ -812,7 +812,7 @@ export default class AstBuilder {
         // {§combined-anchor-tolerance} — `42<@abcde>` is the displayed row prefix copied whole: the
         // scope is the anchor, the digits are dropped, and one advisory names the anchor-only form.
         const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
-        const text = prefixed === null ? marker : prefixed[2]!;
+        const text = prefixed === null ? marker : prefixed[2];
         if (prefixed !== null && position !== undefined) {
             AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
                 `\`${marker}\` was read as the scope \`${text}\`; a scope takes the anchor without its displayed line number.`, "warning"));
@@ -841,7 +841,7 @@ export default class AstBuilder {
                     `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", AstBuilder.#OFFSET_RECOVERY);
             }
             const offset = Number(base[2] ?? 0) + Number(component.slice(1));
-            marks[index] = offset === 0 ? base[1]! : `${base[1]!}${offset > 0 ? "+" : ""}${offset}`;
+            marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;
         }
         return { marks: marks as [number | string, ...(number | string)[]] };
     }
@@ -863,7 +863,7 @@ export default class AstBuilder {
             throw new PlurnkParseError(position.line, position.column, "visitor",
                 `Scope ${text} requires a positive start and safe integer coordinates.`);
         }
-        const last = start + (relative === null ? end! - 1 : end!);
+        const last = start + (relative === null ? end - 1 : end);
         if (!Number.isSafeInteger(last)) {
             throw new PlurnkParseError(position.line, position.column, "visitor", `Scope ${text} exceeds safe integer coordinates.`);
         }
@@ -1031,10 +1031,10 @@ export default class AstBuilder {
     static #readAlternation(pattern: string, pos: Position): string {
         let out = ""; let read = false;
         for (let i = 0; i < pattern.length; i += 1) {
-            const ch = pattern[i]!;
+            const ch = pattern[i];
             if (ch === "\\" && i + 1 < pattern.length) {
                 if (pattern[i + 1] === "|") { out += "|"; read = true; i += 1; continue; }
-                out += ch + pattern[i + 1]!; i += 1; continue;
+                out += ch + pattern[i + 1]; i += 1; continue;
             }
             out += ch;
         }
@@ -1145,7 +1145,7 @@ export default class AstBuilder {
     static #liftInlineFlags(pattern: string, flags: string, pos: Position): { pattern: string; flags: string } {
         const inline = /^\(\?([ims]+)\)/u.exec(pattern);
         if (inline === null) return { pattern, flags };
-        const lifted = [...new Set([...flags, ...inline[1]!])].join("");
+        const lifted = [...new Set([...flags, ...inline[1]])].join("");
         AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
             `\`${inline[0]}\` was read as the \`${inline[1]}\` flag; an ECMAScript regex takes its flags after the closing \`/\`.`, "warning"));
         return { pattern: pattern.slice(inline[0].length), flags: lifted };

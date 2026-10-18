@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { ExecStatement, FindStatement, PlurnkStatement, ReadStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, PlurnkStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -159,9 +159,9 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
         await quiesceExecs(schemes);
         const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "resourcepublisher", name: "results" });
         const paths = JSON.parse(output!.content) as string[];
-        assert.match(paths[0]!, /^resourcepublisher:\/\/\/[a-f0-9]{8}\/resources\/note\.txt$/u);
-        assert.match(paths[1]!, /\/resources\/[a-f0-9]{8}$/u);
-        assert.match(paths[2]!, /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
+        assert.match(paths[0], /^resourcepublisher:\/\/\/[a-f0-9]{8}\/resources\/note\.txt$/u);
+        assert.match(paths[1], /\/resources\/[a-f0-9]{8}$/u);
+        assert.match(paths[2], /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
         const contents = [];
         for (const path of paths) {
             const read = await engine.dispatch({ statement: parseOne(`\`\`\`\`READ (${path}) <1,-1>\`\`\`\``), workspaceId, workerId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
@@ -169,7 +169,7 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
             contents.push(Results.assertReadResult(read).content);
         }
         assert.deepEqual(contents, ["first", "01\n02\nff", "second"]);
-        const directory = paths[0]!.slice(0, paths[0]!.lastIndexOf("/") + 1);
+        const directory = paths[0].slice(0, paths[0].lastIndexOf("/") + 1);
         const found = await engine.dispatch({ statement: parseOne(`\`\`\`\`FIND (${directory}*)\`\`\`\``), workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model" });
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("results" in found && Array.isArray(found.results));
@@ -389,7 +389,7 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"*large birds*\"}]````") as FindStatement,
+            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"*large birds*\"}]````"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -468,7 +468,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         assert.equal(stored?.pathname, "/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
-            statement: parseOne("````READ (https://example.org/people_%28current%29) <2,2>````") as ReadStatement,
+            statement: parseOne("````READ (https://example.org/people_%28current%29) <2,2>````"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -495,7 +495,7 @@ test("an exact HTTPS full-text FIND cannot leak or retarget a match from another
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"~birthday cake\"}]````") as FindStatement,
+            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"~birthday cake\"}]````"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
@@ -508,10 +508,10 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     globalThis.fetch = (async () => new Response("publisher home", {
         status: 200,
         headers: { "content-type": "text/plain" },
-    })) as typeof fetch;
+    }));
     try {
         const result = await engine.dispatch({
-            statement: parseOne("````READ (https://example.org/)````") as ReadStatement,
+            statement: parseOne("````READ (https://example.org/)````"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");
@@ -613,7 +613,7 @@ test("entry(content:null) preserves caller cancellation through the real WebFetc
         if (signal.aborted) cancel();
         else signal.addEventListener("abort", cancel, { once: true });
         started.resolve();
-    })) as typeof fetch;
+    }));
     try {
         const result = await engine.dispatch({
             statement: execStmt(tag, "cancelled"),

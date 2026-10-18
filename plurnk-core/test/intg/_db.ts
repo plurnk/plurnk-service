@@ -31,7 +31,7 @@ const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDire
 export const openMigrated = async (atPath?: string): Promise<Db> => {
     const dbPath = atPath ?? join(await artifactDirectory(), `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
-    const db = (await SqlRite.open({
+    const db = await SqlRite.open({
         path: dbPath,
         synchronous: sqliteSynchronous(),
         // The suite already runs eight isolated databases concurrently. One reader
@@ -44,7 +44,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
             resolve(PROJECT_ROOT, "test/intg"),
         ],
         functions: sqlFunctionPaths,
-    })) as unknown as Db;
+    });
     return db;
 };
 

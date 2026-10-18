@@ -72,19 +72,19 @@ export default class FencePairing {
         const hidden = run + declared;
         const ends = new Map<number, BlockEnd>();
         for (const [line, end] of result.ends) {
-            ends.set(lineStarts[line]!, end.kind === "end" ? end
-                : { ...end, offset: end.line < lineStarts.length ? lineStarts[end.line]! : [...input].length });
+            ends.set(lineStarts[line], end.kind === "end" ? end
+                : { ...end, offset: end.line < lineStarts.length ? lineStarts[end.line] : [...input].length });
         }
         return {
             ends,
-            surplus: new Set(result.surplus.map((line) => lineStarts[line]!)),
-            quotations: new Set(result.quotations.map((line) => lineStarts[line]!)),
-            splits: new Set(result.splits.map((line) => lineStarts[line]!)),
+            surplus: new Set(result.surplus.map((line) => lineStarts[line])),
+            quotations: new Set(result.quotations.map((line) => lineStarts[line])),
+            splits: new Set(result.splits.map((line) => lineStarts[line])),
             repairs: result.repairs,
             demotions,
             hidden,
             lineStarts,
-            selfClosed: new Set(lines.flatMap((line, index) => (line.kind === "heading" || line.kind === "closeThenHeading") && line.selfClosed ? [lineStarts[index]!] : [])),
+            selfClosed: new Set(lines.flatMap((line, index) => (line.kind === "heading" || line.kind === "closeThenHeading") && line.selfClosed ? [lineStarts[index]] : [])),
             lines: lines.map((line) => line.kind === "text" ? "text" : line.kind === "name" ? `name ${line.name}` : line.kind === "heading" ? `heading ${line.width}${line.selfClosed ? " closed" : ""}` : line.kind === "closeThenHeading" ? `close ${line.width} then heading ${line.headingWidth}${line.selfClosed ? " closed" : ""}` : `${line.kind} ${line.character}${line.width}${line.kind === "bare" && line.underFence ? " under-fence" : ""}`),
         };
     }
@@ -108,8 +108,8 @@ export default class FencePairing {
             previous = text;
         }
         for (const [index, line] of lines.entries()) {
-            if (line.kind !== "bare" || line.character !== "`" || /\S/u.test(raw[index]!.replace(/^ {0,3}`+/u, ""))) continue;
-            const split = FencePairing.#split(raw[index]!.trim(), (raw[index + 1] ?? "").replace(/\r$/u, ""), options);
+            if (line.kind !== "bare" || line.character !== "`" || /\S/u.test(raw[index].replace(/^ {0,3}`+/u, ""))) continue;
+            const split = FencePairing.#split(raw[index].trim(), (raw[index + 1] ?? "").replace(/\r$/u, ""), options);
             if (split !== null) lines[index] = { ...line, split };
         }
         return { lines, lineStarts };
@@ -131,20 +131,20 @@ export default class FencePairing {
 
     static #line(text: string, options: PairingOptions): Line {
         const naked = options.reasoning ? null : /^([A-Z]+)(?:[ \t]*(<!--(?:(?!-->)[^\r\n])*-->))?[ \t]*$/u.exec(text);
-        if (naked !== null && options.operations.has(naked[1]!)) return { kind: "name", name: naked[1]!, alone: naked[2] === undefined };
+        if (naked !== null && options.operations.has(naked[1])) return { kind: "name", name: naked[1], alone: naked[2] === undefined };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
-        const character = match[2]!.charAt(0) as FenceCharacter;
-        const width = match[2]!.length;
-        const tail = match[3]!;
+        const character = match[2].charAt(0) as FenceCharacter;
+        const width = match[2].length;
+        const tail = match[3];
         if (tail.trim() === "" || /^[ \t]*<!--.*-->[ \t]*$/u.test(tail)) return { kind: "bare", character, width, underFence: false };
         if (character === "`") {
             // A closer glued to the next opener ({§inline-chain}): six backticks then READ is a close
             // then a heading when the run splits into a closer and a known opener.
             const glued = /^[ \t]*(`{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(tail);
-            if (glued !== null && HeadingReader.opens(glued[2]!, glued[3]!, options.executors, options.reasoning)) {
-                const headingWidth = glued[1]!.length;
-                return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]!) };
+            if (glued !== null && HeadingReader.opens(glued[2], glued[3], options.executors, options.reasoning)) {
+                const headingWidth = glued[1].length;
+                return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]) };
             }
             // {§executor-heading}: recognition must agree with OPEN in the lexer, including unknown
             // names with explicit slots; availability never changes their syntactic shape.
@@ -181,7 +181,7 @@ const less = (a: Cost, b: Cost): boolean => {
     if (a[0] !== b[0]) return a[0] < b[0];
     if (a[1] !== b[1]) return a[1] < b[1];
     if (a[2] + a[7] !== b[2] + b[7]) return a[2] + a[7] < b[2] + b[7];
-    for (let k = 3; k < 6; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
+    for (let k = 3; k < 6; k++) if (a[k] !== b[k]) return a[k] < b[k];
     return false;
 };
 // Complete readings: every operation hidden or declared code block discarded counts alike, then supplied closers,
@@ -266,11 +266,11 @@ class Search {
         this.#raw = raw;
         this.#check = check;
         // Text lines only mark the innermost block non-empty, so a run of them is one step.
-        const next: number[] = new Array(lines.length + 1).fill(lines.length);
-        for (let i = lines.length - 1; i >= 0; i--) next[i] = lines[i]!.kind === "text" ? next[i + 1]! : i;
+        const next: number[] = Array.from({ length: lines.length + 1 }, () => lines.length);
+        for (let i = lines.length - 1; i >= 0; i--) next[i] = lines[i].kind === "text" ? next[i + 1] : i;
         this.#nextFence = next;
-        const written: boolean[] = new Array(lines.length + 1).fill(false);
-        for (let i = lines.length - 1; i >= 0; i--) { const line = lines[i]!; written[i] = line.kind === "text" && (line.blank !== true || written[i + 1]!); }
+        const written: boolean[] = Array.from({ length: lines.length + 1 }, () => false);
+        for (let i = lines.length - 1; i >= 0; i--) { const line = lines[i]; written[i] = line.kind === "text" && (line.blank !== true || written[i + 1]); }
         this.#writtenRun = written;
     }
 
@@ -305,12 +305,12 @@ class Search {
                 if (move.into !== undefined) {
                     frame = move.into; open = move.opener ?? -1;
                 }
-                current = this.#summary(move.next, frame, move.flags)[via[0]!]!;
+                current = this.#summary(move.next, frame, move.flags)[via[0]]!;
                 continue;
             }
-            const child = this.#summary(at(move.line + 1), move.child, FRESH)[via[0]!]!;
+            const child = this.#summary(at(move.line + 1), move.child, FRESH)[via[0]];
             this.#replay(child, move.child, move.line, result);
-            current = this.#summary(child.end, frame, move.flags)[via[1]!]!;
+            current = this.#summary(child.end, frame, move.flags)[via[1]]!;
         }
     }
 
@@ -339,7 +339,7 @@ class Search {
     #needed(frame: Frame): Frame | null {
         frame.moves ??= this.#framed(frame.position, frame.context, frame.flags);
         for (; frame.move < frame.moves.length; frame.move++, frame.entry = 0) {
-            const move = frame.moves[frame.move]!;
+            const move = frame.moves[frame.move];
             if (move.kind === "end") continue;
             if (move.kind === "stay") {
                 const missing = this.#missing(move.next, move.into === undefined ? frame.context : move.into, move.flags);
@@ -351,7 +351,7 @@ class Search {
             if (missing !== null) return missing;
             const child = this.#memo.get(this.#key(start, move.child, FRESH))!;
             for (; frame.entry < child.length; frame.entry++) {
-                const rest = this.#missing(child[frame.entry]!.end, frame.context, move.flags);
+                const rest = this.#missing(child[frame.entry].end, frame.context, move.flags);
                 if (rest !== null) return rest;
             }
         }
@@ -391,7 +391,7 @@ class Search {
                     offer({ end: rest.end, cost: add(add(move.cost, child.cost), rest.cost), key: [m, a, b], move, via: [a, b] })));
         });
         return [...new Set(best.values())].toSorted((x, y) => {
-            for (let k = 0; k < Math.min(x.key.length, y.key.length); k++) if (x.key[k] !== y.key[k]) return x.key[k]! - y.key[k]!;
+            for (let k = 0; k < Math.min(x.key.length, y.key.length); k++) if (x.key[k] !== y.key[k]) return x.key[k] - y.key[k];
             return x.key.length - y.key.length;
         });
     }
@@ -439,9 +439,9 @@ class Search {
         const heading = (position & 1) === 1;
         const marked: Flags = { ...flags, empty: false, written: true };
         if (i === this.#lines.length) { yield* this.#atEnd(context, flags); return; }
-        const line = this.#lines[i]!;
+        const line = this.#lines[i];
         if (line.kind === "text") {
-            yield { kind: "stay", cost: ZERO, effects: [], next: at(this.#nextFence[i]!), flags: { ...flags, empty: false, written: flags.written || this.#writtenRun[i]! } };
+            yield { kind: "stay", cost: ZERO, effects: [], next: at(this.#nextFence[i]), flags: { ...flags, empty: false, written: flags.written || this.#writtenRun[i] } };
             return;
         }
         if (heading) {

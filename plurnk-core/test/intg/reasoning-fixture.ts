@@ -11,7 +11,7 @@ export const statement = (source: string): PlurnkStatement => {
     const item = parsed.items[0];
     assert.equal(item?.kind, "statement");
     if (item?.kind !== "statement") throw new Error("Missing statement");
-    return item.statement as PlurnkStatement;
+    return item.statement;
 };
 
 export type Resource = { pathname: string; content: string };

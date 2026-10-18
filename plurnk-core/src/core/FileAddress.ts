@@ -32,7 +32,7 @@ export default class FileAddress {
         const parts = target.pathname.split("/");
         const rootParts = projectRoot === null ? [] : resolve(projectRoot).split("/");
         let common = 0;
-        while (common < rootParts.length && common < parts.length && decodeURIComponent(parts[common]!) === rootParts[common]) common++;
+        while (common < rootParts.length && common < parts.length && decodeURIComponent(parts[common]) === rootParts[common]) common++;
         // URI-encoded glob characters are filename data, even next to authored glob syntax.
         // The common filesystem base is removed by relativization, not matched as a glob.
         url.pathname = parts.map((part, index) => index < common ? part

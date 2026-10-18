@@ -48,7 +48,7 @@ const frames = (body: string): AguiEvent[] => body.split("\n\n")
             const [workspace] = await daemon.listWorkspaces();
             const [proposal] = await daemon.pendingProposals(workspace.id);
             assert.ok(proposal, "normal interrupt closure leaves the operation pending");
-            const response = await post({ resume: [{ interruptId: terminal.outcome.interrupts[0]!.id,
+            const response = await post({ resume: [{ interruptId: terminal.outcome.interrupts[0].id,
                 status: "resolved", payload: { decision: "accept" } }] }, AbortSignal.any([controller.signal, t.signal]));
             const body = assert.rejects(response.text(), { name: "AbortError" });
             await ready.promise;
@@ -104,10 +104,10 @@ test("{§agui-run-disconnect} {§connection-lifecycle}: an operation Run's disco
         await daemon.start();
         const mineBody = assert.rejects((await exec("mine", mine.signal)).text(), { name: "AbortError" });
         await waitForDb(async () => announced.filter((stream) => writing.has(stream)).length, (count: number) => count === 1);
-        const myCommand = announced[0]!;
+        const myCommand = announced[0];
         const theirBody = assert.rejects((await exec("theirs", theirs.signal)).text(), { name: "AbortError" });
         await waitForDb(async () => announced.filter((stream) => writing.has(stream)).length, (count: number) => count === 2);
-        const theirCommand = announced[1]!;
+        const theirCommand = announced[1];
 
         mine.abort();
         await mineBody;

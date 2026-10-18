@@ -17,7 +17,7 @@ process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -65,7 +65,7 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
     assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
     assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
-    assert.match(chatMessageText(second[3]!), /## Worker/u, "the footer follows the turn's receipts and PDF");
+    assert.match(chatMessageText(second[3]), /## Worker/u, "the footer follows the turn's receipts and PDF");
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
     assert.deepEqual(second[2], {
         role: "assistant",

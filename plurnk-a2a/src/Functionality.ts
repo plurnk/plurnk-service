@@ -85,7 +85,7 @@ const sameDefinition = (left: A2aAgentDefinition, right: A2aAgentDefinition): bo
 const resolveReference = (value: string, env: NodeJS.ProcessEnv, alias: string, field: string): string => {
     const match = ENV_REFERENCE.exec(value);
     if (match === null) return value;
-    const resolved = env[match[1]!];
+    const resolved = env[match[1]];
     if (resolved === undefined || resolved.length === 0) {
         throw failure("authorization-unresolved", 409, `A2A agent '${alias}' references ${value} in ${field}, which is not set in the service environment.`, { agent: alias, field, reference: value, retryable: false });
     }

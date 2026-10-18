@@ -174,7 +174,7 @@ describe("withExtractor — addRef (ANTLR refs grind)", () => {
     it("addRef stamps 1-indexed positions; top-level refs carry no container", () => {
         const V = withExtractor(StubVisitorBase);
         const v = new V();
-        v.addRef("call", "tokenize", ctx(12, 4, 12, 4, "tokenize") as never);
+        v.addRef("call", "tokenize", ctx(12, 4, 12, 4, "tokenize"));
         const [r] = v.refs;
         assert.equal(r.name, "tokenize");
         assert.equal(r.kind, "call");
@@ -187,12 +187,12 @@ describe("withExtractor — addRef (ANTLR refs grind)", () => {
     it("refs collected inside a gateContainer carry the dotted path", () => {
         class V extends withExtractor(StubVisitorBase) {
             override visitChildren(_node: unknown): unknown {
-                this.addRef("use", "accounts", ctx(5, 8, 5, 16, "accounts") as never);
+                this.addRef("use", "accounts", ctx(5, 8, 5, 16, "accounts"));
                 return null;
             }
         }
         const v = new V();
-        v.gateContainer("v_report", ctx(1, 0, 9, 0) as never);
+        v.gateContainer("v_report", ctx(1, 0, 9, 0));
         assert.equal(v.refs[0].container, "v_report");
     });
 

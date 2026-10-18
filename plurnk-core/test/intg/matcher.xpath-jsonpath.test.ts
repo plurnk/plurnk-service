@@ -74,7 +74,7 @@ test("jsonpath: $.host returns its flat match location", async () => {
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/config.json"), { dialect: "jsonpath", raw: "$.host" } as MatcherBody),
+            findStmt(urlPath("worker", "/config.json"), { dialect: "jsonpath", raw: "$.host" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -90,7 +90,7 @@ test("jsonpath: $.users[*].name reports each flat match location", async () => {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
+            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -106,7 +106,7 @@ test("jsonpath: $.users[*] returns each selected location", async () => {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody),
+            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*]" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -121,7 +121,7 @@ test("jsonpath filter reports non-sequential match coordinates", async () => {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" },\n    { "name": "Carol", "role": "admin" }\n  ]\n}');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[?(@.role=='admin')]" } as MatcherBody),
+            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[?(@.role=='admin')]" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -135,7 +135,7 @@ test("jsonpath: zero matches returns 204 with empty evidence", async () => {
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/empty.json", '{"users":[]}');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/empty.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
+            findStmt(urlPath("worker", "/empty.json"), { dialect: "jsonpath", raw: "$.users[*].name" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -149,7 +149,7 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not actually json");
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/notes"), { dialect: "jsonpath", raw: "$.field" } as MatcherBody),
+            findStmt(urlPath("worker", "/notes"), { dialect: "jsonpath", raw: "$.field" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 204);
@@ -165,7 +165,7 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
         await seedJson(db, workspaceId, workerId, mimetypes, "/doc.md",
             "# Intro\n\nopening\n\n# Installation\n\nrun npm install\n\n# Usage\n\nhello world\n");
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/doc.md"), { dialect: "jsonpath", raw: "$..text" } as MatcherBody),
+            findStmt(urlPath("worker", "/doc.md"), { dialect: "jsonpath", raw: "$..text" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 200);
@@ -182,7 +182,7 @@ test("xpath //h1/text(): reports each canonical locator", async () => {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
             "<html>\n<body>\n<h1>Welcome</h1>\n<p>intro</p>\n<h1>About</h1>\n</body>\n</html>");
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/page.html"), { dialect: "xpath", raw: "//h1/text()" } as MatcherBody),
+            findStmt(urlPath("worker", "/page.html"), { dialect: "xpath", raw: "//h1/text()" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -198,7 +198,7 @@ test("xpath //user/@email: attribute matches retain canonical locators", async (
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
             '<users>\n  <user email="alice@x.com"/>\n  <user email="bob@x.com"/>\n</users>');
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/users.html"), { dialect: "xpath", raw: "//user/@email" } as MatcherBody),
+            findStmt(urlPath("worker", "/users.html"), { dialect: "xpath", raw: "//user/@email" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -214,7 +214,7 @@ test("xpath //user node selection returns flat canonical locators", async () => 
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
             "<root>\n  <user>Alice</user>\n  <user>Bob</user>\n</root>");
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/page.html"), { dialect: "xpath", raw: "//user" } as MatcherBody),
+            findStmt(urlPath("worker", "/page.html"), { dialect: "xpath", raw: "//user" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -230,7 +230,7 @@ test("xpath predicate reports selected locators without dropping unselected cont
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
             "<root>\n  <user role='admin'>Alice</user>\n  <user role='viewer'>Bob</user>\n  <user role='admin'>Carol</user>\n</root>");
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/users.html"), { dialect: "xpath", raw: "//user[@role='admin']/text()" } as MatcherBody),
+            findStmt(urlPath("worker", "/users.html"), { dialect: "xpath", raw: "//user[@role='admin']/text()" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -249,7 +249,7 @@ test("xpath on markdown content with no structural match → 204", async () => {
         // xpath runs over the markdown deepXml (any type is queryable); `//h1`
         // matches no heading → zero results.
         const r = await new Worker().find(
-            findStmt(urlPath("worker", "/notes"), { dialect: "xpath", raw: "//h1" } as MatcherBody),
+            findStmt(urlPath("worker", "/notes"), { dialect: "xpath", raw: "//h1" }),
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
@@ -283,14 +283,14 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
         });
 
         const findRes = await new Worker().find(
-            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody),
+            findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$[*].name" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(findRes.status, 200);
         const matches = findRes.results as Array<{ region?: { startLine: number; startColumn: number; endLine: number; endColumn: number } }>;
         assert.equal(matches.length, 3);
 
-        const bob = matches[1]!;
+        const bob = matches[1];
         assert.ok(bob.region !== undefined);
         const surgical = await readThroughScheme("worker", null,
             {
@@ -320,13 +320,13 @@ test("an exact matcher FIND stores canonical locators as flat evidence", async (
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
         const result = await engine.dispatch({
-            statement: findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
+            statement: findStmt(urlPath("worker", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" }),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
-        const finds = rows.filter((r) => r.op === "FIND");
-        const res = JSON.parse(finds[0]!.rx) as {
+        const find = rows.find((r) => r.op === "FIND");
+        const res = JSON.parse(find!.rx) as {
             results: Array<{ locator?: string }>;
         };
         assert.deepEqual(
@@ -344,7 +344,7 @@ test("Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY iden
         { key: "1/2/3", content: "no match on this log row", mimetype: "text/markdown" },   // a log coordinate key
         { key: "worker:///b.md", content: "engine tuning notes", mimetype: "text/markdown" },
     ];
-    const r = await Matcher.matchCandidates({ dialect: "regex", raw: "/engine/", pattern: "engine", flags: "" } as MatcherBody, candidates, mimetypes);
+    const r = await Matcher.matchCandidates({ dialect: "regex", raw: "/engine/", pattern: "engine", flags: "" }, candidates, mimetypes);
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches.map((m) => m.key), ["worker:///a.md", "worker:///b.md"], "hits keyed by the caller's own identity — the matcher never cares whether it's an entry pathname or a log coordinate");
 });

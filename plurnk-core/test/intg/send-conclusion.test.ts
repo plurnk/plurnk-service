@@ -31,7 +31,7 @@ const setup = async (responses: MockResponse[]) => {
     const observer = await insertWorker(db, workspaceId, null, "observer");
     const notices: Notice[] = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-        noticeNotify: (_id, payload) => notices.push(payload.notice as Notice),
+        noticeNotify: (_id, payload) => notices.push(payload.notice),
     });
     await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead", {}, message, await sendingOperation(db, leadLoop));
     const provider = new Mock({ contextWindow: 100_000, responses });
@@ -311,13 +311,13 @@ test("{§outside-text}: a repetitive response beside operations is one NOTE per 
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
         const [, mixedTurn, proseTurn] = result.turnIds;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn! });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn });
         assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
         assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
         assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
             "a response with no fenced operation keeps every fragment as one outside source and mints no NOTE");
-        const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn! });
+        const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn });
         assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false);
         assert.deepEqual(proseRows.filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx), [422], "{§empty-turn}: the prose-only turn strikes once");
     } finally { await db.close(); }

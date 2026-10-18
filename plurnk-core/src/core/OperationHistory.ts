@@ -37,7 +37,7 @@ export default class OperationHistory {
             const body = LogBody.resolve({ op: typeof entry.op === "string" ? entry.op : null, attrs: entry.attrs, tx: entry.tx, rx: entry.rx });
             if (body.provenance === "authored" && LogVisibility.parse(entry.folded).length > 0) continue;
             const coordinate = String(entry.coordinate);
-            const statement = program[ordinal]!;
+            const statement = program[ordinal];
             paired.set(coordinate, { statement, tokens: 0 });
             const key = `${OperationHistory.#turn(entry)}/${ordinal}`;
             if (seen.has(key)) continue;

@@ -246,7 +246,7 @@ export default class EntryOps {
                     ...result,
                     entryId: existingEntryId,
                     channel: targetChannel,
-                }) as EditResult;
+                });
             }
             newContent = result.result ?? "";
             scopeNormalizations = result.scopeNormalizations;
@@ -469,6 +469,6 @@ export default class EntryOps {
             ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),
             ...(effectiveBytes === undefined ? {} : { bytes: effectiveBytes }),
             retainNative: (content) => NativeContent.retain(ctx.db, content),
-        }) as Promise<ReadResult>;
+        });
     }
 }

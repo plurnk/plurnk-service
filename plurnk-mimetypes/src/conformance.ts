@@ -217,7 +217,7 @@ export async function assertQueryEvidenceConformance(
                 Array.isArray(regions) && regions.length > 0,
                 `${label}: ${c.verdict} match has no region: ${JSON.stringify(m.matched)}`,
             );
-            for (const region of regions!) {
+            for (const region of regions) {
                 assertTextRegion(region, label);
             }
         }

@@ -15,7 +15,7 @@ const frontmatter = (file: string, source: string): { fields: Record<string, unk
     if (header === null) throw new Error(`${file}: Agent Skill frontmatter is not closed`);
     let metadata: unknown;
     try {
-        metadata = parseYaml(header[1]!);
+        metadata = parseYaml(header[1]);
     } catch (cause) {
         throw new Error(`${file}: Agent Skill frontmatter is invalid YAML`, { cause });
     }

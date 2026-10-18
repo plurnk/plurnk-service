@@ -11,7 +11,7 @@ import {
     type Tool,
 } from "@modelcontextprotocol/client";
 import { setTimeout as delay } from "node:timers/promises";
-import ExtensionChannel from "./extensionChannel.ts";
+import type ExtensionChannel from "./extensionChannel.ts";
 import {
     resolveInputRequests,
     remainingTimeout,
@@ -20,7 +20,7 @@ import {
 } from "./inputRequired.ts";
 import { mcpParamHeaders } from "./protocolHeaders.ts";
 import { MCP_TASKS_EXTENSION_ID } from "./protocol.ts";
-import Subscriptions from "./subscriptions.ts";
+import type Subscriptions from "./subscriptions.ts";
 
 // A Task server may suggest its poll interval; this is the adapter's own cadence when it does
 // not, and the least it will honour when it does.
@@ -261,7 +261,7 @@ const validateToolOutput = async (
     value: unknown,
 ): Promise<CallToolResult> => {
     const result = await parseCallToolResult({
-        ...(asRecord(value) ?? {}),
+        ...asRecord(value),
         resultType: "complete",
     });
     if (tool.outputSchema === undefined || result.isError === true) return result;

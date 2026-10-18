@@ -1,6 +1,6 @@
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
-import LoopLifecycle from "./LoopLifecycle.ts";
+import type LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import type { DispatchResult } from "./Dispatcher.ts";

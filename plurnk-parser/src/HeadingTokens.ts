@@ -24,7 +24,7 @@ export default class HeadingTokens {
             if (!HeadingTokens.#OPENERS.has(tokens[i].type)) { out.push(tokens[i]); continue; }
             let end = i + 1;
             while (end < tokens.length && (HeadingTokens.#SLOTS.has(tokens[end].type) || tokens[end].type === plurnkParser.ASIDE)) end++;
-            out.push(tokens[i]!, ...HeadingTokens.#heading(tokens.slice(i + 1, end)));
+            out.push(tokens[i], ...HeadingTokens.#heading(tokens.slice(i + 1, end)));
             i = end - 1;
         }
         return out;
@@ -35,17 +35,17 @@ export default class HeadingTokens {
         if (at === -1 || slots.filter((token) => token.type === plurnkParser.ASIDE).length !== 1) return slots;
         const after = slots.slice(at + 1);
         if (after.length === 0 || !HeadingTokens.#scopeOrOptions(after)) return slots;
-        return [...slots.slice(0, at), ...after, slots[at]!];
+        return [...slots.slice(0, at), ...after, slots[at]];
     }
 
     // Only line markers and `[{…}]` option blocks may follow the aside for it to move.
     static #scopeOrOptions(tokens: Token[]): boolean {
         for (let i = 0; i < tokens.length; i++) {
-            const token = tokens[i]!;
+            const token = tokens[i];
             if (token.type === plurnkParser.L_MARKER) continue;
             if (token.type !== plurnkParser.LBRACKET) return false;
-            if (tokens[i + 1]?.type !== plurnkParser.METADATA_TEXT || !tokens[i + 1]!.text?.trimStart().startsWith("{")) return false;
-            while (i < tokens.length && tokens[i]!.type !== plurnkParser.RBRACKET) i++;
+            if (tokens[i + 1]?.type !== plurnkParser.METADATA_TEXT || !tokens[i + 1].text?.trimStart().startsWith("{")) return false;
+            while (i < tokens.length && tokens[i].type !== plurnkParser.RBRACKET) i++;
             if (i === tokens.length) return false;
         }
         return true;

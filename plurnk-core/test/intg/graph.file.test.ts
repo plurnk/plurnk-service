@@ -38,7 +38,7 @@ const seed = async () => {
 
     // Materialize file entries exactly as git-membership does: writeEntry(scheme="file").
     for (const [pathname, content] of FILES) {
-        await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype: "text/typescript" } } }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname: pathname }, { channels: { body: { content, mimetype: "text/typescript" } } }, ctx, "file");
     }
     // Populate the graph through the pre-model persistent-index pass.
     await SearchIndex.maintain(ctx);

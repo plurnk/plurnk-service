@@ -14,7 +14,7 @@ test("{§slot-order}: SEND accepts completion metadata before its message path",
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(statements.length, 1);
-    const statement = statements[0]!;
+    const statement = statements[0];
     assert.equal(statement.op, "SEND");
     assert.equal(statement.target?.raw, "message://dogfood04/6094c6e9");
     assert.deepEqual(statement.metadata, ["200"]);

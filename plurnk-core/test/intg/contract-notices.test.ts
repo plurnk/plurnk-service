@@ -182,7 +182,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
                 ops,
                 reasoning: null,
             },
-        } as MockResponse);
+        });
         const scopedRead = readStmt(urlPath("worker", "/x"));
         scopedRead.lineMarker = { marks: [2, 1, 3] };
         const provider = new Mock({
@@ -245,7 +245,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                 ops,
                 reasoning: null,
             },
-        } as MockResponse);
+        });
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -323,7 +323,7 @@ test("provider error: a terminal kind is durable product truth, never a notices 
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
-            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
+            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [] });
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
@@ -362,7 +362,7 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
-            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
+            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -374,7 +374,7 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         assert.deepEqual(lifecycle.map((b) => b.payload.notice.kind), ["turn_awaiting_model", "turn_generated"], "two engine:turn beats, in generate()-bracket order");
         // {§turn-accounting-notice} (#465) — the completion beat carries the turn's exact
         // settled wire accounting, so a live watcher accrues loop cost per turn.
-        const generated = lifecycle[1]!.payload.notice as {
+        const generated = lifecycle[1].payload.notice as {
             accounting?: { requests: number; costUsd: string | null; inputTokens: number | null; outputTokens: number | null };
         };
         assert.deepEqual(generated.accounting, {
@@ -408,7 +408,7 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
             db,
             schemes: new SchemeRegistry(),
             noticeNotify: (_sid, payload) => {
-                broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
+                broadcasts.push({ payload: payload });
             },
         });
         const emission = "\n````EDIT (src/example.ts<1,-1>)\nbody\n````\n\n````SEND\ndone\n````";
@@ -429,10 +429,10 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
         );
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
-        assert.equal(advisories[0]!.payload.notice.level, "warn");
-        assert.match(String(advisories[0]!.payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
+        assert.equal(advisories[0].payload.notice.level, "warn");
+        assert.match(String(advisories[0].payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
         assert.deepEqual(
-            advisories[0]!.payload.notice.position,
+            advisories[0].payload.notice.position,
             { type: "content-offset", line: 2, column: 24 },
             "the Notice retains the parser's typed source position",
         );
@@ -461,7 +461,7 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
-            noticeNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
+            noticeNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload }); },
         });
 
         const provider = noticeProvider(1);                   // turn 1: output_unaccounted NOTICE pushed + broadcast live

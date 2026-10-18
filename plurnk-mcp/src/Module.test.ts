@@ -28,6 +28,7 @@ import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
 import ServerConnection from "./client.ts";
 import { httpServer, stdioServer as stdio } from "../test/definitions.ts";
+import type { TestContext } from "node:test";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
@@ -212,7 +213,7 @@ const httpHandler = (): McpHttpHandler => createMcpHandler(() => {
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
 const interactiveOAuthFixture = (
-    t: import("node:test").TestContext,
+    t: TestContext,
 ): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
 
 test("OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
@@ -301,7 +302,7 @@ for (const phase of ["environment", "directory", "catalog"] as const) {
             assert.equal(phase, "catalog", "cancellation before transport creation never requests a catalog");
             assert.equal(signal, lifetime.signal, "the request receives the host's signal");
             await hold();
-            signal!.throwIfAborted();
+            signal.throwIfAborted();
             throw new Error("fixture request was not cancelled");
         });
         const close = t.mock.method(ServerConnection.prototype, "close");
@@ -511,7 +512,7 @@ test("{§mcp-catalog-deadline} {§mcp-preparation-diagnostics} activation publis
         assert.equal(unavailable.problem.exitCode, undefined, "no process exit is inferred for an HTTP timeout");
         assert.ok(served.requests.some(({ body }) => (body as { method?: string })?.method === "tools/list"), "the failing connection reached catalog discovery");
         assert.equal(diagnostic.mock.callCount(), 1, "only the stalled catalog failed");
-        const cause: unknown = diagnostic.mock.calls[0]!.arguments[1];
+        const cause: unknown = diagnostic.mock.calls[0].arguments[1];
         assert.ok(cause instanceof DOMException && cause.name === "TimeoutError"
             || SdkError.isInstance(cause) && cause.code === SdkErrorCode.RequestTimeout, String(cause));
         assert.deepEqual(h.runtimeTags(1), ["echo"], "a silent catalog does not prevent publishing other tools");
@@ -645,7 +646,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         assert.deepEqual(h.runtimeTags(1), ["a"]);
         // {§mcp-catalog-refresh-in-place} — the SDK's connect probes a stdio server on a disposable
         // sibling process; its exit writes the marker too. The committed server is the last started.
-        const committedA = (await readFile(started("a"), "utf8")).trim().split("\n").at(-1)!.split(" ")[0]!;
+        const committedA = (await readFile(started("a"), "utf8")).trim().split("\n").at(-1)!.split(" ")[0];
         const closedA = await readFile(marker("a"), "utf8").catch(() => null);
         assert.ok(closedA === null || !closedA.split("\n").some((line) => line.trim() === `closed ${committedA}`), `the committed attachment was not touched by the aborted attempt (${await processes("a")})`);
 
@@ -1150,7 +1151,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
         assert.equal(h.snapshots.get(1)?.prepared?.runtimes[0]?.decl.details, instructions, "catalog refresh retains the complete on-demand instructions");
         // Connect starts the SDK's disposable probe sibling and then the real server; a refresh
         // on the held connection starts nothing more, and never closes the committed server.
-        const pids = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).map((line) => line.split(" ")[0]!);
+        const pids = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).map((line) => line.split(" ")[0]);
         assert.equal(pids.length, connectStarts, `no server was started by the refresh; started=${pids.join(",")}`);
         const committed = pids.at(-1)!;
         const closedBefore = await readFile(marker, "utf8").catch(() => "");

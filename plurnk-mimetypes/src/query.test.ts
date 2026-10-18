@@ -257,9 +257,9 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
     it("emits one match per wildcard result with the resolved matching path", () => {
         const out = queryJsonpathObject(outline, "$.Top.*");
         assert.equal(out.length, 2);
-        const paths = out.map((m) => m.matching);
-        assert.ok(paths.includes("$['Top']['Section']"));
-        assert.ok(paths.includes("$['Top']['Other']"));
+        const paths = new Set(out.map((m) => m.matching));
+        assert.ok(paths.has("$['Top']['Section']"));
+        assert.ok(paths.has("$['Top']['Other']"));
     });
 
     it("returns [] when no matches", () => {

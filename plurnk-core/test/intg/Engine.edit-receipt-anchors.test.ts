@@ -61,7 +61,7 @@ second
                 assert.ok(lines.length >= 3, `bounded context around the landed line; got ${JSON.stringify(context)}`);
                 for (const line of lines) assert.match(line, /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, `every context line is anchored: ${JSON.stringify(line)}`);
                 // The packet the model saw carries the same anchored body.
-                const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnIds![2]! }))!.packet);
+                const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnIds![2] }))!.packet);
                 const log = packetSection(packet, "log");
                 assert.match(log, /3<@[0-9A-Za-z]{5}>func requireFn\(a int\) int \{/, "the model sees line 3 with its anchor on the EDIT row");
                 const line3 = lines.find((line) => /^ *3<@[0-9A-Za-z]{5}>func requireFn/.test(line))!;

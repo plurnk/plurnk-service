@@ -90,7 +90,7 @@ for (const [heading, op, read] of SHAPES) {
                 const { advisory, annotation, ...expected } = read(kind, text, place !== "below");
                 const expectedOps = annotation === undefined ? [op] : ["NOTE", op];
                 assert.deepEqual(statements.map(nameOf), expectedOps, `${label} — the operation is never lost`);
-                if (annotation !== undefined) assert.deepEqual(reading(statements[0]!), { body: annotation });
+                if (annotation !== undefined) assert.deepEqual(reading(statements[0]), { body: annotation });
                 assert.deepEqual(reading(statements.at(-1)!), expected, label);
                 assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), advisory === undefined ? [] : [advisory], `${label} — a reading other than the canonical one is named once`);
 

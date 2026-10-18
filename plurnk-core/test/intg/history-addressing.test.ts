@@ -10,7 +10,7 @@ import Turn from "../../src/core/Turn.ts";
 import Fork from "../../src/core/fork.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";

@@ -12,7 +12,6 @@ import {
     type GetPromptResult,
     type InputRequiredResult,
     type InputResponse,
-    type JsonSchemaType,
     type Progress,
     type ReadResourceRequest,
     type ReadResourceResult,
@@ -166,7 +165,7 @@ const interactionRequest = (
             requests: Object.fromEntries(entries),
         },
         message: entries.length === 1
-            ? entries[0]![1].params.message
+            ? entries[0][1].params.message
             : `MCP server '${server}' requires ${entries.length} responses to continue '${operation}'.`,
         responseSchema: {
             type: "object",
@@ -229,7 +228,7 @@ const resolvedInputResponses = async (
         return cancelledInputResponses(entries);
     }
     const validator = fromJsonSchema<Record<string, unknown>>(
-        request.responseSchema as JsonSchemaType,
+        request.responseSchema,
     );
     const validation = await validator["~standard"].validate(resolution.payload);
     if (validation.issues !== undefined) {

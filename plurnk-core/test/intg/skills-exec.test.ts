@@ -40,11 +40,11 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
         t.after(() => ws.close());
         await rpcCall(ws, 1, "workspace.create", { name: `skills-retarget-${crypto.randomUUID()}`, projectRoot: root });
         assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Read the skill guide." })).finalStatus, 200);
-        assert.match(provider.requests[1]!, /FIRST_SOURCE_SENTINEL/);
+        assert.match(provider.requests[1], /FIRST_SOURCE_SENTINEL/);
         await rm(installed);
         await symlink(join(root, "versions", "second"), installed);
         assert.equal((await runLoopToTerminal(ws, 3, { prompt: "Read the skill guide again." })).finalStatus, 200);
-        assert.match(provider.requests[3]!, /SECOND_SOURCE_SENTINEL/);
+        assert.match(provider.requests[3], /SECOND_SOURCE_SENTINEL/);
     });
 });
 

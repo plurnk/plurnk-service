@@ -67,7 +67,7 @@ test("{§worker-lifecycle-wake-liveness}: a person's operation can cancel a work
             const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
             const [killed] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
-            assert.equal(killed!.status, 200, JSON.stringify(killed));
+            assert.equal(killed.status, 200, JSON.stringify(killed));
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
             await flush();
@@ -127,7 +127,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
             await daemon.engine.cancelSubscription(subscriptions[0]!.id);
             const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
             assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
-            assert.deepEqual(Object.keys(events[0]!).sort(), ["entryId", "loop_seq", "result", "scheme", "sequence", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workerId", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
+            assert.deepEqual(Object.keys(events[0]).sort(), ["entryId", "loop_seq", "result", "scheme", "sequence", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workerId", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
             assert.equal(await lifecycle.status(accepted.loopId), 202, "publication cannot claim execution while the task is parked");
             await daemon.cancelWorker({ workspaceId, workerId });
             release.resolve();

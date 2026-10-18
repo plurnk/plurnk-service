@@ -90,9 +90,9 @@ const readBody = (req: IncomingMessage): Promise<string> => new Promise((resolve
 });
 
 const isForm = (req: IncomingMessage): boolean =>
-    (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/x-www-form-urlencoded";
+    (req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase() === "application/x-www-form-urlencoded";
 const isJson = (req: IncomingMessage): boolean =>
-    (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
+    (req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase() === "application/json";
 
 const cookieValue = (req: IncomingMessage, name: string): string | null => {
     for (const part of (req.headers.cookie ?? "").split(";")) {

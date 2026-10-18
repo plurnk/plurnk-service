@@ -17,7 +17,7 @@ const parseOne = (input: string): PlurnkStatement => {
 
 const parseAll = (input: string): PlurnkStatement[] => {
     const result = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
-    return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+    return result.items.filter((i) => i.kind === "statement").map((i) => i.statement);
 };
 
 const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvelope>>, statements: PlurnkStatement[]): Promise<number[]> => {
@@ -106,13 +106,13 @@ test("parser roundtrip: EDIT followed by READ reads back what was written", asyn
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
-            statement: parseOne("````EDIT (worker:///france)\nThe capital is Paris.\n````") as EditStatement,
+            statement: parseOne("````EDIT (worker:///france)\nThe capital is Paris.\n````"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
-            statement: parseOne("````READ (worker:///france)````") as ReadStatement,
+            statement: parseOne("````READ (worker:///france)````"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -186,7 +186,7 @@ test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-cl
     const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
     assert.equal(stmts[0]?.op, "EDIT");
-    assert.equal((stmts[0] as EditStatement).body, body);
+    assert.equal((stmts[0]).body, body);
 });
 
 // {§unclosed-mutation-yields}: an example inside an EDIT is written with a wider fence; at the

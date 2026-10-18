@@ -5,6 +5,7 @@ import { isExactModuleAbsent } from "../module-absence.ts";
 import type { HandlerMetadata, MimeRef, MimeSymbol } from "../types.ts";
 import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./registry.ts";
 import { loadLanguage } from "./runtime.ts";
+import type { HandlerContent } from "../BaseHandler.ts";
 
 // Internal registry-entry adapter; parser and mapping are lazy-loaded together.
 export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
@@ -18,7 +19,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
 
     protected override async loadParser(): Promise<TreeSitterParser> {
         // Parsing requests alone pay runtime initialization.
-        const ts = await import("web-tree-sitter" as string) as {
+        const ts = await import("web-tree-sitter") as {
             Parser: {
                 init(): Promise<void>;
                 new (): { setLanguage(lang: unknown): void; parse(content: string): unknown };
@@ -39,7 +40,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 
     // Mapping-owned query through the shared engine ({§mimetype-references}).
-    override async references(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeRef[]> {
+    override async references(content: HandlerContent): Promise<MimeRef[]> {
         if (typeof content !== "string") return [];
         const mapping = await this.#getMappingCached();
         if (mapping.refsQuery === undefined) return [];
@@ -58,13 +59,13 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 
     // Parser and mapping imports form one coordinated extraction boundary.
-    override async extractRaw(content: import("../BaseHandler.ts").HandlerContent): Promise<MimeSymbol[]> {
+    override async extractRaw(content: HandlerContent): Promise<MimeSymbol[]> {
         if (typeof content !== "string") return [];
         const [parser, mapping] = await Promise.all([
             this.getParser(),
             this.#getMappingCached(),
         ]);
-        const tree = parser.parse(content) as TreeSitterTree | null;
+        const tree = parser.parse(content);
         if (!tree) return [];
         try {
             const projections = mapping.extract(tree.rootNode, content);
@@ -76,14 +77,14 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
 
     // Reuse the parser cache; an algebra-specific mapping projection wins over
     // the generic named-node walk ({§mimetype-channel-architecture}).
-    override async deepJson(content: import("../BaseHandler.ts").HandlerContent): Promise<unknown> {
+    override async deepJson(content: HandlerContent): Promise<unknown> {
         if (typeof content !== "string") return null;
         const mapping = await this.#getMappingCached();
         if (typeof mapping.deepJson === "function") {
             return mapping.deepJson(content);
         }
         const parser = await this.getParser();
-        const tree = parser.parse(content) as TreeSitterTree | null;
+        const tree = parser.parse(content);
         if (!tree) return null;
         try {
             return walkDeepNode(tree.rootNode, content);

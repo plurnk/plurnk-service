@@ -100,7 +100,7 @@ export default class ReadProjector {
             : { terminal: source.state !== "active" };
         return producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
             ? { ...projected, ...liveness }
-            : Results.assertReadResult({ ...producerResult, ...projected, ...liveness, status: producerResult.status }) as AnchoredReadResult;
+            : Results.assertReadResult({ ...producerResult, ...projected, ...liveness, status: producerResult.status });
     }
 
     static async *#chunks(source: ByteSource): AsyncIterable<Uint8Array> {
@@ -136,8 +136,8 @@ export default class ReadProjector {
         if (total === null) return failure("entry-not-found", 404, `No bytes exist at ${target}.`);
         if (statement.matcher !== null) {
             if (statement.lineMarker !== null) {
-                const bounds = LineMarkerOps.window(statement.lineMarker as LineMarker, total, "byte");
-                if (bounds.status !== 200) return { ...bounds, content: null, mimetype: sourceMimetype, channel } as AnchoredReadResult;
+                const bounds = LineMarkerOps.window(statement.lineMarker, total, "byte");
+                if (bounds.status !== 200) return { ...bounds, content: null, mimetype: sourceMimetype, channel };
             }
             const loaded = await ByteView.load(source, target);
             if (!("bytes" in loaded)) return { ...loaded, content: null, mimetype: sourceMimetype, channel };
@@ -147,7 +147,7 @@ export default class ReadProjector {
             const visibleLines = PatternEdits.lines(matches, { from: 1, to: total });
             const projected = await ReadResolve.resolve({
                 content: ByteView.hexLines(loaded.bytes), mimetype: "text/plain",
-                lineMarker: statement.lineMarker as LineMarker | null, visibleLines,
+                lineMarker: statement.lineMarker, visibleLines,
             });
             return {
                 ...projected, mimetype: sourceMimetype, channel, projection: ByteView.PROJECTION,
@@ -164,10 +164,10 @@ export default class ReadProjector {
                 content: null,
                 mimetype: sourceMimetype,
                 channel,
-            } as AnchoredReadResult;
+            };
         }
         if (window.start === null || window.start === undefined || window.end === null || window.end === undefined) {
-            return { status: 204, content: "", mimetype: sourceMimetype, channel, range: window.range } as AnchoredReadResult;
+            return { status: 204, content: "", mimetype: sourceMimetype, channel, range: window.range };
         }
         const content = ByteView.hexLines(await source.read(window.start, window.end));
         return {
@@ -178,13 +178,13 @@ export default class ReadProjector {
             startLine: window.start,
             range: window.range,
             projection: ByteView.PROJECTION,
-        } as AnchoredReadResult;
+        };
     }
 
     static async project(opts: ReadProjectionOptions): Promise<AnchoredReadResult> {
         const marker = opts.statement.lineMarker;
         const normalization = marker === null || LineAnchors.hasAnchor(marker)
-            ? undefined : Slicer.readScope(marker as LineMarker);
+            ? undefined : Slicer.readScope(marker);
         if (normalization !== undefined) {
             const projected = await ReadProjector.project({
                 ...opts,
@@ -212,7 +212,7 @@ export default class ReadProjector {
             const size = await bytes.size();
             if (size !== null) {
                 const maximumBytes = binaryInputMaximum();
-                if (size > maximumBytes) throw new MimetypeInputLimitError({ mimetype: mimetype!, maximumBytes, observedBytes: size });
+                if (size > maximumBytes) throw new MimetypeInputLimitError({ mimetype: mimetype, maximumBytes, observedBytes: size });
                 content = Buffer.from(await bytes.read(1, size));
                 const snapshot = content;
                 bytes = { size: async () => snapshot.byteLength, read: async (start, end) => snapshot.subarray(start - 1, end) };
@@ -237,7 +237,7 @@ export default class ReadProjector {
         const binary = mimetypes !== undefined && defaultRepresentation !== undefined
             && await MimetypeBinary.isBinaryMimetype(defaultRepresentation.mimetype, mimetypes);
         const projection = binary && bytes !== undefined && (selected === manifest.defaultChannel || selected === ByteView.CHANNEL || selected === "readable")
-            ? await mimetypes!.projectReadableStream(ReadProjector.#chunks(bytes), defaultRepresentation.mimetype)
+            ? await mimetypes.projectReadableStream(ReadProjector.#chunks(bytes), defaultRepresentation.mimetype)
             : null;
         const attributes = projection === null ? representation.attributes
             : { sourceProjection: { mimetype: projection.sourceMimetype, facts: projection.facts } };
@@ -416,7 +416,7 @@ export default class ReadProjector {
                     content: null,
                     mimetype: null,
                     channel,
-                }) as EntryReadResult;
+                });
             }
             matches = match.matches ?? [];
             if (matches.some(({ region, enclosingRegion }) => region === undefined && enclosingRegion === undefined)) {
@@ -463,7 +463,7 @@ export default class ReadProjector {
                     ...(stream === null ? {} : { problem: { ...resolved.problem, stream } }),
                     content: null,
                     channel,
-                }) as EntryReadResult;
+                });
             }
             if (resolved.reason === undefined) {
                 throw new Error(
@@ -510,7 +510,7 @@ export default class ReadProjector {
                 selectedRepresentation.content,
                 result.content,
                 startLine,
-            ) : resolved.lineOrdinals.map((ordinal) => sourceAnchors![ordinal - 1]!),
+            ) : resolved.lineOrdinals.map((ordinal) => sourceAnchors![ordinal - 1]),
             lineNumberWidth: LineAnchors.lineNumberWidth(selectedRepresentation.content),
         };
     }

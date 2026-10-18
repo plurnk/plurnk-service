@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { declaredCodes, mintedCodes, undeclaredCodes } from "./problem-codes.mjs";
 
-const declare = (tag) => `${"§"}${tag}`;
+const declare = (tag) => `§${tag}`;
 
 test("{§problem-codes-declared}: the three minting shapes name a code; prose and tests do not", () => {
     const source = [

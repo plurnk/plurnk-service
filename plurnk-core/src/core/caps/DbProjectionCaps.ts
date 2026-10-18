@@ -55,7 +55,7 @@ export default class DbProjectionCaps implements ProjectionCaps {
                 { channels: [], parseIssues: true },
             );
             for (const notice of result.notices ?? []) this.#ctx.pushNotice?.(notice);
-            if (result.ok !== true || result.grammarMissing !== undefined) return undefined;
+            if (!result.ok || result.grammarMissing !== undefined) return undefined;
             return result.parseIssues ?? 0;
         } catch (cause) {
             const detail = ErrorDetail.preview(cause);

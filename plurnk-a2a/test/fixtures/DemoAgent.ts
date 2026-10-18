@@ -313,7 +313,7 @@ export const startDemoAgent = async (mode: DemoMode = "complete", parts?: Part[]
     }
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const endpoint = `${baseUrl}/a2a`;
-    card.supportedInterfaces[0]!.url = endpoint;
+    card.supportedInterfaces[0].url = endpoint;
     if (credentials !== undefined && credentials.declared !== false) {
         card.securitySchemes = { oauth2: { scheme: { $case: "oauth2SecurityScheme", value: {
             description: "Client credentials at this agent's token endpoint.",

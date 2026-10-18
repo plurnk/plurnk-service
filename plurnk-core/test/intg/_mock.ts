@@ -15,7 +15,7 @@ export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "node", "python3
 // Fixtures mint executors freely; every fence tag a DSL text writes is an executor for that text.
 export const fixtureExecutors = (text: string): readonly string[] => [...new Set([
     ...TEST_EXECUTORS,
-    ...[...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!),
+    ...[...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]),
 ])];
 
 // Parse plurnk DSL into statement ops. Used to build mock provider responses.
@@ -23,7 +23,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
     const result = PlurnkParser.parse(text, { executors: fixtureExecutors(text) });
     const statements = result.items
         .filter((i) => i.kind === "statement")
-        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
+        .map((i) => i.statement);
     // Recovery fixtures may omit a disposition, but must contain an executable operation.
     if (statements.length === 0 && result.items.some((i) => i.kind === "error")) {
         throw new Error(`parseDsl: DSL produced no statements: ${JSON.stringify(text)}`);
@@ -35,7 +35,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
     ...makeMockResponse("````NOTE\n````", completion),
     // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
-    assistant: { content: text, reasoning: null } as MockResponse["assistant"],
+    assistant: { content: text, reasoning: null },
 });
 
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {

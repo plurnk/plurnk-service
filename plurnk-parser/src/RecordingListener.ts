@@ -5,7 +5,7 @@ import {
     type Recognizer,
     type Token,
 } from "antlr4ng";
-import { plurnkLexer } from "./generated/plurnkLexer.ts";
+import type { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { PlurnkParseError } from "@plurnk/plurnk-contracts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import StatementShape from "./StatementShape.ts";

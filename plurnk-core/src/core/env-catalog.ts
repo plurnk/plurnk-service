@@ -103,7 +103,7 @@ export default class EnvCatalog {
                 if (EnvCatalog.isFamily(declaration.name)) continue;
                 if (term !== undefined && !EnvCatalog.#matches(declaration, term)) continue;
                 const lines = declaration.text.split("\n");
-                const assignment = lines[lines.length - 1]!.trim().replace(/^#+\s*/u, "");
+                const assignment = lines[lines.length - 1].trim().replace(/^#+\s*/u, "");
                 const summary = lines.slice(0, -1)
                     .map((line) => line.trim().replace(/^#+\s*/u, ""))
                     // A section header ("── Defaults ──────") introduces a region of the file, not

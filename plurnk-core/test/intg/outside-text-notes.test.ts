@@ -24,11 +24,11 @@ test("prose before, between and after fences lands as NOTEs in order and is repl
         });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));
         const [, prosed, final] = result.turnIds;
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: prosed! });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: prosed });
         const notes = rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => (JSON.parse(tx) as { body: string }).body);
         assert.deepEqual(notes, ["Thinking out loud first.", "Between the two.", "And a trailing remark."], "each span is one NOTE row, in source order");
         assert.ok(!rows.some(({ op, origin }) => op === "error" && origin === "_plurnk"), "no error row");
-        const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final! }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
+        const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
         assert.equal(packetSection(packet, "notices"), "", "no outside-text and no missing-NOTE notice");
         const user = PacketWire.renderSlot(packet.sections, "user");
         assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/NOTE · \d+/gmu)].length, 3, "each annotation retains its own receipt");

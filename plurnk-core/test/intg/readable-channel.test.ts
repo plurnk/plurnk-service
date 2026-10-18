@@ -150,7 +150,7 @@ test("a READ names the resource's other channels with their tokens; a single-cha
         assert.equal(source.status, 200, JSON.stringify(source));
         const channels = source.channels as Record<string, number>;
         assert.deepEqual(Object.keys(channels), ["#readable"], "the sibling is named as the fragment the model appends");
-        assert.ok(Number.isSafeInteger(channels["#readable"]) && channels["#readable"]! > 0, "with its tokens");
+        assert.ok(Number.isSafeInteger(channels["#readable"]) && channels["#readable"] > 0, "with its tokens");
         const projection = await dispatch(readStmt(readable, { marks: [1, -1] }));
         assert.deepEqual(Object.keys(projection.channels as Record<string, number>), ["#body"], "and the source is named from the projection");
         await dispatch(editStmt(urlPath("worker", "/notes.md"), "plain"));

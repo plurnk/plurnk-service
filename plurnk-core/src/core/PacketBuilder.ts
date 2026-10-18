@@ -262,9 +262,9 @@ export default class PacketBuilder {
             status: "active",
             path,
             detail: [
-                `elapsed ${secondsSince(channels[0]!.opened_at)}s`,
-                channels[0]!.output_changed_at === null ? "output timing unknown"
-                    : `output unchanged ${secondsSince(channels[0]!.output_changed_at)}s`,
+                `elapsed ${secondsSince(channels[0].opened_at)}s`,
+                channels[0].output_changed_at === null ? "output timing unknown"
+                    : `output unchanged ${secondsSince(channels[0].output_changed_at)}s`,
                 ...channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`),
             ].join("; "),
         }));
@@ -318,7 +318,7 @@ export default class PacketBuilder {
                 logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });
             }
             if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
-            items.push(renderedLog.records[index]!);
+            items.push(renderedLog.records[index]);
             const native = nativeRows.get(String(row.coordinate));
             if (native !== undefined) {
                 flush();

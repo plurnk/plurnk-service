@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -22,7 +22,7 @@ const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-
 const editStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
@@ -51,7 +51,7 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
     const { db, workerId, workspaceId } = await setup();
     try {
         const r = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(r.status, 200, "log speaks the universal FIND");
@@ -243,7 +243,7 @@ test("log FIND reports an exact readable region for structural matches", async (
             workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model",
         });
         const result = await new Log().find(
-            findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" } as MatcherBody),
+            findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
@@ -259,7 +259,7 @@ test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async ()
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
+            statement: findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" }),
             workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, "FIND locates log entries");
@@ -315,12 +315,12 @@ test("zero content matches → 204; an unwarmed relation query fails with struct
     const { db, workerId, workspaceId } = await setup();
     try {
         const none = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/absent-phrase-xyz/", pattern: "absent-phrase-xyz", flags: "" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/absent-phrase-xyz/", pattern: "absent-phrase-xyz", flags: "" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(none.status, 204, "a sweep that found nothing steers nothing");
         const sem = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "fts", raw: "~engine" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "fts", raw: "~engine" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(sem.status, 503, "an advertised matcher is unavailable only while its persistent index is incomplete");
@@ -369,7 +369,7 @@ test("full-text and graph FIND over logs use the same persistent derivations as 
 
         const fulltextStatement = findStmt(
             urlPath("log", "/**"),
-            { dialect: "fts", raw: "~engine hums" } as MatcherBody,
+            { dialect: "fts", raw: "~engine hums" },
         );
         const fulltext = await new Log().find(
             fulltextStatement,
@@ -390,7 +390,7 @@ test("full-text and graph FIND over logs use the same persistent derivations as 
         );
 
         const graph = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<helper" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<helper" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graph.status, 200);
@@ -398,7 +398,7 @@ test("full-text and graph FIND over logs use the same persistent derivations as 
             "graph relation returns the log address whose readable code projection references helper");
 
         const graphMiss = await new Log().find(
-            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<absentSymbol" } as MatcherBody),
+            findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<absentSymbol" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graphMiss.status, 204, "entry and log relation misses share the universal matcher status");

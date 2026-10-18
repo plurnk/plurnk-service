@@ -92,7 +92,7 @@ const edit = (file: string, scope: string, body: string | null): string => Plurn
 const anchorsFromLog = async ({ db, workerId }: Ctx): Promise<[Anchors, Anchors]> => {
     const rows = await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; pathname: string | null; rx: string }>({ worker_id: workerId });
     const latest = (file: string): Anchors => {
-        const row = rows.filter(({ op, origin, status_rx, pathname }) => op === "READ" && origin === "model" && status_rx === 200 && (pathname === file || pathname === `/${file}`)).at(-1);
+        const row = rows.findLast(({ op, origin, status_rx, pathname }) => op === "READ" && origin === "model" && status_rx === 200 && (pathname === file || pathname === `/${file}`));
         assert.ok(row, `the model READ ${file}`);
         const anchors = (JSON.parse(row.rx) as { lineAnchors?: string[] }).lineAnchors;
         assert.ok(Array.isArray(anchors) && anchors.length > 0, `the READ of ${file} published one anchor per line`);
@@ -245,7 +245,7 @@ const COHERENT: Case[] = [
             edit(DEBUG, a(22), "        resolver_match = resolve(request.path_info)"),
         ],
         outcomes: [[200, "<29,34>"], [200, "<22>"]],
-        debug: (d) => { set(d, 22, "        resolver_match = resolve(request.path_info)"); set(d, 29, DEBUG_LINES[28]!, ...DEBUG_LINES.slice(19, 24)); },
+        debug: (d) => { set(d, 22, "        resolver_match = resolve(request.path_info)"); set(d, 29, DEBUG_LINES[28], ...DEBUG_LINES.slice(19, 24)); },
     },
 ];
 
@@ -317,13 +317,13 @@ test("{§edit-receipt-anchored-context}: every EDIT receipt carries its own padd
         const anchorAt = (lines: string[], line: number): string => {
             const match = lines.map((text) => /^ *(\d+)<(@[0-9A-Za-z]{5})>/u.exec(text)).find((m) => m !== null && Number(m[1]) === line);
             assert.ok(match, `line ${line} in ${JSON.stringify(lines)}`);
-            return match[2]!;
+            return match[2];
         };
-        assert.notEqual(anchorAt(contexts[0]!, 12), a(12), "after line 11 changed, the first receipt already shows line 12 under a new anchor (its neighbourhood changed)");
-        assert.equal(edits[1]!.landed, "<12>", "yet the program's original anchor for line 12 still landed there ({§edit-anchor-continuity})");
-        assert.notEqual(anchorAt(contexts[1]!, 11), anchorAt(contexts[0]!, 11), "the second receipt supersedes the first receipt's anchor for line 11");
-        assert.equal(anchorAt(contexts[2]!, 23), anchorAt(contexts[2]!, 23));
-        assert.match(contexts[2]![4]!, /^ *23<@[0-9A-Za-z]{5}>    except Http404:$/u, "the changed line sits in the middle of its window");
+        assert.notEqual(anchorAt(contexts[0], 12), a(12), "after line 11 changed, the first receipt already shows line 12 under a new anchor (its neighbourhood changed)");
+        assert.equal(edits[1].landed, "<12>", "yet the program's original anchor for line 12 still landed there ({§edit-anchor-continuity})");
+        assert.notEqual(anchorAt(contexts[1], 11), anchorAt(contexts[0], 11), "the second receipt supersedes the first receipt's anchor for line 11");
+        assert.equal(anchorAt(contexts[2], 23), anchorAt(contexts[2], 23));
+        assert.match(contexts[2][4], /^ *23<@[0-9A-Za-z]{5}>    except Http404:$/u, "the changed line sits in the middle of its window");
     });
 });
 
@@ -353,7 +353,7 @@ test("{§edit-anchor-continuity}: across programs, a neighbour's packet anchor i
 test("{§edit-anchor-continuity}: after a whole-file rewrite, every earlier anchor is stale", async () => {
     await withProject(async (ctx) => {
         const first = await program(ctx, 1, () => [edit(DEBUG, "1,-1", "# rewritten\n")]);
-        assert.equal(first.edits[0]!.status, 200);
+        assert.equal(first.edits[0].status, 200);
         const [original] = first.published;
         const second = await program(ctx, 2, () => [edit(DEBUG, original(23), EXCEPT_404)]);
         assert.deepEqual(second.edits.map(({ status, unresolved }) => [status, unresolved]), [[409, [{ anchor: original(23), kind: "missing" }]]]);

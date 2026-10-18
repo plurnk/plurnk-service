@@ -249,7 +249,7 @@ test("{§hooks-bounded-delivery} finite concurrency and queue capacity report ex
     assert.match(String(failures[0]), /queue is full; event not delivered/);
     command.release(1);
     await command.waitFor(3);
-    assert.equal(command.events[2]!.plurnk.params.id, 3, "the oldest queued event starts when a slot is released");
+    assert.equal(command.events[2].plurnk.params.id, 3, "the oldest queued event starts when a slot is released");
     command.release(2);
     command.release(3);
     await module.close();
@@ -287,7 +287,7 @@ test("{§hooks-failure-isolation} serialization and reporter failures preserve b
     assert.doesNotThrow(() => fixture.emit(42, "loop/terminated", params));
     await module.close();
     assert.equal(diagnostics.length, 1);
-    const aggregate = diagnostics[0]![1];
+    const aggregate = diagnostics[0][1];
     assert.ok(aggregate instanceof AggregateError);
     assert.ok(aggregate.errors[0] instanceof TypeError);
     assert.match(aggregate.errors[0].message, /circular/i);

@@ -45,7 +45,7 @@ test("isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
 test("Guard.fetch: a private target is refused before any fetch", async () => {
     const orig = globalThis.fetch;
     let called = false;
-    globalThis.fetch = (async () => { called = true; return new Response("x"); }) as typeof fetch;
+    globalThis.fetch = (async () => { called = true; return new Response("x"); });
     try {
         await assert.rejects(
             Guard.fetch("http://127.0.0.1/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
@@ -60,7 +60,7 @@ test("Guard.fetch: a redirect INTO private space is re-guarded and refused", asy
     globalThis.fetch = (async (u: string | URL | Request) =>
         String(u).includes("8.8.8.8")
             ? new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } })
-            : new Response("private-body")) as typeof fetch;
+            : new Response("private-body"));
     try {
         await assert.rejects(
             Guard.fetch("http://8.8.8.8/", { method: "GET", body: undefined, headers: [] }, AbortSignal.timeout(2000)),
@@ -75,7 +75,7 @@ test("Guard.fetch: follows only Fetch redirect statuses", async () => {
     globalThis.fetch = (async () => {
         calls += 1;
         return new Response(null, { status: 300, headers: { location: "http://1.1.1.1/next" } });
-    }) as typeof fetch;
+    });
     try {
         const response = await Guard.fetch(
             "http://8.8.8.8/start",
@@ -104,7 +104,7 @@ test("Guard.fetch: redirect method, body, and body-header changes follow Fetch",
                 return seen.length === 1
                     ? new Response(null, { status: specimen.status, headers: { location: "/next" } })
                     : new Response("done");
-            }) as typeof fetch;
+            });
             try {
                 await Guard.fetch(
                     "http://8.8.8.8/start",
@@ -134,14 +134,14 @@ test("Guard.fetch: strips Authorization only after a cross-origin redirect", asy
             return seen.length === 1
                 ? new Response(null, { status: 302, headers: { location } })
                 : new Response("done");
-        }) as typeof fetch;
+        });
         try {
             await Guard.fetch(
                 "https://8.8.8.8/start",
                 { method: "GET", body: undefined, headers: [["Authorization", "Bearer secret"], ["X-Trace", "kept"]] },
                 AbortSignal.timeout(2000),
             );
-            return seen[1]!;
+            return seen[1];
         } finally { globalThis.fetch = orig; }
     };
 
@@ -161,7 +161,7 @@ test("Guard.fetch: cancels a followed redirect response body", async () => {
         if (calls > 1) return new Response("done");
         const body = new ReadableStream({ cancel() { cancelled = true; } });
         return new Response(body, { status: 302, headers: { location: "/next" } });
-    }) as typeof fetch;
+    });
     try {
         await Guard.fetch(
             "http://8.8.8.8/start",

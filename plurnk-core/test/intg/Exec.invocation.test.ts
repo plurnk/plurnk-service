@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";

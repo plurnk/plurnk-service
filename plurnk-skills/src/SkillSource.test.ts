@@ -98,7 +98,7 @@ test("{§skills-sources} local skills retain their standard folder identity; nes
     await writeFile(join(misnamed, "SKILL.md"), skill("root-skill"));
     const rejected = await localReader.open({ kind: "skill-file", location: join(misnamed, "SKILL.md") });
     assert.deepEqual(rejected.skills, [], "a SKILL.md is read in its actual directory, not renamed in a temporary copy");
-    assert.match(rejected.invalid[0]!.reason, /must match folder "checkout-dir"/u);
+    assert.match(rejected.invalid[0].reason, /must match folder "checkout-dir"/u);
     await rejected.close();
 
     const tree = join(base, "tree");
@@ -115,7 +115,7 @@ test("{§skills-sources} local skills retain their standard folder identity; nes
         { name: "alpha", description: "Alpha.", dir: join(tree, "skills", "alpha") },
     ], "a skill's own examples are not skills, and .git is never read");
     assert.deepEqual(walked.invalid.map(({ dir }) => dir), [join(tree, "skills", "misnamed")]);
-    assert.match(walked.invalid[0]!.reason, /must match folder "misnamed"/u);
+    assert.match(walked.invalid[0].reason, /must match folder "misnamed"/u);
 });
 
 test("{§skills-sources} an Agent Plugin source is refused: its skills keep the plugin's identity", async (t) => {

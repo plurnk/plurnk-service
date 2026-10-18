@@ -19,7 +19,7 @@ test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable op
         const created = await rpcCall(ws, 1, "workspace.create", { name: "transfer-reference" });
         const workspaceId = (created.result as { id: number }).id;
         const dispatch = async (statement: PlurnkStatement) =>
-            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const uri = "skill://plurnk/references/copy-move.md";
         const found = await dispatch(findStmt(parsePath("skill://plurnk/references/*"), regex("COPY")));
@@ -62,7 +62,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         const workspaceId = (created.result as { id: number }).id;
         const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const dispatch = async (statement: PlurnkStatement) =>
-            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
         const catalog = await dispatch({ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } });
         assert.equal(catalog.status, 200);
@@ -129,11 +129,11 @@ test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defa
         await rpcCall(ws, 1, "workspace.create", { projectRoot: root, settings: { filesItems: -1 } });
         assert.equal((await runLoopToTerminal(ws, 2, { prompt: "Inspect configuration." })).finalStatus, 200);
         assert.equal(provider.requests.length, 2);
-        assert.match(provider.requests[0]!, /skill:\/\/plurnk\/SKILL\.md/);
-        assert.doesNotMatch(provider.requests[0]!, /# Plurnk installed configuration defaults/);
-        const chapterHeading = (await readFile("INSTALL.md", "utf8")).split("\n")[0]!;
-        assert.ok(!provider.requests[0]!.includes(chapterHeading), "the configuration chapter is not startup teaching");
-        assert.doesNotMatch(provider.requests[0]!, /# COPY and MOVE/u, "the transfer chapter is also pull-only");
-        assert.match(provider.requests[1]!, /# Plurnk installed configuration defaults/);
+        assert.match(provider.requests[0], /skill:\/\/plurnk\/SKILL\.md/);
+        assert.doesNotMatch(provider.requests[0], /# Plurnk installed configuration defaults/);
+        const chapterHeading = (await readFile("INSTALL.md", "utf8")).split("\n")[0];
+        assert.ok(!provider.requests[0].includes(chapterHeading), "the configuration chapter is not startup teaching");
+        assert.doesNotMatch(provider.requests[0], /# COPY and MOVE/u, "the transfer chapter is also pull-only");
+        assert.match(provider.requests[1], /# Plurnk installed configuration defaults/);
     });
 });

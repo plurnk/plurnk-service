@@ -35,7 +35,7 @@ test("{§skills-resources} concurrent operations of independent people discover 
         const results = await Promise.all(Array.from({ length: 8 }, async (_, index) => (await daemon.dispatchClientAction({
             workspaceId, actor: `test://person-${index}`,
             statements: [{ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } }],
-        }))[0]!));
+        }))[0]));
         for (const result of results) {
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.ok(Array.isArray(result.results));
@@ -63,7 +63,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         const created = await rpcCall(ws, 1, "workspace.create", { name: `skill-lifecycle-${crypto.randomUUID()}`, projectRoot: root });
         const workspaceId = (created.result as { id: number }).id;
         const dispatch = async (statement: PlurnkStatement) =>
-            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const find = async (target: string, body: ReturnType<typeof regex> | null = null) => {
             const result = await dispatch({ ...findStmt(parsePath(target), body), lineMarker: { marks: [1, -1] } });
             assert.equal(result.status, 200, JSON.stringify(result));
@@ -198,13 +198,13 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
         assert.equal(result.finalStatus, 200);
     });
     for (const index of [1, 2]) {
-        const images = provider.received[index]!.flatMap(({ role, content }) =>
+        const images = provider.received[index].flatMap(({ role, content }) =>
             role === "user" && Array.isArray(content) ? content.filter((part) => part.type === "file") : []);
         assert.equal(images.length, 1, "the skill READ contributes exactly one retained native delivery per request");
         assert.equal(images[0]!.mediaType, "image/png");
         assert.deepEqual(Buffer.from(images[0]!.data), PNG);
     }
-    assert.match(userText(provider.received[1]!), /1:89\n2:50\n3:4e/);
+    assert.match(userText(provider.received[1]), /1:89\n2:50\n3:4e/);
 });
 
 test("{§skills-functionality} a model discovers a skill and reads its original tree through the skill authority", async (t) => {
@@ -235,16 +235,16 @@ test("{§skills-functionality} a model discovers a skill and reads its original 
         await rpcCall(ws, 1, "workspace.create", { name: `skill-resources-${crypto.randomUUID()}`, projectRoot: root });
         const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the installed sample skill." });
         assert.equal(result.finalStatus, 200);
-        assert.match(provider.packets[0]!, /skill:\/\/sample\/SKILL\.md/, "initial discovery addresses the source skill");
-        assert.match(provider.packets[0]!, /Inspect the sample fixture/, "initial discovery carries the standard description");
-        assert.doesNotMatch(provider.packets[0]!, /REFERENCE_SENTINEL|NESTED_SENTINEL/, "supporting bodies are not injected by discovery");
-        assert.match(provider.packets[1]!, /license: MIT/, "READ preserves optional frontmatter, not a rewritten synopsis");
-        assert.match(provider.packets[1]!, /references\/guide\.md/, "source-relative links survive unchanged");
-        assert.match(provider.packets[2]!, /REFERENCE_SENTINEL/);
-        assert.match(provider.packets[2]!, /NESTED_SENTINEL/);
-        const binaryRequest = provider.packets[2]!.indexOf("```READ (skill://sample/assets/sample.bin) <1,-1>\n```");
+        assert.match(provider.packets[0], /skill:\/\/sample\/SKILL\.md/, "initial discovery addresses the source skill");
+        assert.match(provider.packets[0], /Inspect the sample fixture/, "initial discovery carries the standard description");
+        assert.doesNotMatch(provider.packets[0], /REFERENCE_SENTINEL|NESTED_SENTINEL/, "supporting bodies are not injected by discovery");
+        assert.match(provider.packets[1], /license: MIT/, "READ preserves optional frontmatter, not a rewritten synopsis");
+        assert.match(provider.packets[1], /references\/guide\.md/, "source-relative links survive unchanged");
+        assert.match(provider.packets[2], /REFERENCE_SENTINEL/);
+        assert.match(provider.packets[2], /NESTED_SENTINEL/);
+        const binaryRequest = provider.packets[2].indexOf("```READ (skill://sample/assets/sample.bin) <1,-1>\n```");
         assert.ok(binaryRequest >= 0, "the complete binary READ replays with its turn, before the turn's results");
-        const reads = provider.packets[2]!.slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/READ · \d+$/m.test(section));
+        const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/READ · \d+$/m.test(section));
         assert.equal(reads.length, 3, "the turn's READ receipts follow it, in program order");
         assert.match(reads.at(-1)!, /\n1:00\n2:ff\n3:81/, "binary assets use the ordinary byte projection");
     });

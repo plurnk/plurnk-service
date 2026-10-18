@@ -404,7 +404,7 @@ export default class BuiltinActions {
                     return { ok: true, result: await this.#seam().setWorkerSpawnModel({
                         workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
-                        selector: p.selector as string | null,
+                        selector: p.selector,
                     }) };
                 }
                 case "worker.effort.get": {

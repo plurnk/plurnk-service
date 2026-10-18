@@ -263,7 +263,7 @@ test("{§operator-config-discovery} config check validates capability definition
         { PLURNK_HOOKS_COMMAND: "", PLURNK_HOOKS_ARGS: "[]" },
     ];
     for (const env of invalid) {
-        const key = Object.keys(env)[0]!;
+        const key = Object.keys(env)[0];
         await t.test(key, async () => {
             const result = await runService(fx, ["config", "check"], { env });
             assert.equal(result.code, 1, `${key}: ${result.stdout} ${result.stderr}`);
@@ -430,7 +430,7 @@ for (const built of [false, true]) {
             assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
             assert.equal(notice?.owner, owner);
             assert.equal(notice?.level, "warn");
-            assert.ok(notice?.message?.includes(key!));
+            assert.ok(notice?.message?.includes(key));
         }
         const result = outcomeOf(events) as { ok: boolean; result: { actions: object } };
         assert.equal(result.ok, true);

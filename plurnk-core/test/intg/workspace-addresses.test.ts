@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
@@ -24,7 +23,7 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one operation");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, origin,
-                sequence: ++sequence, statement: item.statement as PlurnkStatement });
+                sequence: ++sequence, statement: item.statement });
         };
         for (const name of ["alice", "bob", "unallocated", ""]) {
             const path = `worker://${name}/notes.md`;
@@ -70,7 +69,7 @@ test("{§entry-owner}: scratch survives its namesake actor and remains workspace
             const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
             assert.ok(item?.kind === "statement");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, origin: "client", sequence: ++sequence,
-                statement: item.statement as PlurnkStatement });
+                statement: item.statement });
         } };
     }));
     const author = await insertWorker(db, spaces[0].workspaceId, null, "author");

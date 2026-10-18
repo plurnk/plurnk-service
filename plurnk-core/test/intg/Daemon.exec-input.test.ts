@@ -23,11 +23,11 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
             const result = await runLoopToTerminal(client, 2, { prompt: "Exchange input with the process." });
             assert.equal(result.finalStatus, 200);
             assert.equal(result.turnIds?.length, 4);
-            const inputRows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2]! });
+            const inputRows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds[2] });
             const delivered = inputRows.find((row) => row.op === "SEND");
             assert.equal(delivered?.status_rx, 200);
             assert.match(delivered?.rx ?? "", /"bytesAccepted":13/);
-            const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3]! });
+            const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
             assert.match(packetSection(JSON.parse(packet!.packet), "log"), /13 bytes delivered to stdin; input closed\./,
                 "the model sees delivery and EOF facts, not only a copy of its authored input");
             assert.match(packetSection(JSON.parse(packet!.packet), "log"), /received:input-witness/,
@@ -56,15 +56,15 @@ for (const reply of ["authored", "recovered"] as const) {
                 assert.equal(result.finalStatus, 200);
                 assert.equal(result.turnIds?.length, 5);
                 assert.equal(mock.received.length, 4);
-                const launch = result.turnIds![2]!;
+                const launch = result.turnIds[2];
                 assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: launch }))?.status, 102,
                     "a clean launch continues without a stream poll or external wake even after an earlier reply");
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: launch });
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["node", 200]],
                     "the continuing launch contains no recovery, WAIT or reply");
-                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![3]! });
+                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds[3] });
                 assert.ok(input.some(({ op, status_rx, rx }) => op === "SEND" && status_rx === 200 && JSON.parse(rx).bytesAccepted === 13));
-                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![4]! });
+                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[4] });
                 assert.match(packetSection(JSON.parse(packet!.packet), "log"), /received:later-witness/,
                     "the next model request contains the actual process response to the delivered input");
             } finally { client.close(); }
@@ -93,16 +93,16 @@ for (const cause of ["operation", "parser"] as const) {
                 });
                 assert.equal(result.finalStatus, 200);
                 assert.equal(result.turnIds?.length, 4);
-                const recoveredTurn = result.turnIds![1]!;
+                const recoveredTurn = result.turnIds[1];
                 assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: recoveredTurn }))?.status, 102,
                     "the turn continues immediately instead of relying on a stream poll or external wake");
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: recoveredTurn });
                 assert.ok(rows.some((row) => cause === "parser"
                     ? row.op === "error" && row.status_rx === 400 && row.rx.includes("invalid-operation-syntax")
                     : row.op === "READ" && row.status_rx === 404), "the actual failure is retained, not suppressed to resume the loop");
-                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2]! });
+                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds[2] });
                 assert.ok(input.some((row) => row.op === "SEND" && row.status_rx === 200 && row.rx.includes('"bytesAccepted":16')));
-                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3]! });
+                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
                 assert.match(packetSection(JSON.parse(packet!.packet), "log"), /received:recovery-witness/,
                     "the recovery actually feeds and closes stdin, then observes the real process output");
             } finally { client.close(); }

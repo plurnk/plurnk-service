@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
@@ -59,7 +58,7 @@ for (const specimen of cases) {
                 const [item] = parsed.items;
                 assert.equal(item?.kind, "statement", JSON.stringify(parsed));
                 if (item?.kind !== "statement") throw new Error("Expected one parsed operation");
-                const result = await engine.dispatch({ ...env, statement: item.statement as PlurnkStatement, sequence: 1, origin: "client" });
+                const result = await engine.dispatch({ ...env, statement: item.statement, sequence: 1, origin: "client" });
                 const body = async (path: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: path, name: "body" }))?.content;
                 const unchanged = operation === "KILL" && specimen.removed === specimen.content;
                 assert.equal(result.status, transfer ? 201 : unchanged ? 304 : 200, JSON.stringify(result));
@@ -104,7 +103,7 @@ for (const specimen of [
             assert.equal(parsed.items[0]?.kind, "statement");
             const item = parsed.items[0];
             if (item?.kind !== "statement") throw new Error(JSON.stringify(parsed));
-            const result = await engine.dispatch({ ...env, statement: item.statement as PlurnkStatement, sequence: 1, origin: "client" });
+            const result = await engine.dispatch({ ...env, statement: item.statement, sequence: 1, origin: "client" });
             assert.equal(result.status, 422, JSON.stringify(result));
             assert.match(String(result.problem?.type), /\/pattern-source-unlocated$/);
             const source = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: `/${specimen.path}`, name: "body" });

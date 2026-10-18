@@ -41,8 +41,8 @@ for (const tier of ["parse", "parseStatements"] as const) {
         for (const op of ["SEND", "NOTE", "EDIT (worker:///example.md) <1>"]) {
             const outer = statements(PlurnkParser[tier](PlurnkParser.frame(op, call)));
             assert.equal(outer.length, 1);
-            assert.ok("body" in outer[0]!);
-            const literal = outer[0]!.body;
+            assert.ok("body" in outer[0]);
+            const literal = outer[0].body;
             assert.equal(typeof literal === "string" ? literal : literal?.raw, call, op);
         }
     });

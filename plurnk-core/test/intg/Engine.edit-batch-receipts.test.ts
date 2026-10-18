@@ -39,27 +39,27 @@ const cases: readonly {
         name: "an actually stale anchor reports the same current absence",
         source: V1,
         current: V1.replace("six\n", "SIX\n"),
-        scopes: (anchors) => [[anchors[4]!]],
-        unresolved: (anchors) => [{ anchor: anchors[4]!, kind: "missing" }],
+        scopes: (anchors) => [[anchors[4]]],
+        unresolved: (anchors) => [{ anchor: anchors[4], kind: "missing" }],
     },
     {
         name: "a residual short-hash collision names its current matching lines",
         source: REPEATED,
         current: REPEATED,
         hashCollision: true,
-        scopes: (anchors) => [[anchors[5]!]],
-        unresolved: (anchors) => [{ anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] }],
+        scopes: (anchors) => [[anchors[5]]],
+        unresolved: (anchors) => [{ anchor: anchors[5], kind: "ambiguous", lines: [6, 10] }],
     },
     {
         name: "independent failures name their own range endpoints and anchors",
         source: REPEATED,
         current: REPEATED.replace("tail", "TAIL"),
         hashCollision: true,
-        scopes: (anchors) => [["@451ok", anchors[5]!], [anchors[12]!]],
+        scopes: (anchors) => [["@451ok", anchors[5]], [anchors[12]]],
         unresolved: (anchors) => [
             { anchor: "@451ok", kind: "missing" },
-            { anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] },
-            { anchor: anchors[12]!, kind: "missing" },
+            { anchor: anchors[5], kind: "ambiguous", lines: [6, 10] },
+            { anchor: anchors[12], kind: "missing" },
         ],
     },
 ];
@@ -72,7 +72,7 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
         const tokens = LineAnchors.tokens.bind(LineAnchors);
         t.mock.method(LineAnchors, "tokens", (identity: string, content: string) => {
             const anchors = tokens(identity, content);
-            return identity === "doc.md" ? anchors.with(9, anchors[5]!) : anchors;
+            return identity === "doc.md" ? anchors.with(9, anchors[5]) : anchors;
         });
     }
     const root = await mkdtemp(join(tmpdir(), "plurnk-batch-"));
@@ -138,7 +138,7 @@ replacement
                 assert.equal(edits.length, statements.length);
                 assert.deepEqual(edits.slice(0, 3).map(({ status_rx }) => status_rx), [200, 200, 200], "valid earlier operations land independently");
                 for (const [index, row] of edits.slice(3).entries()) {
-                    const ownUnresolved: UnresolvedAnchor[] = unresolved.filter(({ anchor }) => fixture.scopes(anchors)[index]!.includes(anchor));
+                    const ownUnresolved: UnresolvedAnchor[] = unresolved.filter(({ anchor }) => fixture.scopes(anchors)[index].includes(anchor));
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");

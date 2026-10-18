@@ -37,14 +37,14 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items
+    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "READ");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items
+    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
         .find((i) => i.kind === "statement" && i.statement.op === "FIND");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;
@@ -61,7 +61,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
     // {§fs-canonical-name} File entries retain their project-relative key.
-    await EntryCrud.writeEntry({ authority: "", pathname: `${pathname}` }, { channels: { body: { content, mimetype } } }, ctx, "file");
+    await EntryCrud.writeEntry({ authority: "", pathname: pathname }, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,

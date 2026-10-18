@@ -40,7 +40,7 @@ describe("Image — validate", () => {
         assert.throws(() => webp.validate(GIF), /Not a WebP image/);
     });
     it("refuses text content: a binary handler receives bytes", () => {
-        assert.throws(() => png.validate("not bytes" as never), /Uint8Array/);
+        assert.throws(() => png.validate("not bytes"), /Uint8Array/);
     });
 });
 

@@ -209,7 +209,7 @@ export default class File extends CoreSchemeAdapterBase {
         const occupant = key.startsWith("../") ? null : await File.#occupant(root, key);
         if (occupant?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(key, "READ", root);
-            return Results.failure("scheme:file", code, 404, detail, fields, extensions) as SchemeResultBase;
+            return Results.failure("scheme:file", code, 404, detail, fields, extensions);
         }
         const occupied = occupant !== null;
         // {§membership-read-refusal} — admission is the recovery for an untracked file; a file the
@@ -235,7 +235,7 @@ export default class File extends CoreSchemeAdapterBase {
                     : fileMissRecovery(named),
                 retryable: false,
             },
-        ) as SchemeResultBase;
+        );
     }
 
     static async #occupant(root: string, key: string): Promise<Stats | null> {
@@ -422,7 +422,7 @@ export default class File extends CoreSchemeAdapterBase {
             status: number,
             detail: string,
             extensions: Readonly<Record<string, unknown>> = {},
-        ): EditResult => Results.failure("scheme:file", code, status, detail, {}, extensions) as EditResult;
+        ): EditResult => Results.failure("scheme:file", code, status, detail, {}, extensions);
         const statement = statements[0];
         if (statement === undefined) {
             return failure(
@@ -453,7 +453,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (!target.ok) return failure(target.code, target.status, target.detail, target.extensions);
         const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
-        if (selectedRevision !== undefined && selectedRevision !== baseSig) return EditCollision.result(rel) as EditResult;
+        if (selectedRevision !== undefined && selectedRevision !== baseSig) return EditCollision.result(rel);
         for (const candidate of statements.slice(1)) {
             if (candidate.target === null) {
                 return failure(
@@ -484,7 +484,7 @@ export default class File extends CoreSchemeAdapterBase {
 
         const precondition = SchemeCtxImpl.editPreconditionOf(ctx);
         if (precondition !== null && !LineAnchors.satisfies(precondition, original)) {
-            return EditCollision.result(precondition.identity) as EditResult;
+            return EditCollision.result(precondition.identity);
         }
 
         // {§edit-marker-required-on-existing} — markerless content creates a new
@@ -507,7 +507,7 @@ export default class File extends CoreSchemeAdapterBase {
             }
             const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
             const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
-            if (result.status !== 200) return Results.assert(result) as EditResult;
+            if (result.status !== 200) return Results.assert(result);
             patched = result.result ?? "";
             scopeNormalizations = result.scopeNormalizations;
             merges = result.merges;
@@ -592,7 +592,7 @@ export default class File extends CoreSchemeAdapterBase {
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== baseSig) return {
             ...EditCollision.result(rel), created: false, entryId: null,
-        } as WriteEntryResult;
+        };
         if (bytes !== undefined) {
             // {§binary-parity} — a byte write carries no text diff; the receipt is the byte count and
             // the bytes ride attrs.patchedBytes to applyResolution, which writes them verbatim to disk.
@@ -635,7 +635,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
         const existed = args.attrs.existed === true;
         const baseline = FileSnapshot.decode(attrs.baseSig ?? null);
-        if (existed && (baseline === null || baseline.hash === null)) return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
+        if (existed && (baseline === null || baseline.hash === null)) return EditCollision.result(relPath, { outcome: "edit_collision" });
         let receipt = attrs.editReceipt;
         const original = attrs.original ?? (existed ? null : "");
         if (body !== undefined && body !== attrs.patched) {
@@ -669,13 +669,13 @@ export default class File extends CoreSchemeAdapterBase {
         return FileSnapshot.serialize(canonical, async () => {
             const acceptedTarget = await this.#resolveWriteTarget(relPath, core, patchedBytes !== undefined);
             if (!acceptedTarget.ok) return Results.failure("scheme:file", acceptedTarget.code, acceptedTarget.status,
-                acceptedTarget.detail, {}, acceptedTarget.extensions) as ApplyResult;
-            if (acceptedTarget.canonical !== canonical || acceptedTarget.fileExists !== existed) return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
+                acceptedTarget.detail, {}, acceptedTarget.extensions);
+            if (acceptedTarget.canonical !== canonical || acceptedTarget.fileExists !== existed) return EditCollision.result(relPath, { outcome: "edit_collision" });
             const creationAdmission = acceptedTarget.creationAdmission;
             const root = await FileAddress.projectRoot(core);
             if (root === null) throw new InvalidOperationResultError("An accepted file write has no workspace project root.");
             const publication = await FilePublication.write(join(root, relPath), canonical, baseline, patchedBytes ?? Buffer.from(patched));
-            if (publication.status === "conflict") return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
+            if (publication.status === "conflict") return EditCollision.result(relPath, { outcome: "edit_collision" });
             if (publication.status === "failed") {
                 console.error(`File publication failed for '${relPath}':`, publication.cause);
                 return Results.failure(
@@ -689,7 +689,7 @@ export default class File extends CoreSchemeAdapterBase {
                         stage: "filesystem-publication",
                         published: publication.published,
                     },
-                ) as ApplyResult;
+                );
             }
             // Register the exact mimetype resolved at proposal time, then complete the
             // membership-owned incorporation transaction. No fallible receipt work follows.
@@ -763,7 +763,7 @@ export default class File extends CoreSchemeAdapterBase {
                                 cause: ErrorDetail.preview(err),
                                 retryable: false,
                             },
-                        ) as ApplyResult;
+                        );
                     }
                     console.error(`File creation incorporation failed for '${relPath}':`, err);
                     return Results.failure(
@@ -777,7 +777,7 @@ export default class File extends CoreSchemeAdapterBase {
                             stage: "membership-incorporation",
                             retryable: false,
                         },
-                    ) as ApplyResult;
+                    );
                 }
                 // An existing-file write has already changed disk. Surface the partial
                 // failure rather than pretending the addressable entry followed it.
@@ -793,7 +793,7 @@ export default class File extends CoreSchemeAdapterBase {
                         stage: "entry-registration",
                         retryable: false,
                     },
-                ) as ApplyResult;
+                );
             }
             // {§log-mutation-patch} — what this write did to the text, current to proposed, kept on the
             // operation row being settled; a byte write keeps no patch.
@@ -811,7 +811,7 @@ export default class File extends CoreSchemeAdapterBase {
 
     async #applyDelete(pathname: string, baseSig: string | null, mimetype: string | null, core: PlurnkSchemeContext): Promise<ApplyResult> {
         const baseline = FileSnapshot.decode(baseSig);
-        if (baseline === null || baseline.hash === null) return EditCollision.result(pathname) as ApplyResult;
+        if (baseline === null || baseline.hash === null) return EditCollision.result(pathname);
         const root = await FileAddress.projectRoot(core);
         if (root === null) throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
         const requested = join(root, pathname);
@@ -821,7 +821,7 @@ export default class File extends CoreSchemeAdapterBase {
             const textual = mimetype !== null && core.mimetypes !== undefined && !(await MimetypeBinary.isBinaryMimetype(mimetype, core.mimetypes));
             const bounded = textual ? await FileSnapshot.acquire(requested, FileMaterialization.maximumBytes()) : null;
             const current = bounded ?? await FileSnapshot.acquire(requested, null);
-            if (current === null || !FileSnapshot.matches(baseline, current.revision)) return EditCollision.result(pathname) as ApplyResult;
+            if (current === null || !FileSnapshot.matches(baseline, current.revision)) return EditCollision.result(pathname);
             let deleted = false;
             try {
                 await rm(requested);
@@ -836,7 +836,7 @@ export default class File extends CoreSchemeAdapterBase {
                 return Results.failure("scheme:file", "delete-failed", 500,
                     `${deleted ? "The file was deleted, but projection settlement failed" : "The file could not be deleted"}: ${ErrorDetail.preview(cause)}`,
                     { outcome: "delete_failed", ...(deleted ? { effects: [{ target: pathname, action: "delete" }] } : {}) },
-                    { path: pathname, stage: deleted ? "entry-deletion" : "filesystem-delete", deleted }) as ApplyResult;
+                    { path: pathname, stage: deleted ? "entry-deletion" : "filesystem-delete", deleted });
             }
         });
     }
@@ -856,27 +856,27 @@ export default class File extends CoreSchemeAdapterBase {
                 "File deletion requires a workspace project root.",
                 {},
                 { retryable: false },
-            ) as DeleteEntryResult;
+            );
         }
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname, root))) as DeleteEntryResult;
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname, root)));
         const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; mimetype: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL", root);
-            return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
+            return Results.failure("scheme:file", code, 404, detail, {}, extensions);
         }
         if (member === undefined) {
             const address = entryAddress("file", "", rel, root);
-            return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", File.#beyondRoot(rel) ? address : rel), {}, missExtensions("file", address)) as DeleteEntryResult;
+            return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", File.#beyondRoot(rel) ? address : rel), {}, missExtensions("file", address));
         }
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
-        if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel) as DeleteEntryResult;
+        if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel);
         const baseline = FileSnapshot.decode(member.synced_sig);
-        if (baseline === null) return EditCollision.result(rel) as DeleteEntryResult;
+        if (baseline === null) return EditCollision.result(rel);
         // {§file-delete-revision}: an oversized marker has no body; deletion still captures exact bytes.
         const acquired = baseline.hash === null ? await FileSnapshot.acquire(join(root, rel), null) : null;
         if (baseline.hash === null && (acquired === null || !FileSnapshot.matches(baseline, acquired.revision))) {
-            return EditCollision.result(rel) as DeleteEntryResult;
+            return EditCollision.result(rel);
         }
         return { status: 202, attrs: { deletePath: rel, baseSig: acquired === null ? member.synced_sig : JSON.stringify(acquired.revision), mimetype: member.mimetype } };
     }
@@ -897,7 +897,7 @@ export default class File extends CoreSchemeAdapterBase {
                     target: pathname,
                     channel,
                 },
-            ) as DeleteEntryResult;
+            );
         }
         return this.deleteEntry(pathname, ctx);
     }

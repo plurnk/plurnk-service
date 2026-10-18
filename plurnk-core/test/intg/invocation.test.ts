@@ -38,7 +38,7 @@ const run = async (
         model: "invocation-witness", url: "https://example.test/v1/chat/completions",
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
-        fetch: async () => streamed(script[Math.min(calls++, script.length - 1)]!),
+        fetch: async () => streamed(script[Math.min(calls++, script.length - 1)]),
     });
     await withDaemon(provider, async (db: Db, daemon: Daemon) => {
         const announced: LogEntryWire[] = [];
@@ -82,10 +82,10 @@ test("{§methods-invocation} a stream's observation names its execution, and a F
         const observation = main.find(({ invocation }) => invocation === address(execution));
         assert.equal((observation?.rx as { content?: unknown } | undefined)?.content, "hello\n", "the observation names the execution that opened its stream");
         assert.equal(observation?.source, null, "the observation's attribution is unchanged");
-        assert.equal(announced.find(({ id }) => id === observation!.id)?.invocation, observation!.invocation, "log/entry carries it as readLog does");
+        assert.equal(announced.find(({ id }) => id === observation.id)?.invocation, observation.invocation, "log/entry carries it as readLog does");
         const copy = (await logs("branch")).find((row) =>
-            row.origin === "_plurnk" && row.loop_seq === observation!.loop_seq && row.turn_seq === observation!.turn_seq && row.sequence === observation!.sequence);
-        assert.equal(copy?.invocation, observation!.invocation, "the branch's copy names the execution at the same coordinate");
+            row.origin === "_plurnk" && row.loop_seq === observation.loop_seq && row.turn_seq === observation.turn_seq && row.sequence === observation.sequence);
+        assert.equal(copy?.invocation, observation.invocation, "the branch's copy names the execution at the same coordinate");
     });
 });
 

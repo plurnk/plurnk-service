@@ -15,7 +15,7 @@ import { rpcCall, subscribeNotifications, connect, withDaemon, waitForDb } from 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
-    assistant: { content: `${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,
 });
 
@@ -71,6 +71,6 @@ the server stays up
             } finally { ws.close(); }
         });
         // withDaemon stopped the daemon: a detached spawn does not outlive it.
-        await waitForDb(() => beating(file, 300), (moving) => moving === false, { timeoutMs: 10000 });
+        await waitForDb(() => beating(file, 300), (moving) => ! moving, { timeoutMs: 10000 });
     } finally { await rm(dir, { recursive: true, force: true }); }
 });

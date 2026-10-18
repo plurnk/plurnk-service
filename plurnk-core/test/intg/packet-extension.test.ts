@@ -71,14 +71,14 @@ test("extension packet control: a scheme adds, removes, and reorders packet sect
         assert.deepEqual(chronological.filter(({ slot }) => slot === "assistant").map(({ content }) => content), expected);
         for (const [index, section] of chronological.entries()) {
             if (section.slot !== "assistant") continue;
-            const receipt: PacketSectionDraft = chronological[index + 1]!;
+            const receipt: PacketSectionDraft = chronological[index + 1];
             assert.equal(receipt.slot, "user");
             assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ) · \d+/u, "every turn is followed by its receipts");
         }
         assert.equal(provider.received.length, 3);
-        const last = provider.received[2]!;
+        const last = provider.received[2];
         assert.deepEqual(last.filter(({ role }) => role === "assistant").map(chatMessageText), expected);
-        assert.match(chatMessageText(last[3]!), /^### log:\/\/\/1\/2\/\d+\/EDIT/u, "transformed packets retain the chronological result boundary");
+        assert.match(chatMessageText(last[3]), /^### log:\/\/\/1\/2\/\d+\/EDIT/u, "transformed packets retain the chronological result boundary");
         assert.doesNotMatch(last.map(chatMessageText).join("\n"), /## Context\n/u, "the transform still removes the requested section");
     } finally { await db.close(); }
 });

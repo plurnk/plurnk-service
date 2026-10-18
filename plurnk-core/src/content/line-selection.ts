@@ -30,14 +30,14 @@ export default class LineSelection {
         let start = { startLine, startColumn: region.startColumn };
         for (let line = region.startLine; line < region.endLine; line++) {
             const next = ordinals[line];
-            const after = ordinals[line - 1]! + 1;
+            const after = ordinals[line - 1] + 1;
             if (line + 1 === region.endLine && region.endColumn === 1) {
                 fragments.push({ ...start, endLine: after, endColumn: 1 });
                 return fragments;
             }
             if (next !== after) {
                 fragments.push({ ...start, endLine: after, endColumn: 1 });
-                start = { startLine: next!, startColumn: 1 };
+                start = { startLine: next, startColumn: 1 };
             }
         }
         fragments.push({ ...start, endLine, endColumn: region.endColumn });

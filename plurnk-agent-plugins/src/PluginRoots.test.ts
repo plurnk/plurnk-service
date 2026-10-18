@@ -82,6 +82,6 @@ test("{§agent-plugins-roots} unreadable roots and candidates are reported witho
         { root: invalidRoot, outcome: "rejected" },
         { root: join(validRoot, "loop"), outcome: "rejected" },
     ]);
-    assert.match(reports[0]!.message, /ENOTDIR/);
-    assert.match(reports[1]!.message, /ELOOP/);
+    assert.match(reports[0].message, /ENOTDIR/);
+    assert.match(reports[1].message, /ELOOP/);
 });

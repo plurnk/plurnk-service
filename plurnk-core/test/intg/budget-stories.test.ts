@@ -57,7 +57,7 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
 };
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
-    const state = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; budget: number };
+    const state = JSON.parse(budget.split("\n\n")[0]) as { tokens: number; budget: number };
     const usage = state.tokens;
     const ceiling = state.budget;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
@@ -173,7 +173,7 @@ test("{§context-gauge}: a composed packet's largest inventory points to its dom
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");
-        const object = JSON.parse(budget.split("\n\n")[0]!) as { tokens: number; budget: number; percent: number; largest: Array<{ path: string; tokens: number }> };
+        const object = JSON.parse(budget.split("\n\n")[0]) as { tokens: number; budget: number; percent: number; largest: Array<{ path: string; tokens: number }> };
         assert.deepEqual(Object.keys(object), ["tokens", "budget", "percent", "largest"], "the share sits after the totals; the inventory follows it");
         assert.equal(object.percent, Math.floor(object.tokens * 100 / object.budget), "the pressured packet's share is the gauge's own, inventory included");
         const inventory = object.largest;

@@ -100,7 +100,7 @@ export default class StoredPacket {
     static #attachments(value: unknown, subject: string): void {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
-            const attachment = StoredPacket.#record(item, `${subject}[${index}]`) as Record<string, unknown>;
+            const attachment = StoredPacket.#record(item, `${subject}[${index}]`);
             StoredPacket.#keys(attachment, ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight"], ["contentHash", "coordinate", "path", "scheme", "pathname", "mimetype", "kind", "weight", "width", "height", "pages", "duration", "section"], `${subject}[${index}]`);
             if (own(attachment, "section") && (typeof attachment.section !== "string" || attachment.section.length === 0)) {
                 throw new TypeError(`${subject}[${index}].section must be a non-empty string`);
@@ -148,7 +148,7 @@ export default class StoredPacket {
             throw new TypeError(`${subject}.assistant and ${subject}.assistantRaw must be present together`);
         }
         if (!hasAssistant) return {
-            weight: packet.weight as number,
+            weight: packet.weight,
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),
@@ -156,7 +156,7 @@ export default class StoredPacket {
         if (packet.assistantRaw === undefined) throw new TypeError(`${subject}.assistantRaw must be a JSON value`);
 
         return {
-            weight: packet.weight as number,
+            weight: packet.weight,
             sections,
             attributions,
             ...(attachments === undefined ? {} : { attachments }),
@@ -199,7 +199,7 @@ export default class StoredPacket {
             slot,
             header,
             content,
-            weight: section.weight as number,
+            weight: section.weight,
             ...(own(section, "items") ? { items: section.items as string[] } : {}),
         };
     }

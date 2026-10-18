@@ -51,7 +51,7 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
                 assert.match(JSON.parse(work!.rx).attrs?.worker ?? "", /^worker:\/\/[a-f0-9]{8}$/, "the child is auto-named");
                 const { prompts } = await childPrompts(db, modelWorkerId!);
                 assert.equal(prompts.length, 1);
-                assert.equal(prompts[0]!.content, "Count the lines in every file.", "the file's complete READ text is the child's prompt");
+                assert.equal(prompts[0].content, "Count the lines in every file.", "the file's complete READ text is the child's prompt");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -70,7 +70,7 @@ test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank li
                 assert.equal(finalStatus, 200);
                 await flush();
                 const { prompts } = await childPrompts(db, modelWorkerId!);
-                assert.equal(prompts[0]!.content, "The brief.\n\nAlso report the total.");
+                assert.equal(prompts[0].content, "The brief.\n\nAlso report the total.");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }

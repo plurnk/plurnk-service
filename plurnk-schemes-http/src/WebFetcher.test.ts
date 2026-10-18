@@ -59,7 +59,7 @@ const resp = (body: string | Uint8Array<ArrayBuffer> | null, status: number, hea
     new Response(body, { status, headers });
 
 test("live public textual URL → { body, mimetype }", async () => {
-    await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+    await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, '{\n  "a": 1\n}');
@@ -88,7 +88,7 @@ test("finite JSON presentation preserves literal values and non-JSON source layo
 });
 
 test("the shared textual taxonomy accepts application/yaml", async () => {
-    await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })) as typeof fetch, async () => {
+    await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "name: plurnk");
@@ -100,7 +100,7 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
     const windows1252 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9]);
     await withFetch((async () => resp(windows1252, 200, {
         "content-type": "text/plain; charset=windows-1252",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "caf\uFFFD");
@@ -112,7 +112,7 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
 test("an unsupported charset does not invent a non-Fetch decoder", async () => {
     await withFetch((async () => resp("Unicode stays Unicode", 200, {
         "content-type": "text/plain; charset=not-a-real-encoding",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "Unicode stays Unicode");
@@ -128,7 +128,7 @@ test("GitHub blob acquisition uses one source target for byte fetch", async (t) 
     await withFetch((async (url) => {
         seen.push(String(url));
         return resp("/* content */", 200, { "content-type": "text/plain" });
-    }) as typeof fetch, async () => {
+    }), async () => {
         await new WebFetcher().fetch(blob);
     });
     assert.deepEqual(seen, [raw]);
@@ -145,7 +145,7 @@ test("HTML → byte response materializes local floor projection when no materia
             };
         },
     });
-    await withFetch((async () => resp("<html><body><h1>Title</h1></body></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
+    await withFetch((async () => resp("<html><body><h1>Title</h1></body></html>", 200, { "content-type": "text/html; charset=utf-8" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.equal(fetched.body, "<html><body><h1>Title</h1></body></html>");
@@ -181,7 +181,7 @@ test("HTML → materializes the configured materializer's Markdown ({§http-mate
         },
     });
     await withFetch((async () =>
-        resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
+        resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         const materialized = await WebFetcher.materialize(fetched, projection);
@@ -217,7 +217,7 @@ test("supplied HTML never consults the materializer", async () => {
     await withFetch((async () => {
         calls += 1;
         throw new Error("supplied content must not spend or refetch");
-    }) as typeof fetch, async () => {
+    }), async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Supplied</body></html>",
@@ -259,7 +259,7 @@ test("a recoverable materializer outcome uses an identified local floor", async 
     });
     await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
         "content-type": "text/html",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Origin</body></html>",
@@ -305,7 +305,7 @@ test("a hard materializer failure preserves HTML but does not bless a local body
     });
     await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
         "content-type": "text/html",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Origin</body></html>",
@@ -331,7 +331,7 @@ test("a materializer extraction throw surfaces as the scheme failure, not a sile
     });
     await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
         "content-type": "text/html",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         await assert.rejects(
@@ -356,7 +356,7 @@ test("the materializer may produce the readable text after admitted origin trans
     });
     await withFetch((async () => resp("<html>unused</html>", 200, {
         "content-type": "text/html",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const materialized = await WebFetcher.materialize(
             WebFetcher.unavailable(PUB, new Error("origin reset"), true),
             PROJECTION,
@@ -382,7 +382,7 @@ test("origin Markdown is the source itself: one request, no variant, never the m
         const accept = new Headers(init?.headers).get("accept") ?? "";
         calls.push({ url: String(input), accept });
         return resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.equal(fetched.body, "# Origin Markdown");
@@ -402,7 +402,7 @@ test("an authored Accept value is honored exactly", async () => {
     await withFetch((async (_input, init) => {
         observed = new Headers(init?.headers).get("accept") ?? "";
         return resp('{"ok":true}', 200, { "content-type": "application/json" });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const fetched = await new WebFetcher().fetch(PUB, {
             headers: [["Accept", "application/json"]],
         });
@@ -416,7 +416,7 @@ test("an authored Markdown Accept is honored and yields the Markdown as the body
     await withFetch((async (_input, init) => {
         observed.push(new Headers(init?.headers).get("accept") ?? "");
         return resp("# Authored representation", 200, { "content-type": "text/markdown" });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const fetched = await new WebFetcher().fetch(PUB, {
             headers: [["Accept", "text/markdown"]],
         });
@@ -479,14 +479,14 @@ test("a pre-aborted caller rejects before the automatic URL check", async (t) =>
 
 test("automatic URL check refusal → null, and never fetches", async () => {
     let called = false;
-    await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
+    await withFetch((async () => { called = true; return resp("x", 200); }), async () => {
         assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"), null);
     });
     assert.equal(called, false);
 });
 
 test("non-2xx → null", async () => {
-    await withFetch((async () => resp("nope", 404, { "content-type": "text/html" })) as typeof fetch, async () => {
+    await withFetch((async () => resp("nope", 404, { "content-type": "text/html" })), async () => {
         assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });
@@ -507,7 +507,7 @@ test("handler-declared binary bytes retain their source beside the readable proj
     });
     await withFetch((async () => resp(Uint8Array.of(1, 2, 3), 200, {
         "content-type": "text/x-binary",
-    })) as typeof fetch, async () => {
+    })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.notEqual(typeof fetched.body, "string", "registry-declared binary input remains bytes");
@@ -578,7 +578,7 @@ test("registry classification failure cancels the owned response body and preser
 });
 
 test("empty textual body remains a present representation", async () => {
-    await withFetch((async () => resp("", 200, { "content-type": "text/plain" })) as typeof fetch, async () => {
+    await withFetch((async () => resp("", 200, { "content-type": "text/plain" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.deepEqual(await WebFetcher.materialize(fetched, PROJECTION), {
@@ -590,7 +590,7 @@ test("empty textual body remains a present representation", async () => {
 });
 
 test("network error → null (unreachable is dead, not a throw)", async () => {
-    await withFetch((async () => { throw new Error("ECONNREFUSED"); }) as typeof fetch, async () => {
+    await withFetch((async () => { throw new Error("ECONNREFUSED"); }), async () => {
         assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });

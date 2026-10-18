@@ -34,7 +34,7 @@ test("{§mcp-plugin-configuration} a plugin process receives reserved variables 
     });
     try {
         const result = await connection.callTool("launch", {}) as { content: Array<{ text: string }> };
-        const values = JSON.parse(result.content[0]!.text);
+        const values = JSON.parse(result.content[0].text);
         assert.deepEqual(values, {
             cwd: context.data, argv: [context.root, context.data, "${SAMPLE}"], pid: values.pid,
             root: context.root, data: context.data, sample: context.root, literal: "${SAMPLE}",
@@ -89,7 +89,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
 
         const resource = await connection.readResource("fixture://document");
         assert.equal(resource.contents[0]?.uri, "fixture://document");
-        assert.equal("text" in resource.contents[0]!, true);
+        assert.equal("text" in resource.contents[0], true);
 
         const prompt = await connection.getPrompt("summarize", { topic: "MCP" });
         assert.deepEqual(prompt.messages, [{
@@ -129,7 +129,7 @@ test("{§mcp-launch-directory} an unconfigured cwd is supplied by the host, neve
     const connection = new ServerConnection({ ...definition, command: process.execPath }, env, { cwd: directory });
     try {
         const result = await connection.callTool("where", {}) as { content: Array<{ text: string }> };
-        assert.deepEqual(JSON.parse(result.content[0]!.text), { cwd: await realpath(directory) });
+        assert.deepEqual(JSON.parse(result.content[0].text), { cwd: await realpath(directory) });
         assert.deepEqual(connection.definition, { ...definition, command: process.execPath });
         assert.throws(() => new ServerConnection(definition, env), /requires an absolute working directory from its definition or host/u);
     } finally { await connection.close(); }
@@ -140,7 +140,7 @@ test("{§mcp-launch-directory} an explicit absolute cwd and executable are not c
     const connection = new ServerConnection(definition, { ...env, SCRIPT: fixture, SERVER_DIR: FIXTURES }, { cwd: "/unused-host-directory" });
     try {
         const result = await connection.callTool("where", {}) as { content: Array<{ text: string }> };
-        assert.deepEqual(JSON.parse(result.content[0]!.text), { cwd: await realpath(FIXTURES) });
+        assert.deepEqual(JSON.parse(result.content[0].text), { cwd: await realpath(FIXTURES) });
         assert.deepEqual(connection.definition, definition, "resolved references remain outside durable configuration");
     } finally { await connection.close(); }
     assert.throws(() => new ServerConnection(stdioServer("relative", [fixture], { cwd: "./relative" }), env), /requires an absolute working directory/u);

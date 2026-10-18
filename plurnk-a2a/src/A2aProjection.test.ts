@@ -17,7 +17,7 @@ const withResources = (json: unknown, authority: string, resources: readonly { p
             const { raw, ...rest } = record;
             const index = taken.get(owner!) ?? 0;
             taken.set(owner!, index + 1);
-            const { pathname } = resources.filter((resource) => resource.pathname.startsWith(`${owner}/resources/`))[index]!;
+            const { pathname } = resources.filter((resource) => resource.pathname.startsWith(`${owner}/resources/`))[index];
             return { ...rest, resource: `a2a://${authority}${pathname}`, bytes: Buffer.from(raw, "base64").length };
         }
         return Object.fromEntries(Object.entries(record).map(([key, inner]) => [key, walk(inner, owner)]));
@@ -39,17 +39,17 @@ test("{§a2a-part-resources}: mixed Parts preserve order, exact JSON, safe names
         metadata: { provenance: "peer" },
     });
     const projected = A2aProjection.messageEntry(message, "peer");
-    const body = projected.entry.channels.body!.content;
-    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), withResources(Message.toJSON(message), "peer", projected.resources), "the JSON channel names each raw Part's resource and byte count, never its base64");
-    assert.doesNotMatch(projected.entry.channels.json!.content, /"raw"/u);
+    const body = projected.entry.channels.body.content;
+    assert.deepEqual(JSON.parse(projected.entry.channels.json.content), withResources(Message.toJSON(message), "peer", projected.resources), "the JSON channel names each raw Part's resource and byte count, never its base64");
+    assert.doesNotMatch(projected.entry.channels.json.content, /"raw"/u);
     assert.match(body, /First comes the explanation\.[\s\S]+resources\/\.\.%2Fsample\.bin[\s\S]+"rows"[\s\S]+https:\/\/example\.invalid\/private-file/u);
     assert.equal(projected.resources.length, 3, "URL Parts are not eagerly fetched or locally fabricated");
     const [first, second, third] = projected.resources;
-    assert.equal(first!.pathname, "/messages/answer/resources/..%2Fsample.bin");
-    assert.match(second!.pathname, /^\/messages\/answer\/resources\/\.\.%2Fsample\.bin\.[a-f0-9]{8}$/u);
-    assert.match(third!.pathname, /^\/messages\/answer\/resources\/[a-f0-9]{8}$/u);
+    assert.equal(first.pathname, "/messages/answer/resources/..%2Fsample.bin");
+    assert.match(second.pathname, /^\/messages\/answer\/resources\/\.\.%2Fsample\.bin\.[a-f0-9]{8}$/u);
+    assert.match(third.pathname, /^\/messages\/answer\/resources\/[a-f0-9]{8}$/u);
     for (const [index, bytes] of [Buffer.from([0, 1, 2]), Buffer.from([255]), Buffer.from([4, 5])].entries()) {
-        const channel = projected.resources[index]!.entry.channels.body!;
+        const channel = projected.resources[index].entry.channels.body;
         assert.equal(channel.mimetype, "application/octet-stream");
         assert.deepEqual(Buffer.from(channel.bytes!), bytes);
         assert.equal(channel.content, "");
@@ -71,12 +71,12 @@ test("{§a2a-part-resources}: Task status, history and Artifacts retain their ow
     const entries = new Map(projected.resources.map(({ pathname, entry }) => [pathname, entry]));
     for (const parent of ["/messages/question", "/messages/earlier", "/tasks/task/artifacts/output"]) {
         assert.ok(entries.has(parent));
-        assert.match(entries.get(parent)!.channels.body!.content, /<a2a:\/\/peer\/.*\/resources\/[a-f0-9]{8}>/u);
+        assert.match(entries.get(parent)!.channels.body.content, /<a2a:\/\/peer\/.*\/resources\/[a-f0-9]{8}>/u);
         assert.equal([...entries.keys()].filter((path) => path.startsWith(`${parent}/resources/`)).length, 1);
     }
     assert.equal(entries.size, 6);
-    assert.match(projected.entry.channels.body!.content, /state: input-required/u);
-    assert.match(projected.entry.channels.body!.content, /\/messages\/question\/resources\//u);
-    assert.deepEqual(JSON.parse(projected.entry.channels.json!.content), withResources(Task.toJSON(task), "peer", projected.resources, "task"), "artifacts, history and the status message each name their own resources");
-    assert.doesNotMatch(projected.entry.channels.json!.content, /"raw"/u);
+    assert.match(projected.entry.channels.body.content, /state: input-required/u);
+    assert.match(projected.entry.channels.body.content, /\/messages\/question\/resources\//u);
+    assert.deepEqual(JSON.parse(projected.entry.channels.json.content), withResources(Task.toJSON(task), "peer", projected.resources, "task"), "artifacts, history and the status message each name their own resources");
+    assert.doesNotMatch(projected.entry.channels.json.content, /"raw"/u);
 });

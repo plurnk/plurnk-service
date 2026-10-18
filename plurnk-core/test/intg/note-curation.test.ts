@@ -22,9 +22,9 @@ for (const partial of [false, true]) {
         ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(result.result.status, 200);
-        const before = provider.received[1]!;
+        const before = provider.received[1];
         assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${first}\n\n${second}`], "the turn's NOTEs replay together");
-        const after = provider.received[2]!;
+        const after = provider.received[2];
         assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second]);
         const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
         assert.doesNotMatch(user, /Obsolete line\./u);

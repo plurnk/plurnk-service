@@ -66,7 +66,7 @@ test("{§digest-forensic-fidelity}: exports repeated large wire evidence under a
     assert.equal(digest.model_calls.length, count);
     assert.equal(digest.turn_attempts.length, count);
     for (let index = 0; index < count; index++) {
-        const stem = stems[index]!;
+        const stem = stems[index];
         assert.equal(await readFile(join(digestDir, `${stem}.assistant.md`), "utf8"), `response-${index}`);
         assert.equal(JSON.parse(await readFile(join(digestDir, `${stem}.assistantRaw.json`), "utf8")).evidence, payload);
         assert.equal(digest.model_calls[index].response.assistantRaw.evidence, payload);

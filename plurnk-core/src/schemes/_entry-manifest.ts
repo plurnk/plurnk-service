@@ -139,7 +139,7 @@ export default class EntryManifest {
             if (defaultIndex === -1) {
                 throw new Error(`catalog entry ${JSON.stringify(path)} has no ${JSON.stringify(defaultChannel)} default channel`);
             }
-            const defaultItem = channels[defaultIndex]!;
+            const defaultItem = channels[defaultIndex];
             const primary: CatalogDefaultChannel = stream === undefined ? defaultItem : { ...defaultItem, stream };
             return [
                 primary,

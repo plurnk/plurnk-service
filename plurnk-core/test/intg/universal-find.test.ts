@@ -61,7 +61,7 @@ class PreparedDataScheme implements SchemeHandler {
 }
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -71,7 +71,7 @@ const parseFind = (dsl: string): FindStatement => {
 };
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -83,7 +83,7 @@ const parseRead = (dsl: string): ReadStatement => {
 
 
 const parseSend = (dsl: string): SendStatement => {
-    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "SEND") {
@@ -218,7 +218,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
             status: 200,
             headers: { "content-type": "text/plain" },
         });
-    }) as typeof fetch;
+    });
     try {
         const workspaceId = await insertWorkspace(db, `universal-find-http-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -321,7 +321,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
             status: 200,
             headers: { "content-type": "text/plain" },
         });
-    }) as typeof fetch;
+    });
     try {
         const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);

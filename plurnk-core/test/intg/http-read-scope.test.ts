@@ -27,7 +27,7 @@ const htmlPage = (): string => [
 ].join("\n");
 
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (item) => item.kind === "statement" && item.statement.op === "READ",
     );
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
@@ -120,7 +120,7 @@ test("#283: a scoped READ of a materialized https page's source returns exactly 
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/html" },
             });
-        }) as typeof fetch;
+        });
         let sequence = 0;
         const dispatch = async (statement: ReadStatement) => (await engine.dispatch({
             statement, ...ids, sequence: ++sequence, origin: "model",
@@ -156,7 +156,7 @@ test("#283: a scoped READ of a materialized https entry's body channel returns e
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/plain" },
             });
-        }) as typeof fetch;
+        });
         let sequence = 0;
         const dispatch = async (statement: ReadStatement) => (await engine.dispatch({
             statement, ...ids, sequence: ++sequence, origin: "model",
@@ -231,10 +231,10 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/html" },
             });
-        }) as typeof fetch;
+        });
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
-            const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+            const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
                 (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("````READ") ? "READ" : "FIND"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);

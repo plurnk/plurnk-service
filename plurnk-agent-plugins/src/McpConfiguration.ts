@@ -82,7 +82,7 @@ const remoteProblem = ({ url, headers }: Record<string, unknown>): Finding | nul
     if (headers === undefined) return null;
     if (!strings(headers)) return problem("7.2.1", "headers must be an object of strings");
     const seen = new Set<string>();
-    for (const [name, value] of Object.entries(headers as Record<string, string>)) {
+    for (const [name, value] of Object.entries(headers)) {
         if (!FIELD_NAME.test(name)) return problem("7.2.1", `header name ${JSON.stringify(name)} is not a valid HTTP field name`);
         if (!FIELD_VALUE.test(value)) return problem("7.2.1", `header ${name} has an invalid HTTP field value`);
         if (seen.has(name.toLowerCase())) return problem("7.2.1", `header ${name} appears more than once under different casing`);
@@ -97,7 +97,7 @@ const entryProblem = (entry: unknown): Finding | null => {
     if (typeof type !== "string" || !Object.hasOwn(VARIANTS, type)) {
         return problem("7.2.1", `type ${JSON.stringify(type)} is not stdio, streamable-http, or sse`);
     }
-    const foreign = Object.keys(entry).find((key) => !VARIANTS[type]!.has(key));
+    const foreign = Object.keys(entry).find((key) => !VARIANTS[type].has(key));
     if (foreign !== undefined) return problem("7.2.1", `field ${JSON.stringify(foreign)} does not belong to the ${type} variant`);
     return type === "stdio" ? stdioProblem(entry) : remoteProblem(entry);
 };
@@ -122,7 +122,7 @@ export const validateMcpConfiguration = (value: unknown): McpConfigurationResult
     const skipped: ServerFinding[] = [];
     for (const [server, entry] of Object.entries(mcpServers)) {
         const found = entryProblem(entry);
-        if (found === null) servers.set(server, entry as unknown as McpServerEntry);
+        if (found === null) servers.set(server, entry as McpServerEntry);
         else skipped.push({ server, ...found });
     }
     return { servers, skipped };

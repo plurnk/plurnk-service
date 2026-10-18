@@ -36,9 +36,9 @@ const installWire = () => {
 };
 
 const generateArgs = { workerId: "sampling-test", messages: [{ role: "user" as const, content: "hello" }] };
-const samplingKeys = ["temperature", "top_p", "top_k", "presence_penalty", "frequency_penalty", "seed"];
+const samplingKeys = new Set(["temperature", "top_p", "top_k", "presence_penalty", "frequency_penalty", "seed"]);
 const samplingOf = (body: Record<string, unknown> | undefined) =>
-    Object.fromEntries(Object.entries(body ?? {}).filter(([key]) => samplingKeys.includes(key)));
+    Object.fromEntries(Object.entries(body ?? {}).filter(([key]) => samplingKeys.has(key)));
 
 test.afterEach(() => mock.restoreAll());
 

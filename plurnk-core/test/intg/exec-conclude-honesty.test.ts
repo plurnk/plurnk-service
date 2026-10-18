@@ -211,8 +211,8 @@ for (const rejection of ["signal reason", "AbortError", "unrelated error"] as co
             await engine.cancelSubscription(sub.id);
             const [concluded] = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
             const cancelled = rejection !== "unrelated error";
-            assert.equal(concluded!.result.status, cancelled ? 499 : 500);
-            assert.equal(concluded!.result.problem?.type, `https://problems.plurnk.xyz/scheme/exec/${cancelled ? "execution-cancelled" : "executor-threw"}`);
+            assert.equal(concluded.result.status, cancelled ? 499 : 500);
+            assert.equal(concluded.result.problem?.type, `https://problems.plurnk.xyz/scheme/exec/${cancelled ? "execution-cancelled" : "executor-threw"}`);
             assert.equal(diagnostics.length, cancelled ? 0 : 1, "cancellation is expected, while genuine failures retain their diagnostic");
         } finally { await db.close(); }
     });

@@ -23,10 +23,10 @@ const FILES = [
 ];
 
 test("EnvCatalog.declarations carries each knob's own comment, and a commented knob is a knob", () => {
-    const found = EnvCatalog.declarations(FILES[0]!.text);
+    const found = EnvCatalog.declarations(FILES[0].text);
     assert.deepEqual(found.map(({ name }) => name), ["PLURNK_EXECS_ONLY", "PAGER", "NO_COLOR"],
         "an optional declaration is written commented out; it stays findable by name");
-    assert.match(found[1]!.text, /keypress hangs a spawn/u, "a declaration carries the comment that introduces it");
+    assert.match(found[1].text, /keypress hangs a spawn/u, "a declaration carries the comment that introduces it");
 });
 
 test("EnvCatalog.project with no query is the whole catalog", () => {
@@ -72,10 +72,10 @@ test("EnvCatalog.project drops a package with no match rather than rendering an 
 // moves into the field that exists for it rather than being lost.
 test("EnvCatalog.candidates carries the comment as summary and the package as provenance", () => {
     const [first] = EnvCatalog.candidates(FILES, { query: "PAGER" });
-    assert.equal(first!.alias, "PAGER");
-    assert.equal(first!.summary, "A pager that waits for a keypress hangs a spawn that has no terminal.");
-    assert.deepEqual(first!.definition, { value: "cat" });
-    assert.equal(first!.provenance.source, "@plurnk/plurnk-execs");
+    assert.equal(first.alias, "PAGER");
+    assert.equal(first.summary, "A pager that waits for a keypress hangs a spawn that has no terminal.");
+    assert.deepEqual(first.definition, { value: "cat" });
+    assert.equal(first.provenance.source, "@plurnk/plurnk-execs");
 });
 
 test("EnvCatalog.candidates drops a section header, which introduces a region and not a key", () => {
@@ -83,7 +83,7 @@ test("EnvCatalog.candidates drops a section header, which introduces a region an
         owner: "@plurnk/x", parsed: {},
         text: "# ── Defaults (floor-set) ───────────────\n# The real documentation.\nTHING=1",
     }]);
-    assert.equal(only!.summary, "The real documentation.", "prose never begins with a run of rule characters");
+    assert.equal(only.summary, "The real documentation.", "prose never begins with a run of rule characters");
 });
 
 // The security property the ceiling exists for, at the discovery surface: the catalog projects
@@ -94,13 +94,13 @@ test("EnvCatalog.candidates projects the declared value, never an operator's", (
         owner: "@plurnk/plurnk-tavily-plugin", parsed: {},
         text: "# Tavily API key; unset disables the materializer.\nTAVILY_API_KEY=",
     }]);
-    assert.equal(credential!.definition.value, "", "the declaration is empty even when the host has one set");
-    assert.match(credential!.summary!, /unset disables/u, "the model learns what it is for, so it can ask by name");
+    assert.equal(credential.definition.value, "", "the declaration is empty even when the host has one set");
+    assert.match(credential.summary!, /unset disables/u, "the model learns what it is for, so it can ask by name");
 });
 
 test("EnvCatalog.candidates omits summary rather than inventing one", () => {
     const [bare] = EnvCatalog.candidates([{ owner: "@plurnk/x", parsed: {}, text: "BARE=1" }]);
-    assert.equal(bare!.summary, undefined, "a templated instance is self-documenting; an empty string would be a lie");
+    assert.equal(bare.summary, undefined, "a templated instance is self-documenting; an empty string would be a lie");
 });
 
 // {§operator-config-undeclared-key} — a `<placeholder>` in a declared name declares a family.

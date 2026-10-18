@@ -56,7 +56,7 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
     }
     // A base-URL override with no matching alias is a typo, not a silent no-op.
     const unmatched = [...baseUrls.keys()].filter((a) => !seen.has(a));
-    if (unmatched.length > 0) throw new ConfigurationError(baseUrls.get(unmatched[0]!)!.key, `PLURNK_BASEURL_* override(s) with no matching PLURNK_MODEL_* alias: ${unmatched.join(", ")}. Declare the alias or remove the override.`);
+    if (unmatched.length > 0) throw new ConfigurationError(baseUrls.get(unmatched[0])!.key, `PLURNK_BASEURL_* override(s) with no matching PLURNK_MODEL_* alias: ${unmatched.join(", ")}. Declare the alias or remove the override.`);
     return out;
 };
 

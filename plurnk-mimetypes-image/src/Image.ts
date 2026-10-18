@@ -27,10 +27,10 @@ const startsWith = (bytes: Uint8Array, magic: readonly number[], offset = 0): bo
     bytes.length >= offset + magic.length && magic.every((byte, index) => bytes[offset + index] === byte);
 const ascii = (bytes: Uint8Array, offset: number, length: number): string =>
     String.fromCharCode(...bytes.subarray(offset, offset + length));
-const be16 = (bytes: Uint8Array, at: number): number => (bytes[at]! << 8) | bytes[at + 1]!;
-const be32 = (bytes: Uint8Array, at: number): number => ((bytes[at]! << 24) >>> 0) + (bytes[at + 1]! << 16) + (bytes[at + 2]! << 8) + bytes[at + 3]!;
-const le16 = (bytes: Uint8Array, at: number): number => bytes[at]! | (bytes[at + 1]! << 8);
-const le24 = (bytes: Uint8Array, at: number): number => bytes[at]! | (bytes[at + 1]! << 8) | (bytes[at + 2]! << 16);
+const be16 = (bytes: Uint8Array, at: number): number => (bytes[at] << 8) | bytes[at + 1];
+const be32 = (bytes: Uint8Array, at: number): number => ((bytes[at] << 24) >>> 0) + (bytes[at + 1] << 16) + (bytes[at + 2] << 8) + bytes[at + 3];
+const le16 = (bytes: Uint8Array, at: number): number => bytes[at] | (bytes[at + 1] << 8);
+const le24 = (bytes: Uint8Array, at: number): number => bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16);
 
 // Header dimensions per format; null when the header does not carry them where expected.
 const dimensions = (format: ImageFacts["format"], bytes: Uint8Array): { width: number; height: number } | null => {
@@ -47,7 +47,7 @@ const dimensions = (format: ImageFacts["format"], bytes: Uint8Array): { width: n
             const chunk = ascii(bytes, 12, 4);
             if (chunk === "VP8 ") return { width: le16(bytes, 26) & 0x3fff, height: le16(bytes, 28) & 0x3fff };
             if (chunk === "VP8L") {
-                const bits = bytes[21]! | (bytes[22]! << 8) | (bytes[23]! << 16) | (bytes[24]! << 24);
+                const bits = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24);
                 return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
             }
             if (chunk === "VP8X") return { width: le24(bytes, 24) + 1, height: le24(bytes, 27) + 1 };
@@ -58,7 +58,7 @@ const dimensions = (format: ImageFacts["format"], bytes: Uint8Array): { width: n
             let at = 2;
             while (at + 9 <= bytes.length) {
                 if (bytes[at] !== 0xff) return null;
-                const marker = bytes[at + 1]!;
+                const marker = bytes[at + 1];
                 if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) { at += 2; continue; }
                 const length = be16(bytes, at + 2);
                 if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {

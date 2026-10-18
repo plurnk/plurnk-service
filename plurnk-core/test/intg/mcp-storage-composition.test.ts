@@ -40,7 +40,7 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
         if (parsed?.kind !== "statement") throw new Error("Expected the tool operation");
         // A person's operation is that person's decision already ({§proposal-disposition}).
         const [invoked] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
-        assert.equal(invoked!.status, 200);
+        assert.equal(invoked.status, 200);
         const placed = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body", timeoutMs: 10000 }) as Placement;
         const directory = await daemon.workspaceStateDirectory(workspaceId, "@plurnk/plurnk-mcp/fixture");
         assert.deepEqual(placed, { cwd: await realpath(directory) });

@@ -83,7 +83,7 @@ const assertToolFree = (body: Record<string, unknown>, protocol: Protocol): void
 
 test("{§provider-native-tools-disabled} compatible wire explicitly disables native tools for both response modes", async (t) => {
     for (const streaming of [false, true]) {
-        await t.test(`${streaming ? "stream" : "buffered"}`, async () => {
+        await t.test((streaming ? "stream" : "buffered"), async () => {
             const requests: Record<string, unknown>[] = [];
             const result = await executeOpenAICompatible({
                 ...request, streaming, url: "https://fixture.test/v1/chat/completions", model: "fixture",
@@ -96,9 +96,9 @@ test("{§provider-native-tools-disabled} compatible wire explicitly disables nat
             assert.equal(result.content, "answer");
             assert.equal(result.usage?.totalTokens, 12);
             assert.equal(requests.length, 1);
-            assertToolFree(requests[0]!, "chat");
-            assert.equal(requests[0]!.reasoning_effort, "high");
-            assert.deepEqual(requests[0]!.messages, request.messages);
+            assertToolFree(requests[0], "chat");
+            assert.equal(requests[0].reasoning_effort, "high");
+            assert.deepEqual(requests[0].messages, request.messages);
         });
     }
 });
@@ -245,7 +245,7 @@ test("{§provider-native-tools-disabled} configured SDK families preserve the op
                 assert.equal(result.content, "answer");
                 assert.equal(result.usage?.totalTokens, 12);
                 assert.equal(requests.length, 1);
-                assertToolFree(requests[0]!, protocol);
+                assertToolFree(requests[0], protocol);
             });
         }
     }

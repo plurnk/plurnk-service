@@ -43,7 +43,7 @@ const story = async (contextWindow: number, reasoning: string) => {
     const second = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
     const rows = await rowsOf(db, first.turnId);
     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-    return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1]!, engine, ids: { workspaceId, workerId, loopId } };
+    return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1], engine, ids: { workspaceId, workerId, loopId } };
 };
 
 test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log and retained content operations are assistant-authored", async () => {
@@ -64,10 +64,10 @@ test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log
             assert.ok(emissionHeading > heading, "the reasoning row precedes the emission row in the packet");
             assert.match(log, /converter raises before the view is named/u, "the reasoning is in the packet, not a page of it");
             assert.deepEqual(envelope.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-            const before = chatMessageText(envelope[1]!);
-            const previous = chatMessageText(envelope[2]!);
-            assert.match(before!, /reasoning:\/\/alice\/1\/2/u);
-            assert.match(before!, /converter raises before the view is named/u, "reasoning remains in its log row");
+            const before = chatMessageText(envelope[1]);
+            const previous = chatMessageText(envelope[2]);
+            assert.match(before, /reasoning:\/\/alice\/1\/2/u);
+            assert.match(before, /converter raises before the view is named/u, "reasoning remains in its log row");
             assert.equal(previous, `${frame("READ (worker:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`, "the turn's operations immediately precede their results");
             assert.match(before, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*$/u, "the source announcement precedes the operations");
             assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE's text does not precede its program");
@@ -135,7 +135,7 @@ test("{§reasoning-row}: reasoning longer than the page lands as its last page, 
             assert.match(log, /DECISION: patch the resolver/u, "the conclusion is in the packet");
             assert.doesNotMatch(log, /thought 1: an exploratory step/u, "the restatement is not");
             assert.match(log, /<201,300> of 300 lines/u, "the fact of the page is stated beneath the heading");
-            const statement = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,200>", null)).items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0]!;
+            const statement = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,200>", null)).items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0];
             const head = await clientRead(engine, db, { ...ids, statement });
             assert.ok("content" in head && typeof head.content === "string" && head.content.startsWith("thought 1:") && head.content.endsWith("thought 200: an exploratory step"), "the rest is one READ away");
             assert.ok(envelope.some((m) => m.role === "user" && /DECISION: patch the resolver/u.test(String(m.content))), "the page reaches the wire");

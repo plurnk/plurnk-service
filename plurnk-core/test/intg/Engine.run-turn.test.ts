@@ -42,7 +42,7 @@ const contentResp = (content: string, completion: number = 0): MockResponse => (
         reasoning: null,
     },
     usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
-} as MockResponse);
+});
 
 const response = (ops: PlurnkStatement[], content: string = "", completion: number = 0): MockResponse => ({
     assistant: {
@@ -859,7 +859,7 @@ test("Engine.runTurn: the first turn's log section contains the arrival row", as
         // The arrival is the model turn's first row: an inbound SEND with no target.
         const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; log_entry_id: number | null }>;
         assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1], "the loop's one message");
-        assert.ok(inbox[0]!.log_entry_id !== null, "the inbox row was stamped with the row it became");
+        assert.ok(inbox[0].log_entry_id !== null, "the inbox row was stamped with the row it became");
         const prompt = log.find((e) => String(e.logPath).endsWith("/SEND"));
         assert.ok(prompt, "the arrival row is in the log");
         // {§message-causal-source} — every other sender has an address; the operator's message is named,

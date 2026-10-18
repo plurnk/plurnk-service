@@ -507,12 +507,12 @@ test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respec
         assert.equal(logAnchors?.[1], LineAnchors.token("log:///1/1/1/READ", 2, content));
 
         const foldedFromBody = await engine.dispatch({
-            statement: killStmt({ target, marker: { marks: [publishedAnchors[1]!] } }),
+            statement: killStmt({ target, marker: { marks: [publishedAnchors[1]] } }),
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(foldedFromBody.status, 200);
         const foldedFromLogRead = await engine.dispatch({
-            statement: killStmt({ target, marker: { marks: [logAnchors![2]!] } }),
+            statement: killStmt({ target, marker: { marks: [logAnchors[2]] } }),
             ...env, sequence: 4, origin: "model",
         });
         assert.equal(foldedFromLogRead.status, 200);
@@ -630,7 +630,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
 
         intervene = true;
         const collided = await engine.dispatch({
-            statement: editStmt({ target, marker: { marks: [anchor!] }, body: "authored edit" }),
+            statement: editStmt({ target, marker: { marks: [anchor] }, body: "authored edit" }),
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(collided.status, 409);
@@ -690,7 +690,7 @@ test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resou
         assert.equal(anchor, LineAnchors.token("aliased:///canonical.md", 2, "alpha\nbeta\ngamma"));
 
         const edited = await engine.dispatch({
-            statement: editStmt({ target: alias, marker: { marks: [anchor!] }, body: "BETA" }),
+            statement: editStmt({ target: alias, marker: { marks: [anchor] }, body: "BETA" }),
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(edited.status, 200);

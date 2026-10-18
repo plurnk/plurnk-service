@@ -297,7 +297,7 @@ export default class ResourceSelector {
             } else {
                 if (operation === "MOVE") complete = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
                 bytes = window.start === null || window.end === null ? new Uint8Array()
-                    : complete?.subarray(window.start! - 1, window.end!) ?? await byteSource.read(window.start!, window.end!);
+                    : complete?.subarray(window.start! - 1, window.end) ?? await byteSource.read(window.start!, window.end!);
             }
             return {
                 ...resolvedMarker.selection,
@@ -314,7 +314,7 @@ export default class ResourceSelector {
         }
         if (resolvedMarker.selection.lineMarker !== null) {
             const sliced = LineMarkerOps.sliceLinesRaw(content, resolvedMarker.selection.lineMarker);
-            if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
+            if (sliced.status !== 200) return Results.assert(sliced);
             content = sliced.text ?? "";
             startLine = sliced.startLine ?? 1;
             scopeNormalizations = sliced.scopeNormalizations;
@@ -374,7 +374,7 @@ export default class ResourceSelector {
         const lines = PatternEdits.touchedLines(PatternEdits.replacements(spans, ""));
         return {
             spans,
-            precondition: { identity: target, checks: lines.flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1]!, line }]) },
+            precondition: { identity: target, checks: lines.flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1], line }]) },
         };
     }
 
@@ -439,7 +439,7 @@ export default class ResourceSelector {
             return {
                 selection: {
                     ...selection,
-                    lineMarker: selection.lineMarker as LineMarker | null,
+                    lineMarker: selection.lineMarker,
                 },
                 precondition: null,
             };

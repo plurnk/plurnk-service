@@ -203,7 +203,7 @@ test("{§agui-official-client-conformance} ordinary clients observe a tool gate 
     const pending = client(t, url, submitter.threadId);
     await pending.runAgent();
     assert.equal(pending.pendingInterrupts.length, 1);
-    const interrupt = pending.pendingInterrupts[0]!;
+    const interrupt = pending.pendingInterrupts[0];
     assert.equal(interrupt.reason, "tool_call");
     const calls = pending.messages.flatMap((message) => "toolCalls" in message ? message.toolCalls ?? [] : []);
     assert.equal(calls.find(({ id }) => id === interrupt.toolCallId)?.function.name, "sh");
@@ -213,7 +213,7 @@ test("{§agui-official-client-conformance} ordinary clients observe a tool gate 
     assert.ok(conversation(pending.messages).some(({ content }) => content === "Approved command completed."));
     const results = pending.messages.filter((message) => message.role === "tool" && message.toolCallId === interrupt.toolCallId);
     assert.equal(results.length, 1, "one standard result answers the gated call");
-    assert.deepEqual(JSON.parse(results[0]!.content as string).content, "approved\n");
+    assert.deepEqual(JSON.parse(results[0].content as string).content, "approved\n");
     const reopened = client(t, url, submitter.threadId);
     await reopened.runAgent();
     assert.deepEqual(reopened.messages, pending.messages, "the resumed and reconstructed standard conversations agree");
@@ -242,7 +242,7 @@ test("{§agui-thread-address} a qualified spelling retains the same principal's 
     assert.equal((await daemon.readWorker({ workspaceId: workspace.id, identity: { id: worker.id } }))?.owner, worker.owner,
         "resolving the same conversation does not reassign its owner");
     assert.equal(qualified.pendingInterrupts.length, 1, "changing only the thread spelling must not hide its pending approval");
-    await qualified.runAgent({ resume: [{ interruptId: qualified.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }] });
+    await qualified.runAgent({ resume: [{ interruptId: qualified.pendingInterrupts[0].id, status: "resolved", payload: { decision: "accept" } }] });
     assert.equal(provider.received.length, 2);
     assert.equal(conversation(qualified.messages).at(-1)?.content, "Approved through the same worker's qualified address.");
 });

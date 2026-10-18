@@ -78,7 +78,7 @@ const fixture = async (executor: Executor, workspaceScoped = false) => {
     const dispatch = (source: string, onDispatch?: (id: number) => void, actor = { workerId, loopId, turnId }) => {
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         assert.equal(parsed.items.length, 1);
-        const item = parsed.items[0]!;
+        const item = parsed.items[0];
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("Expected a statement");
         return engine.dispatch({ statement: item.statement, workspaceId, ...actor, sequence: ++sequence, origin: "model", onDispatch });

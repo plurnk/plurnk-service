@@ -244,7 +244,7 @@ test("{§derivation-member-failure} {§mimetype-derivation-evidence} a handler's
         }, makeSchemeCtx({ db, workspaceId, workerId }));
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes,
-            noticeNotify: (_workspaceId, { notice }) => notices.push(notice as Notice),
+            noticeNotify: (_workspaceId, { notice }) => notices.push(notice),
         });
 
         await engine.warmWorkspaceDerivations(workspaceId);
@@ -267,7 +267,7 @@ test("{§derivation-member-failure} {§mimetype-derivation-evidence} a handler's
         );
         assert.deepEqual(await db.test_derivation_state_counts.get({}), { building: 0, complete: 2 }, "the pass completes every member");
 
-        const terminal = notices.filter((n) => n.kind === "search_progress").at(-1);
+        const terminal = notices.findLast((n) => n.kind === "search_progress");
         assert.equal(terminal?.phase, "complete", "one member's defect never fails the pass");
         assert.equal(terminal?.level, "warn", "a completed pass carrying a failed member is a warning, not an error");
         assert.equal(

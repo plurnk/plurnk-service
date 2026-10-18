@@ -383,7 +383,7 @@ export default class ClientInput {
             decision: value.decision,
             ...(value.body === undefined ? {} : { body: value.body }),
             ...(value.outcome === undefined ? {} : { outcome: value.outcome }),
-        } as ProposalResolution;
+        };
     }
 
     static assertClientInteractionResolution(

@@ -10,7 +10,7 @@ import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { DispatchResult, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import EditMutations from "./EditMutations.ts";
-import ResourceSelector from "./ResourceSelector.ts";
+import type ResourceSelector from "./ResourceSelector.ts";
 import ResourceTransfers from "./ResourceTransfers.ts";
 
 // Owns EDIT coordinate resolution and COPY/MOVE resource mutation composition.
@@ -110,7 +110,7 @@ export default class ResourceMutations {
                 ...settledMove,
                 ...(settledMove.applied === undefined ? {} : { applied: this.withMergeFacts(editStatement, settledMove.applied) }),
                 // The accepted row is composed from resolution.result ({§proposal-projection}).
-                resolution: { ...settledMove.resolution, result: { ...(settledMove.resolution.result ?? {}), merged: facts } },
+                resolution: { ...settledMove.resolution, result: { ...settledMove.resolution.result, merged: facts } },
             };
         return effective;
     }

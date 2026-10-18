@@ -12,7 +12,8 @@ import {
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { ErrorDetail } from "@plurnk/plurnk-execs";
-import ServerConnection, { type ServerCatalog } from "./client.ts";
+import type ServerConnection from "./client.ts";
+import { type ServerCatalog } from "./client.ts";
 import ResourceContent from "./ResourceContent.ts";
 import ContentProjection from "./ContentProjection.ts";
 
@@ -71,7 +72,7 @@ const preparationFailure = (
         stage: "mcp-resource",
         ...extensions,
     },
-) as RepresentationPreparationResult;
+);
 
 const findFailure = (
     server: string,
@@ -303,7 +304,7 @@ export default class McpResources {
                 paths.push(child);
             }
         }
-        const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0]!)
+        const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0])
             : { content: (await Promise.all(paths.map(async (path) => `<${await ctx.entries.address(path)}>`))).join("\n"), mimetype: "text/markdown" };
         requireEntrySuccess(await ctx.entries.write(root, {
             channels: {

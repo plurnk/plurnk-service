@@ -25,7 +25,7 @@ const parseOne = (source: string): PlurnkStatement => {
     const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
     const item = items[0];
     if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
-    return item.statement as PlurnkStatement;
+    return item.statement;
 };
 
 const exists = async (path: string): Promise<boolean> => stat(path).then(() => true, () => false);

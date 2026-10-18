@@ -105,7 +105,7 @@ const listItems = (element: AnyElement, ordered: boolean): string[] => {
         const marker = ordered ? `${index}. ` : "- ";
         const body = blocks(child.childNodes).join("\n\n").trim();
         const indented = body.split("\n").map((line, i) => i === 0 ? `${marker}${line}` : `${" ".repeat(marker.length)}${line}`).join("\n");
-        items.push(indented.length === 0 ? `${marker}` : indented);
+        items.push(indented.length === 0 ? marker : indented);
     }
     return items.length === 0 ? [] : [items.join("\n")];
 };
@@ -131,7 +131,7 @@ const table = (element: AnyElement): string[] => {
     }
     if (rows.length === 0) return [];
     const line = (cells: string[]) => `| ${cells.join(" | ")} |`;
-    const out = [line(rows[0]!), `|${" --- |".repeat(headerCells)}`];
+    const out = [line(rows[0]), `|${" --- |".repeat(headerCells)}`];
     for (const row of rows.slice(1)) out.push(line(row));
     return [out.join("\n")];
 };

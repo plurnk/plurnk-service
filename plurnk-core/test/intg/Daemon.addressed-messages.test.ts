@@ -66,7 +66,7 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
         assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), [], "no empty receiving loop is created");
         assert.deepEqual(await daemon.readMessages({ workspaceId, workerId: receiver.workerId }), [], "no empty message is stored");
         assert.equal(provider.received.length, 2, "only the sender ran and recovered");
-        assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /SEND has no message text or attachments\./);
+        assert.match(provider.received[1].map(chatMessageText).join("\n"), /SEND has no message text or attachments\./);
         const history = await daemon.readMessages({ workspaceId, workerId: sender.workerId });
         assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), [
             "No message was delivered to the receiver.",
@@ -88,11 +88,11 @@ test("{§message-reply-delivery} {§actor-boundary-client-operations}: a person'
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address}) [200]`, "The result is 42."));
         assert.equal(parsed.items.length, 1);
-        const item = parsed.items[0]!;
+        const item = parsed.items[0];
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("The reply fixture did not parse.");
         const [result] = await daemon.dispatchClientAction({ workspaceId, actor: "test://collaborator", statements: [item.statement] });
-        assert.equal(result!.status, 200);
+        assert.equal(result.status, 200);
         await waitForDb(async () => provider.received.length, (count) => count === 2);
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         assert.match(JSON.stringify(provider.received[1]), /The result is 42\./);

@@ -6,6 +6,8 @@ import {
     SendMessageRequest,
     type Message,
     type Task,
+    type ListTasksRequest,
+    type ListTasksResponse,
 } from "@a2a-js/sdk";
 import type { ServerCallContext } from "@a2a-js/sdk/server";
 import { RequestMalformedError } from "@a2a-js/sdk/errors";
@@ -161,9 +163,9 @@ export default class HostedTasks {
     }
 
     async list(
-        params: import("@a2a-js/sdk").ListTasksRequest,
+        params: ListTasksRequest,
         context: ServerCallContext,
-    ): Promise<import("@a2a-js/sdk").ListTasksResponse> {
+    ): Promise<ListTasksResponse> {
         this.#assertTenant(context);
         const pageSize = params.pageSize ?? UNSPECIFIED_PAGE;
         const cursor = decodeCursor(params.pageToken);
@@ -305,8 +307,8 @@ export default class HostedTasks {
                 && segments[0] === "contexts"
                 && segments[2] === "tasks"
                 && segments[4] === "messages"
-                && segments[5]!.length > 0
-                ? { contextId: segments[1]!, taskId: segments[3]! }
+                && segments[5].length > 0
+                ? { contextId: segments[1], taskId: segments[3] }
                 : null;
         } catch {
             return null;

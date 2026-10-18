@@ -31,7 +31,7 @@ test("{§crud} republishing preserves unchanged derivations and invalidates only
     assert.deepEqual(await hashes(), before, "concurrent unchanged publication cannot invalidate another worker's settled FIND");
 
     const changed = version("before");
-    changed.channels.evidence!.content = "after";
+    changed.channels.evidence.content = "after";
     await EntryCrud.writeEntry(coordinate, changed, ctx, "worker");
     const after = await hashes();
     assert.deepEqual(after[0], before[0], "the unchanged body retains its artifact");
@@ -39,7 +39,7 @@ test("{§crud} republishing preserves unchanged derivations and invalidates only
     assert.notEqual(after[1]!.content_hash, before[1]!.content_hash);
 
     await SearchIndex.maintain(ctx);
-    changed.channels.evidence!.mimetype = "text/markdown";
+    changed.channels.evidence.mimetype = "text/markdown";
     await EntryCrud.writeEntry(coordinate, changed, ctx, "worker");
     assert.equal((await hashes())[1]!.deep_hash, null, "a changed mimetype also invalidates the representation");
     delete changed.channels.evidence;
@@ -53,7 +53,7 @@ for (const existing of [false, true]) {
         const workspaceId = await insertWorkspace(db, `publication-${crypto.randomUUID()}`);
         const workers = await Promise.all(Array.from({ length: 8 }, () => insertWorker(db, workspaceId)));
         const contexts = workers.map((workerId) => makeSchemeCtx({ db, workspaceId, workerId }));
-        if (existing) await EntryCrud.writeEntry(coordinate, version("before"), contexts[0]!, "worker");
+        if (existing) await EntryCrud.writeEntry(coordinate, version("before"), contexts[0], "worker");
 
         const outcomes = await Promise.allSettled(contexts.map((ctx, index) =>
             EntryCrud.writeEntry(coordinate, version(`version-${index}`), ctx, "worker")));
@@ -61,13 +61,13 @@ for (const existing of [false, true]) {
         const publications = outcomes.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
         assert.equal(new Set(publications.map(({ entryId }) => entryId)).size, 1, "the resource retains one identity");
         assert.equal(publications.filter(({ created }) => created).length, existing ? 0 : 1, "creation is claimed once");
-        const read = await EntryCrud.readEntry(coordinate, contexts[0]!, "worker");
+        const read = await EntryCrud.readEntry(coordinate, contexts[0], "worker");
         assert.equal(read.status, 200);
         const name = read.entry?.attributes?.version;
         assert.match(String(name), /^version-[0-7]$/);
         assert.deepEqual(Object.keys(read.entry!.channels).toSorted(), ["body", "evidence"]);
-        assert.equal(read.entry!.channels.body!.content, name);
-        assert.equal(read.entry!.channels.evidence!.content, name, "metadata and all channels belong to the same publication");
+        assert.equal(read.entry!.channels.body.content, name);
+        assert.equal(read.entry!.channels.evidence.content, name, "metadata and all channels belong to the same publication");
     });
 }
 
@@ -79,7 +79,7 @@ test("{§crud} a rejected channel rolls back the whole replacement, including at
     await EntryCrud.writeEntry(coordinate, version("before"), ctx, "worker");
     const before = await EntryCrud.readEntry(coordinate, ctx, "worker");
     const replacement = version("after");
-    replacement.channels.evidence!.state = "invalid" as never;
+    replacement.channels.evidence.state = "invalid" as never;
     await assert.rejects(
         EntryCrud.writeEntry(coordinate, replacement, ctx, "worker"),
         /CHECK constraint failed: state IN/,

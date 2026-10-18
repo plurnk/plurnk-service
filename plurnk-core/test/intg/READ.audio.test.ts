@@ -54,7 +54,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                 assert.equal(part.mediaType, "audio/wav");
                 assert.ok(Buffer.from(part.data).equals(bytes), "native input retains the complete bytes beside a scoped READ");
             }
-            const packet = provider.received[1]!.map(chatMessageText).join("\n");
+            const packet = provider.received[1].map(chatMessageText).join("\n");
             assert.match(packet, /1:52\n2:49\n3:46\n4:46/u);
             if (modalities.length) assert.match(packet, /"tokensAttachment":32/u);
             else assert.doesNotMatch(packet, /tokensAttachment/u);

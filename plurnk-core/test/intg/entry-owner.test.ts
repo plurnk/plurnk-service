@@ -1,7 +1,7 @@
 // {§entry-owner} {§execution-output-identity}
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement, ReadStatement, UrlPath, RuntimeTag } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, ReadStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
@@ -24,7 +24,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null,
-    target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null } as UrlPath,
+    target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 

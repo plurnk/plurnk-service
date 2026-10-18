@@ -30,13 +30,14 @@ import { latestStableNodeVersion, versionsNamed } from "./_web-oracle.ts";
 import { hasAuditOutcome } from "./_audit-oracle.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import ResourceState from "../intg/resource-state.ts";
+import type { CapabilityPolicy } from "@plurnk/plurnk-contracts";
 
 interface StoryOpts {
     signal: AbortSignal;
     label: string;
     prompt: string;
     maxTurns?: number;
-    capabilities?: import("@plurnk/plurnk-contracts").CapabilityPolicy;
+    capabilities?: CapabilityPolicy;
     setup?: (workspace: LiveWorkspace) => Promise<void>;
 }
 

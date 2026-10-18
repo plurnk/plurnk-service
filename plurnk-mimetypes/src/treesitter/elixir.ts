@@ -64,7 +64,7 @@ function handleCall(call: TreeSitterNode, out: TreeSitterSymbolProjection[], con
         if (fnInfo) {
             out.push({
                 name: fnInfo.name,
-                kind: "function" as SymbolKind,
+                kind: "function",
                 span: treeSitterSpan(call),
                 ...(container.length > 0 && { container }),
                 params: fnInfo.params,

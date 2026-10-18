@@ -8,7 +8,7 @@ import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
-import LoopLifecycle from "../core/LoopLifecycle.ts";
+import type LoopLifecycle from "../core/LoopLifecycle.ts";
 import MessageResources from "../core/MessageResources.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
@@ -292,7 +292,7 @@ export default class DrainSupervisor {
             return { action: "enqueued_new_loop", ...accepted } as const;
         }));
         const started = await this.ensureDrain({ workspaceId, workerId, systemPrompt: args.systemPrompt });
-        return { ...delivery, ...(started ?? {}) };
+        return { ...delivery, ...started };
     }
 
     async #enqueueFreshLoop(args: {

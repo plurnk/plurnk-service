@@ -49,7 +49,7 @@ export default class Summarize {
         if (item === undefined) return "";
         if (item === null) return "null";
         if (Array.isArray(item)) return "array";
-        if (typeof item === "object") return `object{${Object.keys(item as Record<string, unknown>).join(",")}}`;
+        if (typeof item === "object") return `object{${Object.keys(item).join(",")}}`;
         return typeof item;
     }
 

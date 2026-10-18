@@ -73,7 +73,7 @@ export default class ByteView {
             } else {
                 const window = LineMarkerOps.window(marker, original.length, "byte");
                 if (window.status !== 200) return { result: window };
-                if (marker.marks[1]! > original.length) return { result: Results.failure("engine:dispatcher", "range-not-satisfiable", 416,
+                if (marker.marks[1] > original.length) return { result: Results.failure("engine:dispatcher", "range-not-satisfiable", 416,
                     `The byte range exceeds the available ${original.length} bytes.`, {}, { available: original.length, unit: "byte", retryable: false }) };
                 replacements.push({ start: window.start === null ? 0 : window.start! - 1, end: window.end ?? 0, bytes });
             }

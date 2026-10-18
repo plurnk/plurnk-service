@@ -56,7 +56,7 @@ for (const { source, pattern, selected } of [
         const coordinates = new TextCoordinates(source);
         assert.deepEqual(matches.map((match) => {
             assert.equal(match.regions?.length, 1, JSON.stringify(match));
-            const region = match.regions![0];
+            const region = match.regions[0];
             return source.slice(coordinates.offsetAtPosition(region.startLine, region.startColumn), coordinates.offsetAtPosition(region.endLine, region.endColumn));
         }), selected);
     });

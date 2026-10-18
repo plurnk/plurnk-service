@@ -159,8 +159,8 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             parentWorkerId: await agent.ensureRuntimeWorker(agentWorkspace.workspaceId),
         });
         assert.equal(agentRoots.length, 1, "the remote A2A Task is one child of the configured runtime parent");
-        assert.equal(agentRoots[0]!.owner, "_plurnk");
-        assert.equal((await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: agentRoots[0]!.id })).length, 1);
+        assert.equal(agentRoots[0].owner, "_plurnk");
+        assert.equal((await agent.listWorkerLoops({ workspaceId: agentWorkspace.workspaceId, workerId: agentRoots[0].id })).length, 1);
         assert.equal(callerProvider.remaining, 0);
         assert.equal(agentProvider.remaining, 0);
     } finally {
@@ -287,7 +287,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
                 arrival = Promise.withResolvers<void>();
                 await arrival.promise;
             }
-            return terminals[expected - 1]!;
+            return terminals[expected - 1];
         };
 
         assert.deepEqual(await runToTerminal(worker.workerId, "Delegate the first fruit comparison."), {
@@ -323,7 +323,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         // of the resource, whose channels are both newly publishable. The conclusion is still an
         // exact terminal READ of each Task, which is what this asserts.
         const terminalTasks = new Set(terminalReads.map((row) => row.pathname));
-        assert.deepEqual([...terminalTasks].length, 2, `both Task conclusions arrive as exact terminal READs: ${JSON.stringify(terminalReads.map((row) => `${row.pathname}#${row.fragment}`))}`);
+        assert.deepEqual(terminalTasks.size, 2, `both Task conclusions arrive as exact terminal READs: ${JSON.stringify(terminalReads.map((row) => `${row.pathname}#${row.fragment}`))}`);
         assert.equal(callerProvider.remaining, 0);
         assert.equal(agentProvider.remaining, 0);
     } finally {

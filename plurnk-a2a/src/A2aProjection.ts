@@ -86,7 +86,7 @@ export default class A2aProjection {
         const match = /^\/tasks\/([^/]+)$/.exec(pathname);
         if (match === null) return null;
         try {
-            const taskId = decodeURIComponent(match[1]!);
+            const taskId = decodeURIComponent(match[1]);
             return A2aProjection.taskPath(taskId) === pathname ? taskId : null;
         } catch {
             return null;
@@ -97,8 +97,8 @@ export default class A2aProjection {
         const match = /^\/tasks\/([^/]+)\/artifacts\/([^/]+)$/.exec(pathname);
         if (match === null) return null;
         try {
-            const taskId = decodeURIComponent(match[1]!);
-            const artifactId = decodeURIComponent(match[2]!);
+            const taskId = decodeURIComponent(match[1]);
+            const artifactId = decodeURIComponent(match[2]);
             return A2aProjection.artifactPath(taskId, artifactId) === pathname
                 ? { taskId, artifactId }
                 : null;
@@ -155,7 +155,7 @@ export default class A2aProjection {
                 pathname: A2aProjection.messagePath(message.messageId, prefix),
                 entry: projected.entry,
             });
-            if (message === currentMessage) statusMessage = ["message:", projected.entry.channels.body!.content];
+            if (message === currentMessage) statusMessage = ["message:", projected.entry.channels.body.content];
         }
         for (const artifact of task.artifacts) {
             const projected = A2aProjection.artifactEntry(task, artifact, authority, prefix);

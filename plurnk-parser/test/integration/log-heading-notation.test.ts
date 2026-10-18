@@ -8,7 +8,7 @@ const parse = (input: string) => PlurnkParser.parse(input, { executors: ["sh", "
 const statements = (input: string) => parse(input).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const warnings = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
 const errors = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
-const heading = (input: string) => PlurnkParser.heading(statements(input)[0]!);
+const heading = (input: string) => PlurnkParser.heading(statements(input)[0]);
 // {§parse-recovery} — a refusal with the working form it carries.
 const refusal = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" && item.error.message !== PlurnkParser.NO_VALID_OPERATION ? [`${item.error.message} ${item.error.recovery}`] : []);
 
@@ -24,7 +24,7 @@ test("{§log-heading-notation} the arrow keeps the pattern and aside after it (r
     assert.equal(heading(find), "FIND (tests/test_ext_autodoc.py) /def do_autodoc/ <!-- copy the canonical harness -->");
     assert.equal(heading("```WAIT → sh:///1d114c27\n```"), "WAIT (sh:///1d114c27)");
     assert.equal(heading("```python3 → repro_redirect.py <!-- run the reproduction script -->\n```"), "python3 (repro_redirect.py) <!-- run the reproduction script -->");
-    const kill = statements("```KILL → log:///1/2/3/READ\n```")[0]!;
+    const kill = statements("```KILL → log:///1/2/3/READ\n```")[0];
     assert.equal(kill.op === "KILL" ? kill.target?.raw : null, "log:///1/2/3/READ", "a targeted KILL, never a deliverable reading `→ …`");
     const copy = "```COPY → a.md → b.md\n```";
     assert.equal(heading(copy), "COPY (a.md) (b.md)");

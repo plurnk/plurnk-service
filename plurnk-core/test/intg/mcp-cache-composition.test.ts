@@ -3,7 +3,7 @@ import test from "node:test";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { FunctionalityListResult, McpServerDefinition } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -55,7 +55,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const item = parsed.items[0];
         if (item?.kind !== "statement") throw new Error("Expected one READ");
         // A person's READ ({§connection-lifecycle}); two people read through one workspace attachment.
-        const read = async (reader = TEST_OWNER) => (await daemon.dispatchClientAction({ workspaceId, actor: reader, statements: [item.statement] }))[0]!;
+        const read = async (reader = TEST_OWNER) => (await daemon.dispatchClientAction({ workspaceId, actor: reader, statements: [item.statement] }))[0];
         return { name, action, read };
     }));
     for (const workspace of workspaces) {
@@ -80,7 +80,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const listed = await workspace.action("mcp", "list") as FunctionalityListResult;
         const [listedFixture] = listed.definitions;
         assert.ok(listedFixture !== undefined, "the configured server is listed");
-        assert.deepEqual(listedFixture.definition as McpServerDefinition, {
+        assert.deepEqual(listedFixture.definition, {
             name: "fixture", type: "streamable-http", url: served.url,
             authorization: { type: "bearer", token: "${ENV_AUTH}" },
         }, "the definition retains its symbolic reference, never the resolved credential");

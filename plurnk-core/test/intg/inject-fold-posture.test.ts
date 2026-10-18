@@ -27,7 +27,7 @@ test("{§worker-ownership}: injecting a message preserves the owner's pending re
             assert.equal((folded.result as { action: string }).action, "injected_next_turn");
             assert.equal((await daemon.readWorker({ workspaceId, identity: { id: modelWorkerId } }))?.owner, TEST_OWNER);
             assert.equal((await daemon.pendingProposals(workspaceId)).length, 1);
-            await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0]!.logEntryId, decision: "reject" });
+            await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
         } finally { ws.close(); }
     });
 });

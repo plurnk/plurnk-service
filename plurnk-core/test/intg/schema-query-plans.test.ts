@@ -57,7 +57,7 @@ test("{§db-schema-baseline}: no registry statement scans a growing table withou
             for (const detail of rows) {
                 const scan = /^SCAN (\S+)/.exec(detail);
                 if (scan === null) continue;
-                const table = scan[1]!;
+                const table = scan[1];
                 if (VIEWS.has(table)) continue;
                 if (GROWING.has(table) && !/USING (COVERING )?INDEX/.test(detail)) offenders.push(`${file} ${name}: ${detail}`);
             }

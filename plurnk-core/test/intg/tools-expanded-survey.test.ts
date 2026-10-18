@@ -25,7 +25,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         await rpcCall(ws, 1, "workspace.create", { name: "interpreter-summary-bodies", settings: { filesItems: -1 } });
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1]! });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
         const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "worker:///_plurnk/plurnk/*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
@@ -64,7 +64,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             await rpcCall(ws, 1, "workspace.create", { name: "tools-expanded-survey" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around" });
             assert.equal(finalStatus, 200);
-            const first = turnIds![1]!;
+            const first = turnIds![1];
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });
             const packet = JSON.parse(row!.packet);
             const entries = logEntries(packet);

@@ -120,7 +120,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
             assert.equal(arrivals.length, 1, "one message in the loop");
             assert.equal(answers.length, 1, "the receipt names the one open message");
-            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: answers[0]! });
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: answers[0] });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
         } finally { ws.close(); }
     });

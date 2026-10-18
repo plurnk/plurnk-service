@@ -34,7 +34,7 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         const resources = await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         assert.deepEqual(resources, [{ pathname: `/1/${turn!.sequence}`, content: original }]);
-        const target = `reasoning://alice${resources[0]!.pathname}`;
+        const target = `reasoning://alice${resources[0].pathname}`;
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);

@@ -929,7 +929,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const [refused] = await db.test_log_entries_by_worker_op_full.all<{ attrs: string }>({ worker_id: workerId, op: "error" });
         const attempt = (JSON.parse(refused!.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "COPY");
-        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null).split("\n")[0]!), attempt?.text);
+        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null).split("\n")[0]), attempt?.text);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
         assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
     } finally { await db.close(); }
@@ -1140,12 +1140,12 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(provider.packets.length, 5);
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
-        assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /2:````READ \(file:\/\/\/main\.go/);
-        assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
+        assert.match(provider.packets[3], /Response rejected before dispatch; no operations were performed\./);
+        assert.match(provider.packets[3], /2:````READ \(file:\/\/\/main\.go/);
+        assert.doesNotMatch(provider.packets[3], /first private invalid|second private invalid/);
         // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
-        assert.match(provider.packets[3]!, /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4]!, /2:````READ \(file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
+        assert.match(provider.packets[3], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
+        assert.doesNotMatch(provider.packets[4], /2:````READ \(file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1889,10 +1889,10 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         // packets[1] is the next request and carries the engine's own reading of the cut.
         assert.equal(provider.packets.length, 3);
         assert.match(
-            provider.packets[1]!,
+            provider.packets[1],
             /> YOU SHOULD emit fewer or shorter operations per turn\. Emission truncated at the output allowance \(\d+ tokens\); no authored operations were performed\. \[output_truncated\]/,
             "the next packet names the engine's cut and the recovery fact",
         );
-        assert.doesNotMatch(provider.packets[1]!, /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
+        assert.doesNotMatch(provider.packets[1], /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
 });

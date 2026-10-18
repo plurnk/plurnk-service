@@ -11,11 +11,11 @@ const declarations = readFileSync(defaultsPath, "utf8")
     .filter((line) => line.length > 0 && !line.startsWith("#"))
     .map((line) => /^([A-Z0-9_]+)=(.*)$/.exec(line))
     .filter((match): match is RegExpExecArray => match !== null)
-    .map((match) => ({ key: match[1]!, value: match[2]! }));
+    .map((match) => ({ key: match[1], value: match[2] }));
 
 const providerFact = (key: string): { provider: string; fact: string } | null => {
     const match = /^PLURNK_PROVIDERS_PROVIDER_([A-Z0-9_]+)_(NPM|BASE_URL|API_KEY_ENV)$/.exec(key);
-    return match === null ? null : { provider: match[1]!.toLowerCase(), fact: match[2]! };
+    return match === null ? null : { provider: match[1].toLowerCase(), fact: match[2] };
 };
 
 test("{§provider-fact-authority} package defaults never redefine cataloged provider facts", () => {

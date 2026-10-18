@@ -41,7 +41,7 @@ const sendSettled = async (handler: A2a, statement: SendStatement, ctx: SchemeCt
     assert.equal(proposal.status, 202, "an outbound A2A SEND proposes before it reaches the agent");
     const attrs = (proposal as ProposalResult).attrs as { effect?: string };
     assert.equal(attrs.effect, "host", "it declares the host effect the panel maps");
-    return handler.applyResolution({ attrs: attrs as object, metadata: statement.metadata }, ctx);
+    return handler.applyResolution({ attrs: attrs, metadata: statement.metadata }, ctx);
 };
 
 const resourceOf = (result: { readonly [key: string]: unknown }): string => {
@@ -83,9 +83,9 @@ test("READ of an agent root materializes its discovered Agent Card", async (t) =
 
     assert.equal(result.status, 200);
     const entry = memory.entry("");
-    assert.match(entry.channels.body!.content, /Plurnk A2A protocol witness/);
-    assert.match(entry.channels.body!.content, /echo: Returns deterministic evidence/);
-    assert.equal(JSON.parse(entry.channels.json!.content).name, agent.card.name);
+    assert.match(entry.channels.body.content, /Plurnk A2A protocol witness/);
+    assert.match(entry.channels.body.content, /echo: Returns deterministic evidence/);
+    assert.equal(JSON.parse(entry.channels.json.content).name, agent.card.name);
 });
 
 test("a direct Message becomes one static addressable resource without a Task", async (t) => {
@@ -101,8 +101,8 @@ test("a direct Message becomes one static addressable resource without a Task", 
     const resource = resourceOf(result);
     assert.match(resource, /^a2a:\/\/researcher\/messages\//);
     const entry = memory.entry(pathnameOf(resource));
-    assert.match(entry.channels.body!.content, /direct: message witness/);
-    const message = JSON.parse(entry.channels.json!.content);
+    assert.match(entry.channels.body.content, /direct: message witness/);
+    const message = JSON.parse(entry.channels.json.content);
     assert.equal(message.taskId, undefined);
     assert.notEqual(message.contextId, "");
 });
@@ -137,10 +137,10 @@ test("{§a2a-outbound-turn-rhythm} a streamed Task returns 102 then closes on on
     const closed = await memory.waitForClose(pathname);
     assert.equal(closed.result.status, 200);
     const entry = memory.entry(pathname);
-    assert.equal(entry.channels.body!.state, "closed");
-    assert.match(entry.channels.body!.content, /state: completed/);
-    assert.match(entry.channels.body!.content, /\/artifacts\//);
-    const task = JSON.parse(entry.channels.json!.content);
+    assert.equal(entry.channels.body.state, "closed");
+    assert.match(entry.channels.body.content, /state: completed/);
+    assert.match(entry.channels.body.content, /\/artifacts\//);
+    const task = JSON.parse(entry.channels.json.content);
     assert.equal(task.status.state, "TASK_STATE_COMPLETED");
     assert.equal(task.artifacts.length, 1);
 
@@ -152,7 +152,7 @@ test("{§a2a-outbound-turn-rhythm} a streamed Task returns 102 then closes on on
         pathname: artifactPath,
     }, memory.ctx);
     assert.equal(prepared.status, 200);
-    assert.match(memory.entry(artifactPath).channels.body!.content, /received: task witness/);
+    assert.match(memory.entry(artifactPath).channels.body.content, /received: task witness/);
 });
 
 test("an input-required Task resumes through its exact Task resource", async (t) => {
@@ -166,19 +166,19 @@ test("an input-required Task resumes through its exact Task resource", async (t)
     const pathname = pathnameOf(resourceOf(first));
     const interrupted = await memory.waitForClose(pathname);
     assert.equal(interrupted.result.status, 200);
-    assert.match(memory.entry(pathname).channels.body!.content, /state: input-required/);
-    assert.match(memory.entry(pathname).channels.body!.content, /Which origin and destination\?/);
+    assert.match(memory.entry(pathname).channels.body.content, /state: input-required/);
+    assert.match(memory.entry(pathname).channels.body.content, /Which origin and destination\?/);
 
     const second = await sendSettled(handler, send("Boston to Helsinki", pathname), memory.ctx);
     assert.equal(second.status, 102);
     assert.equal(pathnameOf(resourceOf(second)), pathname);
     const completed = await memory.waitForClose(pathname);
     assert.equal(completed.result.status, 200);
-    assert.match(memory.entry(pathname).channels.body!.content, /state: completed/);
-    assert.match(memory.entry(pathname).channels.json!.content, /received: Boston to Helsinki/);
+    assert.match(memory.entry(pathname).channels.body.content, /state: completed/);
+    assert.match(memory.entry(pathname).channels.json.content, /received: Boston to Helsinki/);
     assert.equal(agent.executor.received.length, 2);
-    assert.equal(agent.executor.received[0]!.taskId, agent.executor.received[1]!.taskId);
-    assert.equal(agent.executor.received[0]!.contextId, agent.executor.received[1]!.contextId);
+    assert.equal(agent.executor.received[0].taskId, agent.executor.received[1].taskId);
+    assert.equal(agent.executor.received[0].contextId, agent.executor.received[1].contextId);
 });
 
 test("multiple Artifacts remain distinct lazily addressable resources", async (t) => {
@@ -191,7 +191,7 @@ test("multiple Artifacts remain distinct lazily addressable resources", async (t
     const result = await sendSettled(handler, send("artifact witness"), memory.ctx);
     const taskPath = pathnameOf(resourceOf(result));
     await memory.waitForClose(taskPath);
-    const task = JSON.parse(memory.entry(taskPath).channels.json!.content);
+    const task = JSON.parse(memory.entry(taskPath).channels.json.content);
     assert.deepEqual(task.artifacts.map(({ name }: { name: string }) => name), ["summary", "evidence"]);
 
     for (const artifact of task.artifacts) {
@@ -203,7 +203,7 @@ test("multiple Artifacts remain distinct lazily addressable resources", async (t
             pathname: artifactPath,
         }, memory.ctx);
         assert.equal(prepared.status, 200);
-        assert.match(memory.entry(artifactPath).channels.body!.content, new RegExp(`${artifact.name}: artifact witness`));
+        assert.match(memory.entry(artifactPath).channels.body.content, new RegExp(`${artifact.name}: artifact witness`));
     }
 });
 

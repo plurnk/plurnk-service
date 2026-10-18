@@ -253,7 +253,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
     assert.equal(persisted?.state, "failed");
     assert.equal(persisted?.outcome, "edit_collision");
     assert.equal(persisted?.weight, 0, "the bodyless collision replaces any proposed-body weight");
-    assert.deepEqual(JSON.parse(persisted!.rx), result);
+    assert.deepEqual(JSON.parse(persisted.rx), result);
 });
 
 test("{§proposal-accept-applies}: an accepted scheme's successful application status remains authoritative", async () => {

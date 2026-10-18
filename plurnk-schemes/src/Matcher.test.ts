@@ -91,7 +91,7 @@ test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", 
     let seen: string | ParsedBodyMatcher | undefined;
     const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
     await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+        { dialect: "jsonpath", raw: "$.users[*].name" },
         "irrelevant", "application/json", mts,
     );
     assert.deepEqual(seen, { dialect: "jsonpath", pattern: "$.users[*].name" });
@@ -103,7 +103,7 @@ test("matcher: a locator-only match selects without fabricated coordinates", asy
         matching: "count(//item)",
     }]);
     const r = await Matcher.matchAgainstContent(
-        { dialect: "xpath", raw: "count(//item)" } as MatcherBody,
+        { dialect: "xpath", raw: "count(//item)" },
         "irrelevant", "text/html", mts,
     );
     assert.equal(r.status, 200);
@@ -132,7 +132,7 @@ test("matcher: structural hit exposes its canonical locator as metadata", async 
         { regions: at(4, 7, 20), matched: "Bob", matching: "$.users[1].name" },
     ]);
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+        { dialect: "jsonpath", raw: "$.users[*].name" },
         json, "application/json", mts,
     );
     assert.deepEqual(r.matches, [
@@ -153,7 +153,7 @@ test("matcher: footprint-less values do not become retrieval content", async () 
         { matched: "two\nlines" },
     ]);
     const r = await Matcher.matchAgainstContent(
-        { dialect: "xpath", raw: "(//*)[string()]" } as MatcherBody,
+        { dialect: "xpath", raw: "(//*)[string()]" },
         "irrelevant", "text/html", mts,
     );
     assert.deepEqual(r.matches, []);
@@ -218,7 +218,7 @@ test("matcher: QueryParseFailureError → 203 fallback with raw content + reason
         });
     });
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.field" } as MatcherBody,
+        { dialect: "jsonpath", raw: "$.field" },
         "{broken json", "application/json", mts,
     );
     assert.equal(r.status, 203);

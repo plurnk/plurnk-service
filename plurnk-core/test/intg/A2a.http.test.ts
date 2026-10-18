@@ -45,7 +45,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof answe
                     card: a2aCard(),
                     ...A2A_EXPOSURE,
                 }).start(port);
-                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0]!.url;
+                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0].url;
                 exposure = adapter;
                 return adapter;
             },
@@ -233,7 +233,7 @@ test("{§message-envelope-evidence} {§a2a-hosted-message-resources}: hosted A2A
     // {§a2a-hosted-message-resources} — each Part's model-facing arrival: authored text, pretty JSON,
     // the literal URL, and a link for bytes. No Agent Card and no configured alias took part.
     // The packet renders each line with its navigable number ({§render-rule-line-navigable-prefix}).
-    const arrival = provider.received[0]!.map(chatMessageText).join("\n").replaceAll(/^\d+:/gmu, "");
+    const arrival = provider.received[0].map(chatMessageText).join("\n").replaceAll(/^\d+:/gmu, "");
     assert.ok(arrival.includes("Inspect this image."), "text arrives as authored");
     assert.ok(arrival.includes(JSON.stringify({ subject: "screenshot" }, null, 2)), `a data Part arrives as pretty-printed JSON: ${arrival}`);
     assert.ok(arrival.includes(`http://127.0.0.1:${address.port}/external.bin`), "a URL Part arrives as its literal URL");
@@ -255,7 +255,7 @@ for (const modes of [undefined, [], ["application/json", "text/plain"]]) {
             message, configuration, metadata: { evidence: "request-only-evidence" },
         });
         assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
-        const packet = provider.received[0]!.map(chatMessageText).join("\n");
+        const packet = provider.received[0].map(chatMessageText).join("\n");
         assert.equal(packet.includes("Accepted output media types:"), (modes?.length ?? 0) > 0);
         for (const mode of modes ?? []) assert.ok(packet.includes(mode));
         assert.ok(!packet.includes("request-only-evidence"), "opaque metadata is retained, not injected as instructions");
@@ -285,7 +285,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             const packet = args[0].messages.map(chatMessageText).join("\n");
             const targets = [...packet.matchAll(/<(worker:\/\/[^>]+\/attachments\/[^>]+)>/gu)].map((match) => match[1]);
             assert.equal(targets.length, 2, "both binary Parts have independently readable addresses");
-            assert.match(targets[1]!, /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
+            assert.match(targets[1], /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
             return { ...response, assistant: { ...response.assistant, content: [
                 `\`\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "````",
             ].join("\n") } };
@@ -302,7 +302,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
     });
     assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
     assert.equal(result.task.artifacts.length, 2);
-    assert.equal(result.task.artifacts[0].parts[0].raw, parts[0]!.raw);
+    assert.equal(result.task.artifacts[0].parts[0].raw, parts[0].raw);
     assert.equal(result.task.artifacts[0].parts[0].mediaType, "application/x-example");
     assert.equal(result.task.artifacts[1].parts[0].raw, "");
     assert.deepEqual(result.task.history[0].parts, parts);
@@ -337,9 +337,9 @@ test("{§send-resource-attachments}: image READ and explicit report SEND preserv
     assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
     const native = provider.received.map((messages) => messages.flatMap((message) =>
         Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
-    assert.equal(native[0]!.length, 0, "arrival does not attach the image");
-    assert.equal(native[1]!.length, 1, provider.received[1]!.map(chatMessageText).join("\n"));
-    assert.deepEqual(Buffer.from(native[1]![0]!.data), Buffer.from(raw, "base64"), "READ sends exact image bytes to the provider");
+    assert.equal(native[0].length, 0, "arrival does not attach the image");
+    assert.equal(native[1].length, 1, provider.received[1].map(chatMessageText).join("\n"));
+    assert.deepEqual(Buffer.from(native[1][0]!.data), Buffer.from(raw, "base64"), "READ sends exact image bytes to the provider");
     const stored = await request(`/tasks/${result.task.id}`);
     const report = stored.artifacts.find((artifact: { name: string }) => artifact.name === "report.md");
     assert.ok(report, provider.received.at(-1)!.map(chatMessageText).join("\n"));
@@ -442,7 +442,7 @@ test("{§http-request-origin} {§a2a-inbound-exposure}: the card names its inter
         req.end();
     });
     const card = JSON.parse(body) as { supportedInterfaces: Array<{ url: string }> };
-    assert.equal(card.supportedInterfaces[0]!.url, "http://192.168.1.88:1066/a2a");
+    assert.equal(card.supportedInterfaces[0].url, "http://192.168.1.88:1066/a2a");
     assert.match(body, /"tokenUrl":"http:\/\/192\.168\.1\.88:1066\/oauth\/token"/u);
 });
 
@@ -508,7 +508,7 @@ test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes stay
             mounts: A2A_MOUNTS,
             start: async (port) => {
                 const adapter = await A2aExposure.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
-                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0]!.url;
+                endpoint = adapter.agentCard({ headers: {} }).supportedInterfaces[0].url;
                 return adapter;
             },
         }, "test-module");

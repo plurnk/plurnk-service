@@ -5,10 +5,9 @@ import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import type { HostSetupSeam } from "./ModuleHost.ts";
-import HostPaths from "../core/HostPaths.ts";
+import type HostPaths from "../core/HostPaths.ts";
 import PluginSources from "./PluginSources.ts";
 import EnvDefaults from "../core/env-defaults.ts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 // {§module-discovery} Standard plugin bundles and extension packages
 // meet the same daemon lifecycle; project roots never supply native code.
@@ -23,7 +22,7 @@ const assertDaemonModule = (
     value: unknown,
     packageName: string,
     source: "export" | "factory",
-): DaemonModule<HostSetupSeam, ApplicationPort> => {
+): DaemonModule<HostSetupSeam> => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
         const detail = source === "factory"
             ? "factory returned a non-object DaemonModule"
@@ -38,7 +37,7 @@ const assertDaemonModule = (
             );
         }
     }
-    return value as DaemonModule<HostSetupSeam, ApplicationPort>;
+    return value;
 };
 
 // {§module-discovery} — a package names its entry as an export subpath, resolved through its own
@@ -70,7 +69,7 @@ export const discoverDaemonModules = async (
     options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }>; registered?: ReadonlySet<string> } = {},
 ): Promise<{
     // Each module with its owner, the package it came from ({§module-discovery}).
-    readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }>;
+    readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];
     // A declaration's error is owned by `extensions`; a module's own configuration error by the
@@ -85,7 +84,7 @@ export const discoverDaemonModules = async (
         ...sources.plugins.map(({ root }) => ({ dir: root })),
         ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
     ];
-    const modules: Array<{ readonly module: DaemonModule<HostSetupSeam, ApplicationPort>; readonly owner: string }> = [];
+    const modules: Array<{ readonly module: DaemonModule<HostSetupSeam>; readonly owner: string }> = [];
     const configurationErrors: Array<{ readonly owner: string; readonly cause: ConfigurationError }> = sources.configurationErrors
         .map((cause) => ({ owner: "extensions", cause }));
     const skipped: string[] = [];

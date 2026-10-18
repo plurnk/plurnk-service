@@ -17,7 +17,7 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
         const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const target = urlPath("worker", "/shared.txt");
         const person = async (workspaceId: number, statement: ReturnType<typeof readStmt> | ReturnType<typeof editStmt>) =>
-            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+            (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const source = await person(workspace.workspaceId, editStmt(target, "shared content"));
         assert.equal(source.status, 201);
         const denied = { deny: [{ access: "observe" as const, scheme: "worker" }] };
@@ -69,7 +69,7 @@ test("{§workspace-capability-inspection}: client actions inspect and replace po
             const updated = await rpcCall(ws, 3, "workspace.capabilities.set", { policy });
             assert.deepEqual(updated.result, { service: {}, workspace: policy, effective: policy });
             assert.deepEqual(await daemon.listWorkers(workspace.id), before, "policy management allocates no worker");
-            await assert.rejects(daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{}] } as never }),
+            await assert.rejects(daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{}] } }),
                 /settings\.capabilities is not a valid capability policy/);
             assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.id }), updated.result,
                 "invalid policy cannot replace the current declaration");

@@ -77,7 +77,7 @@ test("{§send-response-receipt} failed exact delivery does not acknowledge the l
     const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
     const failed = await run();
     assert.equal(failed.status, 102);
-    assert.equal(failed.outcomes[0]!.status, 404);
+    assert.equal(failed.outcomes[0].status, 404);
     const rows = await db.test_log_entries_by_turn.all<{ origin: string; rx: string }>({ turn_id: failed.turnId });
     const row = rows.find(({ origin }) => origin === "model");
     assert.ok(row);
@@ -111,7 +111,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const failed = await run();
         assert.equal(failed.status, 102);
-        assert.equal(failed.outcomes[0]!.status, 501);
+        assert.equal(failed.outcomes[0].status, 501);
         const failedRows = await db.test_log_entries_by_turn.all<{ origin: string; rx: string }>({ turn_id: failed.turnId });
         const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
         assert.match(problem.type, /message-not-implemented$/);
@@ -137,8 +137,8 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
             // second reply row.
             const delivered = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
             assert.equal(delivered.length, 1, "the reply reaches the parent exactly once");
-            assert.equal(delivered[0]!.path, "ops://responder/1");
-            assert.equal(delivered[0]!.answers, undefined, "the conclusion is not another answer");
+            assert.equal(delivered[0].path, "ops://responder/1");
+            assert.equal(delivered[0].answers, undefined, "the conclusion is not another answer");
         }
     });
 }
@@ -292,13 +292,13 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         if (child) {
             // {§loop-answer}: a child's answer to its parent's own task arrives once, as its conclusion.
             assert.equal(replies.length, 1, "once, not twice");
-            assert.equal(replies[0]!.path, "ops://bob/1");
-            assert.equal(replies[0]!.answers, undefined, "the conclusion is not another answer");
+            assert.equal(replies[0].path, "ops://bob/1");
+            assert.equal(replies[0].answers, undefined, "the conclusion is not another answer");
             return;
         }
         assert.equal(replies.length, 1, "one reply, not repeated as activity and terminal deliverable");
-        assert.equal(replies[0]!.source, "worker://bob");
-        const answers = replies[0]!.answers;
+        assert.equal(replies[0].source, "worker://bob");
+        const answers = replies[0].answers;
         assert.ok(Array.isArray(answers), "the parent packet names answered messages as answers");
         assert.equal(answers.length, 1);
         const answered = await db.message_source_by_address.get<{ body: string; source: string }>({
@@ -306,7 +306,7 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         });
         assert.equal(answered?.body, "What did you find?", "answers identifies the original request, not its recipient actor");
         assert.equal(answered?.source, "worker://alice");
-        assert.equal(Object.hasOwn(replies[0]!, "recipients"), false);
+        assert.equal(Object.hasOwn(replies[0], "recipients"), false);
         const inbox = await db.test_messages_by_loop.all({ loop_id: loopId });
         assert.equal(inbox.length, 1, "reply never becomes a request to reply back to Bob");
     } finally { await db.close(); }

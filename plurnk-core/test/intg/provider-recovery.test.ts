@@ -57,7 +57,7 @@ const untilTerminated = async (events: Terminated[], seen: number): Promise<Term
         if (Date.now() - start > 60_000) throw new Error("no loop/terminated within 60s");
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    return events[seen]!;
+    return events[seen];
 };
 
 test("{§provider-recovery} two dropped provider calls are absorbed inside the turn; the loop concludes 200", async (approvalContext) => {
@@ -87,8 +87,8 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
                 "same-turn outage recovery reissues the exact frozen model messages",
             );
             assert.notEqual(provider.requests[3], provider.requests[2], "the next admitted turn builds a genuinely new packet");
-            assert.match(provider.requests[3]!, /## Errors/u, "settled provider failures surface normally in the next packet");
-            assert.doesNotMatch(provider.requests[3]!, /retrying in/u, "the next packet carries no stale recovery checkpoint");
+            assert.match(provider.requests[3], /## Errors/u, "settled provider failures surface normally in the next packet");
+            assert.doesNotMatch(provider.requests[3], /retrying in/u, "the next packet carries no stale recovery checkpoint");
             const turnId = done.turnIds[1];
             assert.ok(turnId !== undefined);
             const calls = await db.test_model_calls.all<{ state: string }>({ turn_id: turnId });
@@ -141,8 +141,8 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
             assert.notEqual(requests[1], requests[2]);
             const rows = await db.test_log_entries_by_loop.all<{ source: string | null; status_rx: number }>({ loop_id: started.loopId });
             assert.equal(rows.filter((row) => row.source === "provider" && row.status_rx === 504).length, 1);
-            const calls = await db.test_model_calls.all<{ state: string }>({ turn_id: done.turnIds[1]! });
-            const physical = await db.test_provider_requests.all<{ outcome: string; usage_input: number | null }>({ turn_id: done.turnIds[1]! });
+            const calls = await db.test_model_calls.all<{ state: string }>({ turn_id: done.turnIds[1] });
+            const physical = await db.test_provider_requests.all<{ outcome: string; usage_input: number | null }>({ turn_id: done.turnIds[1] });
             assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
             assert.deepEqual(physical.map(({ outcome }) => outcome), ["error", "response"]);
             assert.deepEqual(physical.map(({ usage_input }) => usage_input), [null, 100], "unknown usage is not invented during recovery");
@@ -172,7 +172,7 @@ test("{§provider-recovery} the panel's ceiling bounds the doubling delay", asyn
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200);
             assert.equal(provider.calls, 6, "four failed calls, the recovered response, and one new model turn");
-            const gaps = provider.at.slice(1, 5).map((at, index) => at - provider.at[index]!);
+            const gaps = provider.at.slice(1, 5).map((at, index) => at - provider.at[index]);
             assert.ok(gaps.every((gap) => gap < 1000), `every capped retry gap stays under the first uncapped delay; gaps ${gaps.join(", ")}ms`);
         } finally {
             await daemon.stop();

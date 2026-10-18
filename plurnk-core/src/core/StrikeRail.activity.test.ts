@@ -5,7 +5,7 @@ import { type OperationResult } from "@plurnk/plurnk-contracts";
 import StrikeRail from "./StrikeRail.ts";
 
 // Fixture executors: every fence tag this file's DSL text writes opens as an executor.
-const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]!))];
+const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]))];
 
 const statements = (source: string) => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -27,7 +27,7 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
         ["````WORK (worker://child)\none\n````", "````WORK (worker://child)\ntwo\n````"],
         ["````READ (a)````\n````EDIT (b) <1>\nx\n````", "````EDIT (b) <1>\nx\n````\n````READ (a)````"],
     ]) {
-        assert.notEqual(fingerprint(first!), fingerprint(second!), `${first} differs from ${second}`);
+        assert.notEqual(fingerprint(first), fingerprint(second), `${first} differs from ${second}`);
     }
 });
 

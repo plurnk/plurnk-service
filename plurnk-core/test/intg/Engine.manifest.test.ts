@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import type { CatalogEntry } from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Results } from "@plurnk/plurnk-schemes";
@@ -210,7 +209,7 @@ test("{§scheme-catalog-aside} catalog projects a bounded aside on only its exac
         const tool = catalog.find(([channel]) => channel.path === "worker:///tool.md");
         assert.equal([...tool![0].aside!].length, 256);
         assert.equal(tool![0].aside, `${"x".repeat(255)}…`);
-        assert.equal("aside" in tool![1]!, false, "one channel's aside never labels a sibling channel");
+        assert.equal("aside" in tool![1], false, "one channel's aside never labels a sibling channel");
     } finally { await db.close(); }
 });
 
@@ -293,7 +292,7 @@ test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed,
             db,
             workspaceId,
             defaultChannelFor: (scheme) => scheme === "sh" ? "stdout" : "body",
-        })) as CatalogEntry[];
+        }));
         const active = catalog.find(([channel]) => channel.path === "sh:///1/1/1/sh");
         const closed = catalog.find(([channel]) => channel.path === "sh:///1/1/2/sh");
         const killed = catalog.find(([channel]) => channel.path === "sh:///1/1/3/sh");

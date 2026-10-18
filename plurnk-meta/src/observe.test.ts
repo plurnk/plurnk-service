@@ -9,7 +9,7 @@ const recordingTracer = (): { tracer: Tracer; spans: Recorded[] } => {
     const spans: Recorded[] = [];
     const tracer = {
         startSpan(name: string, options?: SpanOptions): Span {
-            const recorded: Recorded = { name, attributes: { ...(options?.attributes ?? {}) }, ended: false };
+            const recorded: Recorded = { name, attributes: { ...options?.attributes }, ended: false };
             spans.push(recorded);
             return {
                 setAttribute(key: string, value: unknown) { recorded.attributes[key] = value; return this; },

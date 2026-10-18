@@ -67,7 +67,7 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
         const notices: Array<{ workspaceId: number; loopId: number; notice: Notice }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), weigh,
-            noticeNotify: (workspaceId, { loopId, notice }) => notices.push({ workspaceId, loopId, notice: notice as Notice }),
+            noticeNotify: (workspaceId, { loopId, notice }) => notices.push({ workspaceId, loopId, notice: notice }),
         });
         const workspaceId = await insertWorkspace(db, `warm-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -116,7 +116,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), weigh,
             noticeNotify: (_workspaceId, payload) => {
-                const notice = payload.notice as Notice;
+                const notice = payload.notice;
                 notices.push({ notice });
                 if (notice.phase === "preparing" && !requestedRescan) {
                     assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "preparing", "latest state is queryable while no notice stream is attached");

@@ -111,13 +111,13 @@ test("{§agui-proposal-resolve} start(): a loop/proposal event → a gate on the
     await settled();
     assert.equal(emitted.length, 1);
     const [delivery] = emitted;
-    assert.deepEqual([delivery!.workspaceId, delivery!.workerId, delivery!.loopId], [7, 9, 1], "fanned to the event's workspace, its worker and loop");
-    assert.deepEqual(delivery!.batch.events, [], "the Portal presents the operation's call on each Run");
-    const [gate] = delivery!.batch.gates;
-    assert.deepEqual([gate!.key, gate!.kind, gate!.interrupt.reason, gate!.interrupt.toolCallId], [proposalKey(42), "proposal", "tool_call", undefined]);
-    assert.deepEqual(gate!.interrupt.metadata?.plurnk?.proposal?.worker, "helper", "the interrupt carries Core's projection");
+    assert.deepEqual([delivery.workspaceId, delivery.workerId, delivery.loopId], [7, 9, 1], "fanned to the event's workspace, its worker and loop");
+    assert.deepEqual(delivery.batch.events, [], "the Portal presents the operation's call on each Run");
+    const [gate] = delivery.batch.gates;
+    assert.deepEqual([gate.key, gate.kind, gate.interrupt.reason, gate.interrupt.toolCallId], [proposalKey(42), "proposal", "tool_call", undefined]);
+    assert.deepEqual(gate.interrupt.metadata?.plurnk?.proposal?.worker, "helper", "the interrupt carries Core's projection");
     assert.deepEqual(m.reads, [{ workerId: 9, coordinate: "2/3/4" }], "the gated row is read by its coordinate");
-    const { workerId, loopId, coordinate, entry } = gate!.call!;
+    const { workerId, loopId, coordinate, entry } = gate.call!;
     assert.deepEqual({ workerId, loopId, coordinate }, { workerId: 9, loopId: 1, coordinate: "2/3/4" });
     assert.deepEqual([entry.op, entry.status_rx, entry.state, `${entry.loop_seq}/${entry.turn_seq}/${entry.sequence}`], ["EDIT", 202, "proposed", "2/3/4"],
         "the gate carries the operation's row awaiting its decision");
@@ -137,13 +137,13 @@ test("start(): a generic loop/interaction is its own call, under the requested t
     await settled();
 
     assert.equal(emitted.length, 1);
-    assert.equal(emitted[0]!.loopId, 1, "addressed to the interaction's owning loop");
-    assert.deepEqual(emitted[0]!.batch.events, [
+    assert.equal(emitted[0].loopId, 1, "addressed to the interaction's owning loop");
+    assert.deepEqual(emitted[0].batch.events, [
         { type: "TOOL_CALL_START", toolCallId: "int:40", toolCallName: "select_repository" },
         { type: "TOOL_CALL_ARGS", toolCallId: "int:40", delta: JSON.stringify({ owner: "plurnk" }) },
         { type: "TOOL_CALL_END", toolCallId: "int:40" },
     ]);
-    assert.deepEqual(emitted[0]!.batch.gates, [{
+    assert.deepEqual(emitted[0].batch.gates, [{
         key: "int:40",
         kind: "interaction",
         interrupt: {

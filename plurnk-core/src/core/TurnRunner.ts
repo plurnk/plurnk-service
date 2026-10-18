@@ -21,7 +21,7 @@ const comparePosition = (
     b: { line: number; column: number },
 ): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
+import type { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
@@ -34,7 +34,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import LiveSubscriptions from "./LiveSubscriptions.ts";
+import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
@@ -55,12 +55,13 @@ import type ClientInteractions from "./ClientInteractions.ts";
 // TurnRunner owns one inference cycle and any initialization turn
 // that precedes provider admission; Engine retains the surrounding loop
 // lifecycle and public facade.
-import NoticeChannel from "./NoticeChannel.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
 import ProviderRecovery from "./ProviderRecovery.ts";
-import ProblemLog from "./ProblemLog.ts";
+import type ProblemLog from "./ProblemLog.ts";
 import { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type WindowOverflow } from "./PacketBuilder.ts";
-import Dispatcher from "./Dispatcher.ts";
+import type PacketBuilder from "./PacketBuilder.ts";
+import { type ChatMessage, type WindowOverflow } from "./PacketBuilder.ts";
+import type Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
@@ -125,7 +126,7 @@ const readFilesItems = (): number | null => {
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
-import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE, outputAllowance, type OutputCut } from "./turn-signals.ts";
+import { TURN_STATUS_IMPLICIT_CONTINUE, outputAllowance, type ENGINE_PROBLEMS, type OutputCut } from "./turn-signals.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -612,7 +613,7 @@ export default class TurnRunner {
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {
-                messages: PacketWire.packetToWireMessages(packet) as ChatMessage[],
+                messages: PacketWire.packetToWireMessages(packet),
                 nativeInputs: [],
             };
         }
@@ -1039,7 +1040,7 @@ export default class TurnRunner {
         // Notices are non-terminal observations, never operation-failure truth.
         // Drain once and thread the same set through every overflow rebuild.
         facts.notices.push(...this.#notices.drain(loopId)
-            .filter((event) => (event as { level?: string }).level !== "info") as Notice[]);
+            .filter((event) => (event as { level?: string }).level !== "info"));
         // Build the model request packet ({§packet-stored-shape}). The log build
         // queries log_entries scoped to the worker, including this turn's newly
         // published message arrivals.
@@ -1066,7 +1067,7 @@ export default class TurnRunner {
         const selected = unpublished.map((message) => assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
         const pendingPaths = selected.reduce((count, paths) => count + paths.length, 0);
         for (const [index, message] of unpublished.entries()) {
-            openPaths.push(...selected[index]!);
+            openPaths.push(...selected[index]);
             const logEntryId = await this.#materialization.writeArrivalLog({
                 workspaceId, workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
                 selfAddressed: message.source !== null && message.source === message.durable_path,
@@ -1773,7 +1774,7 @@ export default class TurnRunner {
                 model: callMetadata.model,
                 // Opaque provider metadata plus the grammar transport key.
                 // {§meta-passthrough}, {§operator-grammar}
-                meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
+                meta: JSON.stringify({ ...response.meta, ...railKeys }),
             },
         });
     }
@@ -1992,7 +1993,7 @@ export default class TurnRunner {
         // FIND or READ, with or without a content program.
         if (reasoningOps.length > 0) {
             for (let i = parseErrors.length - 1; i >= 0; i--) {
-                if (parseErrors[i]!.message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(i, 1);
+                if (parseErrors[i].message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(i, 1);
             }
         }
         parseErrors.unshift(...fabrications.slice(0, 1));

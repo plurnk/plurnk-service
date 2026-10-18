@@ -34,7 +34,7 @@ export default class Rollback {
         const match = /^(?:log:\/\/\/)?(\d+)\/(\d+)\/(\d+)(?:\/[A-Za-z]+)?$/u.exec(to.trim());
         if (match === null) return null;
         const [loopSeq, turnSeq, sequence] = match.slice(1).map(Number);
-        return loopSeq! > 0 && turnSeq! > 0 && sequence! > 0 ? { loopSeq: loopSeq!, turnSeq: turnSeq!, sequence: sequence! } : null;
+        return loopSeq > 0 && turnSeq > 0 && sequence > 0 ? { loopSeq: loopSeq, turnSeq: turnSeq, sequence: sequence } : null;
     }
 
     static async run(seam: RollbackSeam, args: { workspaceId: number; workerId: number; to: string }): Promise<RollbackReport> {
@@ -114,7 +114,7 @@ export default class Rollback {
         const { items } = PlurnkParser.parseStatements(source, { executors: [...executors] });
         const item = items[0];
         if (items.length !== 1 || item?.kind !== "statement") throw new Error(`rollback of log:///${coordinate} built an operation the parser refused: ${source.slice(0, 120)}`);
-        const result = await seam.apply(item.statement as PlurnkStatement);
+        const result = await seam.apply(item.statement);
         if (result.status >= 300) {
             return { coordinate, path, reason: "refused", detail: result.problem?.detail ?? `The reversing operation answered ${result.status}.` };
         }

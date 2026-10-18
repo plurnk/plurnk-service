@@ -7,7 +7,7 @@ import { test } from "node:test";
 import type { ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
 import { OutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
+import type { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { dispatchSettled } from "./_scheme.ts";
@@ -60,7 +60,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     // before any proposal, so a refusal needs no settlement.
     const ping = (alias: string) => ({ ...sendStmt(target(alias), "ping"), target: target(alias) });
     const send = async (alias: string, workerId?: number) => workerId === undefined
-        ? (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [ping(alias)] }))[0]!
+        ? (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [ping(alias)] }))[0]
         : await dispatchSettled(daemon, { workspaceId, address: TEST_OWNER }, () =>
             modelOperation(daemon, db, { workspaceId, workerId, statement: ping(alias) }));
     try {

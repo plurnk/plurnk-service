@@ -31,7 +31,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 6, `init + five model turns; got ${ids.length}`);
-            const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index]! }))!.packet);
+            const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index] }))!.packet);
             const afterCuration = await packetOf(3);
             const kills = rows(afterCuration, "KILL");
             assert.deepEqual(kills.map(({ logPath, status }) => ({ logPath, status })), [

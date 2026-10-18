@@ -593,7 +593,7 @@ test("READ: terminal cleanup exposes the existing canonical representation until
     const cleanupGate = Promise.withResolvers<void>();
     const firstCtx = makeCtx({ close: async () => { await cleanupGate.promise; } });
     const secondCtx = makeCtx();
-    const ws = new Ws(() => sockets[connects++]!);
+    const ws = new Ws(() => sockets[connects++]);
     const target = wss(PUB, "/feed");
     void prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
     await flush();
@@ -617,7 +617,7 @@ test("READ: terminal cleanup exposes the existing canonical representation until
 test("READ: duplicate canonical workspace address reuses its representation and owner", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
-    const ws = new Ws(() => sockets[connects++]!);
+    const ws = new Ws(() => sockets[connects++]);
     const firstCtx = makeCtx();
     const secondCtx = makeCtx();
     const target = wss(PUB, "/feed");
@@ -649,7 +649,7 @@ test("{§ws-lifecycle}: workers share acquisition, input and KILL while other wo
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
     const seed = Promise.withResolvers<void>();
-    const ws = new Ws(() => sockets[connects++]!);
+    const ws = new Ws(() => sockets[connects++]);
     const firstCtx = makeCtx({ workspaceId: 1, workerId: 11, write: async () => {
         await seed.promise;
         return { status: 201, created: true, entryId: 1 };
@@ -981,7 +981,7 @@ test("handler close closes every remaining socket and waits for READ cleanup", a
     const cleanupGate = Promise.withResolvers<void>();
     const firstCtx = makeCtx();
     const secondCtx = makeCtx({ close: async () => { await cleanupGate.promise; } });
-    const ws = new Ws(() => sockets[connects++]!);
+    const ws = new Ws(() => sockets[connects++]);
     const reads = [
         prepareRepresentation(ws, readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
         prepareRepresentation(ws, readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
@@ -1054,7 +1054,7 @@ test("{§http-outbound-proposes} EDIT and SEND propose with the host effect, and
         assert.equal(attrs.operation, operation);
         // The resolver may replace the authored body before it is sent.
         const settledBody = `${operation.toLowerCase()} frame`;
-        const applied = await ws.applyResolution({ attrs: attrs as object, metadata: null, body: settledBody }, ctx);
+        const applied = await ws.applyResolution({ attrs: attrs, metadata: null, body: settledBody }, ctx);
         assert.equal(applied.status, 200);
         assert.deepEqual(sock.sent.slice(before), [settledBody], `${operation} writes exactly one frame, on acceptance`);
     }

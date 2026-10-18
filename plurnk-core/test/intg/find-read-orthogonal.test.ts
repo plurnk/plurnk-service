@@ -59,7 +59,7 @@ test("FIND locates resources by glob matcher", async () => {
         await seed(db, workspaceId, workerId, mimetypes, "/c", "italy\nspain");
 
         const r = await engine.dispatch({
-            statement: findStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            statement: findStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" }),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
 
@@ -75,7 +75,7 @@ test("FIND with zero matches returns 204", async () => {
         await seed(db, workspaceId, workerId, mimetypes, "/a", "italy");
         await seed(db, workspaceId, workerId, mimetypes, "/b", "spain");
         const r = await engine.dispatch({
-            statement: findStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            statement: findStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" }),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 204);

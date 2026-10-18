@@ -305,8 +305,8 @@ const withFetch = async (
         : async (input: string | URL | Request, init?: RequestInit) =>
             String(input).endsWith("/llms.txt")
                 ? new Response(null, { status: 404 })
-                : (impl as typeof fetch)(input, init);
-    globalThis.fetch = wrapped as typeof fetch;
+                : (impl)(input, init);
+    globalThis.fetch = wrapped;
     try { await fn(); } finally {
         globalThis.fetch = original;
         publicUrl?.mock.restore();
@@ -351,7 +351,7 @@ test("{§http-config} ready validates the fetch ceiling without making a provide
         await withFetch((async () => {
             calls += 1;
             throw new Error("readiness must not call the materializer");
-        }) as typeof fetch, async () => {
+        }), async () => {
             process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
             await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT must be a safe integer of at least 1/);
         });
@@ -394,7 +394,7 @@ test("exact FIND preparation preserves a provider-only page's unavailable source
     const target = urlTarget("https://example.com/provider-only", "/provider-only");
     await withFetch((async () => {
         throw new Error("origin unavailable");
-    }) as typeof fetch, async () => {
+    }), async () => {
         const prepared = await prepareExactFind(new Http(), findStmt(target), ctx);
         assert.equal(prepared.status, 200);
     });
@@ -704,9 +704,9 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.deepEqual(seq, ["write"]);
     assert.equal(wrote?.pathname, "/robots.txt");
     // {§readable-channel} — a plain-text response has no projection: body and header, nothing else.
-    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header"]);
-    assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
-    assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
+    assert.deepEqual(Object.keys(wrote.entry.channels).sort(), ["body", "header"]);
+    assert.deepEqual(wrote.entry.channels.body, { content: "x", mimetype: "text/plain" });
+    assert.match(wrote.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
 test("SEND: also materializes the entry before subscribing (shares #fetchStream)", async () => {
@@ -841,7 +841,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
             status: 200,
             headers: { "content-type": "text/plain" },
         });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
@@ -1311,7 +1311,7 @@ test("READ: public HTML uses the materializer Markdown and retains origin, reque
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><h1>Origin</h1></body></html>";
     await withFetch((async () =>
-        new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })) as typeof fetch, async () => {
+        new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })), async () => {
         const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/stub", "/stub")),
             ctx,
@@ -1343,7 +1343,7 @@ test("READ: negotiated origin Markdown is the source itself, one request, no pro
             status: 200,
             headers: { "content-type": "text/markdown", vary: "Accept" },
         });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/markdown", "/markdown")),
             ctx,
@@ -1380,7 +1380,7 @@ for (const selected of ["body", "readable", "header"] as const) {
         await withFetch((async () => new Response("<html><body>Durable source</body></html>", {
             status: 200,
             headers: { "content-type": "text/html" },
-        })) as typeof fetch, async () => {
+        })), async () => {
             const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
                     "https://example.com/hard-provider",
@@ -1425,7 +1425,7 @@ test("READ: recoverable materializer outcome uses the local floor with explicit 
     await withFetch((async () => new Response("<html><body>Origin</body></html>", {
         status: 200,
         headers: { "content-type": "text/html" },
-    })) as typeof fetch, async () => {
+    })), async () => {
         const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/recover", "/recover")),
             ctx,
@@ -1455,7 +1455,7 @@ for (const selected of ["body", "readable"] as const) {
         const { ctx, inspect } = makeCtx();
         await withFetch((async () => {
             throw new Error("origin reset");
-        }) as typeof fetch, async () => {
+        }), async () => {
             const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
                     "https://example.com/provider-only",
@@ -1633,7 +1633,7 @@ test("SEND: POSTs the body and streams the response", async () => {
             headers: { "content-type": "text/plain" },
         });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const r = await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["{\"Content-Type\":\"text/plain\"}"]), ctx);
         assert.equal(r.status, 102);
     });
@@ -1660,14 +1660,14 @@ test("{§http-outbound-proposes} POST, PUT and the remote DELETE propose, and no
             seenMethod = init?.method ?? "GET";
             return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
         };
-        await withFetch(probe as typeof fetch, async () => {
+        await withFetch(probe, async () => {
             const proposal = await propose(http, ctx);
             assert.equal(proposal.status, 202, `${method} proposes`);
             assert.equal(calls, 0, `${method} reaches no origin before its settlement`);
             const attrs = (proposal as ProposalResult).attrs as { effect?: string; method?: string };
             assert.equal(attrs.effect, "host", `${method} declares the host effect the panel maps`);
             assert.equal(attrs.method, method);
-            await http.applyResolution({ attrs: attrs as object, metadata: null }, ctx);
+            await http.applyResolution({ attrs: attrs, metadata: null }, ctx);
         });
         assert.equal(calls, 1, `${method} is sent exactly once, on acceptance`);
         assert.equal(seenMethod, method);
@@ -1683,7 +1683,7 @@ test("{§http-outbound-proposes} a request header never enters the durable propo
         seenAuthorization = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const statement = sendStmt(urlTarget("https://example.com/p", "/p"), "payload", metadata);
         const proposal = await http.send(statement, ctx);
         assert.equal(proposal.status, 202);
@@ -1703,7 +1703,7 @@ test("{§http-outbound-proposes} the resolver's body replaces the authored one b
         seenBody = init?.body ?? null;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const proposal = await http.send(sendStmt(urlTarget("https://example.com/p", "/p"), "authored"), ctx);
         const attrs = (proposal as ProposalResult).attrs as object;
         await http.applyResolution({ attrs, metadata: null, body: "settled" }, ctx);
@@ -1733,12 +1733,12 @@ test("READ: [metadata] headers are threaded into the fetch", async () => {
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     };
     const target = urlTarget("https://api.x/v1/me", "/v1/me");
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\",\"Accept\":\"application/json\"}"]), ctx);
     });
     // Plurnk's own identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
-    assert.match((seenHeaders as [string, string][])[0][1], /^PlurnkBot\//u);
+    assert.match((seenHeaders)[0][1], /^PlurnkBot\//u);
 });
 
 test("HTTP rejects malformed metadata without reflecting its contents", async () => {
@@ -1764,7 +1764,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
         seenUrls.push(String(url));
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
-    }) as typeof fetch, async () => {
+    }), async () => {
         await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\"}"]), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
@@ -1781,7 +1781,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
         seenType = new Headers(init?.headers).get("content-type") ?? "";
         return new Response("updated", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const r = await httpEdit(editStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             '{"done":true}',
@@ -1830,7 +1830,7 @@ test("KILL {remote} sends DELETE with the authored precondition", async () => {
         seenVersion = new Headers(init?.headers).get("if-match") ?? "";
         return new Response(null, { status: 204, statusText: "No Content" });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const r = await httpKill(killStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             null,
@@ -1849,7 +1849,7 @@ test("KILL without {remote} forgets the stored response and never contacts the r
     await withFetch((async () => {
         calls += 1;
         return new Response(null, { status: 204 });
-    }) as typeof fetch, async () => {
+    }), async () => {
         const r = await httpKill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
         assert.equal(r.status, 200);
     });
@@ -1870,7 +1870,7 @@ test("KILL of a live acquisition cancels it in place, and the owner settles 499"
             signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
         });
         return pending.fetch;
-    }) as typeof fetch, async () => {
+    }), async () => {
         const acquisition = prepareRepresentation(http, readStmt(target), ctx);
         await new Promise((resolve) => setTimeout(resolve, 20));
         const killed = await http.kill(killStmt(target), ctx);
@@ -1929,7 +1929,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
         return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
     };
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
@@ -1941,7 +1941,7 @@ test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("x", { status: 200 }); };
     const blob = "https://github.com/o/r/blob/feature/foo/src/x.js";
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/o/r/blob/feature/foo/src/x.js")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/o/r/feature/foo/src/x.js");
@@ -1951,7 +1951,7 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
     const { ctx } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("ok", { status: 200 }); };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(seenUrl, "https://example.com/x");
@@ -2132,7 +2132,7 @@ test("stale materializer HTML-page materialization performs full reacquisition w
             headers: { "content-type": "text/html", etag: '"v2"' },
         });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         assert.equal(r.status, 200);
     });
@@ -2176,7 +2176,7 @@ test("TTL: enabling a materializer invalidates a locally materialized HTML body 
                 status: 200,
                 headers: { "content-type": "text/html", etag: '"current"' },
             });
-        }) as typeof fetch, async () => {
+        }), async () => {
             await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/page", "/page")),
                 ctx,
@@ -2374,7 +2374,7 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
         hadConditional = h.has("if-none-match") || h.has("if-modified-since");
         return new Response("body", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(hadConditional, false);
@@ -2574,7 +2574,7 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", stampedHeader(1000)));
     let fetched = false;
     await withTtl("60000", async () => {
-        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+        await withFetch(async () => { fetched = true; throw new Error("must not fetch"); }, async () => {
             const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
             assert.equal(r.status, 200);
         });
@@ -3056,7 +3056,7 @@ test("TTL: an exact static WebFetcher materialization is reusable", async () => 
     ));
     let fetched = false;
     await withTtl("60000", async () => {
-        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+        await withFetch(async () => { fetched = true; throw new Error("must not fetch"); }, async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/materialized", "/materialized")), ctx);
         });
     });
@@ -3069,7 +3069,7 @@ test("TTL: a completed empty GET is a reusable representation", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("", "text/plain", stampedHeader(1000)));
     let fetched = false;
     await withTtl("60000", async () => {
-        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+        await withFetch(async () => { fetched = true; throw new Error("must not fetch"); }, async () => {
             assert.equal(await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/empty", "/empty")), ctx).then((r) => r.status), 200);
         });
     });
@@ -3107,7 +3107,7 @@ test("TTL: stale stamp falls through to the conditional GET (revalidates)", asyn
         return new Response("fresh", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withTtl("60000", async () => {
-        await withFetch(probe as typeof fetch, async () => {
+        await withFetch(probe, async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         });
     });
@@ -3126,7 +3126,7 @@ test("READ revalidation: 304 restores a completed empty representation", async (
                 statusText: "Not Modified",
                 headers: { etag: '"empty"' },
             });
-        }) as typeof fetch, async () => {
+        }), async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
         });
     });
@@ -3174,7 +3174,7 @@ test("TTL: an unmarked authored entry remains outside HTTP acquisition", async (
         return new Response("x", { status: 200 });
     };
     await withTtl("60000", async () => {
-        await withFetch(probe as typeof fetch, async () => {
+        await withFetch(probe, async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/m", "/m")), ctx);
         });
     });
@@ -3192,7 +3192,7 @@ test("TTL: explicit 0 disables the window — fresh stamp still revalidates", as
         return new Response(null, { status: 304, headers: { etag: '"v1"' } });
     };
     await withTtl("0", async () => {
-        await withFetch(probe as typeof fetch, async () => {
+        await withFetch(probe, async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         });
     });
@@ -3220,10 +3220,10 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     const old = stampedHeader(500_000, "\netag: \"v1\"");
     const { ctx: ctx2, inspect: inspect2 } = makeCtx(priorEntry("cached", "text/plain", old));
     await withTtl("0", async () => {
-        await withFetch((async () => new Response(null, {
+        await withFetch(async () => new Response(null, {
             status: 304,
             headers: { etag: '"v1"' },
-        })) as unknown as typeof fetch, async () => {
+        }), async () => {
             await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
         });
     });
@@ -3259,7 +3259,7 @@ test("{§http-config} byte path sends Plurnk's own identity, never a browser's",
         ua = new Headers(init?.headers).get("user-agent") ?? "";
         return new Response("x", { status: 200, headers: { "content-type": "text/plain" } });
     };
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://api.example.com/d.json", "/d.json")), ctx);
     });
     assert.match(ua, /^PlurnkBot\//u, "Plurnk says what it is");
@@ -3274,7 +3274,7 @@ test("a model-supplied User-Agent metadata block overrides the default identity"
         return new Response("x", { status: 200 });
     };
     const target = urlTarget("https://api.example.com/x", "/x");
-    await withFetch(probe as typeof fetch, async () => {
+    await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(target, null, ["{\"User-Agent\":\"curl/8\"}"]), ctx);
     });
     assert.equal(ua, "curl/8");

@@ -23,7 +23,7 @@ type Witness = {
 const witness = (stderr: string): Witness => {
     const match = /^durability-witness: (.+)$/mu.exec(stderr);
     assert.ok(match, `launcher must expose the connection witness: ${stderr}`);
-    return JSON.parse(match[1]!) as Witness;
+    return JSON.parse(match[1]) as Witness;
 };
 
 const invoke = (dir: string, args: string[], overrides: Record<string, string> = {}, entrypoint = SERVICE) => {

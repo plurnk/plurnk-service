@@ -40,10 +40,10 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertWorker(db, workspaceId, null, "observer");
         const read = (source: string, workerId = observer) => clientRead(engine, db, { workspaceId, workerId, statement: statement(source) });
-        const firstSource = await read(frame(`READ (${notes[0]!.resource}) <1,-1>`, null));
+        const firstSource = await read(frame(`READ (${notes[0].resource}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
-        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(String(notes[1]!.logPath))?.[1];
+        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(String(notes[1].logPath))?.[1];
         assert.ok(contentNote, "the content NOTE has its own receipt coordinate");
         const secondSource = await read(frame(`READ (note://alice/${contentNote}) <1,-1>`, null));
         assert.equal(secondSource.content, "Inspect the parser next.", "the receipt coordinate reads the content NOTE's durable source");
@@ -51,7 +51,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
         assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(String(row.logPath))).length, 0);
-        const sourceAgain = await read(frame(`READ (${notes[0]!.resource}) <1,-1>`, null));
+        const sourceAgain = await read(frame(`READ (${notes[0].resource}) <1,-1>`, null));
         assert.equal(sourceAgain.content, "The network is not the cause.", "curating the log does not delete the source note");
         const rawReasoning = await read(frame("READ (reasoning://alice/1/2) <1,-1>", null));
         assert.equal(rawReasoning.content, reasoning);
@@ -61,11 +61,11 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
         const fork = await Fork.fork(db, workerId, "branch");
-        const inherited = await read(frame(`READ (${String(notes[0]!.resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null), fork);
+        const inherited = await read(frame(`READ (${String(notes[0].resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null), fork);
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
         for (const op of ["EDIT", "KILL"]) {
             const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "EDIT" ? 50 : 51, origin: "model",
-                statement: statement(frame(`${op} (${notes[0]!.resource})`, op === "EDIT" ? "Changed" : null)),
+                statement: statement(frame(`${op} (${notes[0].resource})`, op === "EDIT" ? "Changed" : null)),
             });
             assert.equal(refused.status, 403, `${op} cannot change immutable note evidence`);
         }

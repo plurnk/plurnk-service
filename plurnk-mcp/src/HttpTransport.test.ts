@@ -284,8 +284,8 @@ test("{§oauth-client-credentials} the extension capability is advertised only o
     const discovers = served.requests
         .map(({ headers, body }) => ({ auth: headers.get("authorization"), body: body as { method?: string } }))
         .filter(({ body }) => body !== null && typeof body === "object" && body.method === "server/discover");
-    const [grantedDiscover] = discovers.filter(({ auth }) => auth === "Bearer granted-access-token");
-    const [bearerDiscover] = discovers.filter(({ auth }) => auth === "Bearer secret");
+    const grantedDiscover = discovers.find(({ auth }) => auth === "Bearer granted-access-token");
+    const bearerDiscover = discovers.find(({ auth }) => auth === "Bearer secret");
     assert.ok(grantedDiscover !== undefined, "the authenticated grant connection discovered once");
     assert.ok(bearerDiscover !== undefined, "the bearer connection discovered once");
     const grantedCapabilities = advertisedExtensions(grantedDiscover.body) ?? {};

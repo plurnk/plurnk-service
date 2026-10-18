@@ -78,7 +78,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.equal(promptGets, 1, "READ of a prompt's media snapshot never re-fetches the prompt");
             const texts = provider.received.map(userText);
             assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))));
-            assert.match(texts[1]!, /"role": "assistant"/u, "the supplied role remains visible as prompt data");
+            assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted model operations have assistant authorship.
             const noted = step("NOTE");
             const promptRead = PlurnkParser.frame("READ (fixture:///prompts/inspect) <1,-1>", null);
@@ -90,21 +90,21 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
                 [`${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`, noted],
             ];
             for (const [index, messages] of provider.received.entries()) {
-                const expected = previousPrograms[index]!;
+                const expected = previousPrograms[index];
                 assert.deepEqual(messages.map(({ role }) => role), ["system", "user", ...expected.flatMap(() => ["assistant", "user"])]);
                 assert.deepEqual(messages.filter(({ role }) => role === "assistant"), expected.map((content) => ({ role: "assistant", content })),
                     "only admitted operations have assistant authorship; MCP prompt roles remain user data");
             }
             const parts = provider.received.map((messages) => messages.flatMap((message) =>
                 Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
-            assert.equal(parts[1]!.length, 0, "retrieving a prompt lists its media without attaching it");
-            assert.equal(parts[2]!.length, modalities.length);
-            assert.equal(parts[3]!.length, modalities.length, "native data follows the ordinary READ retention lifecycle");
+            assert.equal(parts[1].length, 0, "retrieving a prompt lists its media without attaching it");
+            assert.equal(parts[2].length, modalities.length);
+            assert.equal(parts[3].length, modalities.length, "native data follows the ordinary READ retention lifecycle");
             if (modalities.length) {
-                assert.equal(parts[2]![0]!.mediaType, media.mimeType);
-                assert.ok(Buffer.from(parts[2]![0]!.data).equals(media.bytes), "MCP prompt media retains the exact original bytes");
+                assert.equal(parts[2][0]!.mediaType, media.mimeType);
+                assert.ok(Buffer.from(parts[2][0]!.data).equals(media.bytes), "MCP prompt media retains the exact original bytes");
             }
-            assert.match(texts[2]!, media.hex);
+            assert.match(texts[2], media.hex);
             const raw = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts/inspect", scheme: "fixture", name: "json" });
             assert.equal(JSON.parse(raw?.content ?? "{}").messages.at(-1).content.data, media.bytes.toString("base64"));
         } finally {

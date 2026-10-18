@@ -26,11 +26,11 @@ test("{§send-resource-attachments} message resources are validated before publi
     assert.deepEqual(ClientInput.assertMessageResources("runLoop", [resource]), [resource]);
     assert.deepEqual(ClientInput.assertMessageResources("runLoop", undefined), []);
     assert.equal(ClientInput.assertPrompt("runLoop", "", true), "");
-    assert.match(failureFrom(() => ClientInput.assertPrompt("runLoop", "")).result.problem!.type, /prompt-invalid$/u);
+    assert.match(failureFrom(() => ClientInput.assertPrompt("runLoop", "")).result.problem.type, /prompt-invalid$/u);
     for (const invalid of [null, {}, [null], [{ ...resource, bytes: "base64" }], [{ ...resource, name: undefined }], [{ ...resource, mediaType: "" }]]) {
         const failure = failureFrom(() => ClientInput.assertMessageResources("runLoop", invalid));
         assert.equal(failure.result.status, 400);
-        assert.match(failure.result.problem!.type, /message-resources-invalid$/u);
+        assert.match(failure.result.problem.type, /message-resources-invalid$/u);
     }
 });
 

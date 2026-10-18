@@ -40,6 +40,7 @@ import { streamConclusion, streamEvent, termination } from "../test/notification
 import { HttpAgent } from "@ag-ui/client";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { replayState } from "../test/state-replay.ts";
+import type { ServerResponse } from "node:http";
 
 
 
@@ -263,7 +264,7 @@ const presentedInterrupt = (events: AguiEvent[]): Interrupt => {
     const last = events.at(-1);
     assert.ok(last?.type === "RUN_FINISHED" && last.outcome?.type === "interrupt");
     assert.equal(last.outcome.interrupts.length, 1);
-    return last.outcome.interrupts[0]!;
+    return last.outcome.interrupts[0];
 };
 
 // {§agui-plurnk-metadata} What a Run's end carries: an action Run's RUN_FINISHED has the action's whole outcome as its
@@ -1719,7 +1720,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
             seam.resolveProposal = async () => { pending = []; resolved.resolve(); };
             seam.cancelDrain = (id, reason) => { cancellations.push({ workerId: id, reason }); return true; };
             let responseClosed = Promise.withResolvers<void>();
-            const observeResponse = (response: import("node:http").ServerResponse): void => {
+            const observeResponse = (response: ServerResponse): void => {
                 response.once("close", responseClosed.resolve);
             };
             let mod = await host(seam, {}, observeResponse);
@@ -1743,9 +1744,9 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
                 if (origin === "observer-after-message" || origin === "rediscovered") events = await observe();
                 const terminal = events.at(-1);
                 assert.ok(terminal?.type === "RUN_FINISHED" && terminal.outcome?.type === "interrupt");
-                const interrupt = terminal.outcome.interrupts[0]!;
+                const interrupt = terminal.outcome.interrupts[0];
                 if (origin === "observer-after-message") {
-                    assert.notEqual(interrupt.id, original.outcome.interrupts[0]!.id,
+                    assert.notEqual(interrupt.id, original.outcome.interrupts[0].id,
                         "the observer answers its own presentation, not the originating connection's continuation");
                 }
                 responseClosed = Promise.withResolvers<void>();
@@ -1838,9 +1839,9 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
         assert.equal(second.length, 2);
         const resumed = (interruptId: string) => ({ interruptId, status: "resolved", payload: { decision: "accept" } });
         const cases = [
-            { ids: [first[0]!.id], code: "interrupt-set-incomplete" },
-            { ids: [first[0]!.id, first[0]!.id], code: "interrupt-duplicate" },
-            { ids: [first[0]!.id, second[1]!.id], code: "interrupt-binding-invalid" },
+            { ids: [first[0].id], code: "interrupt-set-incomplete" },
+            { ids: [first[0].id, first[0].id], code: "interrupt-duplicate" },
+            { ids: [first[0].id, second[1].id], code: "interrupt-binding-invalid" },
             { ids: ["unknown-presentation"], code: "interrupt-not-pending" },
         ];
         for (const { ids, code } of cases) {
@@ -2195,12 +2196,12 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         });
 
         assert.deepEqual(reattachedAgent.pendingInterrupts.map(({ toolCallId }) => toolCallId), ["1/12/2"]);
-        assert.notEqual(reattachedAgent.pendingInterrupts[0]!.id, agent.pendingInterrupts[0]!.id);
+        assert.notEqual(reattachedAgent.pendingInterrupts[0].id, agent.pendingInterrupts[0].id);
         assert.equal(loopRuns.length, 0, "reattaching to a durable interrupt does not start new model work");
         const resumedEvents: string[] = [];
         await reattachedAgent.runAgent({
             forwardedProps: { plurnk: { workspace: "verified-interrupt" } },
-            resume: [{ interruptId: reattachedAgent.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }],
+            resume: [{ interruptId: reattachedAgent.pendingInterrupts[0].id, status: "resolved", payload: { decision: "accept" } }],
         }, {
             onEvent: ({ event }) => { resumedEvents.push(event.type); },
         });
@@ -2456,7 +2457,7 @@ test("{§agui-thread-binding} a thread's worker belongs to its workspace, not a 
     });
     try {
         await message("before");
-        workspaces[0]!.name = "after"; // renamed by another client
+        workspaces[0].name = "after"; // renamed by another client
         await message("before");
         await message("after");
         assert.deepEqual(bound, [[3, 77], [4, 78], [3, 77]],
@@ -2664,7 +2665,7 @@ const lastMessages: Record<string, { messages: Array<Record<string, unknown>>; f
     "a new text message": { messages: [...copy, { id: "next", role: "user", content: "Next." }], fresh: true },
     "a new empty message": { messages: [...copy, { id: "next", role: "user", content: "" }], fresh: true, text: false },
     "a new non-text message": { messages: [...copy, { id: "next", role: "user", content: [{ type: "text", text: "Next." }] }], fresh: true, text: false },
-    "the client's own held message": { messages: [copy[0]!] },
+    "the client's own held message": { messages: [copy[0]] },
     "its held id with other words": { messages: [{ id: "own", role: "user", content: "Edited." }], conflict: true },
     "a peer's held message": { messages: copy },
     "a reply's id as a user message": { messages: [{ id: "1/1/2", role: "user", content: "Hi." }] },
@@ -3649,7 +3650,7 @@ test("{§agui-thread-binding} {§agui-action-binding}: concurrent first touches 
     try {
         const forms = Object.values(CREATING_FORMS);
         const runs = await Promise.all(Array.from({ length: 8 }, (_, index) => post(mod.address().port, {
-            ...formInput("new-worker", forms[index % forms.length]!), runId: `run-${index}`,
+            ...formInput("new-worker", forms[index % forms.length]), runId: `run-${index}`,
         })));
         assert.ok(runs.every((events) => events.at(-1)?.type === "RUN_FINISHED"));
         assert.equal(attached, 1, "concurrent requests share envelope acquisition");
@@ -3689,7 +3690,7 @@ test("{§agui-thread-binding}: concurrent threads create one workspace, and each
         })));
         assert.ok(runs.every((events) => loopTerminal(events) !== undefined), "every Run ends with its loop's terminal record");
         assert.equal(created.length, 1);
-        assert.match(created[0]!.projectRoot!, /^\/root-\d$/);
+        assert.match(created[0].projectRoot!, /^\/root-\d$/);
         assert.equal(workerId, 48, "each thread minted its own worker");
     } finally { await mod.close(); }
 });
@@ -3799,9 +3800,9 @@ test("{§agui-thread-binding} a workspace renamed to one of its workers' names s
     };
     seam.invokeModuleAction = async (_name, _params, context) => { addressed.add((context as { workerId: number }).workerId); return {}; };
     const forms: Readonly<Record<string, RunForm>> = {
-        observation: REQUIRING_FORMS["a sync observation"]!,
-        "message Run": CREATING_FORMS["a message Run"]!,
-        "worker-scoped action": REQUIRING_FORMS["a worker-scoped module action"]!,
+        observation: REQUIRING_FORMS["a sync observation"],
+        "message Run": CREATING_FORMS["a message Run"],
+        "worker-scoped action": REQUIRING_FORMS["a worker-scoped module action"],
     };
     const bindsEachThread = async (port: number, workspace: string, when: string): Promise<void> => {
         for (const [threadId, worker] of [["reviewer", 21], ["page", 22]] as const) {
@@ -3838,7 +3839,7 @@ test("{§agui-thread-binding} a thread named after its workspace binds the worke
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
     const mod = await host(seam);
-    const observation = REQUIRING_FORMS["a sync observation"]!;
+    const observation = REQUIRING_FORMS["a sync observation"];
     try {
         const absent = await fetch(`http://127.0.0.1:${mod.address().port}/agui`, {
             method: "POST", headers: { "content-type": "application/json" },
@@ -3846,7 +3847,7 @@ test("{§agui-thread-binding} a thread named after its workspace binds the worke
         });
         assert.equal(absent.status, 404, "no worker is named for the workspace yet, and none stands in for it");
         assert.match((await absent.json() as { type: string }).type, /\/worker-not-found$/u);
-        await post(mod.address().port, formInput("project", CREATING_FORMS["a message Run"]!, "project"));
+        await post(mod.address().port, formInput("project", CREATING_FORMS["a message Run"], "project"));
         assert.deepEqual(minted, ["project"], "the message created the worker its thread names");
         await post(mod.address().port, formInput("project", observation, "project"));
         assert.deepEqual([...addressed], [23], "the thread bound that worker alone");
@@ -3865,7 +3866,7 @@ test("loop.inject folds into the worker its thread names, as that thread's messa
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
         assert.deepEqual(driven, [44], "the steer reached the thread's own worker");
-        const message = messages[0]!;
+        const message = messages[0];
         assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/spike\/messages\/[^/]+$/u, "injected input belongs to its thread just like a normal message Run");
         assert.equal(message.messageAddress, message.source, "curation cannot erase the injected message's original source");
         const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
@@ -3875,7 +3876,7 @@ test("loop.inject folds into the worker its thread names, as that thread's messa
         assert.equal(envelope.message.content, "steer");
         assert.equal(message.source, `agui://anonymous/threads/spike/messages/${encodeURIComponent(envelope.message.id)}`);
         await post(mod.address().port, { threadId: "spike", runId: "r2", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
-        assert.notEqual(messages[1]!.messageAddress, message.messageAddress, "equal text submitted twice is still two distinct messages");
+        assert.notEqual(messages[1].messageAddress, message.messageAddress, "equal text submitted twice is still two distinct messages");
     } finally { await mod.close(); }
 });
 
@@ -4211,7 +4212,7 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
         const open = async (token: string, index: number): Promise<Response> => {
             const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
-                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index]!.signal,
+                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index].signal,
                 body: JSON.stringify(standardInput({ threadId: `observer-${index}`, messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
             });
             assert.equal(response.status, 200);
@@ -4231,7 +4232,7 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         assert.deepEqual(cancellations, [], "a revoked observer is not a cancelling one");
         const stillOpen = await Promise.race([surviving.text().then(() => false), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 200))]);
         assert.equal(stillOpen, true, "the other family's stream is still open");
-        controllers[1]!.abort();
+        controllers[1].abort();
         await surviving.text().catch(() => undefined);
     } finally {
         for (const controller of controllers) controller.abort();
@@ -4268,7 +4269,7 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
         const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
         const open = async (token: string, index: number): Promise<Response> => {
             const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
-                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index]!.signal,
+                method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index].signal,
                 body: JSON.stringify(standardInput({ threadId: `reasoning-${index}`, messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
             });
             assert.equal(response.status, 200);
@@ -4295,13 +4296,13 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
         await waitForFixture(Promise.all([closing, bodies]).then(() => {}), () => "Runs holding open reasoning prevented module closure");
         const [watched, joined] = (await bodies).map(frames);
         assert.deepEqual(
-            watched!.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
+            watched.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
             ["Thinking", " further"],
             "the request streams on to the Run still observing it",
         );
-        endsBalanced(watched!, "https://problems.plurnk.xyz/agui/http/service-stopping");
-        assert.ok(!joined!.some(({ type }) => type.startsWith("REASONING_")), "a Run that joined mid-request presents none of it");
-        endsBalanced(joined!, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        endsBalanced(watched, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        assert.ok(!joined.some(({ type }) => type.startsWith("REASONING_")), "a Run that joined mid-request presents none of it");
+        endsBalanced(joined, "https://problems.plurnk.xyz/agui/http/service-stopping");
         assert.deepEqual(cancellations, [], "ending an observing Run cancels no worker");
     } finally {
         for (const controller of controllers) controller.abort();

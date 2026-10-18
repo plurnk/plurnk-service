@@ -254,10 +254,10 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
             assert.ok(send, "the SEND entry is in the log");
 
             // {§methods-log-read} — one call by L/T/S returns exactly that entry, full shape.
-            const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send!.loop_seq, turnSeq: send!.turn_seq, sequence: send!.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
+            const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send.loop_seq, turnSeq: send.turn_seq, sequence: send.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
             assert.equal(r.status, 200);
             assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
-            assert.equal(r.entries[0].id, send!.id, "the coordinate resolves the SEND entry");
+            assert.equal(r.entries[0].id, send.id, "the coordinate resolves the SEND entry");
             // A SEND's rx is just {status}; the model's message ('Paris') lives in tx, which
             // log.read resolves by coordinate on the server.
             assert.match(JSON.stringify(r.entries[0].tx), /Paris/, "the SEND tx body is reachable by coordinate");

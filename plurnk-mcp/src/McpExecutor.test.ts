@@ -460,8 +460,8 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
         assert.equal(publications.length, 4);
         assert.deepEqual(publications.map(({ content }) => typeof content === "string" ? content : Buffer.from(content!).toString()), ["image", "audio", "embedded text", "blob"]);
         assert.ok(h.writes[0]?.startsWith("prose\n<rich:///"), "the body preserves text and resource ordering");
-        assert.match(h.writes[0]!, /rich:\/\/\/resources\/fixture%3A%2F%2Fdocument/u, "resource links use the ordinary MCP resource tree");
-        assert.doesNotMatch(h.writes[0]!, /aW1hZ2U=|YXVkaW8=|YmxvYg==/u);
+        assert.match(h.writes[0], /rich:\/\/\/resources\/fixture%3A%2F%2Fdocument/u, "resource links use the ordinary MCP resource tree");
+        assert.doesNotMatch(h.writes[0], /aW1hZ2U=|YXVkaW8=|YmxvYg==/u);
     } finally {
         await connection.close();
     }

@@ -229,7 +229,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             const seen = proposals.length;
             const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
-            const logEntryId = proposals[seen]!;
+            const logEntryId = proposals[seen];
             await daemon.resolveProposal(logEntryId, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             return { status: (await pending).status, logEntryId };
         };

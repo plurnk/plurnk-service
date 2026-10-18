@@ -721,7 +721,7 @@ for (const silent of [false, true]) {
                     (events) => events.length >= 1,
                     { timeoutMs: 5000 },
                 );
-                assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
+                assert.equal(done[0].result.status, 200, "the loop completed once the follow-ups were seen");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
                 const replies = rows.filter((r) => r.op === "SEND" && r.origin === "model");
                 assert.deepEqual(replies.map(({ status_rx }) => status_rx), [200, 200, 200], "replies deliver immediately while unseen arrivals defer loop settlement");

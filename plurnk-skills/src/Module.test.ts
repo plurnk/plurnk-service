@@ -30,7 +30,7 @@ const setup = async (module: Module, provided: ReadonlyMap<string, SkillTree> = 
     await module.setup(seam);
     assert.equal(families.length, 1);
     assert.equal(sources.length, 1);
-    return { family: families[0]!, source: sources[0]!, seam };
+    return { family: families[0], source: sources[0], seam };
 };
 
 test("{§skills-module} public seams connect ordinary family publication to original resources", async () => {

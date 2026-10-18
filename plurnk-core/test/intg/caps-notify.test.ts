@@ -84,7 +84,7 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
         assert.equal(diagnostics[0]?.[1], notifyCause, "the notifier exception remains the diagnostic cause");
 
         const lookupCause = new Error("lookup failed");
-        const failingLookupDb = new Proxy(db as unknown as object, {
+        const failingLookupDb = new Proxy(db, {
             get(target, property) {
                 if (property === "crud_find_workspace_entry") {
                     return { get: async () => { throw lookupCause; } };

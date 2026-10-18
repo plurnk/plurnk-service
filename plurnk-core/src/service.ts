@@ -78,7 +78,7 @@ export default class Service {
     static #configFileArg(): string | null {
         const index = process.argv.findIndex((arg) => arg === "--config" || arg.startsWith("--config="));
         if (index === -1) return null;
-        const arg = process.argv[index]!;
+        const arg = process.argv[index];
         const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : process.argv[index + 1];
         return value === undefined ? null : Service.#hostPaths.expandUserPath(value);
     }
@@ -192,7 +192,7 @@ export default class Service {
                     }
                 };
             }
-            return db as unknown as Db;
+            return db;
         } catch (cause) {
             await lock?.release();
             // SQLite's bare "disk I/O error" names neither file nor culprit. The classic footgun fails
@@ -473,7 +473,7 @@ export default class Service {
         } else if (command === "requiem") {
             if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
             handler = async () => {
-                const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1] as string, digestDir: positionals[2] as string, provider: await ProviderInstantiate.loadActiveProvider() });
+                const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1], digestDir: positionals[2], provider: await ProviderInstantiate.loadActiveProvider() });
                 process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
             };
         }

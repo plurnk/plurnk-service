@@ -35,11 +35,11 @@ export default class HtmlSource {
                 for (const child of node.childNodes) element.appendChild(copy(child));
                 result = element;
             } else if (node.nodeName === "#text") {
-                result = this.document.createTextNode((node as DefaultTreeAdapterMap["textNode"]).value);
+                result = this.document.createTextNode(node.value);
             } else if (node.nodeName === "#comment") {
-                result = this.document.createComment((node as DefaultTreeAdapterMap["commentNode"]).data);
+                result = this.document.createComment(node.data);
             } else {
-                const declaration = node as DefaultTreeAdapterMap["documentType"];
+                const declaration = node;
                 result = implementation.createDocumentType(declaration.name, declaration.publicId, declaration.systemId);
             }
             mark(result, node.sourceCodeLocation);

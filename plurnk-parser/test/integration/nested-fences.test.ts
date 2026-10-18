@@ -232,7 +232,7 @@ test("{§one-line-turn}: a whole turn on one line parses from its line start, in
     assert.equal(chained.unparsedTail, undefined);
     assert.deepEqual(errors(chained).filter(({ severity }) => severity === "error"), []);
     assert.deepEqual(statements(chained).map(writtenOp), ["READ", "READ", "WAIT"]);
-    assert.equal(bodyText(statements(chained)[2]!), null);
+    assert.equal(bodyText(statements(chained)[2]), null);
 
     const direct = PlurnkParser.parse("````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````WAIT ````");
     assert.deepEqual(errors(direct).filter(({ severity }) => severity === "error"), []);

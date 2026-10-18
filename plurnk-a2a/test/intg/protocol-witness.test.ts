@@ -48,7 +48,7 @@ test("{§a2a-http-json-discovery} discovers a v1 HTTP+JSON agent and completes a
     assert.equal(stored.status?.state, TaskState.TASK_STATE_COMPLETED);
     assert.equal(stored.history.length, 1);
     assert.equal(agent.executor.received.length, 1);
-    const received = agent.executor.received[0]!;
+    const received = agent.executor.received[0];
     assert.equal(received.taskId, task.id);
     assert.equal(received.contextId, task.contextId);
     assert.equal(received.userMessage.taskId, task.id);
@@ -73,12 +73,12 @@ test("{§a2a-protocol-witness} streams the ordered task, working, artifact, and 
         "artifactUpdate",
         "statusUpdate",
     ]);
-    const working = payload(events[1]!);
+    const working = payload(events[1]);
     assert.equal(working.$case, "statusUpdate");
     if (working.$case === "statusUpdate") {
         assert.equal(working.value.status?.state, TaskState.TASK_STATE_WORKING);
     }
-    const completed = payload(events[3]!);
+    const completed = payload(events[3]);
     assert.equal(completed.$case, "statusUpdate");
     if (completed.$case === "statusUpdate") {
         assert.equal(completed.value.status?.state, TaskState.TASK_STATE_COMPLETED);
@@ -128,7 +128,7 @@ test("preserves a direct Message response without fabricating a Task", async (t)
     }
 
     assert.deepEqual(events.map((event) => payload(event).$case), ["message"]);
-    const direct = payload(events[0]!);
+    const direct = payload(events[0]);
     assert.equal(direct.$case, "message");
     if (direct.$case === "message") {
         assert.equal(direct.value.role, Role.ROLE_AGENT);
@@ -154,8 +154,8 @@ test("continues one input-required Task with the same Task and Context identitie
         "statusUpdate",
         "statusUpdate",
     ]);
-    const taskEvent = payload(first[0]!);
-    const interruptedEvent = payload(first[2]!);
+    const taskEvent = payload(first[0]);
+    const interruptedEvent = payload(first[2]);
     assert.equal(taskEvent.$case, "task");
     assert.equal(interruptedEvent.$case, "statusUpdate");
     if (taskEvent.$case !== "task" || interruptedEvent.$case !== "statusUpdate") {
@@ -210,7 +210,7 @@ test("retains multiple Artifacts as distinct Task outputs", async (t) => {
         "artifactUpdate",
         "statusUpdate",
     ]);
-    const taskEvent = payload(events[0]!);
+    const taskEvent = payload(events[0]);
     assert.equal(taskEvent.$case, "task");
     if (taskEvent.$case !== "task") throw new Error("multiple-artifact witness has no Task");
     const stored = await client.getTask({ tenant: "", id: taskEvent.value.id });

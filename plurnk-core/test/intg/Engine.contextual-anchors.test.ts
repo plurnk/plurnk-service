@@ -22,7 +22,7 @@ const runtime = async (t: TestContext) => {
     const run = (program: string) => {
         const ops = statements(program);
         assert.equal(ops.length, 1);
-        return engine.dispatch({ ...env, statement: ops[0]!, sequence: ++sequence, origin: "model" });
+        return engine.dispatch({ ...env, statement: ops[0], sequence: ++sequence, origin: "model" });
     };
     const batch = (program: string) => {
         const ops = statements(program);
@@ -60,9 +60,9 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
         assert.notEqual(full.lineAnchors![selected], full.lineAnchors![other]);
         const slice = await read(source, String(selected + 1));
         assert.equal(slice.content, "source-target");
-        const anchor = slice.lineAnchors![0]!;
+        const anchor = slice.lineAnchors![0];
         assert.equal(anchor, full.lineAnchors![selected], "scope does not discard the distinguishing context");
-        const destinationAnchor = (await read(destination, String(other + 1))).lineAnchors![0]!;
+        const destinationAnchor = (await read(destination, String(other + 1))).lineAnchors![0];
 
         assert.equal((await write(source, "prefix\nhead-0", "<1>")).status, 200);
         assert.equal((await write(destination, "prefix\nhead-0", "<1>")).status, 200);
@@ -91,7 +91,7 @@ test("{§line-anchor-disambiguation}: changed extended context refuses EDIT with
     const lines = repeated("target");
     const target = lines.indexOf("target");
     assert.equal((await write(path, lines.join("\n"))).status, 201);
-    const anchor = (await read(path, String(target + 1))).lineAnchors![0]!;
+    const anchor = (await read(path, String(target + 1))).lineAnchors![0];
     assert.equal((await write(path, "changed section", `<${target - 2}>`)).status, 200);
     const changed = lines.with(target - 3, "changed section").join("\n");
     const refused = await run(`\`\`\`EDIT (${path}) <${anchor}>\nwrong\n\`\`\``);
@@ -99,7 +99,7 @@ test("{§line-anchor-disambiguation}: changed extended context refuses EDIT with
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
     assert.equal(refused.problem?.retryable, false);
     assert.equal((await read(path)).content, changed);
-    const current = (await read(path, String(target + 1))).lineAnchors![0]!;
+    const current = (await read(path, String(target + 1))).lineAnchors![0];
     assert.notEqual(current, anchor);
     assert.equal((await run(`\`\`\`EDIT (${path}) <${current}>\ncorrect\n\`\`\``)).status, 200);
     assert.equal((await read(path)).content, lines.with(target - 3, "changed section").with(target, "correct").join("\n"));
@@ -109,7 +109,7 @@ test("{§edit-anchor-continuity}: introducing a twin in one program retains the 
     const { read, write, batch } = await runtime(t);
     const path = "worker:///continuity.md";
     assert.equal((await write(path, "one\ntwo\nthree\nfour\nfive\nsix")).status, 201);
-    const anchor = (await read(path, "3")).lineAnchors![0]!;
+    const anchor = (await read(path, "3")).lineAnchors![0];
     const result = await batch(`\`\`\`EDIT (${path}) <6>
 six
 one

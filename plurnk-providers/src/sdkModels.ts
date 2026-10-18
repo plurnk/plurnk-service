@@ -156,7 +156,7 @@ const configuredBaseUrl = (
 
 const templateEnvironmentNames = (value: string | undefined): readonly string[] => value === undefined
     ? []
-    : [...new Set([...value.matchAll(/\$\{([A-Z0-9_]+)\}/g)].map((match) => match[1]!))];
+    : [...new Set([...value.matchAll(/\$\{([A-Z0-9_]+)\}/g)].map((match) => match[1]))];
 
 const missingCause = (
     kind: ModelReadinessCause["kind"],

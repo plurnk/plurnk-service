@@ -174,7 +174,7 @@ export default class EntryCrud {
                 missDetail(scheme, target),
                 {},
                 missExtensions(scheme, target),
-            ) as DeleteEntryResult;
+            );
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
         // CASCADE on entry_channels per FK constraints.
@@ -205,7 +205,7 @@ export default class EntryCrud {
                 missDetail(scheme, target),
                 {},
                 missExtensions(scheme, target),
-            ) as DeleteEntryResult;
+            );
         }
         const deleted = await db.crud_delete_channel.get<{ name: string }>({
             entry_id: existing.id,
@@ -228,7 +228,7 @@ export default class EntryCrud {
                     target,
                     channel,
                 },
-            ) as DeleteEntryResult;
+            );
         }
         await db.crud_delete_empty_entry.run({ entry_id: existing.id });
         return { status: 200 };

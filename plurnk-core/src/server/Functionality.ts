@@ -755,7 +755,7 @@ export default class Functionality {
             : {
                 status: authorization ? 202 : status,
                 family: adapter.family,
-                alias: aliases[0]!,
+                alias: aliases[0],
                 ...(projections[0] === undefined ? {} : { definition: projections[0] }),
                 ...(removed ? { removed: true } : {}),
             });
@@ -780,12 +780,12 @@ export default class Functionality {
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         // Re-enabling an alias that is not active retries its preparation; an
         // already-active alias keeps its live attachment.
-        const retry = verb === "enable" && family.prepared?.outcomes.get(transition.aliases[0]!)?.state !== "active";
+        const retry = verb === "enable" && family.prepared?.outcomes.get(transition.aliases[0])?.state !== "active";
         const publication = await this.#publish(adapter, identity, nextState, {
             failure: caller === "action" || verb === "replace" ? "reject" : "publish-unavailable",
             configurationFailure: "reject",
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
-            forceAlias: retry ? transition.aliases[0]! : null,
+            forceAlias: retry ? transition.aliases[0] : null,
             admissions: transition.admissions,
             signal,
         });

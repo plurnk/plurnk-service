@@ -133,7 +133,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: op.statement });
             if (approve) {
                 await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10000 });
-                await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+                await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             }
             assert.equal((await pending).status, status);
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
@@ -277,7 +277,7 @@ for (const { policy, decision } of [
                 await waitFor(() => proposals, (items) => items.length === 1, { timeoutMs: 10000 });
                 assert.deepEqual((await list()).definitions, [], "awaiting approval publishes no definition");
                 await assert.rejects(readFile(marker), { code: "ENOENT" }, "awaiting approval launches no process");
-                await daemon.resolveProposal(proposals[0]!, { decision }, { workspaceId, address: TEST_OWNER });
+                await daemon.resolveProposal(proposals[0], { decision }, { workspaceId, address: TEST_OWNER });
             }
             const result = await pending;
             if (decision === "reject") {

@@ -30,16 +30,16 @@ export default class BodyPreview {
         // Code points, a CRLF counted as one separator — the same unit as the first page.
         const points = (from: number): number => Array.from(text.slice(from).replaceAll("\r\n", "\n")).length;
         let first = Math.max(0, lines.length - maxLines);
-        while (first < lines.length - 1 && points(lines[first]!.start) > maxChars) first++;
-        if (points(lines[first]!.start) > maxChars) {
-            const suffix = text.slice(lines[first]!.start).match(/\r\n|[\s\S]/gu)!.slice(-maxChars).join("");
+        while (first < lines.length - 1 && points(lines[first].start) > maxChars) first++;
+        if (points(lines[first].start) > maxChars) {
+            const suffix = text.slice(lines[first].start).match(/\r\n|[\s\S]/gu)!.slice(-maxChars).join("");
             const start = text.length - suffix.length;
             const region = coordinates.regionFromOffsets(start, text.length);
             if (region === null) throw new Error("An automatic text preview must have an addressable region.");
             return { start, marker: { marks: [region.startLine, region.startColumn, region.endLine, region.endColumn] }, whole: false };
         }
         const whole = first === 0 && points(0) <= maxChars;
-        return { start: lines[first]!.start, marker: { marks: [first + 1, lines.length] }, whole };
+        return { start: lines[first].start, marker: { marks: [first + 1, lines.length] }, whole };
     }
 
     static select(text: string): { end: number; marker: LineMarker } {
@@ -47,7 +47,7 @@ export default class BodyPreview {
         const maxChars = Knob.integer("PLURNK_SERVICE_PREVIEW_CHARS", 1);
         const coordinates = new TextCoordinates(text);
         const lines = coordinates.logicalLines();
-        const lineEnd = lines.length > maxLines ? lines[maxLines - 1]!.end : text.length;
+        const lineEnd = lines.length > maxLines ? lines[maxLines - 1].end : text.length;
         let characterEnd = 0;
         for (let consumed = 0; characterEnd < text.length && consumed < maxChars; consumed++) {
             // A CRLF is one indivisible separator, a Unicode code point one character.
@@ -58,7 +58,7 @@ export default class BodyPreview {
         if (characterEnd < text.length && characterEnd <= lineEnd) {
             const completeLine = lines.findLastIndex((line) => line.separator.length > 0 && line.end <= characterEnd);
             if (completeLine !== -1) {
-                return { end: lines[completeLine]!.end, marker: { marks: [1, completeLine + 1] } };
+                return { end: lines[completeLine].end, marker: { marks: [1, completeLine + 1] } };
             }
             const region = coordinates.regionFromOffsets(0, characterEnd);
             if (region === null) throw new Error("An automatic text preview must have an addressable region.");

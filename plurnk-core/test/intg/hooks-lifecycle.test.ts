@@ -166,8 +166,8 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
         ["PreToolUse", "SEND"], ["PostToolUse", "SEND"],
     ]);
     for (let index = 0; index < tools.length; index += 2) {
-        const start = tools[index]!;
-        const settled = tools[index + 1]!;
+        const start = tools[index];
+        const settled = tools[index + 1];
         assert.equal(start.tool_use_id, settled.tool_use_id);
         assert.equal(start.cwd, root);
         assert.equal(start.session_id, String(workerId));
@@ -180,8 +180,8 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
         assert.equal(Object.hasOwn(settled.tool_response!, "commandsOmitted"), false);
     }
     assert.equal(new Set(tools.filter(({ hook_event_name }) => hook_event_name === "PreToolUse").map(({ tool_use_id }) => tool_use_id)).size, 5);
-    assert.equal((tools[5]!.tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable operations");
-    assert.equal((tools[7]!.tool_response as { status: number }).status, 404);
+    assert.equal((tools[5].tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable operations");
+    assert.equal((tools[7].tool_response as { status: number }).status, 404);
     assert.equal(events.at(-1)!.hook_event_name, "Stop", "the terminal event follows all settled dispatches");
 });
 
@@ -221,7 +221,7 @@ test("{§notifications-operation-event} concurrent BARE starts precede inference
     const events = (await hooks.events()).filter(({ tool_name }) => tool_name === "BARE");
     assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["PreToolUse", "PreToolUse", "PostToolUse", "PostToolUse"]);
     assert.deepEqual(events.slice(0, 2).map(({ tool_use_id }) => tool_use_id), events.slice(2).map(({ tool_use_id }) => tool_use_id));
-    assert.notEqual(events[0]!.tool_use_id, events[1]!.tool_use_id);
+    assert.notEqual(events[0].tool_use_id, events[1].tool_use_id);
 });
 
 for (const decision of ["accept", "reject"] as const) {
@@ -274,8 +274,8 @@ for (const decision of ["accept", "reject"] as const) {
         const events = await hooks.events();
         const tool = events.filter(({ tool_name }) => tool_name === "sh");
         assert.deepEqual(tool.map(({ hook_event_name }) => hook_event_name), ["PreToolUse", "PermissionRequest", decision === "accept" ? "PostToolUse" : "PostToolUseFailure"]);
-        assert.equal(tool[0]!.tool_use_id, tool[2]!.tool_use_id);
-        assert.deepEqual(tool[2]!.tool_response, settled.result);
+        assert.equal(tool[0].tool_use_id, tool[2].tool_use_id);
+        assert.deepEqual(tool[2].tool_response, settled.result);
         assert.equal(events.filter(({ hook_event_name }) => hook_event_name === "Stop").length, 1);
         assert.equal(concluded, decision === "accept");
     });
@@ -326,5 +326,5 @@ test("{§hooks-module} the discovered hooks module delivers once the operator co
     await daemon.stop();
     const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as HookEvent);
     assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["Stop"], "exactly one module delivered: the discovered one");
-    assert.equal(events[0]!.session_id, String(workerId));
+    assert.equal(events[0].session_id, String(workerId));
 });

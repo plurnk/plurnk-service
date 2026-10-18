@@ -14,7 +14,7 @@ test("{§workspace-label} a folder is spelled from the daemon's home: ~ for it, 
         ["/home/testerx", "/home/testerx"],
         ["/srv/project", "/srv/project"],
         ["/", "/"],
-    ]) assert.equal(paths.abbreviateUserPath(folder!), label, folder);
+    ]) assert.equal(paths.abbreviateUserPath(folder), label, folder);
 });
 
 test("{§share-folder} an unset share folder is a stamped child of the XDG state shares folder", () => {

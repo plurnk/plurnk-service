@@ -152,7 +152,7 @@ export default class Subscriptions {
         this.#listenAbort = controller;
         let next: McpSubscription;
         try {
-            next = await this.#client.listen(filter as SubscriptionFilter, {
+            next = await this.#client.listen(filter, {
                 timeout: this.#options.timeout,
                 signal: controller.signal,
             });

@@ -31,7 +31,7 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
-            const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3]! }))!.packet);
+            const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
             const notes = rows(afterCuration, "NOTE");
             assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n`, undefined], "distillation remains bodied; the authored NOTE is paired with its replay");
             assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "the curating turn's NOTE keeps its receipt");
@@ -86,7 +86,7 @@ test("{§log-kill-distillation} a failed log KILL still keeps its body as the mo
             const [, kept] = curation;
             assert.deepEqual(JSON.parse(kept!.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
             assert.equal((JSON.parse(kept!.tx) as { body: string }).body, "nothing here");
-            const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3]! }))!.packet);
+            const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
             assert.equal(rows(next, "KILL").length, 1, "a missed log KILL's receipt renders");
             assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");
             assert.match(next, /### log:\/\/\/1\/2\/\d+\/NOTE · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "both authored NOTEs keep their handles");

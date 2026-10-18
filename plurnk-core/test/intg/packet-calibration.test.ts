@@ -83,7 +83,7 @@ const budgetOf = (packet: RequestPacket): {
     tokens: number;
     budget: number;
     largest?: Array<{ path: string; tokens: number }>;
-} => JSON.parse(packetSection(packet, "budget").split("\n")[0]!);
+} => JSON.parse(packetSection(packet, "budget").split("\n")[0]);
 
 test("{§packet-token-accounting} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
     const f = await fixture(t);
@@ -143,7 +143,7 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
 test("{§tokenomics-calibrated-readout} a loop's first sample fixes its factor; later samples, zero counts and other models leave it", async (t) => {
     const f = await fixture(t);
     const { loopId, recorded } = await recordSamples(f, [100, 200, 300, 400, 500, 600, 700]);
-    const factor = 100 / StoredPacket.parse(recorded[0]!.packet)!.weight;
+    const factor = 100 / StoredPacket.parse(recorded[0].packet)!.weight;
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "the loop's first response fixed it; six more did not move it");
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "a loop without its own sample takes the model's most recently fixed factor");
     await recordSamples(f, [0, 0, 0]);
@@ -151,7 +151,7 @@ test("{§tokenomics-calibrated-readout} a loop's first sample fixes its factor; 
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "zero counts and other models fix nothing for this model");
     assert.equal(budgetOf(await f.build()).budget, Math.floor(100_000 / factor), "a different worker consumes the same model evidence");
     const later = await recordSamples(f, [50, 900]);
-    const fixedLater = 50 / StoredPacket.parse(later.recorded[0]!.packet)!.weight;
+    const fixedLater = 50 / StoredPacket.parse(later.recorded[0].packet)!.weight;
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), fixedLater, "the most recently fixed factor seeds a loop that has none");
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "a loop that fixed its own factor keeps it");
 });

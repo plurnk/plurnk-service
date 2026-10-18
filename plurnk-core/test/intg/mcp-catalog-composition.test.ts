@@ -88,7 +88,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement");
         if (item?.kind !== "statement") throw new Error("Expected one READ");
-        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0]!;
+        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0];
     };
     const toolsDocument = async (extension = "md"): Promise<string> => {
         const document = await read(`worker:///_plurnk/tools/fixture.${extension}`);
@@ -159,7 +159,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     await terminated.promise;
     assert.equal(await lifecycle.status(loop.loopId), 200);
     assert.equal(provider.received.length, 2);
-    assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /Observed third from the server\./);
+    assert.match(provider.received[1].map(chatMessageText).join("\n"), /Observed third from the server\./);
     await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
     for (const path of ["fixture.md", "fixture.json", "fixture/third.json"]) {
         assert.equal((await read(`worker:///_plurnk/tools/${path}`)).status, 404,

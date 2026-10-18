@@ -302,7 +302,7 @@ test("{§functionality-discover-advertisement} the shared schema check refuses a
     const refusal = async (params: object) => {
         const cause = await coordinator.invoke("fixture", "discover", params, { workspaceId: 1 }, "operation").then(() => undefined, (error: unknown) => error);
         assert.ok(cause instanceof OperationFailureError, `a refusal is an operation result, not ${String(cause)}`);
-        return cause.result.problem!;
+        return cause.result.problem;
     };
     for (const [params, field] of [[{ source: "here", query: "term" }, '"query"'], [{ configuration: {} }, '"configuration"'], [{}, '"source"']] as const) {
         const problem = await refusal(params);

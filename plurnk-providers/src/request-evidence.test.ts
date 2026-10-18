@@ -130,8 +130,8 @@ test("{§provider-request-evidence} native Messages failures retain SDK reasonin
         observeRequest: async () => async (accounting, evidence) => { records.push({ accounting, evidence }); },
     }), /Native stream failed/);
     assert.equal(records.length, 1);
-    assert.equal(records[0]!.accounting.outcome, "error");
-    const evidence = records[0]!.evidence as { reasoning: string; rawBody: unknown[]; error: { message: string } };
+    assert.equal(records[0].accounting.outcome, "error");
+    const evidence = records[0].evidence as { reasoning: string; rawBody: unknown[]; error: { message: string } };
     assert.equal(evidence.reasoning, "Native partial reasoning.");
     assert.deepEqual(evidence.rawBody, chunks);
     assert.match(evidence.error.message, /Native stream failed/);
@@ -159,9 +159,9 @@ for (const reported of [false, true]) {
             observeRequest: async () => async (accounting, evidence) => { settled.push({ accounting, evidence }); },
         }), /Response stream ended without a finish reason/);
         assert.equal(settled.length, 1);
-        assert.equal(settled[0]!.accounting.outcome, "error");
-        assert.equal(settled[0]!.accounting.usage?.inputTokens, reported ? 100 : undefined);
-        const evidence = settled[0]!.evidence as {
+        assert.equal(settled[0].accounting.outcome, "error");
+        assert.equal(settled[0].accounting.usage?.inputTokens, reported ? 100 : undefined);
+        const evidence = settled[0].evidence as {
             content: string; reasoning: string; rawBody: unknown[];
             error: { message: string }; chargeEvidence: { response: { id: string; headers: Record<string, string> } };
         };
@@ -203,11 +203,11 @@ for (const capture of [false, true]) {
         });
         assert.equal(result.assistant.content, "recovered");
         assert.deepEqual(records.map(({ accounting }) => accounting.outcome), ["error", "response"]);
-        const failed = records[0]!.evidence as { rawBody: string; chargeEvidence: { response: { headers: Record<string, string> } } };
+        const failed = records[0].evidence as { rawBody: string; chargeEvidence: { response: { headers: Record<string, string> } } };
         assert.equal(failed.rawBody, '{"error":{"message":"try again"},"witness":991}');
         assert.equal(failed.chargeEvidence.response.headers["x-request-id"], "failed-http");
-        assert.equal(records[0]!.accounting.status, 503);
-        assert.equal((records[1]!.evidence as { content: string }).content, "recovered");
+        assert.equal(records[0].accounting.status, 503);
+        assert.equal((records[1].evidence as { content: string }).content, "recovered");
         assert.deepEqual(records.map(({ evidence }) => (evidence as { request?: { body: string } }).request?.body),
             capture ? bodies : [undefined, undefined]);
     });

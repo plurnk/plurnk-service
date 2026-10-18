@@ -178,8 +178,8 @@ test("{§configuration-repair-path} hosted A2A reports typed input failures inde
         ["PLURNK_A2A_SKILLS", "[1]"],
         ["PLURNK_A2A_SKILLS", '[{"id":"x","name":"x","description":"x","tags":[1]}]'],
     ]) {
-        assert.throws(() => hostedAgentConfiguration({ ...valid, [key!]: value }), {
-            name: "ConfigurationError", key, message: new RegExp(key!),
+        assert.throws(() => hostedAgentConfiguration({ ...valid, [key]: value }), {
+            name: "ConfigurationError", key, message: new RegExp(key),
         });
     }
     assert.deepEqual(hostedAgentConfiguration({ ...valid, PLURNK_A2A_WORKSPACE: "", PLURNK_A2A_PROJECT_ROOT: "/srv/research/../project/" })?.workspace,

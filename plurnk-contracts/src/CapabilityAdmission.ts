@@ -62,7 +62,7 @@ export default class CapabilityAdmission {
         }
         const traits = [...new Set([...(left.traits ?? []), ...(right.traits ?? [])])].toSorted();
         if (traits.length > 0) merged.traits = traits;
-        return merged as CapabilitySelector;
+        return merged;
     }
 
     static #unique(selectors: readonly CapabilitySelector[]): CapabilitySelector[] {

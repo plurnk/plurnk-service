@@ -14,7 +14,6 @@ import EnvDefaults from "../../src/core/env-defaults.ts";
 import OperatorConfig from "../../src/core/OperatorConfig.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
@@ -69,7 +68,7 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "hello");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done") as PlurnkStatement] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const policy = (await readFile(Paths.policy, "utf8")).trim();
@@ -88,7 +87,7 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
 
 test("{§operator-config-shared-keys} a key the daemon and its clients both read is declared by contracts, and only there", async () => {
     const contracts = await readFile(new URL("../../../plurnk-contracts/.env.defaults", import.meta.url), "utf8");
-    const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1]!, match[2]!]));
+    const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1], match[2]]));
     assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_AGUI_URL", "PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS"]);
     assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
     // {§credential-authority} — authenticated with nothing set: the secret line teaches, and the daemon mints.

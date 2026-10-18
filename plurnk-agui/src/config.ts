@@ -86,7 +86,7 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
     for (const [key, raw] of Object.entries(env)) {
         const match = CLIENT_KEY.exec(key);
         if (match === null || raw === undefined) continue;
-        const id = match[1]!;
+        const id = match[1];
         if (id === OPERATOR_CLIENT) throw new Error(`${key}: "${OPERATOR_CLIENT}" is the operator's own client; declare another id.`);
         clients[id] = readClient(key, raw);
     }

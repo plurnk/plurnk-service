@@ -129,7 +129,7 @@ function safeParse(content: HandlerContent): Notebook | null {
         if (cause instanceof SyntaxError) return null;
         throw cause;
     }
-    return typeof value === "object" && value !== null ? value as Notebook : null;
+    return typeof value === "object" && value !== null ? value : null;
 }
 
 // Project a notebook to reading markdown + the symbols that index into it.

@@ -294,7 +294,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     executors: core.executors.availableRuntimes(core.workspaceId),
                     retryable: false,
                 },
-            ) as ExecResult;
+            );
         }
         if (!resolved.available) {
             if (resolved.configurationError !== undefined) return Results.configurationFailure(resolved.configurationError);
@@ -309,7 +309,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     requestedRuntime: runtime,
                     retryable: false,
                 },
-            ) as ExecResult;
+            );
         }
 
         this.#prepareExecution();
@@ -335,7 +335,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     }),
                     retryable: false,
                 },
-            ) as ExecResult;
+            );
         }
 
         const invocation = registeredTool?.invocation ?? resolved.invocation;
@@ -354,7 +354,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             detail,
             {},
             { runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false, ...extensions },
-        ) as ExecResult;
+        );
 
         if (invocation.body.required && !hasBody) {
             return refuse(
@@ -471,7 +471,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             EnvFunctionality.modifier(statement.metadata);
         } catch (cause) {
             if (!(cause instanceof OperationFailureError)) throw cause;
-            return cause.result as ExecResult;
+            return cause.result;
         }
         // {§exec-lifetime} — the service's other reserved key, read before the executor's options so
         // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
@@ -516,7 +516,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                         `${runtime} target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
                         {},
                         { target, stage: "target-classification" },
-                    ) as ExecResult;
+                    );
                 }
             }
             // {§exec-target-near-miss} — a directory is never a program: with a body and no explicit
@@ -885,7 +885,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             .filter((tag) => tag !== runtime
                 && executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === program) === true);
         if (owners.length === 0) return result;
-        const owner = owners[0]!;
+        const owner = owners[0];
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
         const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
         const contract = `worker://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.json`)}`;

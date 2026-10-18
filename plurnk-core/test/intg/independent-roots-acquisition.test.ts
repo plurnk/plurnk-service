@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { FindStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
@@ -33,7 +33,7 @@ test("independent root workers share one acquired https representation in their 
             status: 200,
             headers: { "content-type": "text/plain" },
         });
-    }) as typeof fetch;
+    });
     try {
         const workspaceId = await insertWorkspace(db, `independent-roots-${crypto.randomUUID()}`);
         const roots = await Promise.all(["alpha", "beta"].map(async (name) => {
@@ -46,7 +46,7 @@ test("independent root workers share one acquired https representation in their 
             engine.dispatch({ statement, workspaceId, ...root, sequence, origin: "model" });
 
         for (const root of roots) {
-            const read = await dispatch(root, parseOne("````READ (https://example.org/feed)````") as ReadStatement, 1);
+            const read = await dispatch(root, parseOne("````READ (https://example.org/feed)````"), 1);
             assert.equal(read.status, 200);
             assert.equal(read.content, bodies[0], "each root sees the same workspace representation");
         }
@@ -61,10 +61,10 @@ test("independent root workers share one acquired https representation in their 
         );
 
         for (const root of roots) {
-            const found = await dispatch(root, parseOne("````FIND (https://example.org/**)````") as FindStatement, 2);
+            const found = await dispatch(root, parseOne("````FIND (https://example.org/**)````"), 2);
             assert.equal(found.status, 200);
             assert.equal(found.matchingPathCount, 1, "FIND sees the workspace acquisition");
-            const reread = await dispatch(root, parseOne("````READ (https://example.org/feed)````") as ReadStatement, 3);
+            const reread = await dispatch(root, parseOne("````READ (https://example.org/feed)````"), 3);
             assert.equal(reread.content, bodies[0], "re-reading resolves the same retained entry");
         }
         assert.equal(served, 1, "a second worker does not re-fetch a fresh workspace representation");

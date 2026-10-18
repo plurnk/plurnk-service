@@ -385,7 +385,7 @@ const hosted = (base: string, path: string, hostHeader: string): Promise<{ reado
 const sessionOf = (response: Response): string => {
     const match = /plurnk_session=([^;]+)/u.exec(response.headers.get("set-cookie") ?? "");
     assert.ok(match, `no session cookie: ${response.headers.get("set-cookie")}`);
-    return match[1]!;
+    return match[1];
 };
 
 test("{§agui-oauth-session} a browser is the operator only once it signs in: the sign-in sets the session, a module's own client is then authorized silently, and a session is never a bearer", async () => {

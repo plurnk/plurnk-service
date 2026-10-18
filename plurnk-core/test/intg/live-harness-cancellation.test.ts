@@ -42,7 +42,7 @@ test("{§live-harness-deadline}: failed workspace startup still stops, closes an
     await assert.rejects(liveWorkspace({ name: "harness-startup-failure" }), (error) => error === failure);
     assert.equal(stopped.mock.callCount(), 1);
     assert.equal(digested.mock.callCount(), 1, "the closed database remains a diagnostic artifact");
-    const { dbPath } = digested.mock.calls[0]!.arguments[0]!;
+    const { dbPath } = digested.mock.calls[0].arguments[0];
     t.after(() => rm(dirname(dbPath), { recursive: true, force: true }));
     assert.equal(dirname(dirname(dbPath)), process.env.PLURNK_BENCHMARKS ?? join(homedir(), "benchmarks"),
         "live evidence stays in the configured or home benchmark directory, independent of checkout depth");

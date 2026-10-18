@@ -46,8 +46,8 @@ test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endp
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.equal(edits[0]!.rx.merged, undefined, "the requested region is not silently shrunk");
-                assert.equal(edits[1]!.rx.merged, undefined, "the claiming row is an ordinary applied edit");
+                assert.equal(edits[0].rx.merged, undefined, "the requested region is not silently shrunk");
+                assert.equal(edits[1].rx.merged, undefined, "the claiming row is an ordinary applied edit");
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\nfunc resolve() string {\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n}\n\nfunc other() {}\n", "numeric coordinates name the current content, without reinterpretation");
             } finally { ws.close(); }
         });
@@ -99,8 +99,8 @@ editing
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
-                assert.deepEqual(edits[1]!.rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
+                assert.deepEqual(edits[0].rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
+                assert.deepEqual(edits[1].rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n7<@zzzzz>func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
             } finally { ws.close(); }
         });
@@ -147,7 +147,7 @@ editing
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "log" }]);
+                assert.deepEqual(edits[0].rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "log" }]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int64\n\nfunc requireFn(a int) int {\n\treturn a // changed\n}\n\nfunc other() {}\n", "stripped by the READ's own anchors; lines 1-2 replaced as rendered");
             } finally { ws.close(); }
         });
@@ -171,9 +171,9 @@ test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinar
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 304]);
-                assert.ok(edits[0]!.rx.receipt !== undefined, "the first row carries the effect");
-                assert.equal(edits[1]!.rx.merged, undefined);
-                assert.equal(edits[1]!.rx.receipt, undefined, "the twin applied nothing and claims no effect");
+                assert.ok(edits[0].rx.receipt !== undefined, "the first row carries the effect");
+                assert.equal(edits[1].rx.merged, undefined);
+                assert.equal(edits[1].rx.receipt, undefined, "the twin applied nothing and claims no effect");
                 assert.match(await readFile(join(root, "f.go"), "utf8"), /^var x int64\n\nfunc requireFn/);
             } finally { ws.close(); }
         });
@@ -198,8 +198,8 @@ test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an e
                 assert.equal(result.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
-                assert.equal(edits[1]!.rx.merged, undefined);
-                assert.ok(edits[1]!.rx.receipt !== undefined, "the later EDIT owns its own effect");
+                assert.equal(edits[1].rx.merged, undefined);
+                assert.ok(edits[1].rx.receipt !== undefined, "the later EDIT owns its own effect");
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int, debug bool) int {\n\treturn a * 2\n}\n\nfunc other() {}\n", "the inner change landed inside the rewritten function");
             } finally { ws.close(); }
         });

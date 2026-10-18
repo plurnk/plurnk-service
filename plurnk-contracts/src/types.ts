@@ -63,13 +63,13 @@ export type ProviderRequestObserver = (
 // route supports; runtimes and clients share this exact wire alphabet.
 export const EFFORTS = Object.freeze(
     effortSchema.enum as Effort[],
-) as readonly Effort[];
+);
 
 // Schema-owned server disposition vocabulary. {§proposal-disposition}
 // {§proposal-policy}
 export const PROPOSAL_POLICIES = Object.freeze(
     proposalPolicySchema.enum as ProposalPolicy[],
-) as readonly ProposalPolicy[];
+);
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;

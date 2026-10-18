@@ -26,14 +26,14 @@ test("{§worker-external-reference} concurrent allocation is durable, folderless
         const [workspace] = await daemon.listWorkspaces();
         assert.equal((await daemon.listWorkspaces()).length, 1);
         assert.equal(workspace?.project_root, null);
-        assert.match(workspace!.name, /^(?=.*[A-Za-z])[A-Za-z0-9]{5}$/u);
+        assert.match(workspace.name, /^(?=.*[A-Za-z])[A-Za-z0-9]{5}$/u);
         const [worker] = await daemon.listWorkers(identity.workspaceId);
         assert.equal((await daemon.listWorkers(identity.workspaceId)).length, 1);
         assert.equal(worker?.id, identity.workerId);
         assert.equal(worker?.origin, "model");
         assert.equal(worker?.owner, "_plurnk");
         assert.equal(worker?.parentWorkerId, null);
-        assert.match(worker!.name, /^[0-9a-f]{8}$/u);
+        assert.match(worker.name, /^[0-9a-f]{8}$/u);
         await daemon.renameWorkspace(identity.workspaceId, "Renamed # workspace");
         await daemon.registerWorkerOwner(identity.workspaceId, { address: "fixture://owner", tools: [], interactive: false });
         await daemon.claimWorkerOwner({ ...identity, owner: "fixture://owner" });

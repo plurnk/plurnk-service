@@ -104,7 +104,7 @@ test("{§a2a-context-resource}: a fresh Task READs the caller's request and the 
         const first = await observe(client, "Please compare the deployment branches.", "session/部署 one").result;
         const second = await observe(client, "Use main.", first.contextId).result;
         assert.equal(second.status?.state, TaskState.TASK_STATE_COMPLETED);
-        const packet = provider.received[1]!.map(chatMessageText).join("\n");
+        const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /Please compare the deployment branches\./u);
         assert.match(packet, /Which branch should I use\?/u);
         assert.match(packet, /a2a:\/\/anonymous\/contexts\/session%2F%E9%83%A8%E7%BD%B2%20one/u);
@@ -140,10 +140,10 @@ test("{§a2a-inbound-exposure}: a parked Task's child obligation neither blocks 
         const worker = await daemon.readWorker({ workspaceId, identity: { name: first.id } });
         assert.ok(worker);
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: worker.id }),
-            (loops) => loops.length === 1 && loops[0]!.status === 202);
+            (loops) => loops.length === 1 && loops[0].status === 202);
         const sibling = await observe(client, "Complete unrelated work.", first.contextId).result;
         assert.equal(sibling.status?.state, TaskState.TASK_STATE_COMPLETED);
-        assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId: worker.id }))[0]!.status, 202);
+        assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId: worker.id }))[0].status, 202);
         assert.equal((await client.getTask({ tenant: "", id: first.id })).status?.state, TaskState.TASK_STATE_WORKING);
         await client.cancelTask({ tenant: "", id: first.id, metadata: {} });
         assert.equal((await waiting.result).status?.state, TaskState.TASK_STATE_CANCELED);
@@ -352,7 +352,7 @@ test("{§a2a-inbound-exposure}: simultaneous first Tasks share only their opaque
         assert.notEqual(tasks[0]!.id, tasks[1]!.id);
         const workspaces = await daemon.listWorkspaces();
         assert.equal(workspaces.length, 1, "concurrent admission resolves one workspace");
-        const workspaceId = workspaces[0]!.id;
+        const workspaceId = workspaces[0].id;
         const workers = await daemon.listWorkers(workspaceId, { origin: "model" });
         assert.deepEqual(workers.map(({ name }) => name).toSorted(), tasks.map(({ id }) => id).toSorted());
         const parentId = await daemon.ensureRuntimeWorker(workspaceId);
@@ -404,13 +404,13 @@ test("{§a2a-context-resource}: Context history and exact attachment bytes survi
         assert.doesNotMatch(packet, /private-exploration-marker/u, "a Context is Task and message evidence, not an ambient log dump");
         // A person's READ, acting for the Task's worker ({§actor-boundary-client-operations}).
         const read = async (target: string) => (await daemon.dispatchClientAction({
-            workspaceId, actor: TEST_OWNER, contextWorkerId: worker.id, statements: [parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]!],
-        }))[0]!;
+            workspaceId, actor: TEST_OWNER, contextWorkerId: worker.id, statements: [parseDsl(frame(`READ (${target}) <1,-1>`, null))[0]],
+        }))[0];
         const context = await read(`${address}#json`);
         assert.equal(context.status, 200);
         const json = JSON.parse(context.content as string) as { tasks: Array<{ id: string; history: Array<{ role: string; parts: Array<{ raw?: string; resource?: string; bytes?: number }> }> }> };
         assert.deepEqual(json.tasks.map(({ id }) => id), [second.id, taskId], "newer Tasks come first without reordering messages within a Task");
-        const attachment = json.tasks[1]!.history[0]!.parts[1]!;
+        const attachment = json.tasks[1].history[0].parts[1];
         assert.equal(attachment.raw, undefined);
         assert.equal(attachment.bytes, bytes.length);
         assert.ok(attachment.resource?.startsWith(`${address}/messages/`));
@@ -423,9 +423,9 @@ test("{§a2a-context-resource}: Context history and exact attachment bytes survi
         const stranger = await daemon.createWorkspace({ name: "unrelated-a2a-workspace", projectRoot: null });
         const strangerWorker = await namedModelWorker(daemon, stranger.workspaceId, "main");
         const [absent] = await daemon.dispatchClientAction({
-            workspaceId: stranger.workspaceId, actor: TEST_OWNER, contextWorkerId: strangerWorker, statements: [parseDsl(frame(`READ (${address})`, null))[0]!],
+            workspaceId: stranger.workspaceId, actor: TEST_OWNER, contextWorkerId: strangerWorker, statements: [parseDsl(frame(`READ (${address})`, null))[0]],
         });
-        assert.equal(absent!.status, 404, "the retained Context belongs to the hosted workspace");
+        assert.equal(absent.status, 404, "the retained Context belongs to the hosted workspace");
         const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });
         assert.deepEqual(messages.filter(({ direction }) => direction === "inbound").map(({ body }) => body), ["second-retained-request"]);
     } finally { await daemon.stop(); await http.close(); await db.close(); }
@@ -462,7 +462,7 @@ test("{§a2a-inbound-exposure}: retained shared-Worker Tasks stay addressable wi
             const task = await client.getTask({ tenant: "", id, historyLength: 100 });
             assert.equal(task.contextId, contextId);
             assert.equal(task.status?.state, TaskState.TASK_STATE_COMPLETED);
-            assert.equal(task.history[0]!.parts[0]!.content?.value, `retained request ${index}`);
+            assert.equal(task.history[0].parts[0].content?.value, `retained request ${index}`);
         }
         const fresh = await observe(client, "Continue this Context in independent work.", contextId).result;
         assert.equal(fresh.status?.state, TaskState.TASK_STATE_COMPLETED, "a previous Task's exhausted one-call budget is not inherited");

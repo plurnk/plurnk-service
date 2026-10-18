@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
@@ -27,7 +26,7 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         assert.equal(item?.kind, "statement", source);
         if (item?.kind !== "statement") throw new Error("test operation did not parse");
-        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement as PlurnkStatement });
+        await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
         const row = await db.log_read_by_coordinate.get<{ rx: string }>({
             worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence,
         });

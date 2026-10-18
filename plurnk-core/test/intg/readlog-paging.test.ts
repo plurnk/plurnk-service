@@ -66,11 +66,11 @@ test("{§methods-log-read} {§methods-readable-reasoning} beforeId pages newest 
 
         const carriers = whole.filter(({ reasoning }) => typeof reasoning === "string");
         assert.equal(carriers.length, 1, "one row carries the turn's reasoning");
-        assert.equal(carriers[0]!.reasoning, "Weighing the plan.");
+        assert.equal(carriers[0].reasoning, "Weighing the plan.");
         assert.equal(streams.length, 1, "the turn's one request streamed its reasoning");
         assert.deepEqual(
-            { call: carriers[0]!.reasoning_model_call_id, request: carriers[0]!.reasoning_request_sequence },
-            { call: streams[0]!.modelCallId, request: streams[0]!.requestSequence },
+            { call: carriers[0].reasoning_model_call_id, request: carriers[0].reasoning_request_sequence },
+            { call: streams[0].modelCallId, request: streams[0].requestSequence },
             "the row names the request that streamed it",
         );
         assert.ok(whole.filter(({ reasoning }) => reasoning === undefined).every((row) => row.reasoning_model_call_id === undefined),

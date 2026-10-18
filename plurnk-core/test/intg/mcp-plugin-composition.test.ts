@@ -46,9 +46,9 @@ test("{§mcp-plugin-configuration} workspace management preserves plugin interpr
     const call = async () => {
         const before = (await db.test_entries_by_scheme_prefix.all({ workspace_id: a.workspaceId, scheme: "example", prefix: "/%" })).length;
         const [result] = await daemon.dispatchClientAction({ workspaceId: a.workspaceId, actor: TEST_OWNER, statements: [parseOne("````example (launch)\n{}\n````")] });
-        assert.equal(result!.status, 200);
+        assert.equal(result.status, 200);
         const output = await awaitExecOutcome(db, { workspaceId: a.workspaceId, scheme: "example", channel: "json", after: before });
-        return JSON.parse((output.content as { text: string }[])[0]!.text);
+        return JSON.parse((output.content as { text: string }[])[0].text);
     };
     const first = await call();
     assert.equal(first.cwd, root);

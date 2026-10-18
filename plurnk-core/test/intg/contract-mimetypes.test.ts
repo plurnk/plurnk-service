@@ -28,6 +28,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
+import type { HandlerContent, QueryDialect } from "@plurnk/plurnk-mimetypes";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const execFileP = promisify(execFile);
@@ -93,7 +94,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/config.json")), matcher: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
+            { ...findStmt(urlPath("worker", "/config.json")), matcher: { dialect: "jsonpath", raw: "$.host" } },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(r.status, 200, "plain READ of the entry still works");
@@ -141,7 +142,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
             }>;
         };
 
-        const second = rx.results[1]!;
+        const second = rx.results[1];
         assert.ok(second.region);
         const surgical = await readThroughScheme("worker", null,
             {
@@ -235,11 +236,11 @@ test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and de
         const queryCalls: string[] = [];
         const BaseHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
         class SpyHandler extends BaseHandler {
-            override async content(content: import("@plurnk/plurnk-mimetypes").HandlerContent): Promise<undefined> {
+            override async content(content: HandlerContent): Promise<undefined> {
                 projectionCalls.push(typeof content === "string" ? content : "");
                 return undefined;
             }
-            override async query(content: import("@plurnk/plurnk-mimetypes").HandlerContent, dialect: import("@plurnk/plurnk-mimetypes").QueryDialect, pattern: string, flags?: string): Promise<never[]> {
+            override async query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<never[]> {
                 queryCalls.push(`${dialect}:${pattern}:${flags}`);
                 return [];
             }
@@ -596,7 +597,7 @@ test("recursive-descent jsonpath over a deep code-entry parse tree matches", asy
         await k.edit(editStmt(urlPath("worker", "/util.ts"), source), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/util.ts")), matcher: { dialect: "jsonpath", raw: "$..*" } as MatcherBody },
+            { ...findStmt(urlPath("worker", "/util.ts")), matcher: { dialect: "jsonpath", raw: "$..*" } },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${matched.problem?.detail ?? ""}`);

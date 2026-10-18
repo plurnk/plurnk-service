@@ -166,7 +166,7 @@ export default class WebFetcher implements WebMaterializer {
         for (const [channel, outcome] of Object.entries(outcomes)) {
             const existing = channels[channel] ?? {
                 content: "",
-                mimetype: defaults[channel]!,
+                mimetype: defaults[channel],
             };
             const producerResult = source === undefined ? undefined : WebFetcher.#producerResult(source, outcome);
             channels[channel] = {
@@ -199,9 +199,9 @@ export default class WebFetcher implements WebMaterializer {
                 method: source.method,
                 stage: "materialization",
                 retryable,
-                ...(facts ?? {}),
+                ...facts,
             },
-        ) as ChannelProducerResult);
+        ));
     }
 
     static async materialize(

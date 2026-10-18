@@ -230,7 +230,7 @@ export default class ToolResources {
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
         // {§executor-tool-catalog} — registry validation guarantees all definitions or none.
-        const catalog = tools[0]!.definition === undefined ? [] : [{
+        const catalog = tools[0].definition === undefined ? [] : [{
             pathname: `${childrenRoot}.json`,
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
@@ -239,7 +239,7 @@ export default class ToolResources {
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
             source.runtime,
-            tools.length === 1 ? tools[0]!.invocation : { body: source.invocation.body, target: source.invocation.target, example: {} },
+            tools.length === 1 ? tools[0].invocation : { body: source.invocation.body, target: source.invocation.target, example: {} },
             tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );

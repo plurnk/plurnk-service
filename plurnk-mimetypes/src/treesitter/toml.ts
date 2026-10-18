@@ -21,7 +21,7 @@ const plain = (value: unknown): unknown => Array.isArray(value)
         : value;
 
 export async function deepJson(content: string): Promise<unknown> {
-    const { parse, TomlError } = await import("smol-toml" as string) as {
+    const { parse, TomlError } = await import("smol-toml") as {
         parse(text: string): unknown;
         TomlError: new (...args: never[]) => Error;
     };

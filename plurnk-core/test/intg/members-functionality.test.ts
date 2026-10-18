@@ -107,13 +107,13 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-execut
                 const proposals = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
                 assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "nothing publishes before approval");
                 assert.deepEqual(results, [], "the next READ waits for the decision");
-                await daemon.resolveProposal(proposals[0]!.logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
+                await daemon.resolveProposal(proposals[0].logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
                 if (decision === "reject") {
                     // {§membership-auto-add} — the READ of the file still unadmitted proposes its admission in its turn,
                     // after the rejection settled; refused as well, the READ settles rejected.
-                    const again = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1 && items[0]!.op === "READ");
+                    const again = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1 && items[0].op === "READ");
                     assert.deepEqual(results, [], "the READ waits for its own decision");
-                    await daemon.resolveProposal(again[0]!.logEntryId, { decision: "reject" }, { workspaceId, address: TEST_OWNER });
+                    await daemon.resolveProposal(again[0].logEntryId, { decision: "reject" }, { workspaceId, address: TEST_OWNER });
                 }
             }
             const lifecycle = new LoopLifecycle(db);
@@ -131,7 +131,7 @@ const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
 const problemOf = async (run: () => Promise<unknown>): Promise<{ type?: string; status?: number; detail?: string; recovery?: string; alias?: string }> => {
     const error = await run().then(() => null, (cause: unknown) => cause);
     assert.ok(error instanceof OperationFailureError, `expected an OperationFailureError, got ${String(error)}`);
-    return { ...error.result.problem, status: error.result.status } as { type?: string; status?: number; detail?: string; recovery?: string; alias?: string };
+    return { ...error.result.problem, status: error.result.status };
 };
 
 test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree on escaped filenames", async () => {
@@ -155,7 +155,7 @@ test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree 
             daemon.invokeModuleAction(`workspace.members.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
         const add = (...files: string[]) => invoke("add", { files });
         const definitions = async () => (await invoke<{ definitions: Definition[] }>("list", {})).definitions;
-        const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0]!;
+        const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0];
 
         const preview = await discover(String.raw`dir\\name/a.txt`);
         assert.equal(preview.provenance.kind, "preview", "escape syntax is classified at the shared boundary");
@@ -239,7 +239,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             daemon.invokeModuleAction(`workspace.members.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
         const definitions = async (workerId = model) => (await invoke<{ definitions: Definition[] }>("list", {}, workerId)).definitions;
         const states = async (workerId = model) => (await definitions(workerId)).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
-        const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0]!;
+        const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0];
         // The model's own surface: its operations, reviewed by its owner.
         const operate = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
         const proposals: number[] = [];
@@ -253,7 +253,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             const before = await outputs();
             const pending = operate(program);
             while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
-            await daemon.resolveProposal(proposals[seen]!, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+            await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             const result = await pending;
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "members", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
             return { result, outcome };

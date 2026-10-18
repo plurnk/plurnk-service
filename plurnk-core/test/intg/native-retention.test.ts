@@ -130,7 +130,7 @@ test("{§native-content-lifetime}: message admission and attachment-only replies
         assert.equal(messages.length, 2);
         assert.deepEqual(messages.map(({ attachments }) => attachments.map(({ bytes }) => Buffer.from(bytes))),
             [[Buffer.from([1, 2, 3, 4])], [Buffer.from("Original answer.")]]);
-        const input = messages[0]!.attachments[0]!.target;
+        const input = messages[0].attachments[0].target;
         const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: statements([
             `\`\`\`\`KILL (${input})\n\`\`\`\``,
             "````KILL (worker:///reply.txt)\n````",

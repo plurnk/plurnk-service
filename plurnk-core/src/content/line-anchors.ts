@@ -45,7 +45,7 @@ export default class LineAnchors {
 
     static #markParts(mark: string): { anchor: string; offset: number } | null {
         const parts = LineAnchors.#OFFSET_MARK.exec(mark);
-        return parts === null ? null : { anchor: parts[1]!, offset: parts[2] === undefined ? 0 : Number(parts[2]) };
+        return parts === null ? null : { anchor: parts[1], offset: parts[2] === undefined ? 0 : Number(parts[2]) };
     }
 
     static isAnchor(value: unknown): value is string {
@@ -99,7 +99,7 @@ export default class LineAnchors {
         let value = BigInt(`0x${digest}`) % LineAnchors.#MODULUS;
         let encoded = "";
         for (let index = 0; index < LineAnchors.#LENGTH; index += 1) {
-            encoded = LineAnchors.#ALPHABET[Number(value % BigInt(LineAnchors.#ALPHABET.length))]! + encoded;
+            encoded = LineAnchors.#ALPHABET[Number(value % BigInt(LineAnchors.#ALPHABET.length))] + encoded;
             value /= BigInt(LineAnchors.#ALPHABET.length);
         }
         return `@${encoded}`;
@@ -274,8 +274,8 @@ export default class LineAnchors {
                 return { ok: false, failure: { kind: "ambiguous", anchor, matches: found } };
             }
             // An offset landing before the first line names no line; past the end is the ordinary range refusal.
-            if (found[0]! + offset < 1) return { ok: false, failure: { kind: "invalid", anchor: marker.marks[index] as string } };
-            resolved[index] = found[0]! + offset;
+            if (found[0] + offset < 1) return { ok: false, failure: { kind: "invalid", anchor: marker.marks[index] as string } };
+            resolved[index] = found[0] + offset;
         }
         return {
             ok: true,

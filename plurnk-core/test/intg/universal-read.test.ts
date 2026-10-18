@@ -188,7 +188,7 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -198,7 +198,7 @@ const parseRead = (dsl: string): ReadStatement => {
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
+    const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -576,7 +576,7 @@ test("cold finite HTTP READ acquires before applying the exact text scope", asyn
             status: 200,
             headers: { "content-type": "text/plain" },
         });
-    }) as typeof fetch;
+    });
     try {
         const workspaceId = await insertWorkspace(db, `http-read-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);

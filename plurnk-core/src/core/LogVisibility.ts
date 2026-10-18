@@ -49,8 +49,8 @@ export default class LogVisibility {
             return [start, end];
         });
         for (let index = 1; index < ranges.length; index += 1) {
-            const previous = ranges[index - 1]!;
-            const current = ranges[index]!;
+            const previous = ranges[index - 1];
+            const current = ranges[index];
             if (previous[1] === -1 || current[0] <= previous[1] + 1) {
                 throw new TypeError("Folded ranges must be sorted, disjoint, and non-adjacent.");
             }
@@ -179,7 +179,7 @@ export default class LogVisibility {
         for (let line = 1; line <= totalLines; line += 1) {
             while (
                 rangeIndex < hidden.length
-                && LogVisibility.#end(hidden[rangeIndex]![1]) < line
+                && LogVisibility.#end(hidden[rangeIndex][1]) < line
             ) rangeIndex += 1;
             const range = hidden[rangeIndex];
             if (range === undefined || line < range[0]) visible.push(line);

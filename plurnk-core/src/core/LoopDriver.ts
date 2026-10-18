@@ -1,17 +1,18 @@
 // Driving one loop to its terminal: turn after turn under the workspace turn lock, strikes, and cancellation. Split out of Engine, which keeps the delegating entry point.
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
-import LoopLifecycle from "./LoopLifecycle.ts";
+import type LoopLifecycle from "./LoopLifecycle.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import Results, { type SchemeResult } from "./results.ts";
-import NoticeChannel from "./NoticeChannel.ts";
-import StrikeRail from "./StrikeRail.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
+import type StrikeRail from "./StrikeRail.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import WorkerOwners from "./WorkerOwners.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
-import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
+import type TurnRunner from "./TurnRunner.ts";
+import { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { outputAllowance } from "./turn-signals.ts";
 import { unconcludedEmission } from "./unconcluded-emission.ts";
 import { observed } from "../observe/spans.ts";

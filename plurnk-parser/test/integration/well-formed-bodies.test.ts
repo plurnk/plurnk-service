@@ -36,7 +36,7 @@ test("{§pairing-objective}: a runtime with no declared media type keeps the fen
 
 test("{§heading-inline-body}: an executor's heading object is input for both a JSON tool and a shell", () => {
     const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] }).items;
-    const statement = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement as { metadata: readonly string[] | null; body: unknown }] : [])[0]!;
+    const statement = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement as { metadata: readonly string[] | null; body: unknown }] : [])[0];
     const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" ? [item.error.message] : []);
     const mcp = "```gitea (list_issues) {\"owner\":\"plurnk\"}\n```";
     assert.deepEqual([statement(mcp).metadata, statement(mcp).body], [null, "{\"owner\":\"plurnk\"}"], "an MCP tool's heading object is its arguments body");

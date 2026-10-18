@@ -300,9 +300,9 @@ describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
             if (cur && cur.children) stack.push(...cur.children);
         }
         assert.ok(found, "should locate the <a> element");
-        assert.equal(found!.attrs?.href, "https://example.com");
-        assert.equal(found!.attrs?.class, "external");
-        assert.equal(found!.text, "click");
+        assert.equal(found.attrs?.href, "https://example.com");
+        assert.equal(found.attrs?.class, "external");
+        assert.equal(found.text, "click");
     });
 
     it("recovers ill-formed HTML into a document tree", async () => {

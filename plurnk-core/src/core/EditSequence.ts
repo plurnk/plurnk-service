@@ -63,7 +63,7 @@ export default class EditSequence {
             const offset = line.start + (end <= line.start ? delta : 0);
             const ordinal = nextOrdinals.get(offset);
             if (ordinal === undefined) continue;
-            const next = nextLines[ordinal - 1]!;
+            const next = nextLines[ordinal - 1];
             if (snapshot.content.slice(line.start, line.contentEnd) !== updated.slice(next.start, next.contentEnd)) continue;
             shifted.set(index + 1, ordinal);
         }

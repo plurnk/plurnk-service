@@ -105,7 +105,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
             producer: "model",
             kind: "inference",
         })).id;
-        await Turn.recordSource(db, curationTurn, "ops", sources[2]!);
+        await Turn.recordSource(db, curationTurn, "ops", sources[2]);
         const kill: KillStatement = {
             metadata: null,
             op: "KILL", aside: null,
@@ -324,7 +324,7 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
         const page = await readFile(join(digestDir, `${json.turns[0].artifact}.request.md`), "utf8");
         assert.match(page, /## Native attachments/u);
         assert.match(page, /selection alone does not prove transport or provider acceptance/u);
-        assert.ok(page.includes(JSON.stringify(attachment, null, 2).split("\n")[1]!.trim()));
+        assert.ok(page.includes(JSON.stringify(attachment, null, 2).split("\n")[1].trim()));
         assert.match(page, /board\.png/u);
     } finally { await rm(dir, { recursive: true, force: true }); }
 });

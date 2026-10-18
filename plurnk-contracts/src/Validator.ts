@@ -94,8 +94,8 @@ export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
     static #lineMarker = new CfValidator(lineMarkerSchema as Schema, "2020-12");
     static #textLineMarker = new CfValidator(textLineMarkerSchema as Schema, "2020-12");
-    static #parsedPath = new CfValidator(parsedPathSchema as Schema, "2020-12");
-    static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
+    static #parsedPath = new CfValidator(parsedPathSchema, "2020-12");
+    static #matcherBody = new CfValidator(matcherBodySchema, "2020-12");
     static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
     static #plurnkStatement = Validator.#withRefs(
         plurnkStatementSchema,
@@ -159,7 +159,7 @@ export default class Validator {
         "2020-12",
     );
     static #effort = new CfValidator(
-        effortSchema as unknown as Schema,
+        effortSchema,
         "2020-12",
     );
     static #providerRequestAccounting = Validator.#withRefs(
@@ -267,7 +267,7 @@ export default class Validator {
     // schema — the source its generated document teaches the definition from.
     static schemaByRef(ref: string): object | null {
         const schema = Validator.#publicSchemas.find((candidate) => (candidate as { $id?: string }).$id === ref);
-        return schema === undefined ? null : (schema as object);
+        return schema === undefined ? null : (schema);
     }
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {

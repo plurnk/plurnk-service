@@ -18,7 +18,6 @@ import {
     type DiscoverResult,
     type GetPromptRequest,
     type GetPromptResult,
-    type InputRequiredResult,
     type OAuthClientProvider,
     type Progress,
     type ReadResourceRequest,
@@ -72,7 +71,7 @@ import {
 // server offered it, else the legacy initialize result the SDK already folded.
 const serverCapabilities = (client: Client): DiscoverResult["capabilities"] | undefined =>
     client.getDiscoverResult()?.capabilities
-    ?? client.getServerCapabilities() as DiscoverResult["capabilities"] | undefined;
+    ?? client.getServerCapabilities();
 
 export interface ServerCatalog {
     readonly protocolVersion: string;
@@ -847,7 +846,7 @@ export default class ServerConnection {
                 requestLeg: (params, options) => client.callTool(
                     params as CallToolRequest["params"],
                     { ...options, ...(tool === undefined ? {} : { toolDefinition: tool }) },
-                ) as Promise<CallToolResult | InputRequiredResult>,
+                ),
             });
         }, signal);
     }
@@ -869,7 +868,7 @@ export default class ServerConnection {
                 requestLeg: (params, options, retry) => client.readResource(
                     params as ReadResourceRequest["params"],
                     retry ? { ...options, cacheMode: "refresh" } : options,
-                ) as Promise<ReadResourceResult | InputRequiredResult>,
+                ),
             });
         }, signal);
     }
@@ -890,7 +889,7 @@ export default class ServerConnection {
             requestLeg: (params, options) => client.getPrompt(
                 params as GetPromptRequest["params"],
                 options,
-            ) as Promise<GetPromptResult | InputRequiredResult>,
+            ),
         }), signal);
     }
 

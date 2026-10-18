@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     expect the parsed value tree, not the AST. The framework projects
 //     this to deep-xml.
 export async function deepJson(content: string): Promise<unknown> {
-    const { parse, YAMLParseError } = await import("yaml" as string) as {
+    const { parse, YAMLParseError } = await import("yaml") as {
         parse(text: string): unknown;
         YAMLParseError: new (...args: never[]) => Error;
     };

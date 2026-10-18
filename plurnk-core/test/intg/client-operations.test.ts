@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { FindStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
-import type { ExecArgs, Executor, RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { ExecArgs, RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -68,7 +68,7 @@ const heldRuntime = (effect: "read" | "host") => {
                 entry.ended.resolve();
                 return { status: 200 };
             },
-        } as unknown as Executor,
+        },
         availability: { available: true, detail: "fixture" },
     };
     return { registration, run };
@@ -211,7 +211,7 @@ test("{§actor-boundary-client-operations} a client operation's log:/// addresse
     const coordinate = `log:///${edit.loop_seq}/${edit.turn_seq}/${edit.sequence}`;
     const person = async (source: string, contextWorkerId?: number) => (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [parseOne(source)],
-    }))[0]!;
+    }))[0];
     const problemType = (result: Readonly<Record<string, unknown>>): string | undefined => (result.problem as { type?: string } | undefined)?.type;
 
     await t.test("acting for the model worker, a READ answers from its log as the model reads it", async () => {
@@ -273,7 +273,7 @@ for (const policy of ["review", "accept", "reject"] as const) {
         assert.ok(row);
         assert.deepEqual(await daemon.pendingProposals(workspaceId), [], "nothing awaits a reviewer");
         if (policy === "reject") {
-            assert.equal(result!.status, 400);
+            assert.equal(result.status, 400);
             assert.equal(JSON.parse(row.rx).outcome, "policy_veto");
             assert.deepEqual(dispositions, [{ decision: "reject", outcome: "policy_veto" }]);
             assert.equal(held.run("host command").done, false);
@@ -283,7 +283,7 @@ for (const policy of ["review", "accept", "reject"] as const) {
             ]), /never started/u, "a vetoed command never runs");
             return;
         }
-        assert.equal(result!.status, 200, JSON.stringify(result));
+        assert.equal(result.status, 200, JSON.stringify(result));
         await held.run("host command").started.promise;
         if (policy === "review") {
             assert.equal(JSON.parse(row.rx).outcome, "client_operation", "a person's operation settles as that person's decision");
@@ -314,7 +314,7 @@ test("{§worker-lifecycle-total-reap} shutdown cancels a person's operation stil
     await daemon.registerRuntime(held.registration);
     const { workspaceId } = await daemon.createWorkspace({ name: `client-shutdown-${crypto.randomUUID()}` });
     const [started] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````held\nlong command\n````")] });
-    assert.equal(started!.status, 200);
+    assert.equal(started.status, 200);
     await held.run("long command").started.promise;
     const loop = Promise.withResolvers<{ loopId: number }>();
     const dispatching = daemon.dispatchClientAction({
@@ -340,7 +340,7 @@ test("{§actor-boundary-client-operations} {§machine-processes-worker-origin} a
     const main = await namedModelWorker(daemon, workspaceId, "main");
     const person = async (source: string, contextWorkerId?: number) => (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [parseOne(source)],
-    }))[0]!;
+    }))[0];
     const firstLoop = (workerId: number) => waitForDb(async () => (await daemon.listWorkerLoops({ workspaceId, workerId }))[0], (loop) => loop?.status === 200);
     const worker = async (name: string) => (await daemon.listWorkers(workspaceId)).find((row) => row.name === name);
 
@@ -386,7 +386,7 @@ test("{§actor-boundary-client-operations} {§env-scheme} a person's env:/// is 
     const { db, daemon } = await boot(t);
     const { workspaceId } = await daemon.createWorkspace({ name: `client-env-${crypto.randomUUID()}` });
     const workerId = await namedModelWorker(daemon, workspaceId, "main");
-    const person = async (source: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(source)] }))[0]!;
+    const person = async (source: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(source)] }))[0];
     const modelReads = (name: string) => modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(`\`\`\`\`READ (env:///${name})\`\`\`\``) });
     const definitions = async () => ((await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId })) as { definitions: Array<{ alias: string; origin: string }> })
         .definitions.filter(({ alias }) => alias === "FRAME_NAME").map(({ origin }) => origin);

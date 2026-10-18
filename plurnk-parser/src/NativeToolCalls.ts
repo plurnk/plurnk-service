@@ -161,7 +161,7 @@ export default class NativeToolCalls {
         if (candidates.length === 0) return null;
         candidates.sort((a, b) => a.at - b.at);
         // A `<function=` inside a `<tool_call>` belongs to that block; the earliest candidate owns the span.
-        return candidates[0]!.read();
+        return candidates[0].read();
     }
 
     // DSML and Anthropic-style: `<calls>`/`<function_calls>` holding `invoke` elements with `parameter` children.
@@ -223,18 +223,18 @@ export default class NativeToolCalls {
             current = null;
         };
         for (let i = 0; i < lines.length; i += 1) {
-            const line = lines[i]!;
+            const line = lines[i];
             // A multi-line block's first line is the opener's own; its calls sit on the lines after it.
             const sourceLine = inline ? startLine : startLine + i;
             const invoke = INVOKE_OPEN.exec(line);
             if (invoke !== null) {
                 finish();
                 // The name is a heading: its first word names the operation, the rest are its slots.
-                const heading = invoke[1]!.trim();
+                const heading = invoke[1].trim();
                 const nameEnd = heading.search(/[\s(<[]/u);
                 const name = NativeToolCalls.#operation(nameEnd === -1 ? heading : heading.slice(0, nameEnd), known);
                 const written = nameEnd === -1 ? "" : NativeToolCalls.#withoutStrayClosers(heading.slice(nameEnd));
-                const slots = invoke[2] === undefined ? { body: [], extra: "" } : NativeToolCalls.#headingSlots(invoke[3]!);
+                const slots = invoke[2] === undefined ? { body: [], extra: "" } : NativeToolCalls.#headingSlots(invoke[3]);
                 if (name === null || slots === null) { mappable = false; continue; }
                 if (written.length > 0) slots.extra = slots.extra.length > 0 ? `${written} ${slots.extra}` : written;
                 current = { name, slots, line: sourceLine, parameters: false };
@@ -245,7 +245,7 @@ export default class NativeToolCalls {
             if (STRAY_PARAMETER_CLOSE.test(line)) continue;
             const parameter = PARAMETER.exec(line) ?? PARAMETER_OPEN.exec(line);
             if (parameter !== null) {
-                if (current === null || !NativeToolCalls.#assign(current.slots, parameter[1]!, parameter[2]!, known.has(current.name.toLowerCase()))) { mappable = false; continue; }
+                if (current === null || !NativeToolCalls.#assign(current.slots, parameter[1], parameter[2], known.has(current.name.toLowerCase()))) { mappable = false; continue; }
                 current.parameters = true;
                 continue;
             }
@@ -313,7 +313,7 @@ export default class NativeToolCalls {
         const parameters = [...inner.matchAll(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g)];
         if (parameters.length > 0) {
             for (const [, key, value] of parameters) {
-                if (!NativeToolCalls.#assign(slots, key!.trim(), NativeToolCalls.#trimLines(value!))) return null;
+                if (!NativeToolCalls.#assign(slots, key.trim(), NativeToolCalls.#trimLines(value))) return null;
             }
             const leftover = NativeToolCalls.#withoutStrayClosers(inner.replace(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g, ""));
             // A JSON object beside the parameters carries more of them.
@@ -385,7 +385,7 @@ export default class NativeToolCalls {
         const pairs = [...text.matchAll(/<arg_key>([\s\S]*?)<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/g)];
         if (pairs.length === 0) return null;
         for (const [, key, value] of pairs) {
-            if (!NativeToolCalls.#assign(slots, key!.trim(), NativeToolCalls.#trimLines(value!))) return null;
+            if (!NativeToolCalls.#assign(slots, key.trim(), NativeToolCalls.#trimLines(value))) return null;
         }
         return { name, slots, line };
     }
@@ -421,9 +421,9 @@ export default class NativeToolCalls {
         for (const match of section.matchAll(/<\|tool_call_begin\|>([\s\S]*?)<\|tool_call_argument_begin\|>([\s\S]*?)<\|tool_call_end\|>/g)) {
             const offset = from + (match.index ?? 0);
             const line = input.slice(0, offset).split("\n").length - 1;
-            const name = NativeToolCalls.#operation(match[1]!.trim().replace(/^functions\./, "").replace(/:\d+$/, ""), known);
+            const name = NativeToolCalls.#operation(match[1].trim().replace(/^functions\./, "").replace(/:\d+$/, ""), known);
             if (name === null) return { from, to, calls: null };
-            const args = NativeToolCalls.#json(match[2]!.trim());
+            const args = NativeToolCalls.#json(match[2].trim());
             if (args === null || typeof args !== "object" || Array.isArray(args)) return { from, to, calls: null };
             const slots: Slots = { body: [], extra: "" };
             for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
@@ -441,7 +441,7 @@ export default class NativeToolCalls {
         const lines = text.split("\n");
         const shape = StatementShape.body(name);
         if ((shape === "none" || shape === "annotation") && slots.path === undefined && slots.extra === ""
-            && NativeToolCalls.#headingHasTarget(name, lines[0]!.trim())) {
+            && NativeToolCalls.#headingHasTarget(name, lines[0].trim())) {
             slots.extra = lines.shift()!.trim();
             if (lines.every((entry) => entry.trim() === "")) return;
         }
@@ -469,7 +469,7 @@ export default class NativeToolCalls {
         const named = /\s(?:name|op|verb)="([^"]*)"/u.exec(attributes);
         const content = NativeToolCalls.#withoutStrayClosers(inner);
         if (named !== null) {
-            const name = NativeToolCalls.#operation(named[1]!, known);
+            const name = NativeToolCalls.#operation(named[1], known);
             const slots = NativeToolCalls.#headingSlots(attributes.replace(named[0], ""), false);
             if (name === null || slots === null) return null;
             if (content.length > 0) slots.body.push(...content.split("\n"));
@@ -484,11 +484,11 @@ export default class NativeToolCalls {
     // `<tool_call>=READ (…)`): the heading is the fence's, the lines after it the body.
     static #headingCall(text: string, line: number, known: ReadonlySet<string>): Call | null {
         const lines = NativeToolCalls.#withoutStrayClosers(text).split("\n");
-        const heading = /^=?([A-Za-z][A-Za-z0-9_.+-]*)(?=$|[\s(<[])(.*)$/u.exec(lines[0]!.trim());
+        const heading = /^=?([A-Za-z][A-Za-z0-9_.+-]*)(?=$|[\s(<[])(.*)$/u.exec(lines[0].trim());
         if (heading === null) return null;
-        const name = NativeToolCalls.#operation(heading[1]!, known);
+        const name = NativeToolCalls.#operation(heading[1], known);
         if (name === null) return null;
-        const slots: Slots = { body: [], extra: heading[2]!.trim() };
+        const slots: Slots = { body: [], extra: heading[2].trim() };
         const body = lines.slice(1).filter((entry) => !FENCE_LINE.test(entry));
         if (body.some((entry) => entry.trim().length > 0)) slots.body.push(...body);
         return { name, slots, line };
@@ -503,7 +503,7 @@ export default class NativeToolCalls {
             const tag = /^<([A-Za-z]+)/u.exec(rest);
             if (tag === null) return null;
             // The tag ends on its own line; when a scope written last closed it, the scope keeps its bracket.
-            const firstLine = rest.split("\n", 1)[0]!;
+            const firstLine = rest.split("\n", 1)[0];
             const headingEnd = NativeToolCalls.#tagEnd(firstLine, tag[0].length);
             if (headingEnd === null) return null;
             const rawHeading = rest.slice(tag[0].length, headingEnd);
@@ -519,13 +519,13 @@ export default class NativeToolCalls {
             }
             rest = rest.trim();
             let call: Call | null;
-            if (tag[1]!.toLowerCase() === "op") {
+            if (tag[1].toLowerCase() === "op") {
                 const assigned = /^=([A-Za-z]+)(.*)$/su.exec(attributes);
                 call = assigned === null
                     ? NativeToolCalls.#genericCall(attributes, inner, line, known)
                     : NativeToolCalls.#headingCall(`${assigned[1]}${assigned[2]}\n${inner}`, line, known);
             } else {
-                const name = NativeToolCalls.#operation(tag[1]!, known);
+                const name = NativeToolCalls.#operation(tag[1], known);
                 const slots = name === null ? null : NativeToolCalls.#headingSlots(attributes, false);
                 const content = NativeToolCalls.#trimLines(NativeToolCalls.#withoutStrayClosers(inner));
                 if (slots !== null && name !== null) NativeToolCalls.#content(name, slots, content);
@@ -591,7 +591,7 @@ export default class NativeToolCalls {
     static #scopeText(written: string): string {
         const scope = written.trim();
         const array = /^\[\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\]$/u.exec(scope);
-        if (array !== null) return `<${array[1]!.replace(/\s+/gu, "")}>`;
+        if (array !== null) return `<${array[1].replace(/\s+/gu, "")}>`;
         const object = NativeToolCalls.#json(scope);
         if (object !== null && typeof object === "object" && !Array.isArray(object)) {
             const { start, end } = object as { start?: unknown; end?: unknown };
@@ -618,7 +618,7 @@ export default class NativeToolCalls {
         if (open !== "{" && open !== "[") return null;
         let depth = 0; let inString = false; let escaped = false;
         for (let i = start; i < input.length; i += 1) {
-            const c = input[i]!;
+            const c = input[i];
             if (inString) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === "\"") inString = false; continue; }
             if (c === "\"") inString = true;
             else if (c === "{" || c === "[") depth += 1;
@@ -636,7 +636,7 @@ export default class NativeToolCalls {
         // The tag closed and the slots follow it on the line: `<invoke name="READ">(a.py) <1,5>`.
         remainder = remainder.replace(/^\s*\/?>\s*(?=[(<[])/u, " ").replace(/(?:\s*<\/(?:[A-Za-z_｜ ]*)>)+\s*$/u, "");
         for (const [whole, key, value] of remainder.matchAll(/\s([a-z_]+)="([^"]*)"/g)) {
-            if (!NativeToolCalls.#assign(slots, key!, value!) || SLOT_OF[key!] === "body") return null;
+            if (!NativeToolCalls.#assign(slots, key, value) || SLOT_OF[key] === "body") return null;
             remainder = remainder.replace(whole, "");
         }
         slots.extra = remainder.trim();

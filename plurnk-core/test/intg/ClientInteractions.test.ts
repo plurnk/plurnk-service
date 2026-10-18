@@ -33,7 +33,7 @@ test("{§message-envelope-evidence} {§problems-client}: competing interaction a
     const awaiting = interactions.request(request, ids).then(async (resolution) => {
         const messages = await MessageResources.read(db, ids);
         assert.equal(messages.length, 1, "the accepted answer is durable when the waiter wakes");
-        assert.deepEqual(messages[0]!.envelope, { messageId: "first", metadata: { exact: true } });
+        assert.deepEqual(messages[0].envelope, { messageId: "first", metadata: { exact: true } });
         return resolution;
     });
     const { interactionId } = await observed.promise;
@@ -41,8 +41,8 @@ test("{§message-envelope-evidence} {§problems-client}: competing interaction a
     const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, respondent, {
         body: messageId, source: "a2a://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
     })));
-    assert.equal(outcomes[0]!.status, "fulfilled");
-    const rejected = outcomes[1]!;
+    assert.equal(outcomes[0].status, "fulfilled");
+    const rejected = outcomes[1];
     assert.equal(rejected.status, "rejected");
     if (rejected.status !== "rejected") assert.fail("the second answer cannot win");
     assert.ok(rejected.reason instanceof OperationFailureError);
@@ -129,7 +129,7 @@ test("{§client-interactions}: invalid response content leaves the same interact
         }, respondent), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
-            assert.match(cause.result.problem!.type, /\/interaction-response-invalid$/u);
+            assert.match(cause.result.problem.type, /\/interaction-response-invalid$/u);
             return true;
         });
         assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, pending.interactionId);

@@ -28,6 +28,6 @@ export default class MessageAddress {
         if (typeof address !== "string") return null;
         const match = ADDRESS.exec(address);
         if (match === null || match[1] !== encodeURIComponent(threadId)) return null;
-        try { return decodeURIComponent(match[2]!); } catch { return null; }
+        try { return decodeURIComponent(match[2]); } catch { return null; }
     }
 }

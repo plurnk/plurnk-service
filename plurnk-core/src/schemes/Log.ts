@@ -76,7 +76,7 @@ const NUMERIC_INTERVAL_SEGMENT = /^\[(\d+)-(\d+)\]$/;
 
 const numericCoordinateIntervalsValid = (pathname: string): boolean => pathname.split("/").every((segment) => {
     const interval = NUMERIC_INTERVAL_SEGMENT.exec(segment);
-    return interval === null || BigInt(interval[1]!) <= BigInt(interval[2]!);
+    return interval === null || BigInt(interval[1]) <= BigInt(interval[2]);
 });
 
 // {§log-target-shape} — the working form the refusal of a target nothing can read shows; it names the
@@ -102,7 +102,7 @@ const normalizeLogTarget = (pathname: string): string => {
     if (pathname === "" || pathname.endsWith("/")) return pathname;
     const segments = pathname.split("/");
     for (let slot = 0; slot < Math.min(3, segments.length); slot++) {
-        const list = BRACKET_LIST.exec(segments[slot]!);
+        const list = BRACKET_LIST.exec(segments[slot]);
         if (list !== null) segments[slot] = `{${list[1]}}`;
     }
     const leafAt = segments.findIndex((segment, slot) => slot < 3 && !NUMERIC_SLOT.test(segment));
@@ -148,8 +148,8 @@ const resolveNumericCoordinateIntervals = (pattern: string, coordinate: string):
     const segments = pattern.split("/").map((segment) => {
         const interval = NUMERIC_INTERVAL_SEGMENT.exec(segment);
         if (interval === null) return segment;
-        const start = BigInt(interval[1]!);
-        const end = BigInt(interval[2]!);
+        const start = BigInt(interval[1]);
+        const end = BigInt(interval[2]);
         if (start > end) throw new RangeError(`Reversed log coordinate interval ${segment}`);
         const matches = candidates.filter((candidate) => {
             if (!/^\d+$/.test(candidate)) return false;
@@ -160,7 +160,7 @@ const resolveNumericCoordinateIntervals = (pattern: string, coordinate: string):
             impossible = true;
             return segment;
         }
-        return matches.length === 1 ? matches[0]! : `{${matches.join(",")}}`;
+        return matches.length === 1 ? matches[0] : `{${matches.join(",")}}`;
     });
     return impossible ? null : segments.join("/");
 };
@@ -537,7 +537,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 db, candidateSet.candidates, statement.matcher.raw.slice(1), core.signal,
             );
             if (ranked.status !== 200) {
-                return Results.assert({ status: ranked.status, problem: ranked.problem, ...emptyFindFields() }) as FindResult;
+                return Results.assert({ status: ranked.status, problem: ranked.problem, ...emptyFindFields() });
             }
             matches = ranked.matches.map(({ key, matches: locations }) => ({ pathname: key, matches: locations }));
         } else if (statement.matcher?.dialect === "graph") {
@@ -603,7 +603,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     status: r.status,
                     problem: r.problem,
                     ...emptyFindFields(),
-                }) as FindResult;
+                });
             }
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
@@ -873,7 +873,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                                 recovery: scope.recovery,
                                 retryable: false,
                             },
-                        ) as OpenFoldResult,
+                        ),
                         plan: null,
                     };
                 }
@@ -893,7 +893,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                                     recovery: `KILL (${identity}) retires it.`,
                                     retryable: false,
                                 },
-                            ) as OpenFoldResult,
+                            ),
                             plan: null,
                         };
                     }
@@ -927,7 +927,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             if (matched.status !== 200) {
                 if (matched.problem !== undefined) {
                     return {
-                        result: Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult,
+                        result: Results.assert({ status: matched.status, problem: matched.problem }),
                         plan: null,
                     };
                 }
@@ -937,7 +937,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         matched.status === 404 ? "entry-not-found" : "curation-failed",
                         matched.status,
                         "No log entry matches the requested selection.",
-                    ) as OpenFoldResult,
+                    ),
                     plan: null,
                 };
             }
@@ -956,7 +956,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         recovery: "Provide a log coordinate, prefix, glob, or body pattern.",
                         retryable: false,
                     },
-                ) as OpenFoldResult,
+                ),
                 plan: null,
             };
         }
@@ -983,7 +983,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                             }
                             : {}),
                     },
-                ) as OpenFoldResult,
+                ),
                 plan: null,
             };
         }
@@ -1003,7 +1003,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             : await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
         if (selected.problem !== undefined) {
-            return { result: Results.assert({ status: selected.status, problem: selected.problem }) as OpenFoldResult, plan: null };
+            return { result: Results.assert({ status: selected.status, problem: selected.problem }), plan: null };
         }
         if (selected.status !== 200) {
             const exact = selected.status === 404 ? parseCoordinate(pathname) : null;

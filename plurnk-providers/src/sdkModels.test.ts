@@ -273,7 +273,7 @@ test("{§provider-fact-authority} every catalog provider constructs a model thro
     const failures: string[] = [];
     for (const [provider, models] of Object.entries(catalogSnapshot())) {
         const info = lookupProvider(provider)!;
-        const model = Object.keys(models)[0]!;
+        const model = Object.keys(models)[0];
         const env = withProviderDefaults(Object.fromEntries(info.env.map((name) => [name, "test-value"])));
         try { if (createSdkModel(provider, model, env) === null) failures.push(`${provider} (${info.npm}): no model`); }
         catch (cause) { failures.push(`${provider} (${info.npm}): ${(cause as Error).message}`); }

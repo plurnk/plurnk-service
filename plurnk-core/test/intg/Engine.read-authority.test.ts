@@ -4,7 +4,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
-import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Results, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -35,7 +34,7 @@ const runtime = async (t: TestContext) => {
         assert.equal(item?.kind, "statement", program);
         if (item?.kind !== "statement") throw new Error("Expected one operation");
         return engine.dispatch({ ...ids, turnId: origin === "model" ? ids.turnId : harnessTurn,
-            sequence: ++sequence, origin, statement: item.statement as PlurnkStatement });
+            sequence: ++sequence, origin, statement: item.statement });
     };
     const read = async (target: string, origin: "model" | "_plurnk" = "model") =>
         Results.assertReadResult(await run(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, origin)) as AnchoredReadResult;

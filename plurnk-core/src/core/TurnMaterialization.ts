@@ -189,7 +189,7 @@ export default class TurnMaterialization {
         for (const group of closedBySubscription.values()) {
             const withContent = group.filter((ch) => ch.content.length > 0);
             const kept = withContent.length > 0 ? withContent : group.filter((ch) => ch.channel === ch.default_channel).slice(0, 1);
-            if (kept.length === 0) kept.push(group[0]!);
+            if (kept.length === 0) kept.push(group[0]);
             for (const ch of group) {
                 if (kept.includes(ch)) continue;
                 skipped.add(ch.publication_id);

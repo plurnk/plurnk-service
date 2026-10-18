@@ -68,7 +68,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
                     content,
                 })],
             });
-            assert.equal(written!.status, 201);
+            assert.equal(written.status, 201);
         }
 
         const parentRead = body(await daemon.readEntry({
@@ -148,7 +148,7 @@ test("{§client-entry-address} entry.read applies worker authority across the wo
                 actor: TEST_OWNER,
                 statements: [Dsl.buildEdit({ target: `worker://${name}/same`, content })],
             });
-            assert.equal(written!.status, 201);
+            assert.equal(written.status, 201);
         }
 
         assert.equal(body(await daemon.readEntry({

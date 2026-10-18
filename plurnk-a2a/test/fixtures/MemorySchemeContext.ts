@@ -67,17 +67,17 @@ export default class MemorySchemeContext {
             channels: {
                 append: async (pathname, channel, content) => {
                     const entry = this.#entry(pathname);
-                    entry.channels[channel]!.content += content;
+                    entry.channels[channel].content += content;
                     return { status: 200 };
                 },
                 replace: async (pathname, channel, content) => {
                     const entry = this.#entry(pathname);
-                    entry.channels[channel]!.content = content;
+                    entry.channels[channel].content = content;
                     return { status: 200 };
                 },
                 setState: async (pathname, channel, state) => {
                     const entry = this.#entry(pathname);
-                    entry.channels[channel]!.state = state;
+                    entry.channels[channel].state = state;
                     return { status: 200 };
                 },
             },

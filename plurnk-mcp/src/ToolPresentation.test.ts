@@ -29,16 +29,16 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
         invocation: {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
-            inputSchema: tools[0]!.inputSchema,
+            inputSchema: tools[0].inputSchema,
         },
-        details: tools[0]!.description,
+        details: tools[0].description,
         definition: tools[0],
     }]);
 });
 
 test("{§mcp-summary-derivation} tool purpose precedes titles; blank values fall through in protocol title order", () => {
     const tool = { name: "web_search", inputSchema: { type: "object" as const } };
-    const summary = (fields: Partial<Tool>) => toolRegistry("search", [{ ...tool, ...fields }]).tools[0]!.summary;
+    const summary = (fields: Partial<Tool>) => toolRegistry("search", [{ ...tool, ...fields }]).tools[0].summary;
     assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web.");
     assert.equal(summary({ description: " \n ", title: "Search", annotations: { title: "Old title" } }), "Search");
     assert.equal(summary({ title: " \t ", annotations: { title: "Search title" } }), "Search title");
@@ -68,7 +68,7 @@ test("{§mcp-tool-presentation} a long description trims to its first sentence",
         toolRegistry("brave", tools).tools[0]?.summary,
         "Performs web searches using the API and returns results.",
     );
-    assert.equal(toolRegistry("brave", tools).tools[0]?.details, tools[0]!.description,
+    assert.equal(toolRegistry("brave", tools).tools[0]?.details, tools[0].description,
         "summary shortening does not discard the full description from the input document");
 });
 

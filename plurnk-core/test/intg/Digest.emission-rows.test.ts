@@ -39,7 +39,7 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const stems = ["analyst-1-2", "analyst-1-3", "analyst-1-4"];
     assert.equal(provider.received.length, stems.length);
     for (const [index, stem] of stems.entries()) {
-        assert.deepEqual(await wire(stem), provider.received[index]!.map((message) => ({ role: message.role, content: chatMessageText(message) })),
+        assert.deepEqual(await wire(stem), provider.received[index].map((message) => ({ role: message.role, content: chatMessageText(message) })),
             `${stem}.wire.json is the request the provider received`);
         const request = await readFile(join(digestDir, `${stem}.request.md`), "utf8");
         assert.match(request, /\[Digest\]\(digest\.md\)/u);
@@ -47,22 +47,22 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
         if (index > 0) assert.ok(request.includes(`[Previous](${stems[index - 1]}.request.md)`));
         if (index + 1 < stems.length) assert.ok(request.includes(`[Next](${stems[index + 1]}.request.md)`));
         const blocks = [...request.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
-        assert.deepEqual(blocks.map((match) => match[2]), provider.received[index]!.map(chatMessageText), "the readable request shows each exact input message in order");
-        assert.deepEqual([...request.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index]!.map(({ role }) => role));
+        assert.deepEqual(blocks.map((match) => match[2]), provider.received[index].map(chatMessageText), "the readable request shows each exact input message in order");
+        assert.deepEqual([...request.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), provider.received[index].map(({ role }) => role));
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2]!.content, "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
+    assert.equal(draft[2].content, "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
         "a turn's complete operations replay together, in program order, before its receipts");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
     assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "curation retires the old turn's replay; the curating turn replays as its own NOTE");
-    assert.equal(last[2]!.content, "```NOTE\nRetired the first emission.\n```", "the NOTE body occurs once in assistant replay");
-    assert.doesNotMatch(last[1]!.content, /Retired the first emission\./u);
-    assert.match(last[1]!.content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");
+    assert.equal(last[2].content, "```NOTE\nRetired the first emission.\n```", "the NOTE body occurs once in assistant replay");
+    assert.doesNotMatch(last[1].content, /Retired the first emission\./u);
+    assert.match(last[1].content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");
     const curation = await readFile(join(digestDir, "analyst-1-3.assistant.md"), "utf8");
     assert.match(curation, /KILL \(log:\/\/\/1\/2\/2\/emission\)/u, "forensics keep the curation operation");
     assert.match(curation, /Retired the first emission\./u, "forensics keep the curation NOTE");

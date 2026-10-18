@@ -1,5 +1,5 @@
 import Results, { type SchemeResult } from "./results.ts";
-import type { ChannelProducerResult, StoredEntryData } from "@plurnk/plurnk-schemes";
+import type { StoredEntryData } from "@plurnk/plurnk-schemes";
 
 export interface TerminalPresentation {
     readonly content: string;
@@ -14,7 +14,7 @@ export default class TerminalResult {
             ...Object.fromEntries(Object.entries(result).filter(([field]) => !projected.has(field))),
             status: result.status,
             resource,
-        } as ChannelProducerResult);
+        });
         return { channels: { body: {
             content: presentation?.content ?? "", mimetype: presentation?.mimetype ?? "text/markdown",
             state: "static", producerResult,

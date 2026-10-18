@@ -92,7 +92,7 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
     await daemon.start();
     t.after(async () => { await daemon.stop(); await db.close(); restore(); await rm(root, { recursive: true, force: true }); });
     const model = (program: string) => modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
-    const client = async (program: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(program)] }))[0]!;
+    const client = async (program: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(program)] }))[0];
     const definitions = async (): Promise<Definition[]> =>
         (await daemon.invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId }) as { definitions: Definition[] }).definitions;
     const member = (pathname: string) => memberOf(db, workspaceId, pathname);
@@ -119,9 +119,9 @@ test("{§membership-auto-add} READ: an untracked file is admitted as the Worker'
     assert.equal(admitted?.definition?.provenance?.kind, "model-proposal", "the admission is the model's own add");
     assert.equal(admitted?.state, "active");
     assert.equal(h.notices.length, 1, `one member_added notice: ${JSON.stringify(h.notices)}`);
-    assert.match(h.notices[0]!, /'loose\.md' is now a member of this workspace\./u);
-    assert.match(h.notices[0]!, /"level":"warn"/u);
-    assert.doesNotMatch(h.notices[0]!, /"directive"/u, "the notice carries no directive");
+    assert.match(h.notices[0], /'loose\.md' is now a member of this workspace\./u);
+    assert.match(h.notices[0], /"level":"warn"/u);
+    assert.doesNotMatch(h.notices[0], /"directive"/u, "the notice carries no directive");
 
     for (const [program, code, pathname] of [
         ["````READ (ignored.log)````", "entry-not-member", "ignored.log"],
@@ -174,7 +174,7 @@ test("{§membership-auto-add} FIND: a listing shows the universe without admitti
     assert.equal(await h.member("loose.md"), true, "a text match admits");
     assert.equal(await h.member("docs/guide.md"), false, "an unmatched candidate stays out");
     assert.equal(h.notices.length, 1);
-    assert.match(h.notices[0]!, /'loose\.md' is now a member/u);
+    assert.match(h.notices[0], /'loose\.md' is now a member/u);
 
     const nested = await h.model("````FIND (docs/*.md) beta````") as { status: number; results?: unknown };
     assert.equal(nested.status, 200);

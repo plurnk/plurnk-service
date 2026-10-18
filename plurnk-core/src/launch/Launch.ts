@@ -166,13 +166,13 @@ export default class Launch {
         // Released: the launcher's event loop no longer waits on a shared daemon, which is in its
         // own process group and answers to nothing here but an explicit stop().
         if (shared) child.unref();
-        const url = new URL(ready[1]!);
+        const url = new URL(ready[1]);
         return {
-            url: ready[1]!,
+            url: ready[1],
             host: url.hostname,
             port: Number(url.port),
-            dbPath: JSON.parse(ready[2]!) as string,
-            route: JSON.parse(ready[3]!) as string,
+            dbPath: JSON.parse(ready[2]) as string,
+            route: JSON.parse(ready[3]) as string,
             child,
             stdout: () => stdout,
             stderr: () => stderr,

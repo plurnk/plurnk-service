@@ -25,7 +25,7 @@ test("{§target-group}: READ and KILL compile each path's scope and metadata int
 test("{§target-group}: local patterns stay local and an absent default stays absent", () => {
     const own = operations('````READ (a.md) [{"pattern":"/one/"}] (b.md) [{"pattern":"/two/"}] (c.md)````') as ReadStatement[];
     assert.deepEqual(own.map(({ matcher }) => matcher?.raw ?? null), ["/one/", "/two/", null]);
-    assert.equal("group" in operations("````READ (a.md) <1,3>````")[0]!, false);
+    assert.equal("group" in operations("````READ (a.md) <1,3>````")[0], false);
 });
 
 test("{§target-group} {§statement-rendering}: canonical statements reparse with identical selections and bodies", () => {
@@ -91,7 +91,7 @@ test("{§safe-uri-target-groups}: ambiguous, invalid and ineligible targets stay
     ]) {
         const parsed = operations(PlurnkParser.frame(`${op} (${raw})${op === "COPY" || op === "MOVE" ? " (worker:///destination)" : ""}`, op === "EDIT" ? "replacement" : null));
         assert.equal(parsed.length, 1);
-        const statement = parsed[0]!;
+        const statement = parsed[0];
         assert.equal(statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target.raw : statement.target?.raw, raw);
     }
 });

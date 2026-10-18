@@ -9,7 +9,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 const CLOSING_NOTE = "Read and resolve the Open Message.";
 // The card's NOTE examples, in the order the card teaches them.
 const cardNoteAsides = async (): Promise<string[]> => [...(await readFile(new URL("../../../plurnk-contracts/plurnk.md", import.meta.url), "utf8"))
-    .matchAll(/^`{3,}NOTE <!-- (.+?) -->$/gmu)].map(([, aside]) => aside!);
+    .matchAll(/^`{3,}NOTE <!-- (.+?) -->$/gmu)].map(([, aside]) => aside);
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
 type Row = { op: string | null; origin: string; tx: string };
@@ -46,11 +46,11 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
         const { result, workerId } = await runLoop(db);
         assert.equal(result.result.status, 200);
         const [initialization] = result.turnIds;
-        const rows = await rowsOf(db, initialization!);
+        const rows = await rowsOf(db, initialization);
         const [opening, ...rest] = rows;
         const closing = rest.pop();
         assert.deepEqual([opening?.op, opening?.origin], ["NOTE", "_plurnk"], "the opening NOTE is the first row");
-        assert.match(JSON.parse(opening!.tx).body, /^1\. .+\n2\. .+\n3\. .+$/u, "it is a plan in numbered steps");
+        assert.match(JSON.parse(opening.tx).body, /^1\. .+\n2\. .+\n3\. .+$/u, "it is a plan in numbered steps");
         assert.deepEqual([closing?.op, closing?.origin, JSON.parse(closing!.tx).body], ["NOTE", "_plurnk", CLOSING_NOTE], "the closing NOTE is the last row");
         assert.ok(rest.length > 0 && rest.every(({ op }) => op === "FIND" || op === "READ"), "the surveys stand between them");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
@@ -68,6 +68,6 @@ test("{§worker-initialization-entry}: with the surveys off, initialization auth
         const { result } = await runLoop(db);
         assert.equal(result.result.status, 200);
         const [initialization] = result.turnIds;
-        assert.equal((await rowsOf(db, initialization!)).some(({ op }) => op === "NOTE"), false, "no survey ran, so no NOTE claims one");
+        assert.equal((await rowsOf(db, initialization)).some(({ op }) => op === "NOTE"), false, "no survey ran, so no NOTE claims one");
     });
 });

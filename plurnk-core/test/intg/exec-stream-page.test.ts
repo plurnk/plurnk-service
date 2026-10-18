@@ -41,7 +41,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-page" });
             const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
-            const turn2 = turnIds![2]!;
+            const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
             assert.ok(foisted, "the stream's terminal observation was foisted");
@@ -77,7 +77,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const asked = JSON.parse(read!.rx) as { content: string; startLine: number };
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
-            const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3]! }))!.packet);
+            const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3] }))!.packet);
             const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(String(row.logPath)) && row.origin === undefined);
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
@@ -112,7 +112,7 @@ test("an active stream reaches the model only as an Open Work stream pointer wit
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-ambient" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run" }, { timeoutMs: 20_000 });
             assert.equal(finalStatus, 200);
-            const turn2 = turnIds![2]!;
+            const turn2 = turnIds![2];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn2 }))!.packet);
             const pointers = packetSection(packet, "work");
             assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
@@ -127,7 +127,7 @@ test("an active stream reaches the model only as an Open Work stream pointer wit
 });
 
 const RECORDS = Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) }));
-const RECORD_PAGE = Math.floor(PAGE_CHARS / (RECORDS[0]!.length + 1)); // complete records within the character bound
+const RECORD_PAGE = Math.floor(PAGE_CHARS / (RECORDS[0].length + 1)); // complete records within the character bound
 for (const specimen of [
     {
         name: "long JSON records",
@@ -164,18 +164,18 @@ waiting
             await rpcCall(ws, 1, "workspace.create", { name: "long-stream-preview" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the result." });
             assert.equal(finalStatus, 200);
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! }))!.packet);
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2] }))!.packet);
             const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.path).endsWith("#stdout"));
             assert.ok(delivery, "the model receives the automatic terminal observation");
             assert.equal(delivery.range, specimen.packetRange);
             assert.equal(delivery.region, undefined);
             assert.match(String(delivery.body), new RegExp(`${specimen.pageLines}:`), "the packet carries the page, line-numbered");
             assert.doesNotMatch(String(delivery.body), new RegExp(`${specimen.pageLines + 1}:`), "and nothing past it");
-            const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
+            const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2] });
             const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === specimen.page);
             assert.ok(automatic, "the page is what was delivered and stored");
             assert.deepEqual(JSON.parse(automatic.rx).range, specimen.range, "the durable range keeps requested and returned coordinates");
-            const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
+            const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2] });
             const explicit = rows.find((row) => row.origin === "model" && row.op === "READ");
             assert.equal(JSON.parse(explicit?.rx ?? "null")?.content, content, "the full source remains available on deliberate READ");
         } finally {

@@ -58,7 +58,7 @@ test("{§regex-dialect-readings}: grep's `\\|` is alternation, `-i` after the sl
         const body = matcherOf(glob.statements[0] as FindStatement);
         assert.equal(body?.dialect === "regex" ? body.pattern : null, pattern, source);
         assert.equal(glob.warnings.length, 1, source);
-        assert.match(glob.warnings[0]!, /was read as the glob .* over each line/u, source);
+        assert.match(glob.warnings[0], /was read as the glob .* over each line/u, source);
     }
 
     const plain = parse("```FIND (a.py) /a*b|c/i\n```");

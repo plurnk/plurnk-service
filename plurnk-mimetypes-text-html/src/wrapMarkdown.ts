@@ -98,6 +98,6 @@ function breakAt(line: string, limit: number): number | null {
         if (/\s/.test(ch)) safe.push(i);
     }
 
-    const before = safe.filter((index) => index <= limit).at(-1);
+    const before = safe.findLast((index) => index <= limit);
     return before ?? safe.find((index) => index > limit) ?? null;
 }

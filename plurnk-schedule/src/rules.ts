@@ -66,7 +66,7 @@ const readLines = (text: string): RuleLines => {
         const match = RRULE.exec(line);
         if (match === null) throw invalid(`the line '${line}' is neither DTSTART, RRULE, EXDATE nor RDATE`);
         if (rrule !== null) throw invalid("it carries more than one RRULE");
-        const unknown = match[1]!.split(";").map((part) => part.split("=")[0]!).filter((name) => !RRULE_PARTS.has(name));
+        const unknown = match[1].split(";").map((part) => part.split("=")[0]).filter((name) => !RRULE_PARTS.has(name));
         if (unknown.length > 0) throw invalid(`RRULE has no part named ${unknown.join(", ")}`);
         rrule = match[1]!;
     }

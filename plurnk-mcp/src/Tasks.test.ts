@@ -252,7 +252,7 @@ test("{§mcp-connection-shutdown} concurrent close waits for Task cancellation w
     });
     const connection = new ServerConnection(httpServer("closing", served.url), env);
     t.after(async () => { cancelled.resolve(); await connection.close(); });
-    const tool = (await connection.catalog()).tools[0]!;
+    const tool = (await connection.catalog()).tools[0];
     const running = connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, async (request) => {
         if (request.arguments.operation === "tools/call") return {
             status: "resolved", payload: { preflight: { action: "accept", content: { proceed: true } } },
@@ -298,7 +298,7 @@ test("{§mcp-connection-shutdown} closing during Task subscription acknowledgeme
         ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     t.after(() => connection.close());
-    const tool = (await connection.catalog()).tools[0]!;
+    const tool = (await connection.catalog()).tools[0];
     const rejected = assert.rejects(
         connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, undefined, tool),
         /connection is closed/u,
@@ -331,7 +331,7 @@ test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Tas
     const owner = new AbortController();
     let settled = false;
     try {
-        const tool = (await connection.catalog()).tools[0]!;
+        const tool = (await connection.catalog()).tools[0];
         const rejected = assert.rejects(connection.callTool(tool.name, { topic: "MCP" }, owner.signal,
             undefined, undefined, tool), /owner stopped/u).then(() => { settled = true; });
         await listening.promise;

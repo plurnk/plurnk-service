@@ -196,7 +196,7 @@ test("{§module-shutdown-order} an activation failure cannot abandon another wor
     const releases = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
     const refusal = new Error("fixture activation failed");
     const residency = new WorkspaceCapabilities({ warmMs: -1, warmMax: -1 }, {
-        activate: async (id) => { entered[id - 1]!.resolve(); await releases[id - 1]!.promise; if (id === 1) throw refusal; },
+        activate: async (id) => { entered[id - 1].resolve(); await releases[id - 1].promise; if (id === 1) throw refusal; },
         deactivate: async () => true,
         report: () => assert.fail("no cooling failure expected"),
     });
@@ -212,10 +212,10 @@ test("{§module-shutdown-order} an activation failure cannot abandon another wor
         return true;
     });
     try {
-        releases[0]!.resolve();
+        releases[0].resolve();
         await first;
         assert.equal(settled, false, "a rejected transition is retained without short-circuiting its sibling");
-    } finally { releases[1]!.resolve(); }
+    } finally { releases[1].resolve(); }
     await Promise.all([stopping, second]);
     assert.equal(settled, true);
 });

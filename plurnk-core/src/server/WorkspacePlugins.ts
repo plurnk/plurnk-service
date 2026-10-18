@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { InstalledPlugin, WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import type { Db } from "../core/Db.ts";
-import HostPaths from "../core/HostPaths.ts";
+import type HostPaths from "../core/HostPaths.ts";
 import type { AgentRootScope } from "./AgentRoots.ts";
 import PluginSources from "./PluginSources.ts";
 import { join } from "node:path";

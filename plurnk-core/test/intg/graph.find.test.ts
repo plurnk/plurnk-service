@@ -15,6 +15,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_scheme.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
+import type { Db } from "../../src/core/Db.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const url = (pathname: string): UrlPath => ({
@@ -60,7 +61,7 @@ const seed = async () => {
     return { db, workspaceId, workerId };
 };
 
-const find = (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, raw: string) =>
+const find = (db: Db, workspaceId: number, workerId: number, raw: string) =>
     new Worker().find(findStmt(url(""), graph(raw)), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
 
 test("graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {

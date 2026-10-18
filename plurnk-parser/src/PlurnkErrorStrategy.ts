@@ -8,7 +8,7 @@ import {
     type RecognitionException,
 } from "antlr4ng";
 import { plurnkParser } from "./generated/plurnkParser.ts";
-import { plurnkLexer } from "./generated/plurnkLexer.ts";
+import type { plurnkLexer } from "./generated/plurnkLexer.ts";
 import StatementShape from "./StatementShape.ts";
 
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {

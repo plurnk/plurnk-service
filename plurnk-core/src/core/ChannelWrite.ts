@@ -9,7 +9,7 @@
 
 import type { Db } from "./Db.ts";
 import { Results, type ChannelProducerResult, type ChannelState, type SchemeResult } from "@plurnk/plurnk-schemes";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import type { Notice, MessageResource } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
 // Render metadata, never a read gate — {§channel-state-state-is-metadata}.
@@ -78,7 +78,7 @@ export type InjectWorkerNotify = (args: {
     // {§worker-causal-admission}: one identity supplies both liveness and attribution.
     sourceLoopId: number;
     prompt: string;
-    attachments?: readonly import("@plurnk/plurnk-contracts").MessageResource[];
+    attachments?: readonly MessageResource[];
     // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a worker a person
     // starts included, runs the recipient's own.
     spawn?: true;
@@ -209,7 +209,7 @@ export default class ChannelWrite {
         const events: [number, StreamEventPayload][] = [];
         for (const meta of published) {
             const channelResult = Object.hasOwn(exactChannelResults, meta.channel)
-                ? exactChannelResults[meta.channel]!
+                ? exactChannelResults[meta.channel]
                 : result;
             const state: ChannelState = channelResult.status >= 400 ? "errored" : "closed";
             if (meta.state === state) continue;

@@ -60,7 +60,7 @@ describe("TextHtml — content channel ({§mimetype-content})", () => {
     });
 
     it("wraps projected prose at the configured default", () => {
-        const prose = `${"readable prose ".repeat(30)}`.trim();
+        const prose = ("readable prose ".repeat(30)).trim();
         const md = h.content(`<article><p>${prose}</p></article>`) as string;
         assert.ok(md.split("\n").length > 1, "the dense source paragraph gained line boundaries");
         assert.ok(md.split("\n").every((line) => line.length <= 100), "ordinary prose respects the 100-column floor");
@@ -128,7 +128,7 @@ describe("TextHtml — content channel integration", () => {
         const html = `<article>\n<h1>FindableHeading</h1>\n<p class="prose">${"body text ".repeat(20)}</p></article>`;
         const found = await h.query(html, "regex", "FindableHeading");
         assert.equal(found.length, 1);
-        assert.deepEqual(found[0]!.regions, [{ startLine: 2, startColumn: 5, endLine: 2, endColumn: 20 }]);
+        assert.deepEqual(found[0].regions, [{ startLine: 2, startColumn: 5, endLine: 2, endColumn: 20 }]);
         const cls = await h.query(html, "regex", "prose");
         assert.equal(cls.length, 1, "the class attribute is source text");
         const tag = await h.query(html, "regex", "<h[1-6]");

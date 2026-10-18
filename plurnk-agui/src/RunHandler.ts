@@ -1,7 +1,7 @@
 import { Problems } from "@plurnk/plurnk-contracts";
 // The AG-UI Run endpoint: one client run resolved to its worker, streamed, and settled. Split out of the module, which keeps the delegating entry point.
 import { type IncomingMessage, type ServerResponse } from "node:http";
-import Portal from "./Portal.ts";
+import type Portal from "./Portal.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";

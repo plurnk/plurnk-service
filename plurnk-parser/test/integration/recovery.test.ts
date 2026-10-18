@@ -143,7 +143,7 @@ for (const header of ["READ (a.md) <2,3> (extra.md)", "KILL (a.md) (extra.md)"])
             assert.deepEqual([first.target?.raw, second.target?.raw], ["a.md", "extra.md"]);
             assert.deepEqual(first.lineMarker, first.op === "READ" ? { marks: [2, 3] } : null);
             assert.equal(second.lineMarker, null);
-            assert.deepEqual(statements(r).map(writtenOp), [header.split(" ")[0]!, header.split(" ")[0]!, "WAIT"]);
+            assert.deepEqual(statements(r).map(writtenOp), [header.split(" ")[0], header.split(" ")[0], "WAIT"]);
         }
     });
 }

@@ -68,16 +68,16 @@ test("{§digest-edit-census}: a worker's EDITs are counted by form, refusal and 
         const loopId = await insertLoop(db, workerId, 1, "edit things");
         const turns = await Promise.all([1, 2, 3, 4].map((sequence) => insertTurn(db, loopId, sequence, 200)));
         const base = { workerId, loopId };
-        ids.hash = await insertEdit(db, { ...base, turnId: turns[0]!, sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde"]}', status: 200 });
-        ids.whole = await insertEdit(db, { ...base, turnId: turns[0]!, sequence: 2, pathname: "src/b.py", marker: null, status: 201 });
-        ids.harness = await insertEdit(db, { ...base, turnId: turns[0]!, sequence: 3, pathname: "worker:///_plurnk/x.md", marker: null, status: 201, origin: "_plurnk" });
+        ids.hash = await insertEdit(db, { ...base, turnId: turns[0], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde"]}', status: 200 });
+        ids.whole = await insertEdit(db, { ...base, turnId: turns[0], sequence: 2, pathname: "src/b.py", marker: null, status: 201 });
+        ids.harness = await insertEdit(db, { ...base, turnId: turns[0], sequence: 3, pathname: "worker:///_plurnk/x.md", marker: null, status: 201, origin: "_plurnk" });
         // Turn 2 returns to a.py one turn later: a revisit.
-        ids.insert = await insertEdit(db, { ...base, turnId: turns[1]!, sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde",1,"@abcde",1]}', status: 200 });
-        ids.pattern = await insertEdit(db, { ...base, turnId: turns[2]!, sequence: 1, pathname: "src/c.py", marker: null, pattern: "/foo/", status: 200 });
+        ids.insert = await insertEdit(db, { ...base, turnId: turns[1], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde",1,"@abcde",1]}', status: 200 });
+        ids.pattern = await insertEdit(db, { ...base, turnId: turns[2], sequence: 1, pathname: "src/c.py", marker: null, pattern: "/foo/", status: 200 });
         // Turn 4: a.py again, two turns after its last edit (a revisit, refused); b.py three turns after (not one).
-        ids.range = await insertEdit(db, { ...base, turnId: turns[3]!, sequence: 1, pathname: "src/a.py", marker: '{"marks":[3,5]}', status: 400 });
-        ids.column = await insertEdit(db, { ...base, turnId: turns[3]!, sequence: 2, pathname: "src/b.py", marker: '{"marks":[1,3,2,4]}', status: 200 });
-        ids.append = await insertEdit(db, { ...base, turnId: turns[3]!, sequence: 3, pathname: "src/d.py", marker: '{"marks":[-1]}', status: 200 });
+        ids.range = await insertEdit(db, { ...base, turnId: turns[3], sequence: 1, pathname: "src/a.py", marker: '{"marks":[3,5]}', status: 400 });
+        ids.column = await insertEdit(db, { ...base, turnId: turns[3], sequence: 2, pathname: "src/b.py", marker: '{"marks":[1,3,2,4]}', status: 200 });
+        ids.append = await insertEdit(db, { ...base, turnId: turns[3], sequence: 3, pathname: "src/d.py", marker: '{"marks":[-1]}', status: 200 });
     } finally { await db.close(); }
 
     const digestDir = join(TMP_DIR, `edit-census-out-${crypto.randomUUID()}`);

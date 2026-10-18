@@ -7,16 +7,16 @@ import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
 import Results, { OperationFailureError } from "./results.ts";
 import Turn from "./Turn.ts";
-import NoticeChannel from "./NoticeChannel.ts";
-import ProblemLog from "./ProblemLog.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
+import type ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { isProgress, type StrikeOutcome } from "./StrikeRail.ts";
-import Dispatcher from "./Dispatcher.ts";
+import type Dispatcher from "./Dispatcher.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { observed } from "../observe/spans.ts";
 import { OPS_DISPATCHED, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
-import BareBatchRunner from "./BareBatchRunner.ts";
+import type BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import { isContextReceipt, reserved, type ContextFit } from "./ContextFit.ts";
 import LineAnchors from "../content/line-anchors.ts";
@@ -247,7 +247,7 @@ export default class AdmittedTurnExecutor {
                         directive: "YOU SHOULD NOT write [metadata] on an operation that takes none.",
                         message: `${statement.op} on '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
                     });
-                    statement = { ...statement, metadata: null } as typeof statement;
+                    statement = { ...statement, metadata: null };
                 }
             }
             if (scheduledStatement === finalOp) await settleTurn();

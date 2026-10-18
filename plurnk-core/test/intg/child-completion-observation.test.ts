@@ -50,7 +50,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         const after = await f.run(f.parent, f.parentLoop);
         const observations = after.entries.filter(({ source }) => source === "worker://child");
         assert.deepEqual(observations.map(({ logPath: path }) => String(path).split("/").at(-1)), ["READ"]);
-        const completion = observations[0]!;
+        const completion = observations[0];
         assert.equal(completion.path, "ops://child/1");
         assert.equal(completion.origin, "_plurnk");
         assert.equal(completion.answers, undefined, "observation is not another answer");
@@ -85,16 +85,16 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal(completions.length, 2);
     assert.ok(completions.every(({ logPath: path }) => String(path).endsWith("/READ")));
     assert.deepEqual(completions.map(({ path: target }) => target), ["ops://child/1", "ops://child/2"]);
-    assert.match(String(completions[0]!.body), /First result line 1\n/);
-    assert.match(String(completions[0]!.body), /First result line 24/, "automatic observation is a markerless READ: whole when it fits ({§context-fit})");
-    assert.equal(completions[0]!.preview, undefined, "nothing is previewed on the model's behalf");
-    assert.match(String(completions[1]!.body), /Second loop failed\./);
-    assert.equal(completions[1]!.status, 502);
+    assert.match(String(completions[0].body), /First result line 1\n/);
+    assert.match(String(completions[0].body), /First result line 24/, "automatic observation is a markerless READ: whole when it fits ({§context-fit})");
+    assert.equal(completions[0].preview, undefined, "nothing is previewed on the model's behalf");
+    assert.match(String(completions[1].body), /Second loop failed\./);
+    assert.equal(completions[1].status, 502);
     assert.equal((await f.db.engine_worker_has_undelivered_child_term.get({ worker_id: f.parent })), undefined);
 
     const curated = await f.run(f.parent, f.parentLoop,
-        frame(`READ (${completions[0]!.path}) <1,-1>`) + "\n\n"
-        + frame(`KILL (${completions[0]!.logPath}) <2,-1>`));
+        frame(`READ (${completions[0].path}) <1,-1>`) + "\n\n"
+        + frame(`KILL (${completions[0].logPath}) <2,-1>`));
     const rows = await f.db.test_log_entries_by_loop.all<{ turn_id: number; op: string; status_rx: number; rx: string; attrs: string }>({ loop_id: f.parentLoop });
     const actions = rows.filter((row) => row.turn_id === curated.result.turnId && !LogEntryProjection.isEmission(row));
     assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["READ", 200], ["KILL", 200]]);

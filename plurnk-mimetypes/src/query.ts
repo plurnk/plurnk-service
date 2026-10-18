@@ -91,7 +91,7 @@ export function queryGlob(text: string, pattern: string, locate: LocateMatch = t
     const lines = coordinates.logicalLines();
     const out: QueryMatch[] = [];
     for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i]!;
+        const line = lines[i];
         const body = text.slice(line.start, line.contentEnd);
         if (regex.test(body)) {
             out.push({
@@ -176,7 +176,7 @@ export function queryXpathString(
     }
     let result: xpath.SelectReturnType;
     try {
-        result = selectWithProvenance(pattern, doc as unknown as Node);
+        result = selectWithProvenance(pattern, doc);
     } catch (cause) {
         throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
     }

@@ -18,7 +18,7 @@ test("JSON presentation changes only whitespace outside literal tokens", () => {
         "  ]",
         "}",
     ].join("\n"));
-    assert.equal(formatJsonDocument(rendered!), rendered, "formatting is idempotent");
+    assert.equal(formatJsonDocument(rendered), rendered, "formatting is idempotent");
 });
 
 test("JSON presentation declines malformed documents and stream framing", () => {

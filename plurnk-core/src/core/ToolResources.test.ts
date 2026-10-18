@@ -29,7 +29,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
     assert.match(content, /```example <!-- Compute a thing\. -->\nsomething\n```/);
-    const summary = content.split("## Summary\n\n")[1]!.split("\n\n")[0]!;
+    const summary = content.split("## Summary\n\n")[1].split("\n\n")[0];
     assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the invocation");
     const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"), { executors: ["example", "fixture", "brave", "sh"] });
     assert.equal(parsed.items.length, 1);
@@ -191,8 +191,8 @@ test("{§tools-resource-discovery} keeps a concrete invocation's multiline body 
             },
         }] },
     });
-    const document = resources[0]!.content;
-    const renderedSummary = document.split("## Summary\n\n")[1]!.split("\n\n")[0];
+    const document = resources[0].content;
+    const renderedSummary = document.split("## Summary\n\n")[1].split("\n\n")[0];
     assert.equal(renderedSummary, `${summary.slice(0, -3)}\\n${body.replaceAll("\n", "\\n")}\\n\`\`\``);
     assert.ok(document.includes(`\`\`\`fixture (echo) <!-- Echo structured input. -->
 ${body}
@@ -202,10 +202,10 @@ ${body}
 test("{§tool-document-header-only} a registry-less runtime with no details is marked invocation-only in its summary", () => {
     const invocation = { body: { role: "the program", required: false }, example: { body: "1+1" } };
     const [bare] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "   ", registry: null });
-    assert.match(bare!.content, /^```calc <!-- Evaluate calculations\. \(invocation only\) -->/mu, "the summary line, and so the catalog row, says the document is header-only");
+    assert.match(bare.content, /^```calc <!-- Evaluate calculations\. \(invocation only\) -->/mu, "the summary line, and so the catalog row, says the document is header-only");
     const [taught] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "Set `scale` first.", registry: null });
-    assert.doesNotMatch(taught!.content, /invocation only/u, "a runtime with a body is not marked");
-    assert.ok(taught!.content.endsWith("Set `scale` first."), "the body closes the document");
+    assert.doesNotMatch(taught.content, /invocation only/u, "a runtime with a body is not marked");
+    assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
 test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {
@@ -217,7 +217,7 @@ test("{§functionality-model-projection} manager summaries advertise effective v
                 target, summary: target, invocation: declaration.invocation,
             })) },
         });
-        const summary = resource!.content.split("## Summary\n\n")[1]!.split("\n")[0];
+        const summary = resource.content.split("## Summary\n\n")[1].split("\n")[0];
         assert.equal(summary, `\`\`\`mcp (${verbs.join("|")}) <!-- Manage MCP servers -->\\n\`\`\``);
     }
 });

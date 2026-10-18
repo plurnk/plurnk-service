@@ -105,7 +105,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     // A person's READ ({§connection-lifecycle}): no reader attaches the addressed runtime itself.
     const read = async (target: string) => (await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, statements: [statement(PlurnkParser.frame(`READ (${target}) <1,-1>`, null))],
-    }))[0]!;
+    }))[0];
     const setPolicy = (policy: CapabilityPolicy) => waitForDb(async () => {
         try {
             await daemon.setWorkspaceCapabilities({ workspaceId, policy });
@@ -147,11 +147,11 @@ test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, ca
     const listed = JSON.parse(String(catalog.content)) as { resources: Array<{ uri: string; address: string }> };
     const linked = listed.resources.find((resource) => resource.uri === uri);
     assert.equal(linked?.address, `shared://${path}`);
-    assert.equal((await f.read(linked!.address)).content, "alice's resource");
+    assert.equal((await f.read(linked.address)).content, "alice's resource");
     const multi = await f.read(`shared://${resourcePath(multipartUri)}`);
-    const parts = [...String(multi.content).matchAll(/<(shared:\/\/\/[^>]+)>/gu)].map((match) => match[1]!);
+    const parts = [...String(multi.content).matchAll(/<(shared:\/\/\/[^>]+)>/gu)].map((match) => match[1]);
     assert.equal(parts.length, 2, JSON.stringify(multi));
-    assert.equal((await f.read(parts[0]!)).content, "alice:first");
+    assert.equal((await f.read(parts[0])).content, "alice:first");
 
     await f.setPolicy({ deny: [{ access: "observe", scheme: "shared" }] });
     const before = f.reads.length;
@@ -197,7 +197,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         const [invoked] = await f.daemon.dispatchClientAction({
             workspaceId: f.workspaceId, actor: TEST_OWNER, statements: [statement(PlurnkParser.frame("shared (snapshot)", "{}"))],
         });
-        assert.equal(invoked!.status, 200, JSON.stringify(invoked));
+        assert.equal(invoked.status, 200, JSON.stringify(invoked));
         // The person's operation produced the result in the workspace's runtime worker ({§connection-lifecycle}).
         const producer = await f.daemon.ensureRuntimeWorker(f.workspaceId);
         const published = await waitForDb(async () => {
@@ -220,12 +220,12 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
             assert.equal(changed.status, 200, JSON.stringify(changed));
         }
         if (transition === "removed") {
-            await f.reinstall({ other: httpEntry(f.servers[1]!.url) });
+            await f.reinstall({ other: httpEntry(f.servers[1].url) });
             const listed = await f.action("list", {}) as FunctionalityListResult;
             assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["other"], "the baseline no longer declares shared");
         }
         if (transition === "replaced") {
-            await f.reinstall({ shared: httpEntry(f.servers[1]!.url), other: httpEntry(f.servers[1]!.url) });
+            await f.reinstall({ shared: httpEntry(f.servers[1].url), other: httpEntry(f.servers[1].url) });
             assert.equal((await f.read(`shared://${path}`)).content, "bob's resource");
         }
         if (transition === "restarted") {
@@ -242,7 +242,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
             workspaceId: f.workspaceId, actor: TEST_OWNER,
             statements: [statement(PlurnkParser.frame(`FIND (${directory})`, null))],
         });
-        assert.equal(catalog!.status, 200, JSON.stringify(catalog));
+        assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(JSON.stringify(catalog), /snapshot\.txt/);
         assert.equal(f.provider.received.length, 0, "reading an artifact requires no model inference");
     });
@@ -255,7 +255,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
-    const interaction = waiting[0]!;
+    const interaction = waiting[0];
     assert.equal(interaction.workerId, f.alice);
     assert.equal(interaction.loopId, run.loopId);
     assert.match(JSON.stringify(interaction), /Read bob's resource/);
@@ -265,7 +265,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
     const lifecycle = new LoopLifecycle(f.db);
     await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200);
     assert.equal(f.provider.received.length, 2, "the owner model never starts");
-    assert.match(f.provider.received[1]!.map(chatMessageText).join("\n"), /bob:accept/);
+    assert.match(f.provider.received[1].map(chatMessageText).join("\n"), /bob:accept/);
     const receipts = await f.db.test_log_entries_by_loop.all<{ op: string; status_rx: number; target: string }>({ loop_id: run.loopId });
     assert.ok(receipts.some((row) => row.op === "READ" && row.status_rx === 200), "the READ receipt stays in Alice's loop");
     assert.deepEqual(await f.daemon.pendingClientInteractions(f.workspaceId), []);
@@ -277,7 +277,7 @@ test("{§runtime-resource-binding}: cancelling the requester settles its MCP int
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
-    assert.equal(pending[0]!.workerId, f.alice);
+    assert.equal(pending[0].workerId, f.alice);
     await f.daemon.cancelWorker({ workspaceId: f.workspaceId, workerId: f.alice, reason: "resource reader cancelled" });
     const lifecycle = new LoopLifecycle(f.db);
     await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 499);

@@ -417,7 +417,7 @@ export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): Cost
         }
         out[key] = parsed;
     }
-    return out as CostOverride;
+    return out;
 };
 
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {

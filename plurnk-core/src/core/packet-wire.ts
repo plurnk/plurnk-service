@@ -387,7 +387,7 @@ export default class PacketWire {
         if (sourceLineNumbers !== null && ordinals.some((ordinal) => ordinal < 1 || ordinal > sourceLineNumbers.length)) {
             throw new TypeError("A sparse log-body projection's ordinals must address its source line numbers.");
         }
-        const displayed = ordinals.map((ordinal) => sourceLineNumbers === null ? startLine + ordinal - 1 : sourceLineNumbers[ordinal - 1]!);
+        const displayed = ordinals.map((ordinal) => sourceLineNumbers === null ? startLine + ordinal - 1 : sourceLineNumbers[ordinal - 1]);
         const width = lineAnchors === null
             ? numericLineNumberWidth > 0
                 ? numericLineNumberWidth
@@ -397,8 +397,8 @@ export default class PacketWire {
             throw new TypeError("An anchored sparse log-body projection requires a valid source line width.");
         }
         return lines.map((line, index) => {
-            const ordinal = ordinals[index]!;
-            const lineNumber = displayed[index]!;
+            const ordinal = ordinals[index];
+            const lineNumber = displayed[index];
             const content = body.slice(line.start, line.contentEnd);
             if (lineAnchors === null) {
                 return `${String(lineNumber).padStart(width, " ")}:${content}${line.separator}`;
@@ -521,7 +521,7 @@ export default class PacketWire {
         const ordinals = LogVisibility.visibleLineOrdinals(clipped, totalLines);
         const readableOrdinals = LogVisibility.visibleLineOrdinals(trimmed, totalLines);
         const select = (selected: readonly number[]) => selected.map((ordinal) => {
-            const line = lines[ordinal - 1]!;
+            const line = lines[ordinal - 1];
             return body.content.slice(line.start, line.end);
         }).join("");
         return {
@@ -635,17 +635,17 @@ export default class PacketWire {
             });
         });
         const visibility = entries.map((entry, index) =>
-            PacketWire.#visibleBody(entry, bodies[index]!));
+            PacketWire.#visibleBody(entry, bodies[index]));
         return entries.map((e, index) => {
             const identity = PacketWire.#rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
-            const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]!);
+            const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]);
             const paired = options.paired?.has(String(e.coordinate)) ?? false;
-            const projected = paired && bodies[index]!.provenance === "authored"
+            const projected = paired && bodies[index].provenance === "authored"
                 ? { body: "", projectedLineCount: 0, display: "folded" as const }
-                : PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts);
-            return PacketWire.#rowAccounting(identity, e, visibility[index]!, projected, weighContent, options);
+                : PacketWire.#rowBody(identity, e, bodies[index], visibility[index], facts);
+            return PacketWire.#rowAccounting(identity, e, visibility[index], projected, weighContent, options);
         });
     }
 
@@ -699,7 +699,7 @@ export default class PacketWire {
             attrs: r.attrs === null ? null : JSON.parse(r.attrs),
             producer: r.producer,
             ...(lineAnchors === undefined ? {} : { lineAnchors }),
-            ...(rawLineNumberWidth === undefined ? {} : { lineNumberWidth: rawLineNumberWidth as number }),
+            ...(rawLineNumberWidth === undefined ? {} : { lineNumberWidth: rawLineNumberWidth }),
         };
     }
 
@@ -798,7 +798,7 @@ export default class PacketWire {
         }
         // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
         if (op === "WAIT" && e.attrs !== null && typeof e.attrs === "object" && "waiting" in e.attrs) {
-            const seconds = (e.attrs as { waiting: unknown }).waiting;
+            const seconds = e.attrs.waiting;
             if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
                 throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
             }
@@ -1189,7 +1189,7 @@ export default class PacketWire {
                 }
             }
             return Promise.all(groups.map(async ({ role, sections }, index) => {
-                if (!sections.some(({ name }) => attachments.some(({ section }) => section === name))) return messages[index]!;
+                if (!sections.some(({ name }) => attachments.some(({ section }) => section === name))) return messages[index];
                 const parts: ChatContentPart[] = [];
                 for (const [at, section] of sections.entries()) {
                     parts.push({ type: "text", text: `${at === 0 ? "" : "\n\n"}${PacketWire.renderSection(section)}` });
@@ -1206,8 +1206,8 @@ export default class PacketWire {
         if (index < 0) throw new Error("native packet attachments require a user message");
         // {§packet-attachment-parts}: native evidence belongs to the log's message. A retained
         // packet may also hold its previous program in that message; keep its recorded tail.
-        const preceding = groups[index]!.sections.filter(({ name }) => name !== "emission-history");
-        const previous = groups[index]!.sections.find(({ name }) => name === "emission-history");
+        const preceding = groups[index].sections.filter(({ name }) => name !== "emission-history");
+        const previous = groups[index].sections.find(({ name }) => name === "emission-history");
         const parts: ChatContentPart[] = [{ type: "text", text: PacketWire.renderSlot(preceding, "user") }];
         for (const attachment of attachments) {
             const bytes = await bytesOf(attachment);

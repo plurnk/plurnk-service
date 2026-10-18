@@ -13,6 +13,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
+import type { Db } from "../../src/core/Db.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -44,7 +45,7 @@ const setup = async () => {
 };
 
 const seed = async (
-    db: import("../../src/core/Db.ts").Db,
+    db: Db,
     workspaceId: number,
     workerId: number,
     entries: Array<[string, string]>,

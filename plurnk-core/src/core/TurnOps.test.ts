@@ -30,13 +30,13 @@ test("{§emission-row} the frozen projection keeps every header and body whole, 
         "Remember the conclusion.",
         "The complete final answer.",
     ];
-    const source = headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n");
+    const source = headers.map((header, index) => PlurnkParser.frame(header, bodies[index])).join("\n\n");
     const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
     const statements = parsed.items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
         .map(({ statement }) => statement);
     assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
     const original = structuredClone(statements);
-    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n"),
+    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => PlurnkParser.frame(header, bodies[index])).join("\n\n"),
         "every statement is its own original operation, whole");
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
 });
@@ -127,5 +127,5 @@ test("TurnOps: internal source preserves trailing body newlines across a section
     ];
     const parsed = TurnOps.parseInternal(TurnOps.renderInternal(statements));
     assert.equal(parsed[0]?.op, "EDIT");
-    assert.equal((parsed[0] as EditStatement).body, edit.body);
+    assert.equal((parsed[0]).body, edit.body);
 });

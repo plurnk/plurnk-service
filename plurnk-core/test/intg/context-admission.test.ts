@@ -111,7 +111,7 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
         const result = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
         assert.equal(result.status, 102, "the request was sent, not ended");
         assert.equal(tight.received.length, 1, "one inference request");
-        assert.ok(await exact(tight, tight.received[0]!) <= wall, "what was sent fits the wall by the provider's own count");
+        assert.ok(await exact(tight, tight.received[0]) <= wall, "what was sent fits the wall by the provider's own count");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         assert.equal(packetSection(packet, "emission-history"), "", "the previous program went whole, first");

@@ -9,7 +9,7 @@ const one = (source: string) => {
     const result = PlurnkParser.parseStatements(source);
     const ops = statements(result);
     assert.equal(ops.length, 1, source);
-    return { op: ops[0]! as PlurnkStatement & { matcher?: { dialect: string; raw: string; message?: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
+    return { op: ops[0] as PlurnkStatement & { matcher?: { dialect: string; raw: string; message?: string } | null; body?: unknown; metadata?: unknown }, diagnostics: diagnostics(result) };
 };
 
 test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a trailing aside on the same line stays the aside", () => {
@@ -155,8 +155,8 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
     const slash = one("````READ (ledger.md) /(?i)shutdown|reactor|code/ <!-- locate the code -->\n````\n");
     assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/(?i)shutdown|reactor|code/", pattern: "shutdown|reactor|code", flags: "i" });
     assert.equal(slash.diagnostics.length, 1);
-    assert.equal(slash.diagnostics[0]!.severity, "warning");
-    assert.equal(slash.diagnostics[0]!.message, "`(?i)` was read as the `i` flag; an ECMAScript regex takes its flags after the closing `/`.");
+    assert.equal(slash.diagnostics[0].severity, "warning");
+    assert.equal(slash.diagnostics[0].message, "`(?i)` was read as the `i` flag; an ECMAScript regex takes its flags after the closing `/`.");
     const merged = one("````FIND (src/**) /(?ms)^begin.*end$/i\n````\n");
     assert.deepEqual(merged.op.matcher, { dialect: "regex", raw: "/(?ms)^begin.*end$/i", pattern: "^begin.*end$", flags: "ims" }, "authored flags and lifted letters merge without duplicates");
     const caret = one("````READ (reasoning://alice/1/1) ^(?i)note:.*\n````\n");
@@ -186,8 +186,8 @@ test("{§trailing-slots}: a scope, an option block or an aside written after the
     assert.deepEqual(markerOf(scoped.op), { marks: [1, -1] });
     assert.equal(scoped.op.aside, "store entity resolution");
     assert.equal(scoped.diagnostics.length, 1);
-    assert.equal(scoped.diagnostics[0]!.severity, "warning");
-    assert.match(scoped.diagnostics[0]!.message, /after the pattern was read as the scope; the scope goes before the pattern/u);
+    assert.equal(scoped.diagnostics[0].severity, "warning");
+    assert.match(scoped.diagnostics[0].message, /after the pattern was read as the scope; the scope goes before the pattern/u);
     const positions = one("````FIND (crates/wasmi/src/memory/*.rs) /fn data|as_slice/ <2>\n````\n");
     assert.deepEqual(markerOf(positions.op), { marks: [2] }, "FIND takes result positions after the pattern");
     assert.equal(positions.op.matcher?.raw, "/fn data|as_slice/");

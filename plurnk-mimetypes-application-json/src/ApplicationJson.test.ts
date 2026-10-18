@@ -113,12 +113,12 @@ describe("ApplicationJson — extract", () => {
             "}",
         ].join("\n");
         const result = h.extractRaw(src);
-        const names = result.map((s) => s.name);
-        assert.ok(names.includes("scripts"));
-        assert.ok(names.includes("test"));
-        assert.ok(names.includes("build"));
-        assert.ok(names.includes("dependencies"));
-        assert.ok(names.includes("antlr4ng"));
+        const names = new Set(result.map((s) => s.name));
+        assert.ok(names.has("scripts"));
+        assert.ok(names.has("test"));
+        assert.ok(names.has("build"));
+        assert.ok(names.has("dependencies"));
+        assert.ok(names.has("antlr4ng"));
     });
 
     it("emits separate symbols for the same key name at distinct positions", () => {
@@ -195,9 +195,9 @@ describe("ApplicationJson — extract", () => {
             "}",
         ].join("\n");
         const result = jsoncHandler.extractRaw(src);
-        const names = result.map((s) => s.name);
-        assert.ok(names.includes("name"));
-        assert.ok(names.includes("version"));
+        const names = new Set(result.map((s) => s.name));
+        assert.ok(names.has("name"));
+        assert.ok(names.has("version"));
     });
 
     it("filters look-alike key patterns inside string values (parser is authoritative)", () => {

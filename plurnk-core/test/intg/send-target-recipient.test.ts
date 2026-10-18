@@ -50,7 +50,7 @@ test("a SEND addressed to a file path preserves the scheme's factual 501", async
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const first = rows.filter((r) => r.op === "SEND" && r.origin === "model")[0];
+            const first = rows.find((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(first?.status_rx, 501);
             const problem = (JSON.parse(first!.rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§problems-dispatch}

@@ -74,7 +74,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
             ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("WAIT", "waiting on the monitored stream")] } })),
             { assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } },
         ];
-        const provider = new Mock({ contextWindow: 100000, responses: responses as never });
+        const provider = new Mock({ contextWindow: 100000, responses: responses });
         const t0 = Date.now();
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
         const elapsed = Date.now() - t0;

@@ -90,7 +90,7 @@ test("{§file-directory-target} {§diagnostic-observation}: a directory target s
 const foundPaths = (row: { content?: string }): string[] => {
     const groups = JSON.parse(row.content ?? "null") as { path: string }[][];
     assert.ok(Array.isArray(groups), "FIND returns resource channel groups");
-    return groups.map(([first]) => first!.path).toSorted();
+    return groups.map(([first]) => first.path).toSorted();
 };
 
 test("{§file-find-directory}: parsed FIND recognizes a directory with or without its trailing slash", async () => {
@@ -125,10 +125,10 @@ test("{§file-find-directory}: directory resolution retains FIND matching and pa
     ].join("\n\n"));
     assert.equal(rows.length, 6);
     assert.equal(rows[0]?.status, 200);
-    assert.deepEqual(foundPaths(rows[0]!), ["packages/chord/docs/api.md"]);
+    assert.deepEqual(foundPaths(rows[0]), ["packages/chord/docs/api.md"]);
     assert.deepEqual(rows[0], rows[1], "matching selects resources identically for either spelling");
     assert.equal(rows[2]?.status, 200);
-    assert.deepEqual(foundPaths(rows[2]!), ["packages/chord/README.md"]);
+    assert.deepEqual(foundPaths(rows[2]), ["packages/chord/README.md"]);
     assert.deepEqual(rows[2], rows[3], "pagination selects resources identically for either spelling");
     assert.equal(rows[4]?.status, 204);
     assert.deepEqual(rows[4], rows[5], "a nonmatching pattern is an empty result, not a missing directory");
@@ -156,14 +156,14 @@ test("{§file-find-directory}: exact files and missing targets retain their exis
     ].join("\n\n"));
     assert.equal(rows.length, 6);
     assert.equal(rows[0]?.status, 200);
-    assert.deepEqual(foundPaths(rows[0]!), ["packages/chord/README.md"]);
+    assert.deepEqual(foundPaths(rows[0]), ["packages/chord/README.md"]);
     for (const [index, target] of [[1, "packages/chor"], [2, "packages/missing"], [5, "packages/chord/README.md/child"]] as const) {
         assert.equal(rows[index]?.status, 404);
         assert.equal(rows[index]?.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
         assert.equal(rows[index]?.problem?.detail, `No member of this workspace is at '${target}'.`);
     }
     assert.equal(rows[3]?.status, 200, "an explicitly authored folder survey may be empty");
-    assert.deepEqual(foundPaths(rows[3]!), []);
+    assert.deepEqual(foundPaths(rows[3]), []);
     assert.equal(rows[4]?.status, 200, "a glob is not reinterpreted as a literal directory");
-    assert.deepEqual(foundPaths(rows[4]!), ["packages/chord-extra/**", "packages/chord/**"]);
+    assert.deepEqual(foundPaths(rows[4]), ["packages/chord-extra/**", "packages/chord/**"]);
 });

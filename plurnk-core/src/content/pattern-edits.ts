@@ -85,8 +85,8 @@ export default class PatternEdits {
     // {§slice-semantics-compose-pattern} Resolve scopes through the existing text algebra.
     static bounds(marks: readonly number[] | undefined, content: string): TextRegion | null | { readonly error: string } {
         if (marks === undefined || marks.length === 0) return null;
-        if (marks.length === 1 && marks[0]! <= 0) return { error: "A pattern scope selects source text, not a prepend or append position." };
-        const selected = LineMarkerOps.textReplacement(content, { marks: [marks[0]!, ...marks.slice(1)] }, "");
+        if (marks.length === 1 && marks[0] <= 0) return { error: "A pattern scope selects source text, not a prepend or append position." };
+        const selected = LineMarkerOps.textReplacement(content, { marks: [marks[0], ...marks.slice(1)] }, "");
         if ("error" in selected) return selected;
         const region = TextCoordinates.regionFromOffsets(content, selected.start, selected.end);
         if (region === null) throw new Error("A resolved text scope has no source coordinates.");

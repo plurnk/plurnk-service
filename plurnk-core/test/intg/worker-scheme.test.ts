@@ -138,8 +138,8 @@ test("{§worker-read-scope}: FIND addresses literal namespaces identically from 
         const beta = await insertWorker(db, workspaceId, null, "beta");
         const contexts = [alpha, beta].map((workerId) => makeSchemeCtx({ db, workspaceId, workerId }));
         const scheme = new Worker();
-        assert.equal((await scheme.edit(editStmt(workerEntry("alpha", "todo.md"), "alpha note"), contexts[1]!)).status, 201);
-        assert.equal((await scheme.edit(editStmt(workerEntry("beta", "plan.md"), "beta note"), contexts[0]!)).status, 201);
+        assert.equal((await scheme.edit(editStmt(workerEntry("alpha", "todo.md"), "alpha note"), contexts[1])).status, 201);
+        assert.equal((await scheme.edit(editStmt(workerEntry("beta", "plan.md"), "beta note"), contexts[0])).status, 201);
         for (const ctx of contexts) {
             assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha", "**"), ctx)), ["worker://alpha/todo.md"]);
             assert.deepEqual(resourcePaths(await scheme.find(findEntry("beta", "**"), ctx)), ["worker://beta/plan.md"]);
@@ -189,15 +189,15 @@ test("{§worker-scheme-spawn}: concurrent WORK and FORK cannot claim the same li
     // body to that worker as a message. Either way one worker holds the name and every delivery reached it.
     const child = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "child" });
     assert.ok(child, "exactly one worker holds the name");
-    assert.equal(work!.status, 200, "WORK either created the child or messaged it");
-    if (fork!.status === 409) {
-        assert.match(fork!.problem!.type, /worker-name-conflict$/);
-        assert.equal(fork!.problem!.worker, "child");
-        assert.match(String(fork!.problem!.recovery), /WORK or SEND \(worker:\/\/child\)/u, "the receipt names the working forms");
+    assert.equal(work.status, 200, "WORK either created the child or messaged it");
+    if (fork.status === 409) {
+        assert.match(fork.problem!.type, /worker-name-conflict$/);
+        assert.equal(fork.problem!.worker, "child");
+        assert.match(String(fork.problem!.recovery), /WORK or SEND \(worker:\/\/child\)/u, "the receipt names the working forms");
         assert.equal(calls.length, 1, "the one claim started the child");
-        assert.equal(calls[0]!.spawn, true);
+        assert.equal(calls[0].spawn, true);
     } else {
-        assert.equal(fork!.status, 200);
+        assert.equal(fork.status, 200);
         assert.equal(calls.length, 2, "the branch started the child and the WORK messaged it");
         assert.ok(calls.some((call) => call.spawn !== true && call.prompt === "fresh"), "the WORK's body reached the held name as a message");
     }
@@ -310,8 +310,8 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
             workspaceId, workerId: parentId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(spawned.status, 200);
-        assert.equal((await WorkerOwners.read(db, calls[0]!.workerId)).address, TEST_OWNER);
-        const childId = calls[0]!.workerId;
+        assert.equal((await WorkerOwners.read(db, calls[0].workerId)).address, TEST_OWNER);
+        const childId = calls[0].workerId;
         const childLoop = await insertLoop(db, childId, op === "FORK" ? 2 : 1, "continue");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
         const read = (sequence: number) => engine.dispatch({
@@ -479,9 +479,9 @@ test("{§worker-scheme-spawn}: WORK naming a RUNNING sister delivers its body to
         assert.equal(result.status, 200, "the held name is the voice door");
         assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message", message: "message://recorded/1" }, "the receipt says what happened");
         assert.equal(calls.length, 1, "one delivery");
-        assert.equal(calls[0]!.workerId, sister, "to the running sister");
-        assert.equal(calls[0]!.prompt, "do it again", "her message is the WORK's body");
-        assert.notEqual(calls[0]!.spawn, true, "a message, not a spawn");
+        assert.equal(calls[0].workerId, sister, "to the running sister");
+        assert.equal(calls[0].prompt, "do it again", "her message is the WORK's body");
+        assert.notEqual(calls[0].spawn, true, "a message, not a spawn");
     } finally { await db.close(); }
 });
 
@@ -509,8 +509,8 @@ test("{§worker-scheme-spawn}: WORK naming a PARKED sister delivers its body to 
         assert.equal(result.status, 200, "a parked worker keeps its name and takes the message");
         assert.deepEqual((result as { attrs?: unknown }).attrs, { worker: "worker://worker", delivered: "message", message: "message://recorded/1" });
         assert.equal(calls.length, 1, "the message reached injection once");
-        assert.equal(calls[0]!.workerId, sister);
-        assert.notEqual(calls[0]!.spawn, true, "a message, not a spawn");
+        assert.equal(calls[0].workerId, sister);
+        assert.notEqual(calls[0].spawn, true, "a message, not a spawn");
     } finally { await db.close(); }
 });
 
@@ -616,7 +616,7 @@ test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch i
         assert.equal(fork.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-conflict");
         assert.match(String(fork.problem?.recovery), /WORK or SEND \(worker:\/\/worker\)/u);
         assert.equal(calls.length, 1, "one message, no spawn");
-        assert.equal(calls[0]!.workerId, retained, "delivered to the retained worker");
+        assert.equal(calls[0].workerId, retained, "delivered to the retained worker");
         assert.equal((await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" }))?.id, retained);
     } finally { await db.close(); }
 });
@@ -778,7 +778,7 @@ test("{§worker-scheme-irc}: empty and whitespace-only messages never reach work
         });
         assert.equal(delivered.status, 200);
         assert.equal(calls.length, 1);
-        assert.equal(calls[0]!.prompt, literal, "validation preserves a nonempty message verbatim");
+        assert.equal(calls[0].prompt, literal, "validation preserves a nonempty message verbatim");
     } finally { await db.close(); }
 });
 

@@ -114,7 +114,7 @@ test("Round-trip: AST.lineMarker (single) from parsed statement validates", () =
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
-    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker!);
+    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -123,7 +123,7 @@ test("Round-trip: AST.lineMarker (range) from parsed statement validates", () =>
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
-    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker!);
+    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -132,7 +132,7 @@ test("Round-trip: AST.lineMarker (append sentinel) from parsed statement validat
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT"); return; }
     assert.ok(item.statement.lineMarker);
-    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker!);
+    const { valid, errors } = Validator.validateLineMarker(item.statement.lineMarker);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -302,7 +302,7 @@ test("Round-trip: AST.matcher (regex MatcherBody) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -311,7 +311,7 @@ test("Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -320,7 +320,7 @@ test("Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -329,7 +329,7 @@ test("Round-trip: AST.matcher (glob MatcherBody) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
-    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher!);
+    const { valid, errors } = Validator.validateMatcherBody(item.statement.matcher);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -371,7 +371,7 @@ test("Round-trip: AST.body (SendBody with JSON) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateSendBody(item.statement.body!);
+    const { valid, errors } = Validator.validateSendBody(item.statement.body);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
@@ -380,6 +380,6 @@ test("Round-trip: AST.body (SendBody plain text) validates", () => {
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
     assert.ok(item.statement.body);
-    const { valid, errors } = Validator.validateSendBody(item.statement.body!);
+    const { valid, errors } = Validator.validateSendBody(item.statement.body);
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });

@@ -40,9 +40,9 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
                 await waitForDb(async () => lifecycle(), (notices) => notices.length >= 2);
                 assert.deepEqual(lifecycle().map(({ loopId, notice }) => [loopId, notice.status, notice.level]), [[accepted.loopId, 102, "info"], [accepted.loopId, 202, "info"]],
                     "running when claimed, parked when suspended, both naming the loop");
-                const firstDeadline = lifecycle()[1]!.notice.waitUntil;
+                const firstDeadline = lifecycle()[1].notice.waitUntil;
                 assert.ok(typeof firstDeadline === "number" && firstDeadline > Date.now(), "the parked notice names a future wake deadline");
-                assert.equal(lifecycle()[0]!.notice.waitUntil, null, "running has no countdown");
+                assert.equal(lifecycle()[0].notice.waitUntil, null, "running has no countdown");
                 assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)?.waitUntil,
                     firstDeadline, "reattachment and live updates describe the same durable deadline");
                 // {§agui-status-timing} — every beat carries its loop's own packet count and claim stamp, the ones a snapshot reads.
@@ -55,7 +55,7 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
                 await waitForDb(async () => lifecycle(), (notices) => notices.length >= 5);
                 assert.deepEqual(lifecycle().slice(2).map(({ notice }) => notice.status), [100, 102, 202], "waking queues the loop, then claim and WAIT move it through running to parked");
                 assert.deepEqual(lifecycle().slice(2, 4).map(({ notice }) => notice.waitUntil), [null, null], "the countdown clears before inference begins");
-                const nextDeadline = lifecycle()[4]!.notice.waitUntil;
+                const nextDeadline = lifecycle()[4].notice.waitUntil;
                 assert.ok(typeof nextDeadline === "number" && nextDeadline > firstDeadline, "the next WAIT starts a fresh bounded park");
                 assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)?.waitUntil, nextDeadline);
                 assert.ok(lifecycle().every(({ workerId: owner }) => owner === workerId), "every beat names the owning worker");

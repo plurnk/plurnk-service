@@ -67,10 +67,10 @@ test("{§retention-policy}: the keep-everything fixture retires nothing and refu
         ["PLURNK_SERVICE_AUTO_VACUUM", "full"],
         ["PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", "-1"],
         ["PLURNK_SERVICE_RETENTION_INTERVAL_MS", ""],
-    ]) assert.throws(() => retentionPolicy({ ...KEEP_ALL, [key!]: value }), (cause: unknown) => {
+    ]) assert.throws(() => retentionPolicy({ ...KEEP_ALL, [key]: value }), (cause: unknown) => {
         assert.ok(cause instanceof ConfigurationError);
         assert.equal(cause.key, key);
-        assert.ok(cause.message.includes(key!));
+        assert.ok(cause.message.includes(key));
         return true;
     });
     assert.throws(() => retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETENTION_INTERVAL_MS: undefined }),
@@ -99,9 +99,9 @@ test("{§retention-policy}: a count policy keeps the newest packets of each loop
         const pass = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "2" })).run();
         assert.deepEqual(counts(pass), { retiredPackets: 2, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "turns 1 and 2 retire; every one of their records is still cited by turns 3 and 4");
         assert.deepEqual(await Promise.all(turns.map(async (id) => (await db.test_turn_sections_count.get<{ n: number }>({ turn_id: id }))!.n)), [0, 0, 1, 1]);
-        const bag = await db.test_bag_of_turn.get<{ packet: string | null }>({ id: turns[0]! });
+        const bag = await db.test_bag_of_turn.get<{ packet: string | null }>({ id: turns[0] });
         assert.ok(bag?.packet, "the retired turn keeps its bag: weight, attributions, and any admitted response");
-        const assembled = await db.test_get_packet.get<{ packet: string }>({ id: turns[0]! });
+        const assembled = await db.test_get_packet.get<{ packet: string }>({ id: turns[0] });
         assert.deepEqual(JSON.parse(assembled!.packet).sections, [], "a retired packet reads back with no sections");
 
         const again = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0" })).run();
@@ -144,8 +144,8 @@ test("{§retention-policy}: a response policy retires bodies while the call's ev
             evidence: { content: `Original response ${sequence}`, reasoning: `Original reasoning ${sequence}` },
             usage_total: 7, cost_amount: "0.01",
         })), "each request starts with its captured response, reasoning and accounting");
-        await assert.rejects(db.test_context_close_model_call.run({ id: calls[0]!, capacity: CAPACITY }), /model call observation is immutable/, "a settled call refuses a second observation");
-        await assert.rejects(db.test_update_model_call_response.run({ id: calls[0]!, response: "{}" }), /model call response is immutable/, "a body never changes");
+        await assert.rejects(db.test_context_close_model_call.run({ id: calls[0], capacity: CAPACITY }), /model call observation is immutable/, "a settled call refuses a second observation");
+        await assert.rejects(db.test_update_model_call_response.run({ id: calls[0], response: "{}" }), /model call response is immutable/, "a body never changes");
         const bodies = async () => (await db.test_model_call_bodies.all<{ id: number; state: string; has_body: number; has_capacity: number }>({ loop_id: loopId })).map(({ state, has_body, has_capacity }) => `${state}:${has_body}:${has_capacity}`);
         assert.deepEqual(await bodies(), ["response:1:1", "response:1:1", "response:1:1"]);
         const keepAll = await new Retention(db, retentionPolicy(KEEP_ALL)).run();
@@ -235,7 +235,7 @@ test("{§retention-policy}: failed retries expire with one logical call while op
     const facts = (rows: Awaited<ReturnType<typeof captured>>) => rows.flat().map(({ evidence: _evidence, ...row }) => row);
     assert.deepEqual(facts(await captured()), facts(before), "no request, failure, usage, price, or unknown-billing fact is erased");
     await db.test_context_fail_model_call.run({ id: calls[2], capacity: CAPACITY });
-    await Turn.complete(db, turns[2]!, 413);
+    await Turn.complete(db, turns[2], 413);
     assert.equal((await byAge.run(Date.now() + 1000)).retiredResponses, 1);
     assert.deepEqual((await captured()).flat().map(({ evidence }) => evidence), [null, null, null, null]);
 
@@ -383,10 +383,10 @@ test("{§content-store}: a body is stored once however many workspaces hold it, 
         }
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 1, bytes: book.length }, "three workspaces, one stored body");
         const retention = new Retention(db, retentionPolicy(KEEP_ALL));
-        await db.crud_delete_entry.run({ entry_id: entries[0]! });
-        await db.crud_delete_entry.run({ entry_id: entries[1]! });
+        await db.crud_delete_entry.run({ entry_id: entries[0] });
+        await db.crud_delete_entry.run({ entry_id: entries[1] });
         assert.equal((await retention.run()).collectedContents, 0, "a body still held stays");
-        await db.crud_delete_entry.run({ entry_id: entries[2]! });
+        await db.crud_delete_entry.run({ entry_id: entries[2] });
         assert.equal((await retention.run()).collectedContents, 1);
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 0, bytes: null });
         const kept = new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_COLLECT_CONTENTS: "0" }));

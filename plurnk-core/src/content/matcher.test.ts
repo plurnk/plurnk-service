@@ -62,7 +62,7 @@ test("{§matcher-result-resource-selection} structural hits expose coordinates r
     // jsonpath $.users[*] over multi-line JSON: each object resolves to the line it sits on.
     const content = '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob" }\n  ]\n}';
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody, content, "application/json",
+        { dialect: "jsonpath", raw: "$.users[*]" }, content, "application/json",
         stubQuery(async () => [hit(3, { name: "Alice", role: "admin" }), hit(4, { name: "Bob" })]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
@@ -79,7 +79,7 @@ test("{§matcher-result-resource-selection} structural hits expose coordinates r
 
 test("two structural matches on one line retain distinct canonical paths", async () => {
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
+        { dialect: "jsonpath", raw: "$.users[*].name" },
         '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json",
         stubQuery(async () => [
             { ...hit(1, "Alice"), matching: "$.users[0].name" },
@@ -101,7 +101,7 @@ test("two structural matches on one line retain distinct canonical paths", async
 test("a multi-line match remains one coordinate range", async () => {
     const content = "<root>\n  <user>\n    Alice\n  </user>\n</root>";
     const r = await Matcher.matchAgainstContent(
-        { dialect: "xpath", raw: "//user" } as MatcherBody, content, "text/html",
+        { dialect: "xpath", raw: "//user" }, content, "text/html",
         stubQuery(async () => [{
             matched: "<user>...</user>",
             matching: "(//user)[1]",
@@ -126,7 +126,7 @@ test("a multi-line match remains one coordinate range", async () => {
 
 test("a scalar retains its locator without fabricated coordinates", async () => {
     const r = await Matcher.matchAgainstContent(
-        { dialect: "xpath", raw: "count(//user)" } as MatcherBody, "<root><user/><user/></root>", "text/html",
+        { dialect: "xpath", raw: "count(//user)" }, "<root><user/><user/></root>", "text/html",
         stubQuery(async () => [{ matched: 2, matching: "count(//user)" }]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [{ locator: "count(//user)" }]);
@@ -134,7 +134,7 @@ test("a scalar retains its locator without fabricated coordinates", async () => 
 
 test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
     const r = await Matcher.matchAgainstContent(
-        { dialect: "jsonpath", raw: "$.field" } as MatcherBody, "{broken json", "application/json",
+        { dialect: "jsonpath", raw: "$.field" }, "{broken json", "application/json",
         stubQuery(async () => { throw new QueryParseFailureError({ mimetype: "application/json", cause: new Error("unexpected token } in JSON") }); }));
     assert.equal(r.status, 203);
     assert.equal(r.body, "{broken json");  // raw bytes handed back so the model can regex/visual-parse
@@ -144,7 +144,7 @@ test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype
 
 test("malformed matcher expression → 400 (model-facing, not a 500)", async () => {
     const r = await Matcher.matchAgainstContent(
-        { dialect: "xpath", raw: "//[" } as MatcherBody, "<root><a/></root>", "text/html",
+        { dialect: "xpath", raw: "//[" }, "<root><a/></root>", "text/html",
         stubQuery(async () => { throw new InvalidExpressionError({ dialect: "xpath", expression: "//[" }); }));
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/schemes/matcher/invalid-expression");
@@ -160,8 +160,8 @@ test("relation dialects (~full-text / &graph) never reach the content matcher", 
     // (resource, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
     // routing bug → fail hard, not a silent 501/400.
     const stub = stubQuery(async () => { throw new Error("query must not be called for a relation dialect"); });
-    await assert.rejects(Matcher.matchAgainstContent({ dialect: "fts", raw: "~query" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
-    await assert.rejects(Matcher.matchAgainstContent({ dialect: "graph", raw: "&graph" } as MatcherBody, "x", "text/markdown", stub), /content-only/);
+    await assert.rejects(Matcher.matchAgainstContent({ dialect: "fts", raw: "~query" }, "x", "text/markdown", stub), /content-only/);
+    await assert.rejects(Matcher.matchAgainstContent({ dialect: "graph", raw: "&graph" }, "x", "text/markdown", stub), /content-only/);
 });
 
 test("{§find-candidate-containment} #449: one crashing candidate drops out; the operation and its siblings survive", async () => {

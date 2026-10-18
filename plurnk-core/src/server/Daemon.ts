@@ -121,7 +121,7 @@ type LoopGenerationPolicy = {
 
 // {§module-discovery} — a registered module and its owner, the package it came from.
 interface RegisteredModule {
-    readonly module: DaemonModule<HostSetupSeam, ApplicationPort>;
+    readonly module: DaemonModule<HostSetupSeam>;
     readonly owner: string;
 }
 
@@ -1139,7 +1139,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                     this.#broadcast({ workspaceId }, "log/entry", { entry });
                 }
-                return result as { status: number; [key: string]: unknown };
+                return result;
             } catch (cause) {
                 if (turnOpen) {
                     try {
@@ -1460,7 +1460,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             db: this.#db,
             projectRoot: async (id) => (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id }))?.project_root ?? null,
             executorTags: (id) => this.#engine.executorTags(id),
-            apply: async (statement) => await dispatch(statement) as { status: number; problem?: { detail?: string } },
+            apply: async (statement) => await dispatch(statement),
         }, { workspaceId, workerId, to: args.to }));
         return Validator.assertRollbackReport(report);
     }
@@ -1759,7 +1759,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
     // {§module-discovery} — `owner` is the module's package name; diagnostics name it.
-    registerModule(module: DaemonModule<HostSetupSeam, ApplicationPort>, owner: string): void {
+    registerModule(module: DaemonModule<HostSetupSeam>, owner: string): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
         this.#modules.push({ module, owner });
     }
@@ -1848,6 +1848,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             for (const { key, message } of module.contained ?? []) this.#configuration.record(`module:${owner}`, new ConfigurationError(key, message));
         }
         this.#claimMounts();
+        // oxlint-disable-next-line typescript/no-this-alias -- the daemon itself, narrowed to the seam a module's setup receives
         const setupSeam: HostSetupSeam = this;
         for (const { module } of this.#modules) {
             if (module.stop !== undefined || module.close !== undefined) this.#moduleLifetimes.push(module);

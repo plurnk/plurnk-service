@@ -12,7 +12,7 @@ import { namedModelWorker } from "./_workers.ts";
 // would not ({§matcher-refusal}).
 const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
 const response = (dsl: string) => ({
-    assistant: { content: `${dsl}`, reasoning: null },
+    assistant: { content: dsl, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 

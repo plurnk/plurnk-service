@@ -482,7 +482,7 @@ export default class SearchIndex {
                 const rest = memberFailures.length - 1;
                 publish(
                     "complete",
-                    `Repository search index is ready; ${memberFailures.length} of ${total} derivations failed: ${JSON.stringify(first!.path)} — ${first!.reason}${rest === 0 ? "" : ` (and ${rest} more)`}`,
+                    `Repository search index is ready; ${memberFailures.length} of ${total} derivations failed: ${JSON.stringify(first.path)} — ${first.reason}${rest === 0 ? "" : ` (and ${rest} more)`}`,
                     "warn",
                 );
             }

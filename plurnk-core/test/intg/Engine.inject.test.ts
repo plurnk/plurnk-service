@@ -51,7 +51,7 @@ test("engine.inject: persists a message with its ordinal, open paths, and causal
         assert.equal(inbox.length, 2, "the assignment and the arrival");
         const [, message] = inbox;
         assert.deepEqual(
-            { ordinal: message!.ordinal, body: message!.body, source: message!.source, openPaths: JSON.parse(message!.open_paths), published: message!.log_entry_id },
+            { ordinal: message.ordinal, body: message.body, source: message.source, openPaths: JSON.parse(message.open_paths), published: message.log_entry_id },
             { ordinal: 2, body: "follow-up", source: "worker://researcher", openPaths: ["src/context.ts", "README.md"], published: null },
             "the message durably owns its selected workspace paths and causal source ({§message-causal-source})",
         );

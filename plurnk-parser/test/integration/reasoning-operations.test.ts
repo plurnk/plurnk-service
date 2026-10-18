@@ -37,8 +37,8 @@ test("{§reasoning-operations}: fact-finding quoted inside a NOTE remains note c
     const source = frame("NOTE", example);
     const operations = parse(source);
     assert.equal(operations.length, 1);
-    assert.equal(operations[0]!.op, "NOTE");
-    assert.equal(operations[0]!.body, example);
+    assert.equal(operations[0].op, "NOTE");
+    assert.equal(operations[0].body, example);
 });
 
 test("{§reasoning-operations}: only authored, closed operations survive an unfinished suffix", () => {

@@ -9,7 +9,7 @@ import { ownWorker } from "./_approval.ts";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Exec from "../../src/schemes/Exec.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { access, mkdtemp, rm } from "node:fs/promises";

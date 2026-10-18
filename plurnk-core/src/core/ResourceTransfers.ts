@@ -168,7 +168,7 @@ export default class ResourceTransfers {
                 target: resolvedSource.target,
                 routedScheme: resolvedSource.scheme,
                 handler,
-                manifest: resolvedSource.manifest as SchemeManifest & { readonly category: "data" },
+                manifest: resolvedSource.manifest,
                 ctx,
                 access: "write",
             });
@@ -369,7 +369,7 @@ export default class ResourceTransfers {
             return MutationEffects.finalizeEffects(Results.assert(curated), source, [effect]);
         }
         if (source.lineMarker === null) {
-            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+            const handler = this.#schemes.get(source.scheme, ctx.workspaceId);
             if (handler === undefined) {
                 throw new InvalidOperationResultError(
                     `Resolved MOVE source scheme '${source.scheme}' is no longer registered.`,
@@ -379,7 +379,7 @@ export default class ResourceTransfers {
                 target: source.target,
                 routedScheme: source.scheme,
                 handler,
-                manifest: source.manifest as SchemeManifest & { readonly category: "data" },
+                manifest: source.manifest,
                 ctx,
                 access: "write",
             });
@@ -419,7 +419,7 @@ export default class ResourceTransfers {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(destination.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(destination.scheme, ctx.workspaceId);
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE destination scheme '${destination.scheme}' is no longer registered.`,
@@ -429,7 +429,7 @@ export default class ResourceTransfers {
             target: destination.target,
             routedScheme: destination.scheme,
             handler,
-            manifest: destination.manifest as SchemeManifest & { readonly category: "data" },
+            manifest: destination.manifest,
             ctx,
             access: "write",
         });
@@ -589,7 +589,7 @@ export default class ResourceTransfers {
         // them and the receipt is the byte count, with no text diff or parse-issue transition.
         const isByteTransfer = source.bytes !== undefined;
         const channels = {
-            ...(existing?.channels ?? {}),
+            ...existing?.channels,
             [destination.channel]: isByteTransfer
                 ? { content: "", bytes: source.bytes, mimetype: source.mimetype }
                 : {
@@ -687,7 +687,7 @@ export default class ResourceTransfers {
         if (Buffer.from(original).equals(result.bytes)) return { status: 304 };
 
         const channels = {
-            ...(existing?.channels ?? {}),
+            ...existing?.channels,
             [destination.channel]: { content: "", bytes: result.bytes, mimetype },
         };
         const written = await this.#writeEntry(destination.scheme, storageAddress, { channels }, ctx);
@@ -698,10 +698,10 @@ export default class ResourceTransfers {
     async #moveBytes(source: SelectedSource, destination: AddressedResourceSelection | null, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const removals = source.matchedScopes ?? (source.lineMarker === null ? [] : [source.lineMarker]);
         if (removals.length === 0) throw new InvalidOperationResultError("A scoped byte MOVE has no removal coordinates.");
-        const target = destination ?? { ...source, matcher: null, lineMarker: removals[0]! };
+        const target = destination ?? { ...source, matcher: null, lineMarker: removals[0] };
         const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler;
         const binding = await this.#resolveDataEntryAddress({ target: source.target, routedScheme: source.scheme, handler,
-            manifest: source.manifest as SchemeManifest & { category: "data" }, ctx, access: "write" });
+            manifest: source.manifest, ctx, access: "write" });
         if (binding.result !== null) return binding.result;
         if (binding.address === null) return MutationEffects.failure("entry-not-found", 404, "The MOVE source could not be resolved for deletion.");
         const read = await this.#readEntry(source.scheme, binding.address, ctx);

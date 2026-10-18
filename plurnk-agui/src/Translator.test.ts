@@ -106,7 +106,7 @@ test("{§agui-call-result} {§methods-invocation} a started execution is answere
     assert.deepEqual(results.map(({ toolCallId, messageId }) => [toolCallId, messageId]),
         [["1/1/2", "1/1/2/result"], ["1/1/3", "1/1/3/result"], ["1/1/1", "1/2/1"], ["1/1/1", "1/2/2"]],
         "the started command's receipt is no result; each observation answers it under its own coordinate, and a failed command's receipt is its result");
-    assert.equal(JSON.parse(results[2]!.content).content, "hi\n", "the observation carries the output");
+    assert.equal(JSON.parse(results[2].content).content, "hi\n", "the observation carries the output");
     assert.ok(!live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "an observation that answers a call is not ambient");
 
     const [snapshot] = tr.replay(rows.map(({ entry: row }) => row));
@@ -325,7 +325,7 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
         loop_seq: 1, turn_seq: 1, sequence: 8,
         tx: { body: "answer" },
         reasoning: "checked the evidence",
-    } as never));
+    }));
     assert.deepEqual(events.map((event) => event.type), [
         "STEP_STARTED",
         "REASONING_START",
@@ -377,7 +377,7 @@ test("live provider reasoning projects ordered deltas before SEND without duplic
         tx: { body: "answer" },
         reasoning: "checked the evidence",
         ...( { worker_id: 2 } as object),
-    } as never));
+    }));
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
 });
 
@@ -419,7 +419,7 @@ for (const streamed of [false, true]) {
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" }),
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
         ] : [];
-        events.push(...tr.logEntry(rows[0]!));
+        events.push(...tr.logEntry(rows[0]));
         tr = new Translator({ threadId: "th-1", runId: "resumed", continuation: tr.interrupt().continuation });
         for (const row of rows.slice(1)) events.push(...tr.logEntry(row));
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 2,
@@ -468,7 +468,7 @@ test("a retried physical request receives a separate reasoning message instead o
         loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "accepted reasoning",
         ...( { worker_id: 2 } as object),
-    } as never));
+    }));
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the accepted request's durable reasoning is not replayed");
 });
 
@@ -487,7 +487,7 @@ test("a prior rejected stream cannot suppress different durable reasoning, and f
         loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "accepted reasoning",
         ...( { worker_id: 2 } as object),
-    } as never));
+    }));
     const content = send.find((event) => event.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
     assert.equal(content?.delta, "accepted reasoning");
 });
@@ -502,7 +502,7 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
         loop_seq: 1, turn_seq: 7, sequence: 3,
         reasoning: "whole reasoning",
         ...( { worker_id: 2 } as object),
-    } as never));
+    }));
     assert.deepEqual(
         send.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
         ["whole reasoning"],
@@ -520,8 +520,8 @@ test("reasoning lifecycle violations fail at the projection boundary", () => {
 
 test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
     const tr = t();
-    const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 8, reasoning: "first" } as never));
-    const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 4, reasoning: "second" } as never));
+    const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 8, reasoning: "first" }));
+    const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 4, reasoning: "second" }));
     const absent = tr.logEntry(entry({ op: "SEND", turn_id: 3, loop_seq: 1, turn_seq: 3, sequence: 2 }));
     assert.deepEqual(
         [first, second].map((events) => events.find((event) => event.type === "REASONING_START")),
@@ -746,7 +746,7 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
         op: null,
         attrs: { kind: "emissionAttempt" },
         reasoning: "rejected response reasoning",
-    } as never));
+    }));
     assert.deepEqual(events.map((event) => event.type === "CUSTOM" ? event.name : event.type), ["STEP_STARTED", "plurnk.ambient"], "{§agui-ambient} it rides whole");
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
@@ -893,15 +893,15 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
     ];
     const live = rows.flatMap((row) => t().logEntry({ entry: row }));
     const carried = (type: string) => live.filter((event) => event.type === type).map((event) => (event as { metadata?: unknown }).metadata);
-    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]!), speech(rows[2]!, "the answer"), speech(rows[4]!, "parked")],
+    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]), speech(rows[2], "the answer"), speech(rows[4], "parked")],
         "an arrival carries its row's facts, and speech its heading's aside and its receipt too");
-    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]!), facts(rows[3]!)], "a call carries its row's facts, a bodiless WAIT's among them");
-    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]!), facts(rows[3]!)], "and so does its result, its status the failure");
+    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]), facts(rows[3])], "a call carries its row's facts, a bodiless WAIT's among them");
+    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]), facts(rows[3])], "and so does its result, its status the failure");
     const [snapshot] = t().replay(rows);
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(snapshot.messages.map((message) => "toolCalls" in message && message.toolCalls !== undefined
         ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata),
-        [facts(rows[0]!), facts(rows[1]!), facts(rows[1]!), speech(rows[2]!, "the answer"), facts(rows[3]!), facts(rows[3]!), speech(rows[4]!, "parked")],
+        [facts(rows[0]), facts(rows[1]), facts(rows[1]), speech(rows[2], "the answer"), facts(rows[3]), facts(rows[3]), speech(rows[4], "parked")],
         "the snapshot holds the same metadata on the same parts");
 });
 

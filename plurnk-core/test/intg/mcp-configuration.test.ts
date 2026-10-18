@@ -45,7 +45,7 @@ test("{§mcp-file-configuration} a global mcp.json supplies callable servers wit
         provenance: { kind: "file", source: file, reference: "/mcpServers/fixture" },
     }]);
     const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````fixture (echo)\n{\"message\":\"file-backed\"}\n````")] });
-    assert.equal(result!.status, 200);
+    assert.equal(result.status, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "json", after: 0 });
     assert.deepEqual(output.content, [{ type: "text", text: "file-backed" }]);
     assert.equal(await readFile(file, "utf8"), contents, "loading and invoking never rewrite operator configuration");

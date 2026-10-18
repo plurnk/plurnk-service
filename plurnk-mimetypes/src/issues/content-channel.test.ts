@@ -34,7 +34,7 @@ class MarkdownHandler extends BaseHandler {
         return `# ${typeof c === "string" ? c.replace(/<[^>]+>/g, "") : ""}`;
     }
     protected override toText(c: string | Uint8Array): string {
-        return this.content(c) as string;
+        return this.content(c);
     }
 }
 

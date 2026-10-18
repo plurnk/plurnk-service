@@ -10,7 +10,7 @@ export const replayState = (events: readonly AguiEvent[]): JSONValue | undefined
         if (event.type !== "STATE_DELTA") continue;
         assert.notEqual(state, undefined, "STATE_DELTA requires a preceding STATE_SNAPSHOT");
         for (const patch of event.delta) assert.equal(patch.op, "replace", `unexpected patch operation at ${patch.path}`);
-        state = jsonpatch.apply(event.delta, state!);
+        state = jsonpatch.apply(event.delta, state);
     }
     return state;
 };

@@ -39,7 +39,7 @@ test("LogVisibility resolves both published and log-bound anchors in the immutab
         { ok: true, range: [2, 2] },
     );
     assert.deepEqual(
-        LogVisibility.resolveScope({ marks: [published[1]!] }, identity, content, published),
+        LogVisibility.resolveScope({ marks: [published[1]] }, identity, content, published),
         { ok: true, range: [2, 2] },
     );
     assert.deepEqual(
@@ -118,10 +118,10 @@ test("{§line-anchor-disambiguation}: log curation uses published contextual anc
     const source = `${block("a")}\n${block("b")}`;
     const anchors = LineAnchors.tokens("worker:///source.md", source);
     assert.notEqual(anchors[3], anchors[10]);
-    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]!] }, "log:///1/2/3/READ", "target", [anchors[3]!]), {
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
         ok: true, range: [1, 1],
     });
-    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]!] }, "log:///1/2/3/READ", "target", [anchors[3]!]), {
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
         ok: true, range: null,
     });
 });

@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_db.ts";
@@ -22,7 +21,7 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected an operation");
             return engine.dispatch({ workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client",
-                statement: item.statement as PlurnkStatement });
+                statement: item.statement });
         };
         const source = "worker://peer/source.md";
         const target = `worker://${destination}/copy.md`;

@@ -7,7 +7,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn, ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, request } from "node:http";
 import { once } from "node:events";
@@ -104,7 +105,7 @@ const bootDaemon = (
                 clearTimeout(timer);
                 // The banner must report the BOUND port, not the configured one — booted with
                 // port 0 here, so a 0 in the field means a parser downstream gets garbage.
-                const address = new URL(match[1]!);
+                const address = new URL(match[1]);
                 if (Number(address.port) === 0) {
                     child.kill("SIGKILL");
                     rejectPromise(new Error(`banner agui= port unbound (configured-port leak): ${stdoutBuf}`));

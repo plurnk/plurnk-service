@@ -21,7 +21,7 @@ test("{§module-workspace-directory} lazy allocation is atomic, rename-stable, d
     await assert.rejects(stat(paths.stateDir), { code: "ENOENT" }, "constructing the host does not create storage");
     const directories = await Promise.all(Array.from({ length: 16 }, () => storage.directory(workspaceId, "@test/tool")));
     assert.equal(new Set(directories).size, 1);
-    const directory = directories[0]!;
+    const directory = directories[0];
     assert.ok(directory.startsWith(`${paths.stateDir}/workspaces/`));
     assert.equal((await stat(directory)).mode & 0o777, 0o700);
     await writeFile(join(directory, "retained.txt"), "tool state");

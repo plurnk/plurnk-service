@@ -100,9 +100,9 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
 
     it("names edit/new modules by their new path", () => {
         const syms = h.extractRaw(src);
-        const names = syms.filter((s) => s.kind === "module").map((s) => s.name);
-        assert.ok(names.includes("src/edit.js"));
-        assert.ok(names.includes("src/new.js"));
+        const names = new Set(syms.filter((s) => s.kind === "module").map((s) => s.name));
+        assert.ok(names.has("src/edit.js"));
+        assert.ok(names.has("src/new.js"));
     });
 
     it("emits hunks as `field` symbols contained by their file module", () => {

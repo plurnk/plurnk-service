@@ -22,8 +22,8 @@ test("{§agent-plugins-hosting} plugin skills follow source precedence and works
     const pluginSkill = join(plugin, "skills", "review");
     const override = join(root, "override", "review");
     for (const [directory, description] of [[standalone, "Global"], [pluginSkill, "Project plugin"], [override, "Workspace override"]]) {
-        await mkdir(directory!, { recursive: true });
-        await writeFile(join(directory!, "SKILL.md"), document(description!));
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, "SKILL.md"), document(description));
     }
     await writeFile(join(plugin, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "review-tools",
@@ -39,7 +39,7 @@ test("{§agent-plugins-hosting} plugin skills follow source precedence and works
     );
     const read = async (workspace: typeof a) => (await daemon.dispatchClientAction({
         workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] })],
-    }))[0]!;
+    }))[0];
     assert.match(String((await read(a)).content), /Project plugin/);
     assert.match(String((await read(b)).content), /Global/);
     const listed = await action(a.workspaceId, "list") as FunctionalityListResult;
@@ -79,7 +79,7 @@ test("{§skills-functionality} local additions are live, workspace-owned referen
     );
     const read = async (workspace: typeof alice) => (await daemon.dispatchClientAction({
         workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://review/guide.md"), { marks: [1, -1] })],
-    }))[0]!;
+    }))[0];
     for (const [index, workspace] of [alice, bob].entries()) {
         const added = await action(workspace.workspaceId, "add", {
             alias: "review", definition: { name: "review", source: sources[index + 1] },
@@ -154,7 +154,7 @@ test("{§skills-configuration} environment definitions replace standard roots; i
     const list = async () => (await action("list") as FunctionalityListResult).definitions;
     const read = async (alias: string) => (await daemon.dispatchClientAction({
         workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath(`skill://${alias}/SKILL.md`), { marks: [1, -1] })],
-    }))[0]!;
+    }))[0];
     const before = await list();
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.definition, { name: "review", source: join(sources[2], "review") });
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.provenance,

@@ -56,7 +56,7 @@ export const unfitResult = (
     "result-exceeds-budget",
     413,
     `${size.total} ${size.unit}${size.total === 1 ? "" : "s"}, ${tokens} tokens; ${remaining} tokens remain: `
-        + `${delivered > 0 ? `${delivered} ${size.unit}${delivered === 1 ? "" : "s"} delivered; ` : ""}`
+        + (delivered > 0 ? `${delivered} ${size.unit}${delivered === 1 ? "" : "s"} delivered; ` : "")
         + `${verb === "FIND" ? "FIND with a scope" : "READ a range"}, or KILL first.`,
     fields,
     { [`${size.unit}s`]: size.total, tokens, remaining, ...(delivered > 0 ? { delivered } : {}) },
@@ -79,7 +79,7 @@ export const resultPrefix = <T extends { readonly content: string }>(result: T, 
         ...(ordinals === undefined ? {} : { lineOrdinals: ordinals }),
         ...(view.range === undefined || returned === undefined
             ? {}
-            : { range: { ...view.range, returned: [returned[0], ordinals === undefined ? returned[0] + count - 1 : ordinals[count - 1]!] as [number, number] } }),
+            : { range: { ...view.range, returned: [returned[0], ordinals === undefined ? returned[0] + count - 1 : ordinals[count - 1]] as [number, number] } }),
     };
 };
 

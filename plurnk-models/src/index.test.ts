@@ -53,7 +53,7 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
 
 test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
     // The fixture derives from the catalog: Models.dev retires ids, and a literal rots.
-    const fireworks = Object.keys(catalogSnapshot()["fireworks-ai"]!);
+    const fireworks = Object.keys(catalogSnapshot()["fireworks-ai"]);
     const native = fireworks.find((id) => id.startsWith("accounts/fireworks/models/")
         && fireworks.filter((other) => other.endsWith(`/${id.split("/").at(-1)}`)).length === 1)!;
     const resolved = resolveModel("fireworks-ai", native.split("/").at(-1)!);

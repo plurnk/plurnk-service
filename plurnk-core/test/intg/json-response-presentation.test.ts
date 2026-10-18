@@ -25,7 +25,7 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
         : new Response(source, { headers: { "content-type": "application/json", "cache-control": "max-age=600" } }));
     let sequence = 0;
     const dispatch = async (dsl: string) => {
-        const parsed = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) });
+        const parsed = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) });
         const item = parsed.items.find((item) => item.kind === "statement");
         assert.equal(item?.kind, "statement", dsl);
         if (item?.kind !== "statement") throw new Error("operation did not parse");

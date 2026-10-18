@@ -114,13 +114,13 @@ export default class TextCoordinates {
             return null;
         }
         const index = this.#lineIndexAtOffset(offset);
-        const line = this.#lines[index]!;
+        const line = this.#lines[index];
         if (offset > line.contentEnd) return null;
         const offsets = this.#offsetsForLine(index);
         let low = 0, high = offsets.length;
         while (low < high) {
             const middle = (low + high) >>> 1;
-            if (offsets[middle]! < offset) low = middle + 1;
+            if (offsets[middle] < offset) low = middle + 1;
             else high = middle;
         }
         return offsets[low] !== offset
@@ -218,7 +218,7 @@ export default class TextCoordinates {
         let high = this.#lines.length;
         while (low < high) {
             const middle = Math.floor((low + high) / 2);
-            if (this.#lines[middle]!.start <= offset) low = middle + 1;
+            if (this.#lines[middle].start <= offset) low = middle + 1;
             else high = middle;
         }
         return Math.max(0, low - 1);
@@ -230,7 +230,7 @@ export default class TextCoordinates {
         if (line === undefined) return null;
         const offsets = this.#offsetsForLine(index);
         for (let i = offsets.length - 1; i >= 0; i -= 1) {
-            if (offsets[i]! <= offset) {
+            if (offsets[i] <= offset) {
                 return { line: index + 1, column: i + 1 };
             }
         }
@@ -255,7 +255,7 @@ export default class TextCoordinates {
     #offsetsForLine(index: number): number[] {
         let offsets = this.#columnOffsets.get(index);
         if (offsets !== undefined) return offsets;
-        const line = this.#lines[index]!;
+        const line = this.#lines[index];
         offsets = [line.start];
         let offset = line.start;
         for (const codePoint of this.#content.slice(line.start, line.contentEnd)) {

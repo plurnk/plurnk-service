@@ -35,7 +35,7 @@ test("{§problem-details} trailing-regex recovery states the matcher form withou
             assert.deepEqual(items.flatMap((item) => item.kind === "error" ? [item.error] : []), [], matcher);
             const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
             assert.deepEqual(statements.map(({ op }) => op), ["READ", "READ", "FIND", "READ"], "every operation is admitted ({§matcher-refusal})");
-            const refused = "matcher" in statements[1]! ? statements[1].matcher : null;
+            const refused = "matcher" in statements[1] ? statements[1].matcher : null;
             if (refused === null || refused === undefined || refused.dialect !== "unreadable") assert.fail(matcher);
             assert.equal(refused.message, "Regex matcher has trailing text after `/pattern/flags`.", matcher);
             assert.equal(refused.recovery, "Write only `/pattern/flags` in the matcher; flags are optional.", matcher);
@@ -56,7 +56,7 @@ test("{§trailing-slots} valid flags, scopes and asides do not become trailing-r
         assert.deepEqual(errors.map((error) => error.severity), Array(warnings).fill("warning"), heading);
         const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.equal(statements.length, 1, heading);
-        const statement = statements[0]!;
+        const statement = statements[0];
         if (statement.op !== "READ" || statement.matcher?.dialect !== "regex") assert.fail(heading);
         assert.equal(statement.matcher.pattern, "def copy", heading);
         assert.equal(statement.matcher.flags, flags, heading);
@@ -100,7 +100,7 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
     ] as const) {
         const errors = refusals(input);
         assert.ok(errors.length > 0, `${input} is refused`);
-        assert.equal(errors[0]!.recovery, recovery, input);
+        assert.equal(errors[0].recovery, recovery, input);
     }
     assert.equal(refusedMatcher("```FIND (a) /x/ ,/y/\n```").recovery,
         "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.", "{§regex-sed-range} gives the dialect's working form without synthesizing a query");

@@ -211,13 +211,13 @@ test("{§tokenomics-calibrated-readout} the loop's first reported prompt count f
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
             const m = packetSection(packet, "budget").match(/"tokens":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);
-            shown.push(Number(m![1]));
+            shown.push(Number(m[1]));
             ceilings.push(Number(packetSection(packet, "budget").match(/"budget":\s*(\d+)/)?.[1]));
             weights.push(packet.weight);
         }
         assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");
         assert.equal(ceilings[0], provider.inputCapacity, "before any response the model has no fixed factor: the capacity is the room");
-        const fixed = Math.floor(provider.inputCapacity! / (reported / weights[0]!));
+        const fixed = Math.floor(provider.inputCapacity! / (reported / weights[0]));
         assert.deepEqual(ceilings.slice(1), Array(3).fill(fixed), "the first response fixes the conversion for every later packet of the loop");
         assert.notEqual(new Set(weights.slice(1)).size, 1, "later packets weigh differently, so a sliding conversion would have moved");
         assert.notEqual(fixed, provider.inputCapacity, "the fixture exercises a non-unit conversion");

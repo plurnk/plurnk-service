@@ -78,7 +78,7 @@ test("{§agui-provider-routes}: each alias lists the route a worker seeded from 
     await withDaemon(null, async (_db, daemon) => {
         const listed = daemon.listProviders().aliases.find(({ alias }) => alias === spec.alias);
         assert.ok(listed?.active, "the standing selection is listed active");
-        const { active: _active, inputCapacity: _capacity, ...route } = listed!;
+        const { active: _active, inputCapacity: _capacity, ...route } = listed;
         assert.deepEqual(route, { alias: spec.alias, provider: "openai", model: "listed-model", effort: "high", effortSource: "default" },
             "the alias's own effort, given rather than chosen");
         const { workspaceId } = await daemon.createWorkspace({ name: "listed-route" });

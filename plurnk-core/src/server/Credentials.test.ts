@@ -125,7 +125,7 @@ test("{§credential-sessions} a subject's live browser sign-ins are listed by fa
         { family: "second", subject: "operator", createdAt: 2_000, expiresAt: 7_000, clients: ["browser"] },
     ], "established when first issued into; expiring with the last of its session credentials");
     assert.ok(![cookie.token, access.token].some((token) => JSON.stringify(listed).includes(token)), "no token is told");
-    assert.ok(Object.isFrozen(listed) && Object.isFrozen(listed[0]) && Object.isFrozen(listed[0]!.clients));
+    assert.ok(Object.isFrozen(listed) && Object.isFrozen(listed[0]) && Object.isFrozen(listed[0].clients));
     assert.deepEqual(authority.sessions("someone").map(({ family }) => family), ["theirs"]);
     assert.deepEqual(authority.sessions("nobody"), []);
     assert.equal(authority.verify("first"), null, "a family is a handle, never a credential");

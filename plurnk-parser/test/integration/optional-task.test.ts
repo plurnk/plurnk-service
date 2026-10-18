@@ -24,7 +24,7 @@ test("{§turn-shape} omitted WAIT does not hide a sibling's refused matcher ({§
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["READ", "FIND"]);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), []);
-    const find = statements[1]!;
+    const find = statements[1];
     assert.equal(find.op === "FIND" && find.matcher?.dialect === "unreadable" ? find.matcher.message : null,
         "Regex matcher has trailing text after `/pattern/flags`.");
 });

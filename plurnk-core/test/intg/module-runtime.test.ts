@@ -12,7 +12,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
+import { type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import type Exec from "../../src/schemes/Exec.ts";
@@ -74,7 +74,7 @@ const readStatement = (pathname: string): ReadStatement => ({
         pathname,
         query: null,
         fragment: null,
-    } as UrlPath,
+    },
     lineMarker: null,
     matcher: null, body: null,
     position: {

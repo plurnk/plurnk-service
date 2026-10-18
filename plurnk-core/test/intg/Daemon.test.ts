@@ -348,7 +348,7 @@ test("{§module-action-registration} passive scoped actions validate identities 
         assert.deepEqual(await daemon.invokeModuleAction(`${scope}.passive`, {}, context), { inspected: true });
         const problem = await rejectedProblem(() => daemon.invokeModuleAction(`${scope}.passive`, {}, { ...context, workspaceId: 999_999 }));
         assert.equal(problem.status, 404);
-        assert.match(problem.detail!, /does not exist/);
+        assert.match(problem.detail, /does not exist/);
     }
     assert.equal(calls, 2, "invalid contexts cannot reach a passive handler");
     assert.equal(activations, 0, "identity validation never starts the workspace's capabilities");
@@ -381,7 +381,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
             executor: {
                 ...base.executor,
                 run: async () => { executions.push(id); return { status: 200 }; },
-            } as unknown as Executor,
+            },
         };
     };
     const capabilityModule = {
@@ -405,7 +405,7 @@ test("Daemon: workspace Functionality is shared, demand-activated, and durable a
     // A person's client operation acting for one of the workspace's workers ({§actor-boundary-client-operations}).
     const dispatch = async (daemon: Daemon, id: number, workerId: number) => (await daemon.dispatchClientAction({
         workspaceId: id, actor: TEST_OWNER, contextWorkerId: workerId, statements: [Dsl.buildExec({ runtime: tag, command: "fixture" })],
-    }))[0]!;
+    }))[0];
     const daemon = new Daemon({ db, provider: null });
     assert.throws(() => daemon.registerWorkspaceCapabilityProvider("incomplete fixture",
         { activate: async () => undefined } as never), /requires activate and deactivate functions/);
@@ -806,7 +806,7 @@ test("{§workspace-name} workspace.create with a project root and no name is nam
             const far = (await rpcCall(ws, 3, "workspace.create", { projectRoot: outside })).result as { name: string };
             assert.equal(far.name, outside, "outside the home the name is the absolute path");
             await assert.rejects(daemon.createWorkspace({ name: first.name, projectRoot: inside }), (error: unknown) =>
-                error instanceof OperationFailureError && /name-conflict$/u.test(error.result.problem?.type ?? ""), "an explicit name that exists is a conflict, never a selection");
+                error instanceof OperationFailureError && (error.result.problem?.type ?? "").endsWith("name-conflict"), "an explicit name that exists is a conflict, never a selection");
             // The default is a convention, not a mapping: a renamed workspace is not re-selected by its old default.
             await daemon.renameWorkspace(first.id, "renamed-workspace");
             const fresh = (await rpcCall(ws, 4, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
@@ -836,7 +836,7 @@ test("{§methods-workspace-attach} read-only selection uses exactly the ID, lite
             assert.equal((await daemon.attachWorkspace({ name: literal.workspaceName })).workspaceId, literal.workspaceId);
             for (const selection of [{ workspaceId: 999999 }, { name: "absent" }, { projectRoot: `${projectRoot}-absent` }]) {
                 await assert.rejects(daemon.attachWorkspace(selection), (error: unknown) =>
-                    error instanceof OperationFailureError && error.result.status === 404 && /workspace-not-found$/u.test(error.result.problem?.type ?? ""));
+                    error instanceof OperationFailureError && error.result.status === 404 && (error.result.problem?.type ?? "").endsWith("workspace-not-found"));
             }
             assert.deepEqual(await daemon.listWorkspaces(), before);
             assert.deepEqual(await daemon.listWorkers(folder.workspaceId), []);
@@ -844,7 +844,7 @@ test("{§methods-workspace-attach} read-only selection uses exactly the ID, lite
             assert.deepEqual(events, [], "selection emits no creation or activation events");
             await daemon.renameWorkspace(folder.workspaceId, "renamed-selection");
             await assert.rejects(daemon.attachWorkspace({ projectRoot }), (error: unknown) =>
-                error instanceof OperationFailureError && error.result.status === 404 && /workspace-not-found$/u.test(error.result.problem?.type ?? ""),
+                error instanceof OperationFailureError && error.result.status === 404 && (error.result.problem?.type ?? "").endsWith("workspace-not-found"),
                 "a stored project folder does not become a second lookup identity after rename");
             assert.equal((await daemon.attachWorkspace({ name: "renamed-selection" })).workspaceId, folder.workspaceId);
         } finally { unsubscribe(); }
@@ -865,7 +865,7 @@ test("{§methods-workspace-attach} selection rejects ambiguous, empty and invali
         ] as const;
         for (const [selection, code] of cases) {
             await assert.rejects(daemon.attachWorkspace(selection as Parameters<ApplicationPort["attachWorkspace"]>[0]), (error: unknown) =>
-                error instanceof OperationFailureError && error.result.status === 400 && error.result.problem?.type.endsWith(`/${code}`) === true,
+                error instanceof OperationFailureError && error.result.status === 400 &&  error.result.problem?.type.endsWith(`/${code}`),
                 JSON.stringify(selection));
         }
         assert.deepEqual(await daemon.listWorkspaces(), []);
@@ -915,7 +915,7 @@ test("{§workspace-name} a folderless workspace is created, listed, renamed and 
         const listed = (await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId);
         assert.equal(listed?.project_root, null, "listed without a folder");
         await assert.rejects(daemon.renameWorkspace(headless.workspaceId, "other"), (error: unknown) =>
-            error instanceof OperationFailureError && /name-conflict$/u.test(error.result.problem?.type ?? ""));
+            error instanceof OperationFailureError && (error.result.problem?.type ?? "").endsWith("name-conflict"));
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.name, "headless", "a collision renames nothing");
         const renamed = await daemon.renameWorkspace(headless.workspaceId, "headless-2");
         assert.equal(renamed.name, "headless-2");
@@ -940,7 +940,7 @@ const RETAINED = [
 ];
 const nameInvalid = (detail: RegExp) => (error: unknown): boolean =>
     error instanceof OperationFailureError && error.result.status === 400
-    && /\/daemon\/input\/name-invalid$/u.test(error.result.problem?.type ?? "") && detail.test(error.result.problem?.detail ?? "");
+    && (error.result.problem?.type ?? "").endsWith("/daemon/input/name-invalid") && detail.test(error.result.problem?.detail ?? "");
 
 test("{§workspace-name} decimal ID spellings are refused at creation and rename without changing state", async () => {
     await withDaemon(null, async (_db, daemon) => {
@@ -1042,7 +1042,7 @@ test("{§workspace-name} a root spelled with '.' or '..' derives the name of the
             }
             await assert.rejects(daemon.createWorkspace({ projectRoot: `${inside}/${String.fromCharCode(0xd800)}` }), (error: unknown) =>
                 error instanceof OperationFailureError && error.result.status === 400
-                && /\/project-root-invalid$/u.test(error.result.problem?.type ?? "")
+                && (error.result.problem?.type ?? "").endsWith("/project-root-invalid")
                 && error.result.problem?.detail === "projectRoot is not well-formed Unicode: it holds an unpaired surrogate.");
             assert.equal((await daemon.listWorkspaces()).length, 1, "the refused root made no workspace");
         } finally { await rm(inside, { recursive: true, force: true }); }
@@ -1357,7 +1357,7 @@ test("{§methods-op-mirror} the client-interface seam — dispatchClientAction r
             const entries: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
             const operate = async (statement: PlurnkStatement) =>
-                (await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [statement] }))[0]!;
+                (await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [statement] }))[0];
 
             // WRITE then READ worker:///x through the seam — a positive roundtrip proving dispatch + journal.
             const wrote = await operate(Dsl.buildEdit({ target: "worker:///x", content: "seam" }));
@@ -1416,9 +1416,9 @@ test("{§connection-lifecycle} {§actor-boundary-client-operations} one client o
             // A second person's operation is its own loop in the same runtime worker, attributed to that person.
             await operation("test://secondary", [Dsl.buildRead({ target: "worker:///x" })]);
             assert.equal(heard.length, 2);
-            assert.equal(heard[1]!.workerId, workerId, "every person's operation journals in the one runtime worker");
-            assert.notEqual(heard[1]!.loopId, loopId, "each operation owns its own loop");
-            assert.equal(await promptSource(heard[1]!.loopId), "test://secondary");
+            assert.equal(heard[1].workerId, workerId, "every person's operation journals in the one runtime worker");
+            assert.notEqual(heard[1].loopId, loopId, "each operation owns its own loop");
+            assert.equal(await promptSource(heard[1].loopId), "test://secondary");
             assert.deepEqual((await daemon.listWorkers(created.id)).map(({ origin }) => origin), ["_plurnk"],
                 "client operations mint no worker beyond the runtime worker");
         } finally { ws.close(); }
@@ -1463,8 +1463,8 @@ test("the client-interface seam — metadata reads surface providers, workspaces
             const providers = daemon.listProviders();
             const active = providers.aliases.find((a) => a.active);
             assert.ok(active !== undefined, "listProviders reports the active alias");
-            assert.equal(active!.alias, "mocktest");
-            assert.equal(typeof active!.inputCapacity, "number", "the active alias carries resolved input capacity");
+            assert.equal(active.alias, "mocktest");
+            assert.equal(typeof active.inputCapacity, "number", "the active alias carries resolved input capacity");
 
             // workspaces + workers — the created workspace and its model worker are present.
             const workspaces = await daemon.listWorkspaces();
@@ -1533,7 +1533,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x" })).entry!;
             const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
             assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
-            const [channel, chan] = found!;
+            const [channel, chan] = found;
             assert.equal(chan.content, "hello world");
             assert.equal(chan.contentLength, 11);
 
@@ -1655,7 +1655,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
             await daemon.registerRuntime(fakeRegistration("seamtag"));
             // The tag is live — the engine dispatches to the registered executor.
             const [exec] = await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: "seamtag", command: "ping" })] });
-            assert.equal(exec!.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
+            assert.equal(exec.status, 200, "the module runtime is dispatchable through the seam's dispatch path");
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
             await assert.rejects(() => daemon.registerRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
@@ -2079,7 +2079,7 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
                             executor: {
                                 ...base.executor,
                                 run: async () => { executions.push(activeWorkspaceId); return { status: 200 }; },
-                            } as unknown as Executor,
+                            },
                         }],
                     });
                 },
@@ -2100,7 +2100,7 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
             contextWorkerId: modelWorkerId,
             statements: [Dsl.buildExec({ runtime: tag, command: "acting for the model worker" })],
         });
-        assert.equal(attached!.status, 200);
+        assert.equal(attached.status, 200);
         assert.deepEqual(activated, [workspaceId], "residency is acquired for the workspace");
         assert.deepEqual(executions, [workspaceId], "the shared runtime ran");
         const runtimeWorkerId = await daemon.ensureRuntimeWorker(workspaceId);
@@ -2123,7 +2123,7 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
             actor: TEST_OWNER,
             statements: [Dsl.buildExec({ runtime: tag, command: "acting for no worker" })],
         });
-        assert.equal(unattached!.status, 200, "an operation acting for no worker can use the workspace runtime");
+        assert.equal(unattached.status, 200, "an operation acting for no worker can use the workspace runtime");
         assert.deepEqual(executions, [workspaceId, workspaceId]);
 
         // The worker an operation acts for must be a model worker of the workspace.

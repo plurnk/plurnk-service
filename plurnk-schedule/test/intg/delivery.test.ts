@@ -76,7 +76,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         const rows = await db.test_log_entries_by_loop.all({ loop_id: (await db.test_all_loops.all() as Array<{ id: number; worker_id: number }>).find((loop) => loop.worker_id === workerId)!.id }) as LogRow[];
         const arrivals = rows.filter((row) => row.op === "SEND" && row.origin === "_plurnk" && (JSON.parse(row.attrs) as { kind?: string }).kind === "message");
         assert.equal(arrivals.length, 1, "the delivery published exactly one arrival row");
-        assert.equal(arrivals[0]!.source, "schedule://beat", "the arrival names the schedule as its causal source");
+        assert.equal(arrivals[0].source, "schedule://beat", "the arrival names the schedule as its causal source");
 
         const deadline = Date.now() + 10_000;
         let next: string | null | undefined;

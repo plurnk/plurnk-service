@@ -80,47 +80,52 @@
         // static members is how this codebase names a module-level namespace (Results, Namespace, FileAddress).
         "unicorn/consistent-function-scoping": "off",
         "typescript/no-extraneous-class": "off",
+        // Idioms the fixer batch brought to zero (#1162): denied.
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-unnecessary-template-expression": "error",
+        "typescript/no-unnecessary-type-arguments": "error",
+        "typescript/no-unnecessary-boolean-literal-compare": "error",
+        "typescript/no-this-alias": "error",
+        "unicorn/no-array-reverse": "error",
+        "unicorn/prefer-string-starts-ends-with": "error",
+        "unicorn/prefer-array-find": "error",
+        "unicorn/prefer-array-flat-map": "error",
+        "unicorn/prefer-set-size": "error",
+        "unicorn/no-useless-fallback-in-spread": "error",
+        "unicorn/no-new-array": "error",
+        "unicorn/no-thenable": "error",
+        "oxc/no-accumulating-spread": "error",
+        // `[...text].length` counts code points, the column unit of text coordinates, and `[...map.keys()]` snapshots a
+        // collection the loop body settles; the rule reads both as useless and its fix changes their meaning.
+        "unicorn/no-useless-spread": "off",
+        // The MCP SDK transports are handler-property APIs (`onmessage`, `onclose`), not EventTargets.
+        "unicorn/prefer-add-event-listener": "off",
+        // A short list checked with `includes` reads as the list it is; the rule is a performance opinion.
+        "unicorn/prefer-set-has": "off",
         // Counted debts, 2026-10-18 (#1162): warnings until their sites are rewritten, batch by batch.
         "eslint/no-shadow": "warn",
         "promise/always-return": "warn",
         "unicorn/no-array-sort": "warn",
-        "unicorn/no-array-reverse": "warn",
-        "unicorn/prefer-string-starts-ends-with": "warn",
-        "unicorn/prefer-array-find": "warn",
-        "unicorn/prefer-array-flat-map": "warn",
-        "unicorn/prefer-set-has": "warn",
-        "unicorn/prefer-set-size": "warn",
-        "unicorn/no-useless-spread": "warn",
-        "unicorn/no-useless-fallback-in-spread": "warn",
-        "unicorn/no-new-array": "warn",
-        "unicorn/prefer-add-event-listener": "warn",
-        "unicorn/no-thenable": "warn",
         "oxc/no-map-spread": "warn",
-        "oxc/no-accumulating-spread": "warn",
-        "typescript/no-this-alias": "warn",
-        "typescript/consistent-type-imports": "warn",
         "typescript/explicit-module-boundary-types": "warn",
-        // Type-aware strictness, counted 2026-10-18: unsafe assertions 3,044, unnecessary assertions 1,968,
-        // unbound methods 248, enum comparisons 159, base-to-string 134, template expressions 52, misused
-        // spreads 41, type conversions 32, consistent-return 31 — each a batch of its own (#1162).
+        // Type-aware strictness, counted after the fixer batch: unsafe assertions 2,999, unbound methods 248, enum
+        // comparisons 159, base-to-string 134, misused spreads 41, type conversions 32, consistent-return 31 — each a
+        // batch of its own. 33 assertions tsgolint reads as unnecessary are ones tsc still needs (from `unknown` or
+        // `object`), so that rule stays a warning until the two checkers agree (#1162).
         "typescript/no-unsafe-type-assertion": "warn",
         "typescript/no-unnecessary-type-assertion": "warn",
         "typescript/unbound-method": "warn",
         "typescript/no-unsafe-enum-comparison": "warn",
         "typescript/no-base-to-string": "warn",
-        "typescript/no-unnecessary-template-expression": "warn",
         "typescript/no-misused-spread": "warn",
         "typescript/no-unnecessary-type-conversion": "warn",
         "typescript/consistent-return": "warn",
         // Type-aware rules the suspicious and perf categories brought in, counted 2026-10-18: template expressions 26,
-        // redundant type constituents 26, sort without compare 23, type parameters 9, type arguments 8, boolean
-        // literal compares 7 (#1162).
+        // redundant type constituents 26, sort without compare 23, type parameters 9 (#1162).
         "typescript/restrict-template-expressions": "warn",
         "typescript/no-redundant-type-constituents": "warn",
         "typescript/require-array-sort-compare": "warn",
-        "typescript/no-unnecessary-type-parameters": "warn",
-        "typescript/no-unnecessary-type-arguments": "warn",
-        "typescript/no-unnecessary-boolean-literal-compare": "warn"
+        "typescript/no-unnecessary-type-parameters": "warn"
     },
     "overrides": [
         {

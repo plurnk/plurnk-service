@@ -16,7 +16,8 @@ import type {
     RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
-import ServerConnection, { type ServerCatalog } from "./client.ts";
+import type ServerConnection from "./client.ts";
+import { type ServerCatalog } from "./client.ts";
 import type { ContentBlock, Progress, Tool } from "@modelcontextprotocol/client";
 import { resourcePath } from "./McpResources.ts";
 import { HeaderDeclarationError } from "./protocolHeaders.ts";

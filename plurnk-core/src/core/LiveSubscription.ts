@@ -43,7 +43,7 @@ export default class LiveSubscription {
         const concluded = (produced: ChannelProducerResult): ChannelProducerResult => {
             if (!asked || produced.status !== 499) return produced;
             const exitCode = (produced as { exitCode?: unknown }).exitCode;
-            return typeof exitCode === "number" ? { status: 200, exitCode } as ChannelProducerResult : { status: 200 };
+            return typeof exitCode === "number" ? { status: 200, exitCode } : { status: 200 };
         };
         this.#terminal = {
             result: concluded(result), summary,

@@ -50,7 +50,7 @@ test("{§question-tool}: an answered question writes the standard ElicitResult",
         },
     }));
     assert.equal(result.status, 200);
-    assert.deepEqual(JSON.parse(writes[0]![1]), { action: "accept", content: { branch: "main" } });
+    assert.deepEqual(JSON.parse(writes[0][1]), { action: "accept", content: { branch: "main" } });
     assert.deepEqual(states, ["results:closed"]);
 });
 
@@ -78,7 +78,7 @@ test("{§question-tool}: a cancelled interaction returns the standard cancel act
         interact: async () => ({ status: "cancelled" }),
     }));
     assert.equal(result.status, 200);
-    assert.deepEqual(JSON.parse(writes[0]![1]), { action: "cancel" });
+    assert.deepEqual(JSON.parse(writes[0][1]), { action: "cancel" });
 });
 
 test("{§question-tool}: a malformed body fails with the standard shape steer", async () => {

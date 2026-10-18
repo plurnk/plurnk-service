@@ -99,7 +99,7 @@ test("{§digest-cache-ledger}: consecutive requests of a loop carry their shared
     assert.ok(prompt(2).startsWith(prompt(1)) && prompt(3).startsWith(prompt(2)), "the fixture prompts grow by extension");
     // The prefix's share of the packet estimate, applied to the reported input of 100 tokens.
     const cacheable = [0, Math.round((100 * contentWeight(prompt(1))) / contentWeight(prompt(2))), Math.round((100 * contentWeight(prompt(2))) / contentWeight(prompt(3)))];
-    assert.ok(cacheable[1]! > 0 && cacheable[1]! < 100 && cacheable[2]! > 0 && cacheable[2]! < 100, "the fixture prefixes are proper shares of the reported input");
+    assert.ok(cacheable[1] > 0 && cacheable[1] < 100 && cacheable[2] > 0 && cacheable[2] < 100, "the fixture prefixes are proper shares of the reported input");
 
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
         provider_requests: Array<{ id: number; adjacentPrefixTokensEstimate: number | null; cachedTokens: number | null; inputTokens: number | null }>;
@@ -116,9 +116,9 @@ test("{§digest-cache-ledger}: consecutive requests of a loop carry their shared
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     const turnLines = markdown.split("\n").filter((line) => /^T\d+ \(model turn/u.test(line));
     assert.equal(turnLines.length, 3);
-    assert.match(turnLines[0]!, / cost=\$0\.01 cache=0\/100(?: |$)/u, "the denominator is reported input, including the loop's first request");
-    assert.match(turnLines[1]!, / cost=\$0\.01 cache=7\/100(?: |$)/u);
-    assert.match(turnLines[2]!, / cost=\$0\.01 cache=\?\/100(?: |$)/u, "a provider that reported no cache field reads as ?");
+    assert.match(turnLines[0], / cost=\$0\.01 cache=0\/100(?: |$)/u, "the denominator is reported input, including the loop's first request");
+    assert.match(turnLines[1], / cost=\$0\.01 cache=7\/100(?: |$)/u);
+    assert.match(turnLines[2], / cost=\$0\.01 cache=\?\/100(?: |$)/u, "a provider that reported no cache field reads as ?");
     assert.match(
         markdown,
         /^## Workspace #\d+ — cache-ledger\n\nCache: 7 of 200 reported input tokens read from cache \(3.5%\) over 2 requests · 1 missing input or cache usage \(excluded\)$/mu,
@@ -157,11 +157,11 @@ test("{§digest-cache-ledger}: measured cache ratios include first requests, cro
     assert.equal(requests.length, 9, "every physical request is accounted, including retries");
     assert.deepEqual(requests.map(({ cachedTokens, inputTokens }) => [cachedTokens, inputTokens]),
         [[80, 100], [90, 100], [95, 100], [99, 100], [60, 100], [null, 100], [20, null], [null, null], [0, 0]]);
-    assert.equal(requests[0]!.adjacentPrefixTokensEstimate, 0);
-    assert.equal(requests[1]!.adjacentPrefixTokensEstimate, 100);
-    assert.ok(requests[2]!.adjacentPrefixTokensEstimate! < 95, "the local prefix estimate is not a cache-read limit");
-    assert.equal(requests[3]!.adjacentPrefixTokensEstimate, 0, "a new loop resets only the adjacent-prefix diagnostic");
-    assert.equal(requests[4]!.adjacentPrefixTokensEstimate, null, "missing packets affect only the optional prefix estimate");
+    assert.equal(requests[0].adjacentPrefixTokensEstimate, 0);
+    assert.equal(requests[1].adjacentPrefixTokensEstimate, 100);
+    assert.ok(requests[2].adjacentPrefixTokensEstimate! < 95, "the local prefix estimate is not a cache-read limit");
+    assert.equal(requests[3].adjacentPrefixTokensEstimate, 0, "a new loop resets only the adjacent-prefix diagnostic");
+    assert.equal(requests[4].adjacentPrefixTokensEstimate, null, "missing packets affect only the optional prefix estimate");
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /Cache: 424 of 500 reported input tokens read from cache \(84.8%\) over 6 requests · 3 missing input or cache usage \(excluded\)/u);
     assert.match(markdown, /cache=170\/200/u, "same-turn physical requests sum both measured quantities");

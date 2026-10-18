@@ -3,11 +3,11 @@ import { join, relative } from "node:path";
 const root = process.cwd();
 const walk = (dir, out = []) => { for (const e of readdirSync(dir)) { if (e === "node_modules" || e === "dist" || e === ".git" || e === "generated") continue; const p = join(dir, e); const s = statSync(p); if (s.isDirectory()) walk(p, out); else if (/\.(ts|mjs|js|md|sql|json|sh|py)$/.test(e)) out.push(p); } return out; };
 const files = walk(root);
-const specs = files.filter((f) => /\/SPEC\.md$/.test(f));
+const specs = files.filter((f) => f.endsWith("/SPEC.md"));
 const decl = new Map(); // tag -> {spec, line}
 for (const f of specs) { const lines = readFileSync(f, "utf8").split("\n"); lines.forEach((l, i) => { for (const m of l.matchAll(/(?<![{\w§-])§([a-z][a-z0-9-]*[a-z0-9])(?![\w-}])/g)) { const tag = m[1]; if (!decl.has(tag)) decl.set(tag, { spec: relative(root, f), line: i + 1 }); } }); }
 const cites = new Map(); // tag -> {code, tests, specs, docs}
-for (const f of files) { const rel = relative(root, f); const kind = /\.test\.|\/test\//.test(rel) ? "tests" : /SPEC\.md$/.test(rel) ? "specs" : /\.md$/.test(rel) ? "docs" : "code"; const text = readFileSync(f, "utf8"); for (const m of text.matchAll(/\{§([a-z0-9][a-z0-9-]*)\}/g)) { const t = m[1]; const c = cites.get(t) ?? { code: 0, tests: 0, specs: 0, docs: 0 }; c[kind]++; cites.set(t, c); } }
+for (const f of files) { const rel = relative(root, f); const kind = /\.test\.|\/test\//.test(rel) ? "tests" : rel.endsWith("SPEC.md") ? "specs" : rel.endsWith(".md") ? "docs" : "code"; const text = readFileSync(f, "utf8"); for (const m of text.matchAll(/\{§([a-z0-9][a-z0-9-]*)\}/g)) { const t = m[1]; const c = cites.get(t) ?? { code: 0, tests: 0, specs: 0, docs: 0 }; c[kind]++; cites.set(t, c); } }
 const rows = [...decl.entries()].map(([tag, d]) => ({ tag, ...d, ...(cites.get(tag) ?? { code: 0, tests: 0, specs: 0, docs: 0 }) }));
 const unenforced = rows.filter((r) => r.code === 0), untested = rows.filter((r) => r.tests === 0), orphan = rows.filter((r) => r.code + r.tests + r.docs === 0 && r.specs <= 1);
 console.log(`declared tags: ${rows.length} across ${specs.length} SPECs`);

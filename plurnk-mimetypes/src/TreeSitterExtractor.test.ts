@@ -52,7 +52,7 @@ describe("TreeSitterExtractor", () => {
                             childCount: 2,
                             hasError: true,
                             child: (index) => [errorNode, missingNode][index] ?? null,
-                        } as TreeSitterNode & { readonly hasError: boolean },
+                        },
                     }),
                 };
             }

@@ -7,7 +7,7 @@ import { domToMarkdown } from "./domToMarkdown.ts";
 
 const md = (html: string): string => {
     const { document } = parseHTML(`<html><body>${html}</body></html>`);
-    return domToMarkdown(document.documentElement!);
+    return domToMarkdown(document.documentElement);
 };
 
 test("prose escaping never fabricates markdown structure", () => {

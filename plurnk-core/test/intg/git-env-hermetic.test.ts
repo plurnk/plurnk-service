@@ -234,7 +234,7 @@ test("automatic inspection refuses a supplied repository declaring a filter prog
             db, workspaceId, workerId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
-            pushNotice: (notice) => { notices.push(notice as Record<string, unknown>); },
+            pushNotice: (notice) => { notices.push(notice); },
         };
         await GitMembership.indexGitMembership(ctx);
         await GitMembership.indexGitMembership(ctx);

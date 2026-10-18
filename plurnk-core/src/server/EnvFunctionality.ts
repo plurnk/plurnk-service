@@ -52,7 +52,7 @@ const DEFINITION: JsonSchema = {
     properties: {
         value: { type: "string", description: "The exact value, used verbatim. No interpolation, no escapes." },
     },
-} as unknown as JsonSchema;
+};
 
 export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet> {
     // {§env-scheme} — the registry as this family's own address space, env:///NAME.
@@ -116,7 +116,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         return EnvCatalog.candidates(files, {
             ...(query.query === undefined ? {} : { query: query.query }),
             ...(query.source === undefined ? {} : { source: query.source }),
-        }).filter(({ alias }) => !reserved(alias)) as readonly FunctionalityCandidate[];
+        }).filter(({ alias }) => !reserved(alias));
     }
 
     async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {

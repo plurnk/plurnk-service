@@ -120,7 +120,7 @@ for (const [headers, seconds] of [
         const lifecycle = new LoopLifecycle(db);
         const [parked] = await lifecycle.parked(workerId);
         assert.equal(parked?.wait_poll_at, Math.ceil(10_000 + seconds * 1000));
-        assert.equal(await lifecycle.wake(loopId, { revision: parked!.wait_revision, dueAt: parked!.wait_poll_at! }), true);
+        assert.equal(await lifecycle.wake(loopId, { revision: parked.wait_revision, dueAt: parked.wait_poll_at }), true);
         assert.equal(await lifecycle.status(loopId), 100, "expiry queues the same loop");
         assert.equal(await lifecycle.status(childLoopId), 102, "expiry does not cancel or conclude the child");
         assert.equal(await lifecycle.result(loopId), null);
@@ -153,8 +153,8 @@ test("{§worker-wait-timing} an early wake retires the override; a later bare WA
     assert.equal((await run("WAIT")).status, 202);
     const [second] = await lifecycle.parked(workerId);
     assert.equal(second?.wait_poll_at, 311_000);
-    assert.equal(second?.wait_revision, first!.wait_revision + 1);
-    assert.equal(await lifecycle.wake(loopId, { revision: first!.wait_revision, dueAt: 610_000 }), false,
+    assert.equal(second?.wait_revision, first.wait_revision + 1);
+    assert.equal(await lifecycle.wake(loopId, { revision: first.wait_revision, dueAt: 610_000 }), false,
         "the previous timer cannot end the new park");
 });
 

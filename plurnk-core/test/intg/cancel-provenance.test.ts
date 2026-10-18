@@ -187,7 +187,7 @@ test("{§worker-lifecycle-total-reap}: external cancellation terminalizes the du
                 const row = rows.find(({ id }) => id === loopId);
                 assert.ok(row);
                 assert.equal(row?.terminated_by, "cancel");
-                assert.equal(terminalResult(row!).problem?.reason, "operator cancelled the scope");
+                assert.equal(terminalResult(row).problem?.reason, "operator cancelled the scope");
             }
 
             const notes = await waitFor(

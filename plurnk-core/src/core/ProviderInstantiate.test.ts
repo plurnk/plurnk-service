@@ -38,7 +38,7 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
     globalThis.fetch = ((u: string | URL | Request, ...rest: unknown[]) => {
         hit.push(String(u));
         return (realFetch as (...a: unknown[]) => Promise<Response>)(u, ...rest);
-    }) as typeof fetch;
+    });
     // Both endpoints are ports this process bound and released a moment ago, so each is closed by
     // evidence rather than by assumption — we assert routing, not a live response, so the probe's
     // connection failure is expected and irrelevant.
@@ -82,7 +82,7 @@ test("{§provider-surface-identity} a pollable provider exposes the lower operat
             return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         }
         throw new Error(`unexpected request: ${String(input)}`);
-    }) as typeof fetch;
+    });
     try {
         const provider = await ProviderInstantiate.instantiateProvider(
             { alias: "tight", provider: "openai", model: "local", baseUrl: "http://local.test/v1" },
@@ -115,7 +115,7 @@ test("the process cache separates aliases and provider tuning for the same wire 
         }
         if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         throw new Error(`unexpected request: ${String(input)}`);
-    }) as typeof fetch;
+    });
     const spec = { alias: "cachecap", provider: "openai", model: "local", baseUrl: "http://cache.test/v1" };
     try {
         process.env[key] = "32000";
@@ -142,7 +142,7 @@ test("a registered handle cannot shadow changed provider tuning", async () => {
         }
         if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         throw new Error(`unexpected request: ${String(input)}`);
-    }) as typeof fetch;
+    });
     try {
         process.env[key] = "32000";
         const injected = new Mock({ contextWindow: 32_000, responses: [] });

@@ -15,7 +15,7 @@ import { type PlurnkStatement, type ProblemDetails } from "@plurnk/plurnk-contra
 import { findStmt, readStmt } from "./_dsl.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
+import type { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { makeMockResponse } from "./_mock.ts";
@@ -122,7 +122,7 @@ test("{§agent-skills-name} {§skills-resources}: discovery, installation and UR
     const context = { scope: "workspace" as const, workspaceId: workspace.workspaceId };
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, context);
     const operate = async (statement: PlurnkStatement) =>
-        (await daemon.dispatchClientAction({ workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+        (await daemon.dispatchClientAction({ workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
     const read = (target: string) => operate(readStmt(parsePath(target), { marks: [1, -1] }));
     const discovered = await action("discover", { source }) as { candidates: Array<{ alias: string; definition: unknown }> };
     assert.deepEqual(new Set(discovered.candidates.map(({ alias }) => alias)), new Set(names));
@@ -240,7 +240,7 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const states = async (): Promise<string[]> => (await listed()).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
     const dispatch = async (statement: ReturnType<typeof readStmt> | ReturnType<typeof findStmt>) =>
-        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0]!;
+        (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
     const document = async (name: string): Promise<string | undefined> => {
         const result = await dispatch(readStmt(parsePath(`skill://${name}/SKILL.md`), { marks: [1, -1] }));
         if (result.status === 404) return undefined;
@@ -268,7 +268,7 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
         const bad = (await listed()).find(({ alias }) => alias === "bad")!;
         assert.equal(bad.problem?.type, "https://problems.plurnk.xyz/skills/functionality/skill-invalid");
         assert.equal((await listed()).find(({ alias }) => alias === "grep")?.definition.source, join(projectRoot, "grep"), "a discovered definition names its actual source");
-        assert.match(bad.problem!.detail, /requires YAML frontmatter/);
+        assert.match(bad.problem.detail, /requires YAML frontmatter/);
         assert.match(await catalog() ?? "", /Find text in the project/);
         assert.match(await catalog() ?? "", /skill:\/\/review\/SKILL\.md/);
         assert.doesNotMatch(await catalog() ?? "", /bad/);
@@ -445,7 +445,7 @@ const skillsWorkspace = async (t: test.TestContext, label: string) => {
     // Resource access prepares the family, as a model turn does.
     const prepare = async (): Promise<void> => {
         const [result] = await slot.daemon.dispatchClientAction({ workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [findStmt(parsePath("skill://*/SKILL.md"))] });
-        assert.equal(result!.status, 200, JSON.stringify(result!.problem));
+        assert.equal(result.status, 200, JSON.stringify(result.problem));
     };
     const restart = async (): Promise<void> => {
         await slot.daemon.stop();

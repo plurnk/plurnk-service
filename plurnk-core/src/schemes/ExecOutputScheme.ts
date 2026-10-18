@@ -126,7 +126,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         const apply = this.#facet?.applyResolution;
         const target = (request.attrs as { target?: ParsedPath | null }).target;
         if (apply !== undefined && target != null && this.claimsLiveResource(target)) {
-            return apply.call(this.#facet, request, await this.#facetContext(ctx, target)) as Promise<SchemeResultBase>;
+            return apply.call(this.#facet, request, await this.#facetContext(ctx, target));
         }
         return this.#exec.applyInput(request, ctx, this.#manifest.name);
     }

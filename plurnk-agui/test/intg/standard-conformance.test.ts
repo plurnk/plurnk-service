@@ -219,7 +219,7 @@ test("{§agui-proposal-resolve} {§agui-snapshot} {§agui-call-result} a reviewe
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => streamed([{ id: `reviewed-${calls}`, model: "standard-witness", choices: [{ index: 0,
-            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            delta: { content: script[Math.min(calls++, script.length - 1)] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
     });
     const db = await openTestDatabase();
@@ -263,8 +263,8 @@ test("{§agui-proposal-resolve} {§agui-snapshot} {§agui-call-result} a reviewe
     assert.equal(calls, 1, "the gate holds the loop");
 
     const resumedEvents: Array<{ type: string; toolCallId?: string }> = [];
-    await pending.runAgent({ forwardedProps, resume: [{ interruptId: pending.pendingInterrupts[0]!.id, status: "resolved", payload: { decision: "accept" } }] },
-        { onEvent: ({ event }) => { resumedEvents.push(event as { type: string; toolCallId?: string }); } });
+    await pending.runAgent({ forwardedProps, resume: [{ interruptId: pending.pendingInterrupts[0].id, status: "resolved", payload: { decision: "accept" } }] },
+        { onEvent: ({ event }) => { resumedEvents.push(event); } });
     assert.deepEqual(resumedEvents.filter(({ toolCallId }) => toolCallId === command?.id).map(({ type }) => type), ["TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_RESULT"],
         "the Run that resumes folds the settled facts onto the call its client holds, its arguments never resent, then answers it");
     assert.deepEqual(pending.pendingInterrupts, [], "the resume settles the interrupt");
@@ -306,7 +306,7 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-prog
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => streamed([{ id: `delegation-${calls}`, model: "standard-witness", choices: [{ index: 0,
-            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            delta: { content: script[Math.min(calls++, script.length - 1)] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
     });
 
@@ -389,7 +389,7 @@ test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation se
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => streamed([{ id: `subagent-${calls}`, model: "standard-witness", choices: [{ index: 0,
-            delta: { content: script[Math.min(calls++, script.length - 1)]! }, finish_reason: "stop" }],
+            delta: { content: script[Math.min(calls++, script.length - 1)] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }]),
     });
     const db = await openTestDatabase();

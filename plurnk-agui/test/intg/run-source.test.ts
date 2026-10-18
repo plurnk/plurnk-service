@@ -206,7 +206,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned wor
         const address = "agui://anonymous/threads/assigned/messages/question";
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address})`, "A collaborator found 42."));
         assert.equal(parsed.items.length, 1);
-        const item = parsed.items[0]!;
+        const item = parsed.items[0];
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("The exact-reply fixture did not parse.");
         // {§connection-lifecycle} The collaborator is a person replying through a client operation.
@@ -278,10 +278,10 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         }))).flat();
         assert.equal(prompts.length, 1, "the run published exactly one arrival row");
         const [prompt] = prompts;
-        assert.equal(prompt!.origin, "_plurnk", "the harness published the row");
-        assert.equal(prompt!.source, expected, "the row's causal actor is the AG-UI message, URI-encoded per segment");
+        assert.equal(prompt.origin, "_plurnk", "the harness published the row");
+        assert.equal(prompt.source, expected, "the row's causal actor is the AG-UI message, URI-encoded per segment");
 
-        const turns = (await db.test_list_turns_in_loop.all({ loop_id: prompt!.loopId })) as Array<{ packet: string | null }>;
+        const turns = (await db.test_list_turns_in_loop.all({ loop_id: prompt.loopId })) as Array<{ packet: string | null }>;
         const logSections = turns.flatMap(({ packet }) => packet === null ? [] : (JSON.parse(packet) as {
             sections?: Array<{ name: string; content: string }>;
         }).sections?.filter((section) => section.name === "log") ?? []);
@@ -310,7 +310,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
             !logSections.some(({ content }) => /### log:\/\/\/\d+\/\d+\/\d+\/SEND · \d+\nSEND[^\n]*\n\{[^\n]*"origin":"_plurnk"/.test(content)),
             "the arrival row carries no constant origin",
         );
-        const rows = await db.test_log_entries_by_loop.all({ loop_id: prompt!.loopId }) as Array<{ op: string; origin: string; status_rx: number; rx: string }>;
+        const rows = await db.test_log_entries_by_loop.all({ loop_id: prompt.loopId }) as Array<{ op: string; origin: string; status_rx: number; rx: string }>;
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
             ["KILL", 200], ["READ", 200], ["COPY", 201], ["SEND", 200], ["SEND", 200],

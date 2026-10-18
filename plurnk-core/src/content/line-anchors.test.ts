@@ -50,9 +50,9 @@ test("LineAnchors: rendering preserves physical content and separators while car
         LineAnchors.lineNumberWidth(complete),
     );
     const lines = rendered.split(/\r\n|\r|\n/);
-    assert.match(lines[0]!, /^ 7<@[0-9A-Za-z]{5}>alpha$/);
-    assert.match(lines[1]!, /^ 8<@[0-9A-Za-z]{5}>beta$/);
-    assert.match(lines[2]!, /^ 9<@[0-9A-Za-z]{5}>gamma$/);
+    assert.match(lines[0], /^ 7<@[0-9A-Za-z]{5}>alpha$/);
+    assert.match(lines[1], /^ 8<@[0-9A-Za-z]{5}>beta$/);
+    assert.match(lines[2], /^ 9<@[0-9A-Za-z]{5}>gamma$/);
     assert.equal(lines[3], "");
     assert.match(rendered, / 7<@[0-9A-Za-z]{5}>alpha\r\n/);
     assert.match(rendered, / 8<@[0-9A-Za-z]{5}>beta\r/);
@@ -66,8 +66,8 @@ test("LineAnchors: rendering preserves physical content and separators while car
 test("LineAnchors: resolution lowers anchors only in line-coordinate positions", () => {
     const content = "alpha\nbeta\ngamma\n";
     const anchors = LineAnchors.tokens(identity, content);
-    const first = anchors[0]!;
-    const third = anchors[2]!;
+    const first = anchors[0];
+    const third = anchors[2];
 
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [first] }), {
         ok: true,
@@ -135,7 +135,7 @@ test("{§line-anchor-disambiguation}: identical short neighborhoods receive inde
     assert.notEqual(anchors[5], anchors[9]);
     assert.notEqual(anchors[1], anchors[5], "the first block's neighborhood starts at the file head, so it differs");
     for (const line of [2, 6, 10]) {
-        assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchors[line - 1]!] }), {
+        assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchors[line - 1]] }), {
             ok: true, marker: { marks: [line] },
         });
     }
@@ -152,11 +152,11 @@ const repeatedFixture = () => {
 test("{§line-anchor-disambiguation}: deep repeated regions remain distinct and follow unrelated shifts across turns", () => {
     const { content, targets } = repeatedFixture();
     const anchors = LineAnchors.tokens(identity, content);
-    assert.notEqual(anchors[targets[0]!], anchors[targets[1]!]);
+    assert.notEqual(anchors[targets[0]], anchors[targets[1]]);
     const shifted = LineAnchors.tokens(identity, `unrelated\nprefix\n${content}\nsuffix`);
     for (const index of targets) {
         assert.equal(shifted[index + 2], anchors[index], "an expanded anchor follows the unchanged context");
-        assert.deepEqual(LineAnchors.resolve(shifted, { marks: [anchors[index]!] }), { ok: true, marker: { marks: [index + 3] } });
+        assert.deepEqual(LineAnchors.resolve(shifted, { marks: [anchors[index]] }), { ok: true, marker: { marks: [index + 3] } });
     }
     const unique = 5;
     assert.equal(anchors[unique], LineAnchors.tokens(identity, content.replace("begin-b", "different-b"))[unique], "disambiguation elsewhere does not re-key a unique handle");
@@ -164,7 +164,7 @@ test("{§line-anchor-disambiguation}: deep repeated regions remain distinct and 
 
 test("{§line-anchor-disambiguation}: context outside the minimum window participates in mutation preconditions", () => {
     const { content, targets, lines } = repeatedFixture();
-    const index = targets[0]!;
+    const index = targets[0];
     const anchor = LineAnchors.token(identity, index + 1, content);
     const precondition = { identity, checks: [{ anchor, line: index + 1 }] };
     assert.equal(LineAnchors.satisfies(precondition, content), true);
@@ -181,11 +181,11 @@ test("{§line-anchor-disambiguation}: a removed twin does not redirect either ol
     const anchors = LineAnchors.tokens(identity, content);
     const remaining = lines.filter((_, index) => index < 20 || index >= 47).join("\n");
     const current = LineAnchors.tokens(identity, remaining);
-    for (const index of targets) assert.deepEqual(LineAnchors.resolve(current, { marks: [anchors[index]!] }), {
+    for (const index of targets) assert.deepEqual(LineAnchors.resolve(current, { marks: [anchors[index]] }), {
         ok: false, failure: { kind: "missing", anchor: anchors[index] },
     });
-    assert.deepEqual(LineAnchors.resolve(current, { marks: [current[targets[1]! - 27]!] }), {
-        ok: true, marker: { marks: [targets[1]! - 26] },
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [current[targets[1] - 27]] }), {
+        ok: true, marker: { marks: [targets[1] - 26] },
     });
 });
 
@@ -196,7 +196,7 @@ test("{§line-anchor-disambiguation}: projection and line separators do not chan
         const source = lines.join(separator) + separator;
         assert.deepEqual(LineAnchors.tokens(identity, source), anchors);
         for (const index of targets) {
-            assert.deepEqual(LineAnchors.project(identity, source, lines[index]!, index + 1), [anchors[index]]);
+            assert.deepEqual(LineAnchors.project(identity, source, lines[index], index + 1), [anchors[index]]);
         }
     }
     assert.deepEqual(LineAnchors.tokens(identity, ""), []);
@@ -266,7 +266,7 @@ test("{§resolved-edit-statement} LineAnchors: unresolved model syntax fails har
 test("{§anchor-offset} LineAnchors: an offset mark resolves from its anchor's line; continuity checks the anchor itself (#749)", () => {
     const content = "alpha\nbeta\ngamma\ndelta\n";
     const anchors = LineAnchors.tokens(identity, content);
-    const [first, second] = [anchors[0]!, anchors[1]!];
+    const [first, second] = [anchors[0], anchors[1]];
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [`${second}+1`] }), { ok: true, marker: { marks: [3] } });
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [first, `${second}+2`] }), { ok: true, marker: { marks: [1, 4] } });
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [`${second}-1`] }), { ok: true, marker: { marks: [1] } });

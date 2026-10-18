@@ -346,7 +346,7 @@ test("{§edit-receipt-anchored-context} with an identity the resulting context i
     for (const line of context.split("\n")) {
         const match = /^ *([1-9]\d*)<(@[0-9A-Za-z]{5})>(.*)$/.exec(line);
         assert.ok(match, `anchored render: ${JSON.stringify(line)}`);
-        assert.equal(match![2], anchors[Number(match![1]) - 1], "the anchor is the READ projector's anchor for that line");
+        assert.equal(match[2], anchors[Number(match[1]) - 1], "the anchor is the READ projector's anchor for that line");
     }
     assert.match(context, /2<@[0-9A-Za-z]{5}>TWO/);
     const plain = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }]);

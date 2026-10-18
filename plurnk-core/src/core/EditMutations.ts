@@ -205,10 +205,10 @@ export default class EditMutations {
             const rows = body.split("\n");
             const filled = rows.filter((row) => row.length > 0);
             if (filled.length === 0 || !filled.every((row) => LineAnchors.isAnchoredLine(row))) return statement;
-            const pasted = filled.map((row) => { const match = /^ *(\d+)<(@[0-9A-Za-z]{5})>/.exec(row)!; return { hash: match[2]!, line: Number(match[1]) }; });
+            const pasted = filled.map((row) => { const match = /^ *(\d+)<(@[0-9A-Za-z]{5})>/.exec(row)!; return { hash: match[2], line: Number(match[1]) }; });
             const verifies = (anchors: readonly string[], startLine: number): boolean =>
                 pasted.every(({ hash, line }) => anchors[line - startLine] === hash);
-            const current = verifies(lineAnchors as readonly string[], 1);
+            const current = verifies(lineAnchors, 1);
             const source = current ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
             if (source === null) {
                 prefixFact = { rule: "rendered-prefix-unverified", lines: filled.length };
@@ -260,7 +260,7 @@ export default class EditMutations {
                     throw new InvalidOperationResultError("An EDIT line anchor did not lower to a numeric line.");
                 }
                 // The owner validates current content, not the carried anchor's former neighborhood.
-                checks.push({ anchor: lineAnchors[line - 1]!, line });
+                checks.push({ anchor: lineAnchors[line - 1], line });
             }
             resolved = { ...statement, lineMarker: resolution.marker };
         }
@@ -407,7 +407,7 @@ export default class EditMutations {
         if ("result" in matched) return matched;
         const edits = PatternEdits.replacements(matched.spans, resolved.body ?? "");
         const tokens = LineAnchors.tokens(identity, content);
-        const checks: LineAnchorCheck[] = PatternEdits.touchedLines(edits).flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1]!, line }]);
+        const checks: LineAnchorCheck[] = PatternEdits.touchedLines(edits).flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1], line }]);
         return {
             statements: edits.map((edit) => ({ ...resolved, lineMarker: edit.marker, matcher: null, body: edit.body })),
             matched: edits.length,

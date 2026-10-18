@@ -84,7 +84,7 @@ test("{§empty-turn} {§continued-without-note}: an operation-free response keep
         ]);
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
-        assert.ok((await rowsOf(db, empty!)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), "the empty turn has its row");
-        assert.equal(await noticesOf(db, final!), "", "the failure receipt supplies the feedback");
+        assert.ok((await rowsOf(db, empty)).some(({ origin, op }) => origin === "_plurnk" && op === "error"), "the empty turn has its row");
+        assert.equal(await noticesOf(db, final), "", "the failure receipt supplies the feedback");
     } finally { await db.close(); }
 });

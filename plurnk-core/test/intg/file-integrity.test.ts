@@ -514,8 +514,8 @@ test("{§file-commit-serialization}: reconciliation settles before a same-file c
     } finally { release.resolve(); }
     await reconciling;
     const [settled] = await committing;
-    assert.equal(settled!.status, "fulfilled");
-    assert.equal(settled!.value.status, 200);
+    assert.equal(settled.status, "fulfilled");
+    assert.equal(settled.value.status, 200);
     assert.equal(await fs.readFile(fx.path, "utf8"), "replacement\n");
     assert.equal((await fx.file.readEntry("doc.md", fx.ctx)).entry?.channels.body?.content, "replacement\n");
 });

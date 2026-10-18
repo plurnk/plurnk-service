@@ -70,7 +70,7 @@ test("{§digest-navigation}: pending, rejected and retired evidence remains dist
         if (!(file.endsWith(".request.md") || file.startsWith("requests/") && file.endsWith(".md") || file === "digest.md")) continue;
         const page = (await readFile(join(digestDir, file), "utf8")).replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1$/gmu, "");
         for (const [, target] of page.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)) {
-            await access(join(digestDir, dirname(file), target!));
+            await access(join(digestDir, dirname(file), target));
         }
     }
 

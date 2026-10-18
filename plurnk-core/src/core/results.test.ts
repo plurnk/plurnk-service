@@ -21,9 +21,9 @@ test("shape discriminator narrows each family", () => {
 
 test("shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
-        { shape: "entry", status: 200, entryId: 1, channel: "body" } as EntryResult,
-        { shape: "proposal", status: 202 } as ProposalResult,
-        { shape: "passthrough", status: 200 } as PassthroughResult,
+        { shape: "entry", status: 200, entryId: 1, channel: "body" },
+        { shape: "proposal", status: 202 },
+        { shape: "passthrough", status: 200 },
         { status: 204 },
     ];
     for (const r of results.slice(0, 3)) {

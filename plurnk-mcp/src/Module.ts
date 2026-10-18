@@ -696,7 +696,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             // Preserve each failure after joining all aliases; one cancellation must not hide another's cleanup failure.
             const rejections = new Set<unknown>();
             for (const [index, plan] of plans.entries()) {
-                const result = settled[index]!;
+                const result = settled[index];
                 if (result.status === "rejected") {
                     rejections.add(result.reason);
                     continue;

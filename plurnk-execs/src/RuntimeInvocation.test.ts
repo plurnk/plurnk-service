@@ -201,7 +201,7 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
             tools: [{
                 target: "issue_read",
                 summary: "two\nlines",
-                invocation: registry.tools[0]!.invocation,
+                invocation: registry.tools[0].invocation,
             }],
         }, "@plurnk/plurnk-mcp", "gitea"),
         /summary must be one non-empty line/,

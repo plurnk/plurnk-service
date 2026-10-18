@@ -66,7 +66,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
         await waitForDb(() => lifecycle.status(result.loopId), (status) => status === 200);
         return result;
     };
-    const packet = (index: number) => provider.received[index]!.map(chatMessageText).join("\n");
+    const packet = (index: number) => provider.received[index].map(chatMessageText).join("\n");
     const viewerRead = async (uri: string) => {
         const source = read(uri);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -74,7 +74,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
         assert.equal(item?.kind, "statement");
         if (item?.kind !== "statement") throw new Error("Expected one READ");
         // A person viewing the resource ({§connection-lifecycle}).
-        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0]!;
+        return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0];
     };
     const first = await run(alice);
     assert.equal(provider.received.length, 2);

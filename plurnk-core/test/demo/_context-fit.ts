@@ -102,8 +102,8 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     const [recovered] = await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
     });
-    assert.equal(recovered!.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
-    assert.match(String(recovered!.content), new RegExp(fixture.answer, "u"));
+    assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
+    assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
     if (incident.active === 0) {
         const effects = await db.test_log_curation_effects_by_worker.all<{
             operation_log_entry_id: number; target_log_entry_id: number;

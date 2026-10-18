@@ -41,7 +41,7 @@ test("{§worker-scheme-spawn} ping/pong: WORK spawns a worker once, then WORK to
             const pong = workers.filter((worker) => worker.name === "pong");
             assert.equal(pong.length, 1, "the second WORK addressed the existing worker and created no second one");
             assert.equal(workers.filter((worker) => worker.origin === "model").length, 2, "exactly the parent and pong");
-            const childLoops = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: pong[0]!.id }))!.n;
+            const childLoops = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: pong[0].id }))!.n;
             assert.equal(childLoops, 2, "the message woke pong as a second loop");
             const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: modelWorkerId! });
             const works = rows.filter((row) => row.op === "WORK");

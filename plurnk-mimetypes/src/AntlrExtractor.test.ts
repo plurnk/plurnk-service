@@ -200,7 +200,7 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
         assert.equal(tree.line, 1);
         assert.equal(tree.endLine, 5);
         assert.ok(Array.isArray(tree.children));
-        const classCtx = (tree.children![0] as { type: string });
+        const classCtx = (tree.children[0] as { type: string });
         assert.equal(classCtx.type, "class_declaration");
     });
 

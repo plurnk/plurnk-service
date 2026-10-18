@@ -236,15 +236,15 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         assert.ok(gauge.tokens > gauge.budget, `the gauge shows the packet over: ${gauge.tokens} of ${gauge.budget}`);
         const rows = logEntries(packet).filter((row) => String(row.logPath).endsWith("/error"));
         assert.equal(rows.length, 1, "one row, at the head of the turn");
-        const problem = (rows[0]!.problem ?? {}) as { detail?: string; excess?: number };
+        const problem = (rows[0].problem ?? {}) as { detail?: string; excess?: number };
         assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§pinned-wording-core}
         assert.equal(problem.excess, undefined, "{§context-gauge}: the gauge is the one home for the numbers");
-        assert.equal(rows[0]!.origin, "_plurnk");
+        assert.equal(rows[0].origin, "_plurnk");
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
         const nextRows = logEntries(next).filter((row) => String(row.logPath).endsWith("/error"));
         assert.equal(nextRows.length, 1, "shown once: the earlier mandate has retired from the projection; a packet that is still over carries its own (#1097)");
-        assert.notEqual(nextRows[0]!.logPath, rows[0]!.logPath, "the row in the next packet is that packet's own");
+        assert.notEqual(nextRows[0].logPath, rows[0].logPath, "the row in the next packet is that packet's own");
         const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; active: number }>({ turn_id: second.turnId });
         assert.ok(minted.some(({ op, status_rx, active }) => op === "error" && status_rx === 413 && active === 1), "the retired mandate stays durable and active at its coordinate; only the packet projection drops it");
         const after = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });

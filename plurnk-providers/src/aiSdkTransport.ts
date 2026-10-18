@@ -3,7 +3,7 @@ import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/ope
 import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
-import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
+import { normalizeUsage, UsageDetailError } from "./usage.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 
 const errorSchema = z.object({
@@ -85,7 +85,7 @@ const wireUsageOf = (
         const usage = recordOf(values[index])?.usage;
         const raw = recordOf(usage);
         if (raw !== null && ("prompt_tokens" in raw || "completion_tokens" in raw || "total_tokens" in raw)) {
-            return normalizeUsage(raw as RawUsage, sdkUsage === undefined ? undefined : {
+            return normalizeUsage(raw, sdkUsage === undefined ? undefined : {
                 inputTokens: sdkUsage.inputTokens,
                 inputTokenDetails: sdkUsage.inputTokenDetails,
             });

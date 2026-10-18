@@ -93,11 +93,11 @@ export const harvest = (root: string): CorpusRecord[] => {
         for (const line of readFileSync(index, "utf8").split("\n")) {
             const match = TURN.exec(line);
             if (match === null) continue;
-            const file = join(digest, `${match[1]!}.assistant.md`);
+            const file = join(digest, `${match[1]}.assistant.md`);
             if (!existsSync(file)) continue;
             const emission = redact(readFileSync(file, "utf8"), identifiers);
             const record: CorpusRecord = {
-                specimen, packet: match[1]!, recordedStatus: Number(match[2]),
+                specimen, packet: match[1], recordedStatus: Number(match[2]),
                 ...classify(emission), turns: 0, emission,
             };
             const shape = shapeOf(record);
@@ -128,7 +128,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
         ? readFileSync(CORPUS, "utf8").split("\n").filter(Boolean).map((line) => {
             const { specimen, packet, recordedStatus, turns, emission } = JSON.parse(line) as CorpusRecord;
             return { specimen, packet, recordedStatus, ...classify(emission), turns, emission };
-        }) : harvest(root!);
+        }) : harvest(root);
     const serialized = `${records.map((r) => JSON.stringify(r)).join("\n")}\n`;
     const previous = existsSync(CORPUS) ? readFileSync(CORPUS, "utf8") : "";
     console.log(`${records.length} shapes from ${root ?? CORPUS} (${serialized.length} bytes)`);

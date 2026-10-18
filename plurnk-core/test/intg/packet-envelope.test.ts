@@ -45,14 +45,14 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
     const edit = frame("EDIT (worker:///memory.md) <!-- remember -->", body);
-    assert.equal(previous(provider.received[1]!), first, "EDIT and NOTE replay whole");
-    assert.match(userText(provider.received[1]!), /REASONING-MEMORY/u);
-    assert.doesNotMatch(userText(provider.received[1]!), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
-    assert.equal(previous(provider.received[2]!), edit, "the curated NOTE leaves the replay; the surviving EDIT remains");
-    assert.doesNotMatch(userText(provider.received[2]!), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]!), `${edit}\n\n${read}`, "the explicit source READ joins the surviving history");
-    assert.match(userText(provider.received[3]!), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
-    assert.match(userText(provider.received[3]!), /FULL-BODY line 120/u);
+    assert.equal(previous(provider.received[1]), first, "EDIT and NOTE replay whole");
+    assert.match(userText(provider.received[1]), /REASONING-MEMORY/u);
+    assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
+    assert.equal(previous(provider.received[2]), edit, "the curated NOTE leaves the replay; the surviving EDIT remains");
+    assert.doesNotMatch(userText(provider.received[2]), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
+    assert.equal(previous(provider.received[3]), `${edit}\n\n${read}`, "the explicit source READ joins the surviving history");
+    assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
+    assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first));
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
@@ -74,14 +74,14 @@ test("{§emission-row}: initialization has no replay; canonical content carries 
         assert.deepEqual(JSON.parse(row.initial_folded), [[1, -1]]);
         assert.equal(row.active, 1);
     }
-    assert.equal(previous(provider.received[0]!), "");
-    assert.equal(previous(provider.received[1]!), canonical, "normalization preserves each operation at its position");
+    assert.equal(previous(provider.received[0]), "");
+    assert.equal(previous(provider.received[1]), canonical, "normalization preserves each operation at its position");
     assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
-    assert.match(userText(provider.received[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
-    const request = provider.received[1]!;
+    assert.match(userText(provider.received[1]), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
+    const request = provider.received[1];
     assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"], "the turn replays as one assistant message");
-    assert.match(chatMessageText(request[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
-    assert.match(chatMessageText(request[3]!), /^### log:\/\/\/1\/2\/3\/NOTE[\s\S]*### log:\/\/\/1\/2\/4\/READ/u, "the turn's results follow the operations that caused them");
+    assert.match(chatMessageText(request[1]), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
+    assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/NOTE[\s\S]*### log:\/\/\/1\/2\/4\/READ/u, "the turn's results follow the operations that caused them");
 });
 
 test("{§emission-row}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
@@ -111,12 +111,12 @@ test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
-    assert.match(userText(provider.received[2]!), /### log:\/\/\/1\/3\/\d+\/KILL[^\n]*\n\{[^\n]*"status":422/u);
-    assert.match(userText(provider.received[2]!), /is an emission; curate it without a line scope/u);
-    assert.match(userText(provider.received[2]!), /KILL \(log:\/\/\/1\/2\/2\/emission\) retires it\./u, "the recovery names the one form that retires it");
-    assert.match(userText(provider.received[2]!), /### log:\/\/\/1\/2\/2\/emission/u);
-    assert.match(userText(provider.received[3]!), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
-    assert.doesNotMatch(userText(provider.received[4]!), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");
+    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/\d+\/KILL[^\n]*\n\{[^\n]*"status":422/u);
+    assert.match(userText(provider.received[2]), /is an emission; curate it without a line scope/u);
+    assert.match(userText(provider.received[2]), /KILL \(log:\/\/\/1\/2\/2\/emission\) retires it\./u, "the recovery names the one form that retires it");
+    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/2\/2\/emission/u);
+    assert.match(userText(provider.received[3]), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
+    assert.doesNotMatch(userText(provider.received[4]), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");
     const retired = rows.find(({ coordinate }) => coordinate === "1/2/2")!;
     assert.equal(retired.active, 0);
     assert.deepEqual(JSON.parse(retired.folded), []);
@@ -131,5 +131,5 @@ test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is t
     assert.equal(provider.received.length, 2);
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\n${frame("NOTE", "Noted.")}`,
         "the echo is absent from the canonical program; the text beside the operations that was not an echo would be a NOTE");
-    assert.equal(previous(provider.received[1]!), `${surveyRead}\n\n${frame("NOTE", "Noted.")}`, "the replay carries the admitted operations, not the echo");
+    assert.equal(previous(provider.received[1]), `${surveyRead}\n\n${frame("NOTE", "Noted.")}`, "the replay carries the admitted operations, not the echo");
 });
