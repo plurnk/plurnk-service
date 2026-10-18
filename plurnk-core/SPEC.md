@@ -2301,7 +2301,7 @@ operator knobs in `.env.defaults`. Search indexing performs no inference.
 | {§channel-selection-missing} | READ, FIND, EDIT, COPY, and MOVE report unknown channel selections as `404 channel-not-found`. |
 | {§channel-selection-fragment-on-nonexistent-404} | Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. |
 | {§readable-channel} | A readable projection is a channel, never a hidden matching surface. |
-| {§channel-selection-visibility} | Channel selection is decision-time information, not a guess |
+| {§channel-selection-visibility} | Channel selection is decision-time information, not a guess. |
 | {§channel-state} | Channel state — metadata, not gating |
 | {§channel-state-state-is-metadata} | Each channel has `state ∈ {static, active, closed, errored}`. |
 | {§channel-state-schemes-own-state-transitions} | Schemes own transitions; UPDATE `entry_channels.state` as connection lifecycle progresses. |
@@ -2367,7 +2367,14 @@ Client-interface target parameters carry fragments inline (`{ target: "sh:///a3b
   | Writes | the projection is derived, so no operation writes it: EDIT of `#readable`, a COPY or MOVE landing on it, and a MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read |
   | Binary sources | keep {§membership-source-projection}, where the source is not text and the projection is the body; a fetched web page keeps its scheme's own two channels ({§html-materialization}) |
 
-- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and a matcher location names the channel its line coordinates address whenever that is not the resource's default channel. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess.** Every multi-channel resource presents its channels with extents wherever FIND presents the resource, and the packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
+
+  | Where | What the model sees |
+  | --- | --- |
+  | Broad FIND results | each channel's path, projection `mimetype`, tokens, and lines (default channel first) |
+  | A matcher location | the channel its line coordinates address, whenever that is not the resource's default channel |
+  | A READ of a multi-channel resource | its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none |
+  | A default channel that is a readable projection of a differently typed source | `sourceMimetype`, named once: representation evidence, not a different READ workflow |
 
 ### §channel-state Channel state — metadata, not gating
 
@@ -2482,7 +2489,7 @@ longer range retains an unauthenticated interior gap.
 | {§edit-noop-304} | A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring a scoped… |
 | {§edit-marker-required-on-existing} | A markerless EDIT is CREATE-ONLY — there is no easy-clobber path on an existing entry. |
 | {§edit-line-anchors} | An anchored EDIT resolves under {§line-anchors} and carries its endpoint checks as a core-private mutation… |
-| {§edit-collision} | Every standard entry EDIT lands by compare-and-swap against the exact channel content used to calculate it,… |
+| {§edit-collision} | Every standard entry EDIT lands by compare-and-swap against the exact channel content used to calculate it |
 | {§edit-pattern} | A pattern replaces every selected span with the literal body. |
 <!-- /map -->
 
@@ -2502,21 +2509,15 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   status. The model-facing teaching recommends anchors for EDIT because this
   rejection is deliberate stale-target protection; parser support for anchors
   on observations does not imply the same recommendation.
-- §edit-collision Every standard entry EDIT lands by compare-and-swap against
-  the exact channel content used to calculate it, including numeric-only EDITs.
-  A concurrent creator that wins the resource identity or channel, an anchor
-  that does not identify exactly one current line, a selected endpoint neighborhood
-  that changes before mutation, or a representation that changes in the final
-  check/write gap returns the same neutral **409 `edit-collision`** and preserves
-  the current content. Its public detail says only that EDIT collided with
-  the current resource state and directs the model to READ before selecting current
-  coordinates; `retryable: false` forbids automatic replay of the identical
-  request. It does not infer earlier validity, assign fault, or reveal which detection layer won.
-  Concurrent correct workers are an ordinary cause. Core resolves anchors,
-  scheme handlers receive only numeric
-  coordinates, the shared entry mutation owner rechecks selected endpoint
-  neighborhoods against its exact snapshot, and atomic identity/channel claims
-  and storage predicates close the remaining races.
+- §edit-collision **Every standard entry EDIT lands by compare-and-swap against the exact channel content used to calculate it**, including numeric-only EDITs. Any of the collisions below returns the same neutral **409 `edit-collision`** and preserves the current content; its public detail says only that EDIT collided with the current resource state and directs the model to READ before selecting current coordinates, and `retryable: false` forbids automatic replay of the identical request. It does not infer earlier validity, assign fault, or reveal which detection layer won. Concurrent correct workers are an ordinary cause.
+
+  | Collision | Closed by |
+  | --- | --- |
+  | A concurrent creator that wins the resource identity or channel | atomic identity/channel claims and storage predicates |
+  | An anchor that does not identify exactly one current line | Core, which resolves anchors; scheme handlers receive only numeric coordinates |
+  | A selected endpoint neighborhood that changes before mutation | the shared entry mutation owner, which rechecks selected endpoint neighborhoods against its exact snapshot |
+  | A representation that changes in the final check/write gap | storage predicates |
+
 - §edit-pattern **A pattern replaces every selected span with the literal body.** ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under the channel's own mimetype, matches, and expands into one atomic batch ({§edit-batch}) of four-coordinate splices, all relative to the same original content under {§slice-semantics-compose-pattern}. The body is literal replacement text, never a template; an absent body deletes only the spans. A numeric scope admits only complete matches inside its resolved source region, including columns; `<0>` and `<-1>` name insertion positions and are refused (400 `pattern-scope-invalid`). A scheme without textual EDIT scopes refuses the pattern before any read (400 `pattern-unsupported`).
 
   | Dialect | Span |
@@ -2549,7 +2550,7 @@ A `file:///` member EDIT computes against its materialized body and **proposes**
 | {§read-pattern} | A pattern selects the lines a READ renders. |
 | {§read-fan-out} | A READ over a glob reads every matching path. |
 | {§read-pattern-evidence} | A patterned READ's evidence: match regions survive line-oriented presentation. |
-| {§read-bytes} | A binary channel, and the `#bytes` view of any resource whose scheme supplies bytes, reads as the source… |
+| {§read-bytes} | A byte view reads the source bytes one hexadecimal octet per line. |
 | {§find-bytes} | A FIND over a binary channel without a readable projection matches the source bytes one character each… |
 | {§binary-parity} | Binary resources share ordinary existence, membership, FIND-by-path, deletion, and proposal rules. |
 <!-- /map -->
@@ -2606,19 +2607,14 @@ lands with the result it describes under {§context-fit}, complete or as the
 receipt; `matchLocationCount` appears when the result is a receipt. Exact
 FIND pages the complete location set ({§find-result-projection}).
 
-- §read-bytes A binary channel, and the `#bytes` view of
-  any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
-  octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
-  default is the shared first page ({§markerless-first-page}), `<1,-1>` is the whole resource, and the extent carries
-  `unit: "byte"`. The result keeps the source mimetype and names `projection: "hex"`;
-  anchors do not exist there (400). Bytes are read from the source at READ time, sized
-  then windowed: `file:` supplies them from the member on disk, DB-backed schemes
-  recover their stored bytes under {§binary-parity}, and a
-  scheme that keeps no bytes answers 501 `bytes-unavailable` for `#bytes` and 415 for a
-  binary channel, as before. An execution whose target is a file member already runs the
-  bytes on disk. Byte selection affects only this hexadecimal projection: when the
-  resource also qualifies for a native attachment, a successful ranged byte READ carries
-  the complete source attachment independently under {§packet-attachment-parts}.
+- §read-bytes **A byte view reads the source bytes one hexadecimal octet per line.** A binary channel, and the `#bytes` view of any resource whose scheme supplies bytes, reads so: coordinate = line = byte, so `<a,b>` selects bytes, the markerless default is the shared first page ({§markerless-first-page}), `<1,-1>` is the whole resource, and the extent carries `unit: "byte"`. The result keeps the source mimetype and names `projection: "hex"`; anchors do not exist there (400). A scheme that keeps no bytes answers 501 `bytes-unavailable` for `#bytes` and 415 for a binary channel, as before.
+
+  | Fact | Rule |
+  | --- | --- |
+  | The source | bytes are read from the source at READ time, sized then windowed: `file:` supplies them from the member on disk, DB-backed schemes recover their stored bytes under {§binary-parity} |
+  | Executions | an execution whose target is a file member already runs the bytes on disk |
+  | Attachments | byte selection affects only this hexadecimal projection: when the resource also qualifies for a native attachment, a successful ranged byte READ carries the complete source attachment independently under {§packet-attachment-parts} |
+
 - §find-bytes A FIND over a binary channel without a readable projection matches the
   source bytes one character each (Latin-1): a text pattern finds strings, `\xNN`
   escapes find byte sequences, and every hit is reported in byte coordinates that paste
@@ -2997,7 +2993,13 @@ reads what the model thought and where its content program can be found
   | Executor outputs | use workspace-wide claims such as `sh:///ab3d5678#stdout` instead ({§execution-output-identity}); their source operation has log coordinates, but resource lifetime and identity are independent of that observation |
   | Other consumers | error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple |
 
-- §log-near-miss **A log miss beside rows that exist names them.** A READ, FIND or KILL of an exact coordinate that names no row carries a recovery from the worker's own active rows: the turn's rows carrying the leaf written come first, since the leaf is what the model asked for and the sequence its guess, followed by the row at that coordinate under its own leaf (`` Turn 1/44's reasoning is `log:///1/44/2/reasoning`; the entry at log:///1/44/1 is `log:///1/44/1/READ`. ``); with no row of that leaf, the row at the coordinate alone (`` The entry at log:///1/25/8 is `log:///1/25/8/sh`. ``), else the turn's rows, at most six named, else the loop's latest turn. A coordinate in a loop with no rows carries none. Recorded misses were near misses every time: a READ of `1/25/8/READ` when the row was `sh`, an EDIT one sequence off, and a KILL under the 413 that must curate (#1005).
+- §log-near-miss **A log miss beside rows that exist names them.** A READ, FIND or KILL of an exact coordinate that names no row carries a recovery from the worker's own active rows; a coordinate in a loop with no rows carries none. Recorded misses were near misses every time: a READ of `1/25/8/READ` when the row was `sh`, an EDIT one sequence off, and a KILL under the 413 that must curate (#1005).
+
+  | Named first | Then |
+  | --- | --- |
+  | The turn's rows carrying the leaf written, since the leaf is what the model asked for and the sequence its guess | the row at that coordinate under its own leaf (`` Turn 1/44's reasoning is `log:///1/44/2/reasoning`; the entry at log:///1/44/1 is `log:///1/44/1/READ`. ``) |
+  | With no row of that leaf: the row at the coordinate alone (`` The entry at log:///1/25/8 is `log:///1/25/8/sh`. ``) | else the turn's rows, at most six named, else the loop's latest turn |
+
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies and retires its emission ({§emission-row}). A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`.
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) [{"pattern": "~stale"}] ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. An emission row is curated whole instead: the scope retires it when it covers every line and otherwise leaves it ({§emission-row}). Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
@@ -3264,7 +3266,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 | {§find-source-agnostic} | The content matcher is source-agnostic |
 | {§find-line-anchors} | A FIND regex anchors each line |
 | {§find-candidate-containment} | One candidate's crash is that candidate's problem |
-| {§find-scope-prefix-filter} | Filters entries within scope. |
+| {§find-scope-prefix-filter} | The FIND target filters entries within scope. |
 | {§find-channel-selection} | The target selects a channel under {§channel-selection}. |
 | {§find-glob-filter-on-content} | The heading's `pattern` option ({§matcher-option}) matches the selected channel's content or derivation; path… |
 | {§find-fulltext-selection} | Full-text selection: |
@@ -3279,7 +3281,14 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 - §find-line-anchors **A FIND regex anchors each line**, as READ, EDIT and KILL do ({§read-pattern}, {§edit-pattern}): `^` and `$` are a line's ends in every FIND content match — over entries, log rows, turn sources and a binary channel's bytes — so ```` ```FIND (django/urls/resolvers.py) /^from|^import/ ```` locates the same import lines a READ with that pattern shows, never a false 204.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
-- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a standard matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns use {§path-glob-matching}. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit extension contract, never inferred from URL punctuation.
+- §find-scope-prefix-filter **The FIND target filters entries within scope.** A **bare** path is the exact entry unless the file scheme resolves a directory under {§file-find-directory}; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. SQLite prefix queries may reduce the candidate set but never decide the match.
+
+  | Spelling | Scope |
+  | --- | --- |
+  | `*` and `?` | never cross `/` |
+  | `**` | crosses `/` in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a standard matcher reads it |
+  | Terminal `*` and `**` | structural catalog selectors that include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns use {§path-glob-matching} |
+  | A trailing slash | a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`, an explicit extension contract never inferred from URL punctuation; otherwise ordinary resource syntax |
 
   Resource-authority globs select authorities independently of the path scope.
   Matching resources retain their full addresses through pattern matching,
@@ -6139,7 +6148,14 @@ flowchart TD
   | The optional emission history | whole or absent ({§emission-history}), never a cut |
 
 - §context-verbs **The verbs are the curation.** `READ` with a range takes a piece of what did not fit ({§read-selection-projection}); `NOTE` keeps what the model learned; `KILL` retires rows, ranges and bodies ({§log-kill-scope}) and may carry what it keeps of them as its own NOTE ({§log-kill-distillation}). The daemon adds no other mechanism.
-- §context-over-budget-row **Over budget is a row and a request, not an ending.** A packet whose weight exceeds `budget` is still submitted when it fits the window ({§context-wall}), and it carries one `_plurnk` error row at the head of its turn, `engine/context/packet-exceeds-budget` 413: "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn." The row is the mandate and carries no figure: the gauge is the one home for `tokens` and `budget` ({§context-gauge}), and it shows the packet over with the row in it. The row is shown once, in the packet it describes, then retired from the projection as a no-match KILL receipt is ({§log-kill-meta-operation}): it stays durable and readable at its coordinate, and a later packet that is over carries its own row. Nothing is hidden to make the packet smaller; the response grant is the window's remainder above the provider's output floor ({§provider-output-floor}). The limit protects a loop; it never ends one.
+- §context-over-budget-row **Over budget is a row and a request, not an ending.** A packet whose weight exceeds `budget` is still submitted when it fits the window ({§context-wall}), and it carries one `_plurnk` error row at the head of its turn, `engine/context/packet-exceeds-budget` 413: "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn." The limit protects a loop; it never ends one.
+
+  | The row | Rule |
+  | --- | --- |
+  | Carries no figure | the row is the mandate: the gauge is the one home for `tokens` and `budget` ({§context-gauge}), and it shows the packet over with the row in it |
+  | Shown once | in the packet it describes, then retired from the projection as a no-match KILL receipt is ({§log-kill-meta-operation}): it stays durable and readable at its coordinate, and a later packet that is over carries its own row |
+  | Hides nothing | nothing is hidden to make the packet smaller; the response grant is the window's remainder above the provider's output floor ({§provider-output-floor}) |
+
 - §context-wall **The context wall is the provider's window, and only it ends a loop.** The wall is the provider's physical input limit: `maxInputTokens`, and the context window less the output floor ({§provider-output-floor}). A request over the wall sheds ({§context-own-rows-fit}) and is measured again ({§context-wall-measure}); a packet that cannot fit even as receipts ends its loop with the exact `engine/context/window-overflow` 413 Problem, and no inference request is made. An unknown window has no wall ({§tokenomics-window-unpollable-deliberate}).
 - §context-wall-measure **The wall measures the request that will be sent.** The estimate is the packet's weight through its calibration factor ({§tokenomics-calibrated-readout}) and is never assumed to overestimate. A packet that fits by the estimate is assessed by the provider as the exact wire request ({§provider-capacity-admission}): an admission sends it; an exact refusal is the wall's verdict, and the request sheds by the refusal's excess and is assessed again. A provider that can only estimate defers, and the upstream provider is then the capacity oracle: its refusal ends the loop with the provider's own 413.
 - §context-own-rows-fit **The model's own rows take the same receipt.** When a request is over the wall by either measure ({§context-wall-measure}), its newest rows that still carry a body or a native part — NOTEs, receipts, delivered results, pictures — render bodiless in the fit rule's receipt shape, newest first and only as many as it takes for the request to fit: the heading, the facts, and `size`, the lines and tokens of what the row stood for. The optional emission history has already been omitted whole ({§emission-history}); an emission record has no body to take. A row whose receipt would weigh no less than its body stays whole. Every body stays stored and readable at its address, the verbs restore the room ({§context-verbs}), and each packet decides afresh from its own newest rows. The daemon chooses nothing to summarize and hides nothing silently.
