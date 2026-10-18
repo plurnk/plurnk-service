@@ -9,19 +9,19 @@ single parsing authority.
 
 ## The cascade
 
-- **`PLURNK_MODEL_<alias>=<provider>/<model>`** declares an alias. The provider
+- §alias-declaration **`PLURNK_MODEL_<alias>=<provider>/<model>`** declares an alias. The provider
   segment is the **first** `/`-delimited field; the model id is everything after
   that first `/` (it MAY contain further `/`, e.g. `openrouter/deepseek/deepseek-v4.1-flash`).
-- **`PLURNK_MODEL=<selector>`** selects either a declared alias or an exact
+- §alias-active-selector **`PLURNK_MODEL=<selector>`** selects either a declared alias or an exact
   `<provider>/<model>` route at boot.
 - §alias-child-selector-reserved **`PLURNK_MODEL_CHILD=<selector>` is reserved as
   the child-provider selector** and is never parsed as an alias declaration. It
   accepts the same alias-or-route vocabulary.
-- **`PLURNK_BASEURL_<alias>`** attaches a per-alias endpoint override — the one
+- §alias-base-url **`PLURNK_BASEURL_<alias>`** attaches a per-alias endpoint override — the one
   thing a per-provider base-URL var can't express (two aliases on the same
   provider name pointing at different self-hosted boxes).
 
-Alias keys are **case-folded** (the suffix after `PLURNK_MODEL_` / `PLURNK_BASEURL_`
+§alias-case-folding Alias keys are **case-folded** (the suffix after `PLURNK_MODEL_` / `PLURNK_BASEURL_`
 is downcased), so `PLURNK_MODEL_opus` and `PLURNK_MODEL_OPUS` name the same alias.
 
 ## Route types
@@ -45,14 +45,14 @@ alias-scoped tuning applies only when that real alias is present.
 
 ## Functions
 
-- **`parseAliasesFromEnv(env = process.env): ProviderAlias[]`** — every declared
+- §alias-parse **`parseAliasesFromEnv(env = process.env): ProviderAlias[]`** — every declared
   alias. Skips entries with an empty value or no `/` in the value.
-- **`resolveModelSelector(selector, aliases): ProviderSpec | null`** — resolves a
+- §alias-resolve-selector **`resolveModelSelector(selector, aliases): ProviderSpec | null`** — resolves a
   case-insensitive declared alias or splits one exact route at its first `/`.
-- **`resolveActiveRoute(env = process.env): ProviderSpec | null`** — resolves
+- §alias-resolve-active **`resolveActiveRoute(env = process.env): ProviderSpec | null`** — resolves
   `PLURNK_MODEL`, or returns `null` only when it is unset. An explicit unknown or
   malformed selector fails instead of silently disabling the provider.
-- **`resolveChildRoute(env = process.env): ProviderSpec | null`** — resolves
+- §alias-resolve-child **`resolveChildRoute(env = process.env): ProviderSpec | null`** — resolves
   `PLURNK_MODEL_CHILD`, returning `null` only when absent (inherit).
   An explicit empty value is invalid. Exact routes resolve independently of
   alias declarations for both selectors.
@@ -64,9 +64,9 @@ alias-scoped tuning applies only when that real alias is present.
   same alias throw (`Duplicate provider alias "<alias>"` or
   `Duplicate base-URL override "<alias>"`). Identical values do not excuse
   duplicate spelling; declaration order never selects a winner.
-- **Dangling override** — a `PLURNK_BASEURL_*` whose alias has no matching
+- §alias-dangling-override **Dangling override** — a `PLURNK_BASEURL_*` whose alias has no matching
   `PLURNK_MODEL_*` throws (a typo, not a silent no-op).
-- **Unresolved active selector** — a non-empty `PLURNK_MODEL` that is neither a
+- §alias-unresolved-selector **Unresolved active selector** — a non-empty `PLURNK_MODEL` that is neither a
   declared alias nor a complete exact route throws.
 
 These throw the shared `ConfigurationError`, naming the offending key.

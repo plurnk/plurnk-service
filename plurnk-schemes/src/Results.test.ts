@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { EntryResult, PassthroughResult, ProposalResult, SchemeResult } from "./Results.ts";
 import Results from "./Results.ts";
 
-test("shape discriminator narrows each family", () => {
+test("{§result-shape-guards} shape discriminator narrows each family", () => {
     const entry: EntryResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };
     const proposal: ProposalResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
     const passthrough: PassthroughResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
@@ -19,7 +19,7 @@ test("shape discriminator narrows each family", () => {
     assert.equal(Results.isProposal(passthrough), false);
 });
 
-test("shape guards are mutually exclusive and optional on a scheme result", () => {
+test("{§result-shape-guards} shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
         { shape: "entry", status: 200, entryId: 1, channel: "body" },
         { shape: "proposal", status: 202 },
@@ -35,7 +35,7 @@ test("shape guards are mutually exclusive and optional on a scheme result", () =
     assert.equal(Results.isPassthrough(results[3]), false);
 });
 
-test("SchemeResult permits extension-owned metadata without adopting a conventional shape", () => {
+test("{§result-shape-guards} SchemeResult permits extension-owned metadata without adopting a conventional shape", () => {
     const result: SchemeResult = {
         status: 207,
         cursor: "next-page",
@@ -45,7 +45,7 @@ test("SchemeResult permits extension-owned metadata without adopting a conventio
     assert.deepEqual(result.diagnostics, { source: "plugin" });
 });
 
-test("isErrorStatus marks 4xx/5xx and only those", () => {
+test("{§result-error-status} isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(200), false);
     assert.equal(Results.isErrorStatus(201), false);
     assert.equal(Results.isErrorStatus(304), false);
