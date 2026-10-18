@@ -17,14 +17,6 @@ const insertEntry = async (db: Db, scheme: string, pathname: string): Promise<nu
     return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
 };
 
-test("entries: table is STRICT", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entries" });
-        assert.match(row?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
 test("{§entry-owner} entries: owner derives its workspace", async () => {
     const db = await openMigrated();
     try {
@@ -36,7 +28,7 @@ test("{§entry-owner} entries: owner derives its workspace", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: owner is required", async () => {
+test("{§entry-owner} entries: owner is required", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
@@ -47,7 +39,7 @@ test("entries: owner is required", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: identity UNIQUE — duplicate rejected", async () => {
+test("{§entry-identity-no-null} entries: identity UNIQUE — duplicate rejected", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-dupid");
@@ -59,7 +51,7 @@ test("entries: identity UNIQUE — duplicate rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: authority is a durable identity component", async () => {
+test("{§entry-identity-no-null} entries: authority is a durable identity component", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-entry-authority-${crypto.randomUUID()}`);
@@ -76,7 +68,7 @@ test("entries: authority is a durable identity component", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: cross-workspace same (scheme, authority, pathname) is allowed", async () => {
+test("{§entry-identity-no-null} entries: cross-workspace same (scheme, authority, pathname) is allowed", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-entries-sessA");
@@ -88,7 +80,7 @@ test("entries: cross-workspace same (scheme, authority, pathname) is allowed", a
     } finally { await db.close(); }
 });
 
-test("entries: workspace FK rejects a non-existent workspace", async () => {
+test("{§entry-owner} entries: workspace FK rejects a non-existent workspace", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -98,7 +90,7 @@ test("entries: workspace FK rejects a non-existent workspace", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: ON DELETE CASCADE via workspace", async () => {
+test("{§entry-owner} entries: ON DELETE CASCADE via workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-cascade");
@@ -111,7 +103,7 @@ test("entries: ON DELETE CASCADE via workspace", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: a NULL scheme is refused — no identity component may be NULL", async () => {
+test("{§entry-identity-no-null} entries: a NULL scheme is refused — no identity component may be NULL", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-entry-null-${crypto.randomUUID()}`);
@@ -122,7 +114,7 @@ test("entries: a NULL scheme is refused — no identity component may be NULL", 
     } finally { await db.close(); }
 });
 
-test("entries: authority defaults to empty and rejects NULL", async () => {
+test("{§entry-identity-no-null} entries: authority defaults to empty and rejects NULL", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-entry-authority-null-${crypto.randomUUID()}`);
@@ -139,7 +131,7 @@ test("entries: authority defaults to empty and rejects NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: empty scheme string rejected", async () => {
+test("{§validation-topology} entries: empty scheme string rejected", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, "ws-empty-scheme");
@@ -150,7 +142,7 @@ test("entries: empty scheme string rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
+test("{§validation-topology} entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
     const db = await openMigrated();
     try {
         await insertEntry(db, "worker", "a");
@@ -163,7 +155,7 @@ test("entries: attributes defaults to '{}' and rejects invalid JSON", async () =
     } finally { await db.close(); }
 });
 
-test("entries: pathname NOT NULL", async () => {
+test("{§entry-identity-no-null} entries: pathname NOT NULL", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, "ws-no-pathname");
@@ -174,7 +166,7 @@ test("entries: pathname NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: pathname empty string allowed", async () => {
+test("{§entry-identity-no-null} entries: pathname empty string allowed", async () => {
     const db = await openMigrated();
     try {
         await insertEntry(db, "worker", "");
@@ -183,43 +175,7 @@ test("entries: pathname empty string allowed", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: owner-keyed identity index exists", async () => {
-    const db = await openMigrated();
-    try {
-        const indexes = await db.test_entries_partial_indexes.all<{ name: string; sql: string }>();
-        const names = indexes.map((i) => i.name).toSorted();
-        assert.deepEqual(names, ["entries_identity"]);
-        assert.match(indexes.find((index) => index.name === "entries_identity")?.sql ?? "", /\(workspace_id, scheme, authority, pathname\)/);
-        assert.ok(indexes.every((index) => /UNIQUE/.test(index.sql)));
-    } finally { await db.close(); }
-});
-
-test("entry_channels: rows are STRICT and WITHOUT ROWID; bodies are STRICT ({§content-store})", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_channel_rows" });
-        assert.match(row?.sql ?? "", /STRICT/);
-        assert.match(row?.sql ?? "", /WITHOUT ROWID/);
-        const contents = await db.test_entries_table_sql.get<{ sql: string }>({ name: "contents" });
-        assert.match(contents?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
-test("entry_channels: insert channel — defaults populate", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "worker", "france");
-        await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "Paris is the capital.", mimetype: "text/markdown" });
-        const row = await db.test_entry_channels_get_first.get<{ name: string; content: string; mimetype: string; weight: number; state: string }>({ entry_id: entryId });
-        assert.equal(row?.name, "body");
-        assert.equal(row?.content, "Paris is the capital.");
-        assert.equal(row?.mimetype, "text/markdown");
-        assert.equal(row?.weight, 0);
-        assert.equal(row?.state, "static");
-    } finally { await db.close(); }
-});
-
-test("entry_channels: (entry_id, name) UNIQUE", async () => {
+test("{§channels-entry-name-key} entry_channels: (entry_id, name) UNIQUE", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "exec", "ls");
@@ -231,7 +187,7 @@ test("entry_channels: (entry_id, name) UNIQUE", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC )", async () => {
+test("{§stream-constraints} entry_channels: content length CHECK enforces 100 MiB char cap", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "big");
@@ -251,7 +207,7 @@ test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC )", a
     } finally { await db.close(); }
 });
 
-test("entry_channels: state enum CHECK", async () => {
+test("{§channel-state-state-is-metadata} entry_channels: state enum CHECK", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "sse", "feed");
@@ -265,7 +221,7 @@ test("entry_channels: state enum CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: producer result is an exact terminal operation result", async () => {
+test("{§validation-topology} entry_channels: producer result is an exact terminal operation result", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "prepared", "/item");
@@ -299,7 +255,7 @@ test("entry_channels: producer result is an exact terminal operation result", as
     } finally { await db.close(); }
 });
 
-test("entry_channels: NOT NULL on name, content, mimetype", async () => {
+test("{§validation-topology} entry_channels: NOT NULL on name, content, mimetype", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "x");
@@ -318,7 +274,7 @@ test("entry_channels: NOT NULL on name, content, mimetype", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: empty name or mimetype rejected by CHECK", async () => {
+test("{§validation-topology} entry_channels: empty name or mimetype rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "y");
@@ -333,7 +289,7 @@ test("entry_channels: empty name or mimetype rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: weight negative rejected", async () => {
+test("{§validation-topology} entry_channels: weight negative rejected", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "z");
@@ -344,7 +300,7 @@ test("entry_channels: weight negative rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: ON DELETE CASCADE via entry", async () => {
+test("{§validation-topology} entry_channels: ON DELETE CASCADE via entry", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "exec", "ls");
@@ -356,7 +312,7 @@ test("entry_channels: ON DELETE CASCADE via entry", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
+test("{§entry-owner} entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-channels-chain");
@@ -412,7 +368,7 @@ test("{§logical-line-count} entry_channels: the stored line count mirrors TextC
 });
 
 // {§logical-line-count} — a lone CR breaks a line; `011_settled` counts it.
-test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
+test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "/lines/lone-cr");

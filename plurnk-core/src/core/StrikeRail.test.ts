@@ -4,7 +4,7 @@ import StrikeRail from "./StrikeRail.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type BareStatement, type ExecStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 
-test("network query and channel coordinates remain distinct cycle fingerprints", () => {
+test("{§engine-cycle-evidence} network query and channel coordinates remain distinct cycle fingerprints", () => {
     const statement = (raw: string): ReadStatement => ({
         op: "READ",
         aside: null,
@@ -21,7 +21,7 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
     assert.notEqual(first, channel);
 });
 
-test("execution bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
+test("{§engine-cycle-evidence} execution bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
     // Paging one file with the same python3 preamble and different line ranges is not a cycle.
     const pager = (from: number, to: number): ExecStatement => ({
         runtime: "sh", aside: null,
@@ -35,7 +35,7 @@ test("execution bodies that share a long boilerplate prefix remain distinct cycl
     assert.equal(StrikeRail.fingerprintTurn([pager(480, 560)]), StrikeRail.fingerprintTurn([pager(480, 560)]), "the same command is still the same activity");
 });
 
-test("distinct BARE prompts remain distinct cycle activities", () => {
+test("{§engine-cycle-evidence} distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
         op: "BARE",
         aside: null,

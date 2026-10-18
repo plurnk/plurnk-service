@@ -116,7 +116,7 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
 
 // {§exec-stream-page} {§context-fit} — a 30-line structured result closes as a markerless READ: whole,
 // because it fits, with the extent; the channel itself stays complete and typed.
-test("a generated JSON result publishes whole with the extent through the next-turn packet", async (approvalContext) => {
+test("{§exec-stream-page} a generated JSON result publishes whole with the extent through the next-turn packet", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -286,7 +286,7 @@ test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed befo
 });
 
 // {§exec-stream} — a silent command still concludes visibly: one bodyless row on its default channel.
-test("a command that prints nothing on any channel lands exactly one bodyless conclusion row", async (approvalContext) => {
+test("{§exec-stream} a command that prints nothing on any channel lands exactly one bodyless conclusion row", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\ntrue\n````\n\n````NOTE\nspawned\n````", 10),

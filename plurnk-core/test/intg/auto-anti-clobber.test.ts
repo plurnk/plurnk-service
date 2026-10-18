@@ -17,7 +17,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("a stale hash anchor rejects an EDIT before proposal — no silent clobber", async (approvalContext) => {
+test("{§edit-collision} a stale hash anchor rejects an EDIT before proposal — no silent clobber", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {

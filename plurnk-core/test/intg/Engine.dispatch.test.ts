@@ -55,7 +55,7 @@ const continuationStmt = (opts: { body?: string | null }): NoteStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
+test("{§op-invariants} Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -75,7 +75,7 @@ test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (20
     } finally { await db.close(); }
 });
 
-test("namespace fixture://x and fixture:///x address the same entry", async () => {
+test("{§scheme-address-namespace-fold} namespace fixture://x and fixture:///x address the same entry", async () => {
     const { db, engine, env } = await setup();
     try {
         // create via the path form: fixture:///config.json => /config.json
@@ -105,7 +105,7 @@ test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: the KILL matcher survives into the log row's tx (even on a 404)", async () => {
+test("{§edit-result-render} Engine.dispatch: the KILL matcher survives into the log row's tx (even on a 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -151,7 +151,7 @@ test("{§turn-ops-log-curation} Engine.dispatch: KILL against a non-running exec
 });
 
 // {§turn-ops-log-curation}
-test("Engine.dispatch preserves log KILL's missing-coordinate failure", async () => {
+test("{§turn-ops-log-curation} Engine.dispatch preserves log KILL's missing-coordinate failure", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
@@ -162,7 +162,7 @@ test("Engine.dispatch preserves log KILL's missing-coordinate failure", async ()
     } finally { await db.close(); }
 });
 
-test("model-origin log KILL atomically retires its target and preserves exact history", async () => {
+test("{§log-history-projection} model-origin log KILL atomically retires its target and preserves exact history", async () => {
     const { db, engine, env } = await setup();
     try {
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
@@ -309,7 +309,7 @@ test("{§body-projection} a KILL line scope trims a NOTE like any other log body
         assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is suppressed; lines 1 and 3 stay visible");
     } finally { await db.close(); }
 });
-test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
+test("{§edit-status-201-200} Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -403,7 +403,7 @@ test("{§read-past-end} Engine.dispatch: a READ range starting past the end is a
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
+test("{§line-anchors} Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/invalid-anchor-region.md");
     const identity = "worker:///invalid-anchor-region.md";
@@ -436,7 +436,7 @@ test("Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: READ accepts a current line anchor and rejects a stale one as a collision", async () => {
+test("{§line-anchors} Engine.dispatch: READ accepts a current line anchor and rejects a stale one as a collision", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/anchor-read.md");
     try {
@@ -473,7 +473,7 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respects the curated view", async () => {
+test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log anchors, and READ respects the curated view", async () => {
     const { db, engine, env } = await setup();
     const content = "alpha\nbeta\ngamma";
     const target = urlPath("log", "/1/1/1/READ");
@@ -648,7 +648,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resource identity", async () => {
+test("{§line-anchor-write-authority} Engine.dispatch: an anchored EDIT retains the READ owner's canonical resource identity", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `anchor-alias-${crypto.randomUUID()}`);
     const alias = urlPath("aliased", "/alias.md");
@@ -697,7 +697,7 @@ test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resou
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor before invocation", async () => {
+test("{§edit-line-anchors} Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor before invocation", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `anchor-boundary-${crypto.randomUUID()}`);
     let invoked = false;
@@ -735,7 +735,7 @@ test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor be
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: writes log_entry with statement + result fields", async () => {
+test("{§edit-result-render} Engine.dispatch: writes log_entry with statement + result fields", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -770,7 +770,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: READ against worker:/// routes to Worker.read", async () => {
+test("{§universal-read-composition} Engine.dispatch: READ against worker:/// routes to Worker.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -788,7 +788,7 @@ test("Engine.dispatch: READ against worker:/// routes to Worker.read", async () 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: unknown scheme returns 501 and still writes log row", async () => {
+test("{§unregistered-scheme-recovery} Engine.dispatch: unknown scheme returns 501 and still writes log row", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -803,7 +803,7 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
+test("{§problems-dispatch} Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
@@ -824,7 +824,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNIQUE enforced", async () => {
+test("{§op-execution-order} Engine.dispatch: multiple actions in one turn — log_entries sequence UNIQUE enforced", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -872,7 +872,7 @@ test("{§scheme-surface} Engine.dispatch: origin field captured in log", async (
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
+test("{§scheme-surface-writableby-403} Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
         const turnId = await insertOperationTurn(db, env.loopId, 2, "client");
@@ -907,7 +907,7 @@ test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT of reasoning is rejected with 403 (turn sources are immutable)", async () => {
+test("{§reasoning-history} Engine.dispatch: model EDIT of reasoning is rejected with 403 (turn sources are immutable)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -919,7 +919,7 @@ test("Engine.dispatch: model EDIT of reasoning is rejected with 403 (turn source
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
+test("{§worker-write-scoping} Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
         await RuntimeWorker.ensure(db, env.workspaceId);
@@ -932,7 +932,7 @@ test("Engine.dispatch: an unrelated model writes named runtime scratch through o
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side op)", async () => {
+test("{§scheme-surface-writableby-403} Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side op)", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log scheme has no read() handler yet, so this returns 501 — proves
@@ -946,7 +946,7 @@ test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () => {
+test("{§scheme-surface-writableby-403} Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
@@ -959,7 +959,7 @@ test("Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: an instance manifest enforces writableBy like a static manifest", async () => {
+test("{§scheme-surface-writableby-403} Engine.dispatch: an instance manifest enforces writableBy like a static manifest", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -1074,7 +1074,7 @@ test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same ge
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
+test("{§problems-dispatch} Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
     const { db, engine, env } = await setup();
     try {
         // Source first: model creates an entry in worker:///.

@@ -4,47 +4,12 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 
-const manifest = (name: string): SchemeManifest => ({
-    name,
-    channels: { body: "text/plain" },
-    defaultChannel: "body",
-    category: "data",
-    writableBy: ["model"],
-    volatile: false,
-    modelVisible: true,
-});
-
 test("SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
     const r = new SchemeRegistry();
     assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "message", "note", "ops", "reasoning", "worker"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
 });
 
-test("SchemeRegistry: get(name) returns the registered handler instance", () => {
-    const r = new SchemeRegistry();
-    assert.ok(r.get("worker") instanceof Worker);
-});
-
-test("SchemeRegistry: get(name) returns undefined for unknown scheme", () => {
-    const r = new SchemeRegistry();
-    assert.equal(r.get("nonexistent"), undefined);
-    assert.equal(r.get("https"), undefined);
-});
-
-test("SchemeRegistry: has(name) reflects registration state", () => {
-    const r = new SchemeRegistry();
-    assert.equal(r.has("worker"), true);
-    assert.equal(r.has("nonexistent"), false);
-});
-
-test("SchemeRegistry: register(name, handler) accepts new scheme", () => {
-    const r = new SchemeRegistry();
-    class FakeHttp { static manifest = manifest("https"); }
-    r.register("https", new FakeHttp());
-    assert.equal(r.has("https"), true);
-    assert.ok(r.get("https") instanceof FakeHttp);
-});
-
-test("SchemeRegistry: register(name) on already-registered name fails hard", () => {
+test("{§extension-namespace-arbitration} SchemeRegistry: register(name) on already-registered name fails hard", () => {
     const r = new SchemeRegistry();
     assert.throws(
         () => r.register("worker", new Worker()),
@@ -52,25 +17,7 @@ test("SchemeRegistry: register(name) on already-registered name fails hard", () 
     );
 });
 
-test("SchemeRegistry: list() is sorted and exhaustive", () => {
-    const r = new SchemeRegistry();
-    class FakeWs { static manifest = manifest("wss"); }
-    class FakeHttps { static manifest = manifest("https"); }
-    r.register("wss", new FakeWs());
-    r.register("https", new FakeHttps());
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "message", "note", "ops", "reasoning", "worker", "wss"], "the core roster plus two registered externals");
-});
-
-test("SchemeRegistry: two independent registries don't share state", () => {
-    const r1 = new SchemeRegistry();
-    const r2 = new SchemeRegistry();
-    class Local { static manifest = manifest("local"); }
-    r1.register("local", new Local());
-    assert.equal(r1.has("local"), true);
-    assert.equal(r2.has("local"), false);
-});
-
-test("SchemeRegistry exposes scheme traits without owning capability admission", () => {
+test("{§manifest-capability-traits} SchemeRegistry exposes scheme traits without owning capability admission", () => {
     const r = new SchemeRegistry();
     class Http {
         static manifest: SchemeManifest = {

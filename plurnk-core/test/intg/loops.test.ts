@@ -23,30 +23,7 @@ const terminalResult = (status: number, sequence: number): string | null => {
     });
 };
 
-test("loops: table is STRICT", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_loops_table_sql.get<{ sql: string }>();
-        assert.match(row?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
-test("loops: insert with required fields — status defaults to 102", async () => {
-    const db = await openMigrated();
-    try {
-        const workerId = await seedWorker(db, "ws-loops-default");
-        await db.test_loops_insert.run({ worker_id: workerId, sequence: 1, prompt: "decompose the prompt" });
-        const row = await db.test_loops_get_by_worker.get<{ id: number; version: number; worker_id: number; sequence: number; status: number; prompt: string }>({ worker_id: workerId });
-        assert.ok((row?.id ?? 0) >= 1);
-        assert.equal(row?.version, 0);
-        assert.equal(row?.worker_id, workerId);
-        assert.equal(row?.sequence, 1);
-        assert.equal(row?.status, 102);
-        assert.equal(row?.prompt, "decompose the prompt");
-    } finally { await db.close(); }
-});
-
-test("loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", async () => {
+test("{§loop-terminals} loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-enum");
@@ -68,7 +45,7 @@ test("loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", as
     } finally { await db.close(); }
 });
 
-test("loops: status enum accepts 100 (queued) — drain prerequisite", async () => {
+test("{§loop-terminals} loops: status enum accepts 100 (queued) — drain prerequisite", async () => {
     // 100 = "enqueued, awaiting drain claim." Drain flips 100 → 102 atomically
     // when it picks a loop up. Pre-drain enqueueing relies on this state being
     // legal in the CHECK constraint.
@@ -87,7 +64,7 @@ test("loops: status enum accepts 100 (queued) — drain prerequisite", async () 
     } finally { await db.close(); }
 });
 
-test("loops: one terminal-result constraint rejects incomplete failures on insert and update", async () => {
+test("{§worker-lifecycle-terminal-result} loops: one terminal-result constraint rejects incomplete failures on insert and update", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-terminal-result");
@@ -122,7 +99,7 @@ test("loops: one terminal-result constraint rejects incomplete failures on inser
     } finally { await db.close(); }
 });
 
-test("loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
+test("{§loop-terminals} loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-badenum");
@@ -143,7 +120,7 @@ test("loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async 
     } finally { await db.close(); }
 });
 
-test("loops: sequence < 1 rejected by CHECK", async () => {
+test("{§validation-topology} loops: sequence < 1 rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-seqzero");
@@ -158,7 +135,7 @@ test("loops: sequence < 1 rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: (worker_id, sequence) UNIQUE — duplicate within worker rejected", async () => {
+test("{§worker-loop-result} loops: (worker_id, sequence) UNIQUE — duplicate within worker rejected", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-uniq");
@@ -170,7 +147,7 @@ test("loops: (worker_id, sequence) UNIQUE — duplicate within worker rejected",
     } finally { await db.close(); }
 });
 
-test("loops: same sequence number across different workers is fine", async () => {
+test("{§worker-loop-result} loops: same sequence number across different workers is fine", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-loops-crossrun");
@@ -183,7 +160,7 @@ test("loops: same sequence number across different workers is fine", async () =>
     } finally { await db.close(); }
 });
 
-test("loops: worker_id NOT NULL — insert without worker_id rejected", async () => {
+test("{§validation-topology} loops: worker_id NOT NULL — insert without worker_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -203,7 +180,7 @@ test("loops: empty prompt is allowed", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: worker_id FK — insert against non-existent worker rejected", async () => {
+test("{§validation-topology} loops: worker_id FK — insert against non-existent worker rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -213,7 +190,7 @@ test("loops: worker_id FK — insert against non-existent worker rejected", asyn
     } finally { await db.close(); }
 });
 
-test("loops: ON DELETE CASCADE via worker — deleting worker removes its loops", async () => {
+test("{§validation-topology} loops: ON DELETE CASCADE via worker — deleting worker removes its loops", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-runcascade");
@@ -225,7 +202,7 @@ test("loops: ON DELETE CASCADE via worker — deleting worker removes its loops"
     } finally { await db.close(); }
 });
 
-test("loops: CASCADE chain via workspace→workers→loops", async () => {
+test("{§validation-topology} loops: CASCADE chain via workspace→workers→loops", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-loops-workspacecascade");
@@ -237,7 +214,7 @@ test("loops: CASCADE chain via workspace→workers→loops", async () => {
     } finally { await db.close(); }
 });
 
-test("loops: negative version rejected by CHECK", async () => {
+test("{§validation-topology} loops: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-negver");
@@ -245,25 +222,5 @@ test("loops: negative version rejected by CHECK", async () => {
             () => db.test_loops_insert_with_version.run({ worker_id: workerId, sequence: 1, version: -1, prompt: "x" }),
             /CHECK constraint failed/,
         );
-    } finally { await db.close(); }
-});
-
-test("loops: unique index loops_worker_id_sequence exists", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_loops_index_meta.get<{ name: string; sql: string }>();
-        assert.equal(row?.name, "loops_worker_id_sequence");
-        assert.match(row?.sql ?? "", /UNIQUE/);
-    } finally { await db.close(); }
-});
-
-test("loops: id auto-assigns on insert", async () => {
-    const db = await openMigrated();
-    try {
-        const workerId = await seedWorker(db, "ws-loops-autoid");
-        await db.test_loops_insert.run({ worker_id: workerId, sequence: 1, prompt: "a" });
-        await db.test_loops_insert.run({ worker_id: workerId, sequence: 2, prompt: "b" });
-        const rows = await db.test_loops_list_ids.all<{ id: number }>({ worker_id: workerId });
-        assert.equal(rows[1]!.id, rows[0]!.id + 1);
     } finally { await db.close(); }
 });

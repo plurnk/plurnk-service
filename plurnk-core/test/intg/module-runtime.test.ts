@@ -83,7 +83,7 @@ const readStatement = (pathname: string): ReadStatement => ({
     },
 });
 
-test("module runtime registration adds one dispatchable and model-visible tag", async () => {
+test("{§extension-namespace-arbitration} module runtime registration adds one dispatchable and model-visible tag", async () => {
     const db = await openMigrated();
     try {
         const { schemes, executors, engine } = wire(db);
@@ -94,7 +94,7 @@ test("module runtime registration adds one dispatchable and model-visible tag", 
     } finally { await db.close(); }
 });
 
-test("module runtime registration preserves one-name-one-owner atomicity", async () => {
+test("{§extension-namespace-arbitration} module runtime registration preserves one-name-one-owner atomicity", async () => {
     const db = await openMigrated();
     try {
         const { schemes, executors, engine } = wire(db);
@@ -128,7 +128,7 @@ test("module runtime registration preserves one-name-one-owner atomicity", async
     } finally { await db.close(); }
 });
 
-test("module runtime registration preflights both registries before mutating either", async () => {
+test("{§extension-namespace-arbitration} module runtime registration preflights both registries before mutating either", async () => {
     const db = await openMigrated();
     try {
         const existing = fakeEntry("occupied", "existing module");
@@ -146,7 +146,7 @@ test("module runtime registration preflights both registries before mutating eit
     } finally { await db.close(); }
 });
 
-test("a runtime resource facet claims only its subtree and preserves output-stream reads", async () => {
+test("{§runtime-resource-binding} a runtime resource facet claims only its subtree and preserves output-stream reads", async () => {
     const db = await openMigrated();
     try {
         const { schemes, engine } = wire(db);

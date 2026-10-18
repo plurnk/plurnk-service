@@ -37,7 +37,7 @@ const creationReceipt = (context: string) => {
     };
 };
 
-test("LogBody resolves built-in result-backed bodies", () => {
+test("{§render-rule-find-renders-result} LogBody resolves built-in result-backed bodies", () => {
     for (const op of ["READ", "FIND", "BARE", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
@@ -121,7 +121,7 @@ test("LogBody resolves built-in result-backed bodies", () => {
     }
 });
 
-test("LogBody weighs complete canonical content without persistence-envelope or presentation overhead", () => {
+test("{§tokenomics-weight-stored-at-write} LogBody weighs complete canonical content without persistence-envelope or presentation overhead", () => {
     const row = {
         op: "READ",
         tx: JSON.stringify({ op: "READ", target: "notes.md" }),
@@ -137,7 +137,7 @@ test("LogBody weighs complete canonical content without persistence-envelope or 
     );
 });
 
-test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () => {
+test("{§render-rule-find-renders-result} LogBody resolves COPY/MOVE bodies only from ordered textual effects", () => {
     assert.deepEqual(
         LogBody.resolve({
             op: "COPY",
@@ -226,7 +226,7 @@ test("{§kill-scope-entry}: LogBody projects scoped entry KILL through the ordin
     }
 });
 
-test("LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
+test("{§edit-result-receipt-projection} {§edit-result-copy-move-effects} LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
     for (const op of ["EDIT", "KILL"]) {
         assert.throws(
             () => LogBody.resolve({ op, tx: "", rx: { receipt: { effect: { context: "x" } } } }),
@@ -239,7 +239,7 @@ test("LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () =>
     );
 });
 
-test("LogBody resolves built-in statement-backed and pushed bodies", () => {
+test("{§render-rule-find-renders-result} LogBody resolves built-in statement-backed and pushed bodies", () => {
     assert.equal(LogBody.resolve({ op: "sh", tx: { body: "jq ." }, rx: null }).content, "jq .");
 
     for (const op of ["SEND", "WORK", "FORK"]) {
@@ -268,7 +268,7 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     );
 });
 
-test("LogBody treats a completion observation as an ordinary READ", () => {
+test("{§render-rule-find-renders-result} LogBody treats a completion observation as an ordinary READ", () => {
     for (const attrs of [undefined, { kind: "loop_termination", terminatedBy: "cancel" }]) {
         assert.deepEqual(LogBody.resolve({
             op: "READ", attrs, tx: "",
@@ -278,7 +278,7 @@ test("LogBody treats a completion observation as an ordinary READ", () => {
     }
 });
 
-test("LogBody gives extension rows the same structural body contract", () => {
+test("{§render-rule-find-renders-result} LogBody gives extension rows the same structural body contract", () => {
     assert.deepEqual(
         LogBody.resolve({ op: "extension", tx: "", rx: content("extension result", "text/plain") }),
         { content: "extension result", mimetype: "text/plain", startLine: 1, provenance: "returned" },
@@ -290,7 +290,7 @@ test("LogBody gives extension rows the same structural body contract", () => {
     assert.equal(LogBody.resolve({ op: "extension", tx: "", rx: null }).content, "");
 });
 
-test("LogBody decodes persisted JSON envelopes before resolving", () => {
+test("{§body-projection} LogBody decodes persisted JSON envelopes before resolving", () => {
     assert.deepEqual(
         LogBody.resolve({
             op: "READ",

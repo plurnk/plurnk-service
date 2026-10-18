@@ -10,7 +10,7 @@ import {
     withEditReceiptParseIssues,
 } from "./edit-receipt.ts";
 
-test("editReceipt correlates disjoint edits to one bounded resulting revision", () => {
+test("{§edit-result-receipt-truth} editReceipt correlates disjoint edits to one bounded resulting revision", () => {
     // The correlation is the subject; pin the window so the shipped default (4) cannot widen it.
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
@@ -38,7 +38,7 @@ test("editReceipt correlates disjoint edits to one bounded resulting revision", 
     }
 });
 
-test("editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {
+test("{§edit-result-receipt-truth} editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
         process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
@@ -82,7 +82,7 @@ test("editReceipt shows symmetric boundary evidence without echoing a large land
     }
 });
 
-test("editReceipt preserves authored statement correlation while computing snapshot offsets", () => {
+test("{§edit-result-receipt-projection} editReceipt preserves authored statement correlation while computing snapshot offsets", () => {
     const receipt = editReceipt(
         "one\ntwo\nthree\nfour\n",
         "one\nTWO\n2.5\nthree\nFOUR\n",
@@ -97,7 +97,7 @@ test("editReceipt preserves authored statement correlation while computing snaps
     ]);
 });
 
-test("reviewerReplacementReceipt separates one landed replacement from superseded authored EDITs", () => {
+test("{§edit-result-reviewer-replacement} reviewerReplacementReceipt separates one landed replacement from superseded authored EDITs", () => {
     const authored = editReceipt(
         "one\ntwo\nthree\nfour\n",
         "one\nTWO\nthree\nFOUR\n",
@@ -143,7 +143,7 @@ test("reviewerReplacementReceipt separates one landed replacement from supersede
     );
 });
 
-test("editReceipt reports creation, prepend, append, and deletion boundaries explicitly", () => {
+test("{§edit-result-receipt-projection} editReceipt reports creation, prepend, append, and deletion boundaries explicitly", () => {
     const cases = [
         { original: "", updated: "a\nb", marker: { marks: [1, -1] as [number, number] }, body: "a\nb", expected: { source: "<1,1,1,1>", result: "<1,2>", removed: 0, inserted: 2 } },
         { original: "b", updated: "a\nb", marker: { marks: [0] as [number] }, body: "a", expected: { source: "<1,1,1,1>", result: "<1>", removed: 0, inserted: 1 } },
@@ -163,7 +163,7 @@ test("editReceipt reports creation, prepend, append, and deletion boundaries exp
     }
 });
 
-test("editReceipt reports exact regions in Unicode code points and line-column coordinates", () => {
+test("{§edit-result-receipt-projection} editReceipt reports exact regions in Unicode code points and line-column coordinates", () => {
     const receipt = editReceipt(
         "A😀B\nsecond\n",
         "AXB\nsecond\n",
@@ -190,7 +190,7 @@ test("editReceipt reports exact regions in Unicode code points and line-column c
     );
 });
 
-test("editReceipt maps multiline exact insertion endpoints in the resulting revision", () => {
+test("{§edit-result-receipt-projection} editReceipt maps multiline exact insertion endpoints in the resulting revision", () => {
     const receipt = editReceipt(
         "ab\ncd",
         "aX\nYb\ncd",
@@ -212,7 +212,7 @@ test("editReceipt maps multiline exact insertion endpoints in the resulting revi
     );
 });
 
-test("editReceipt reports mixed line and exact edits in one code-point coordinate system", () => {
+test("{§edit-result-receipt-projection} editReceipt reports mixed line and exact edits in one code-point coordinate system", () => {
     const receipt = editReceipt(
         "one\ntwo\nthree\n",
         "oNe\ntwo\nTHREE\n",
@@ -236,7 +236,7 @@ test("editReceipt reports mixed line and exact edits in one code-point coordinat
     );
 });
 
-test("editReceipt fails hard when its context tuning is missing or malformed", () => {
+test("{§operator-config-only-home} editReceipt fails hard when its context tuning is missing or malformed", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
         delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
@@ -249,7 +249,7 @@ test("editReceipt fails hard when its context tuning is missing or malformed", (
     }
 });
 
-test("receipt and resource-effect validators reject malformed extension results", () => {
+test("{§edit-result-copy-move-effects} receipt and resource-effect validators reject malformed extension results", () => {
     const batch = editReceipt("a", "b", [{
         marker: { marks: [1] },
         body: "b",
@@ -308,7 +308,7 @@ test("receipt and resource-effect validators reject malformed extension results"
     );
 });
 
-test("parser-recovery evidence follows the complete landed revision through row projection", () => {
+test("{§edit-result-receipt-truth} parser-recovery evidence follows the complete landed revision through row projection", () => {
     const batch = editReceipt(
         "one\ntwo",
         "one\nbroken(",

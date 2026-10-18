@@ -36,7 +36,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-test("streaming exec: chunks land in the channel as they arrive (not buffered until close)", async () => {
+test("{§chunk-accumulation-chunks-accumulate} streaming exec: chunks land in the channel as they arrive (not buffered until close)", async () => {
     // 5 lines, 0.5s apart — ~2.5s total. Each line is 2 bytes ("N\n").
     // We sample mid-stream and assert content has GROWN but isn't yet
     // complete, then sample again after idle to assert final state.
@@ -128,7 +128,7 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
     } finally { await db.close(); }
 });
 
-test("streaming exec: subscription stays open during emission, closes after exit", async () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} streaming exec: subscription stays open during emission, closes after exit", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -232,7 +232,7 @@ test("{§exec-target-routing} streaming exec: the workspace catalog picks up par
 
 // {§exec-target-routing}: accepting an empty-body file target runs the file
 // without changing its authored mode.
-test("an empty-body 0o644 script target survives acceptance and runs", async () => {
+test("{§exec-target-routing} an empty-body 0o644 script target survives acceptance and runs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "exec-file-target-"));
     const db = await openMigrated();
     try {

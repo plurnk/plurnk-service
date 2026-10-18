@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EnvFlags from "../../src/core/EnvFlags.ts";
 
-test("parseEnvDefaultsContent: simple var with single-line description", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: simple var with single-line description", () => {
     const content = `# SQLite file path.
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvDefaultsContent(content);
@@ -13,7 +13,7 @@ PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     assert.equal(flags[0].description, "SQLite file path.");
 });
 
-test("parseEnvDefaultsContent: multi-line description joins with spaces", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: multi-line description joins with spaces", () => {
     const content = `# A description that spans several comment lines
 # and should fold into a single string,
 # joined with single spaces.
@@ -25,7 +25,7 @@ PLURNK_SOME_KNOB=256`;
     assert.match(flags[0].description ?? "", /joined with single spaces/);
 });
 
-test("parseEnvDefaultsContent: section delimiter resets description buffer", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: section delimiter resets description buffer", () => {
     const content = `# --- Storage ---
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvDefaultsContent(content);
@@ -33,7 +33,7 @@ PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     assert.equal(flags[0].description, null, "section delimiter does NOT become description");
 });
 
-test("parseEnvDefaultsContent: blank line between comment and var resets buffer", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: blank line between comment and var resets buffer", () => {
     const content = `# This comment is for nothing in particular.
 
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
@@ -42,7 +42,7 @@ PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     assert.equal(flags[0].description, null);
 });
 
-test("parseEnvDefaultsContent: section delimiter then comment then var — only the comment is description", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: section delimiter then comment then var — only the comment is description", () => {
     const content = `# --- Storage ---
 # SQLite file path.
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
@@ -50,14 +50,14 @@ PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     assert.equal(flags[0].description, "SQLite file path.");
 });
 
-test("parseEnvDefaultsContent: var without comment has null description", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: var without comment has null description", () => {
     const content = `PLURNK_MAGIC_NUMBER=42`;
     const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null);
 });
 
-test("parseEnvDefaultsContent: empty-comment-line resets buffer", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: empty-comment-line resets buffer", () => {
     const content = `# desc 1
 #
 # desc 2
@@ -66,7 +66,7 @@ PLURNK_X=foo`;
     assert.equal(flags[0].description, "desc 2");
 });
 
-test("parseEnvDefaultsContent: an optional knob's commented declaration ends its own description", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: an optional knob's commented declaration ends its own description", () => {
     const flags = EnvFlags.parseEnvDefaultsContent([
         "# Default child model.",
         "# PLURNK_MODEL_CHILD=fast",
@@ -87,14 +87,14 @@ test("{§operator-config-undeclared-key} parseEnvDefaultsContent: a family's com
         [["PLURNK_SERVICE_MEMBERS_SAMPLE", "Matched paths a members definition lists as its sample."]]);
 });
 
-test("parseEnvDefaultsContent: strips quotes from default values", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: strips quotes from default values", () => {
     const content = `# desc
 PLURNK_QUOTED="hello world"`;
     const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags[0].defaultValue, "hello world");
 });
 
-test("parseEnvDefaultsContent: ignores non-PLURNK_ variables", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: ignores non-PLURNK_ variables", () => {
     const content = `# desc
 OPENAI_API_KEY=foo
 # desc
@@ -104,12 +104,12 @@ PLURNK_X=bar`;
     assert.equal(flags[0].envName, "PLURNK_X");
 });
 
-test("parseEnvDefaultsContent: kebab-cases the flag name from snake_case env", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: kebab-cases the flag name from snake_case env", () => {
     const flags = EnvFlags.parseEnvDefaultsContent("# desc\nPLURNK_SOME_LONG_NAME=value");
     assert.equal(flags[0].flagName, "--some-long-name");
 });
 
-test("parseEnvDefaultsContent: parses the actual plurnk-service .env.defaults shape", () => {
+test("{§operator-config-cli-flags} parseEnvDefaultsContent: parses the actual plurnk-service .env.defaults shape", () => {
     const content = `# plurnk-service environment cascade.
 #
 # Override order.
@@ -131,7 +131,7 @@ PLURNK_SERVICE_DEBUG=0`;
     assert.equal(byEnv.PLURNK_SERVICE_DEBUG.flagName, "--service-debug");
 });
 
-test("formatFlagsHelp: undescribed flags still appear (terse fallback to env=default)", () => {
+test("{§operator-config-cli-flags} formatFlagsHelp: undescribed flags still appear (terse fallback to env=default)", () => {
     const flags = [
         { flagName: "--db-path", envName: "PLURNK_SERVICE_DB_PATH", defaultValue: "./db", description: "SQLite path" },
         { flagName: "--magic", envName: "PLURNK_MAGIC", defaultValue: "42", description: null },
@@ -141,7 +141,7 @@ test("formatFlagsHelp: undescribed flags still appear (terse fallback to env=def
     assert.match(help, /--magic.*PLURNK_MAGIC=42/);
 });
 
-test("formatFlagsHelp: described flag shows description + env=default on one line", () => {
+test("{§operator-config-cli-flags} formatFlagsHelp: described flag shows description + env=default on one line", () => {
     const flags = [
         { flagName: "--db-path", envName: "PLURNK_SERVICE_DB_PATH", defaultValue: "./db", description: "SQLite path" },
     ];

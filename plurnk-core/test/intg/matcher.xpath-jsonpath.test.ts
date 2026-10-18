@@ -69,7 +69,7 @@ const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes
 
 // --- jsonpath -------------------------------------------------------
 
-test("jsonpath: $.host returns its flat match location", async () => {
+test("{§matcher-selection-signal} jsonpath: $.host returns its flat match location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
@@ -84,7 +84,7 @@ test("jsonpath: $.host returns its flat match location", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*].name reports each flat match location", async () => {
+test("{§matcher-selection-signal} jsonpath: $.users[*].name reports each flat match location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -100,7 +100,7 @@ test("jsonpath: $.users[*].name reports each flat match location", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*] returns each selected location", async () => {
+test("{§matcher-selection-signal} jsonpath: $.users[*] returns each selected location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -115,7 +115,7 @@ test("jsonpath: $.users[*] returns each selected location", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath filter reports non-sequential match coordinates", async () => {
+test("{§matcher-selection-signal} jsonpath filter reports non-sequential match coordinates", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -130,7 +130,7 @@ test("jsonpath filter reports non-sequential match coordinates", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath: zero matches returns 204 with empty evidence", async () => {
+test("{§matcher-result-resource-selection} jsonpath: zero matches returns 204 with empty evidence", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/empty.json", '{"users":[]}');
@@ -144,7 +144,7 @@ test("jsonpath: zero matches returns 204 with empty evidence", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath on text/markdown applies against the heading outline (no headings → 204)", async () => {
+test("{§op-invariants} jsonpath on text/markdown applies against the heading outline (no headings → 204)", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not actually json");
@@ -157,7 +157,7 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
     } finally { await db.close(); }
 });
 
-test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
+test("{§mimetype-handler-contract} jsonpath on text/markdown queries the marked-AST deepJson", async () => {
     // mimetypes 0.10.0: jsonpath dispatches against deepJson — the marked
     // document AST. `$..text` walks the tree, surfacing every text node.
     const { db, workspaceId, workerId, mimetypes } = await setup();
@@ -176,7 +176,7 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 
 // --- xpath ----------------------------------------------------------
 
-test("xpath //h1/text(): reports each canonical locator", async () => {
+test("{§matcher-selection-signal} xpath //h1/text(): reports each canonical locator", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -192,7 +192,7 @@ test("xpath //h1/text(): reports each canonical locator", async () => {
     } finally { await db.close(); }
 });
 
-test("xpath //user/@email: attribute matches retain canonical locators", async () => {
+test("{§matcher-selection-signal} xpath //user/@email: attribute matches retain canonical locators", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -208,7 +208,7 @@ test("xpath //user/@email: attribute matches retain canonical locators", async (
     } finally { await db.close(); }
 });
 
-test("xpath //user node selection returns flat canonical locators", async () => {
+test("{§matcher-selection-signal} xpath //user node selection returns flat canonical locators", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -224,7 +224,7 @@ test("xpath //user node selection returns flat canonical locators", async () => 
     } finally { await db.close(); }
 });
 
-test("xpath predicate reports selected locators without dropping unselected content", async () => {
+test("{§matcher-selection-signal} xpath predicate reports selected locators without dropping unselected content", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
@@ -242,7 +242,7 @@ test("xpath predicate reports selected locators without dropping unselected cont
     } finally { await db.close(); }
 });
 
-test("xpath on markdown content with no structural match → 204", async () => {
+test("{§matcher-result-resource-selection} xpath on markdown content with no structural match → 204", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not html");
@@ -259,7 +259,7 @@ test("xpath on markdown content with no structural match → 204", async () => {
 
 // --- Composition with structural <L> ---------------------------------
 
-test("jsonpath match coordinates support a model-chosen surgical follow-up READ", async () => {
+test("{§matcher-result-resource-selection} jsonpath match coordinates support a model-chosen surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose-jsonpath");
@@ -312,7 +312,7 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
     } finally { await db.close(); }
 });
 
-test("an exact matcher FIND stores canonical locators as flat evidence", async () => {
+test("{§find-result-projection} an exact matcher FIND stores canonical locators as flat evidence", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "sig");
@@ -337,7 +337,7 @@ test("an exact matcher FIND stores canonical locators as flat evidence", async (
     } finally { await db.close(); }
 });
 
-test("Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
+test("{§find-source-agnostic} Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
     const mimetypes = new Mimetypes(); await mimetypes.ready();
     const candidates = [
         { key: "worker:///a.md", content: "the engine is fast", mimetype: "text/markdown" },
@@ -349,7 +349,7 @@ test("Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY iden
     assert.deepEqual(r.matches.map((m) => m.key), ["worker:///a.md", "worker:///b.md"], "hits keyed by the caller's own identity — the matcher never cares whether it's an entry pathname or a log coordinate");
 });
 
-test("Matcher.matchCandidates omits unsupported resources without poisoning a heterogeneous search", async () => {
+test("{§matcher-dispatch} Matcher.matchCandidates omits unsupported resources without poisoning a heterogeneous search", async () => {
     const mimetypes = new Mimetypes(); await mimetypes.ready();
     const matcher = { dialect: "regex", raw: "/needle/", pattern: "needle", flags: "" } as MatcherBody;
     const mixed = await Matcher.matchCandidates(matcher, [

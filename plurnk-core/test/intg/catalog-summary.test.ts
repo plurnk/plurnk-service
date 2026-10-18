@@ -61,7 +61,7 @@ test("{§scheme-catalog-aside} [catalog] engine_scheme_catalog_summary tallies d
 
 // {§scheme-catalog-aside} — prose clips at the bound; a fenced invocation-form summary (a tool
 // family's menu) is shown whole, every tool named.
-test("[catalog] a fenced invocation-form summary lists every tool while long prose still clips", async () => {
+test("{§scheme-catalog-aside} [catalog] a fenced invocation-form summary lists every tool while long prose still clips", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `catalog-aside-${crypto.randomUUID()}`);

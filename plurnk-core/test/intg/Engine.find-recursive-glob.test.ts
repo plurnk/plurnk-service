@@ -15,7 +15,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("#449: a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", async (approvalContext) => {
+test("{§find-candidate-containment} a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-findglob-"));
     try {

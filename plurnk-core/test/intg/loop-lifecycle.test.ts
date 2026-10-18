@@ -5,7 +5,7 @@ import Results from "../../src/core/results.ts";
 import Turn from "../../src/core/Turn.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
-test("loop transitions are guarded and terminal state is immutable", async () => {
+test("{§worker-lifecycle-terminal-result} loop transitions are guarded and terminal state is immutable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-${crypto.randomUUID()}`);
@@ -85,7 +85,7 @@ test("{§problems-functionality} structured cancellation atomically claims the u
     }
 });
 
-test("an uncommon terminal status remains exact in the result while the scheduler stores its terminal class", async () => {
+test("{§worker-lifecycle-terminal-result} an uncommon terminal status remains exact in the result while the scheduler stores its terminal class", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-projection-${crypto.randomUUID()}`);
@@ -112,7 +112,7 @@ test("an uncommon terminal status remains exact in the result while the schedule
     }
 });
 
-test("202 remains a parked lifecycle state and cannot be stored as a terminal result", async () => {
+test("{§worker-lifecycle-terminal-result} 202 remains a parked lifecycle state and cannot be stored as a terminal result", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-park-${crypto.randomUUID()}`);

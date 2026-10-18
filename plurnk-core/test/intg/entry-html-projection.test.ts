@@ -121,7 +121,7 @@ test("{§exec-entry-sink} a FETCHED html page (via the exec sink) keeps its sour
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 
-test("a scoped HTTP READ slices the materialized readable body instead of starting another fetch", async () => {
+test("{§universal-read-composition} a scoped HTTP READ slices the materialized readable body instead of starting another fetch", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `http-scope-${crypto.randomUUID()}`);
@@ -151,7 +151,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
     } finally { await db.close(); }
 });
 
-test("a scoped HTTP READ slices the selected auxiliary channel when body is empty", async () => {
+test("{§universal-read-composition} a scoped HTTP READ slices the selected auxiliary channel when body is empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `http-header-scope-${crypto.randomUUID()}`);

@@ -24,7 +24,7 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     assert.fail("condition did not settle");
 };
 
-test("workspace Functionality policy accepts only explicit -1/non-negative bounds", () => {
+test("{§module-workspace-residency} workspace Functionality policy accepts only explicit -1/non-negative bounds", () => {
     assert.deepEqual(workspaceCapabilityPolicy({
         PLURNK_SERVICE_WORKSPACE_WARM_MS: "900000",
         PLURNK_SERVICE_WORKSPACE_WARM_MAX: "2",
@@ -46,7 +46,7 @@ test("workspace Functionality policy accepts only explicit -1/non-negative bound
     );
 });
 
-test("concurrent demand coalesces activation and idempotent release leaves one warm workspace", async () => {
+test("{§module-workspace-residency} concurrent demand coalesces activation and idempotent release leaves one warm workspace", async () => {
     const activation = deferred();
     let activations = 0;
     const residency = new WorkspaceCapabilities(
@@ -72,7 +72,7 @@ test("concurrent demand coalesces activation and idempotent release leaves one w
     assert.deepEqual(residency.activeWorkspaceIds(), [1]);
 });
 
-test("retained provider work prevents cooling after its initiating lease releases", async () => {
+test("{§module-workspace-residency} retained provider work prevents cooling after its initiating lease releases", async () => {
     const cooled: number[] = [];
     const residency = new WorkspaceCapabilities(
         { warmMs: 0, warmMax: -1 },
@@ -93,7 +93,7 @@ test("retained provider work prevents cooling after its initiating lease release
     assert.deepEqual(residency.activeWorkspaceIds(), []);
 });
 
-test("idle LRU cools only the least-recently-used lease-free workspace", async () => {
+test("{§module-workspace-residency} idle LRU cools only the least-recently-used lease-free workspace", async () => {
     const cooled: number[] = [];
     const residency = new WorkspaceCapabilities(
         { warmMs: -1, warmMax: 2 },
@@ -113,7 +113,7 @@ test("idle LRU cools only the least-recently-used lease-free workspace", async (
     assert.deepEqual(residency.activeWorkspaceIds(), [2, 3]);
 });
 
-test("new demand waits for in-progress cooling and then reactivates", async () => {
+test("{§module-workspace-residency} new demand waits for in-progress cooling and then reactivates", async () => {
     const cooling = deferred();
     let activations = 0;
     let coolingStarted = false;

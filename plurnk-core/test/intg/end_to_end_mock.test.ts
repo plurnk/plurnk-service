@@ -86,7 +86,7 @@ test("{§send-premature-terminate} e2e: single-turn EDIT + SEND — entry create
     } finally { await db.close(); }
 });
 
-test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", async () => {
+test("{§op-execution-order} e2e: three EDITs in one turn — sequence 1/2/3, three entries written", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-three");
@@ -109,7 +109,7 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
     } finally { await db.close(); }
 });
 
-test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () => {
+test("{§op-execution-order} e2e: cross-turn state — turn 2 sees entry written in turn 1", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
@@ -148,7 +148,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
     } finally { await db.close(); }
 });
 
-test("e2e: Mock queue exhaustion throws after the expected provider call", async () => {
+test("{§mock-provider-mock-fixture} e2e: Mock queue exhaustion throws after the expected provider call", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");

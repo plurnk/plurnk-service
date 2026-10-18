@@ -6,12 +6,12 @@ import ExecAbort from "./exec-abort.ts";
 // it reads `reason.signal` (overrideSignal) and `reason.housekeeping`/`reason.graceMs`
 // (housekeepingGrace). A drift here silently defaults the executor to its SIGHUP polite-ask.
 
-test("killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
+test("{§executor-cancellation} killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
     assert.deepEqual(ExecAbort.killReason(9), { signal: 9 });   // SIGKILL
     assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // SIGTERM
 });
 
-test("killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
+test("{§executor-cancellation} killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
     assert.deepEqual(ExecAbort.killReason(null), { signal: null });
 });
 
@@ -23,7 +23,7 @@ test("{§operator-config-only-home} teardownReason: a bounded housekeeping reap 
 
 // {§operator-config-only-home} — the panel owns the value. An unset key is a broken floor and
 // crashes by name.
-test("graceMs: the panel's value, read live; an unset or invalid key crashes by name", () => {
+test("{§operator-config-only-home} graceMs: the panel's value, read live; an unset or invalid key crashes by name", () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     try {
         assert.equal(prior, "2000", "the suite runs on the package's own panel");

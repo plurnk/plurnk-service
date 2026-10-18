@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-test("prose before, between and after fences lands as NOTEs in order and is replayed in the model's voice", async () => {
+test("{§outside-text} prose before, between and after fences lands as NOTEs in order and is replayed in the model's voice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `outside-notes-${crypto.randomUUID()}`);

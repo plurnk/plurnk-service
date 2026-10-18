@@ -119,7 +119,7 @@ test("{§problems-dispatch} Worker.edit: a concurrent creator wins cleanly and t
     } finally { await db.close(); }
 });
 
-test("Worker.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
+test("{§edit-status-201-200} Worker.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -181,7 +181,7 @@ test("{§problems-dispatch} Worker.edit: a representation change at atomic landi
     } finally { await db.close(); }
 });
 
-test("EDIT that changes nothing returns 304; only a content change updates the entry", async () => {
+test("{§edit-noop-304} EDIT that changes nothing returns 304; only a content change updates the entry", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -213,7 +213,7 @@ test("{§edit-null-clears} Worker.edit: empty body clears the channel content (d
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker on non-existent entry — body becomes content", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker on non-existent entry — body becomes content", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({ target: urlPath("worker", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
@@ -224,7 +224,7 @@ test("Worker.edit: lineMarker on non-existent entry — body becomes content", a
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker <N> on existing entry replaces line N", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker <N> on existing entry replaces line N", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -236,7 +236,7 @@ test("Worker.edit: lineMarker <N> on existing entry replaces line N", async () =
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker <0> on existing entry prepends", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker <0> on existing entry prepends", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -247,7 +247,7 @@ test("Worker.edit: lineMarker <0> on existing entry prepends", async () => {
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker <-1> on existing entry appends", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker <-1> on existing entry appends", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -258,7 +258,7 @@ test("Worker.edit: lineMarker <-1> on existing entry appends", async () => {
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker <1,-1> empty body clears", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker <1,-1> empty body clears", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -269,7 +269,7 @@ test("Worker.edit: lineMarker <1,-1> empty body clears", async () => {
     } finally { await db.close(); }
 });
 
-test("Worker.edit: lineMarker out of range returns 416", async () => {
+test("{§text-scope-runtime} Worker.edit: lineMarker out of range returns 416", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -279,7 +279,7 @@ test("Worker.edit: lineMarker out of range returns 416", async () => {
     } finally { await db.close(); }
 });
 
-test("Worker.edit: null path returns 400", async () => {
+test("{§problems-dispatch} Worker.edit: null path returns 400", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({ target: null, body: "x" });
@@ -291,7 +291,7 @@ test("Worker.edit: null path returns 400", async () => {
 
 
 
-test("Worker.edit: exact coordinates edit minified JSON as text", async () => {
+test("{§text-scope-runtime} Worker.edit: exact coordinates edit minified JSON as text", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -325,7 +325,7 @@ test("Worker.edit: exact coordinates edit minified JSON as text", async () => {
     } finally { await db.close(); }
 });
 
-test("Worker.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
+test("{§ext-mimetype-extension-mimetype} Worker.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -362,7 +362,7 @@ test("Worker.edit: line shorthand edits JSON physical lines and can replace the 
     } finally { await db.close(); }
 });
 
-test("Worker.edit: line shorthand has the same meaning without a path suffix", async () => {
+test("{§ext-mimetype-extension-mimetype} Worker.edit: line shorthand has the same meaning without a path suffix", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -376,7 +376,7 @@ test("Worker.edit: line shorthand has the same meaning without a path suffix", a
     } finally { await db.close(); }
 });
 
-test("Worker.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
+test("{§ext-mimetype-extension-mimetype} Worker.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -393,7 +393,7 @@ test("Worker.edit: textual JSON edits do not introduce a hidden parse gate", asy
     } finally { await db.close(); }
 });
 
-test("Worker.edit result carries a bounded effect receipt with revision identity", async () => {
+test("{§edit-result-receipt-truth} Worker.edit result carries a bounded effect receipt with revision identity", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });

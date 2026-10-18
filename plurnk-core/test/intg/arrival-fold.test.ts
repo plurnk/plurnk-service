@@ -12,7 +12,7 @@ import { makeMockResponse } from "./_mock.ts";
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
 const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
 
-test("the arrival row and a normal same-turn op are both born open", async () => {
+test("{§message-arrival} the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

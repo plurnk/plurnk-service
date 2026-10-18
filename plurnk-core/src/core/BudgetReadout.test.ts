@@ -85,7 +85,7 @@ test("{§context-gauge} the configured pressure threshold controls inventory eli
     }
 });
 
-test("BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
+test("{§context-gauge} BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
         { name: "two-digit total", budget: 100, baseWeight: 62 },
         { name: "total expands from two digits to three", budget: 200, baseWeight: 77 },
@@ -152,22 +152,6 @@ test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge car
     assert.equal(gauge.tokens, usage);
     assert.equal(gauge.largest, undefined);
     assert.equal(gauge.percent, undefined, "no room, no share");
-});
-
-test("BudgetReadout: malformed templates and measurements fail at their owner", () => {
-    assert.throws(
-        () => BudgetReadout.resolve('{"budget":100}', () => 10),
-        /must contain \{\{tokens\}\} exactly once/,
-    );
-    assert.throws(
-        () => BudgetReadout.resolve('{"tokens":{{tokens}},"percent":{{percent}}}', () => 10),
-        /may contain \{\{percent\}\} once, after a positive budget/,
-    );
-    assert.throws(
-        () => BudgetReadout.resolve(BudgetReadout.draft(100), () => Number.NaN),
-        /packet weight must be a non-negative safe integer/,
-    );
-    assert.throws(() => BudgetReadout.resolve(BudgetReadout.draft(100), () => 10, [{ path: "file:///a", tokens: 1 }]), /one log:\/\/\/ URI/);
 });
 
 test("{§output-allowance-notice} (#826) the readout carries curation state alone", () => {

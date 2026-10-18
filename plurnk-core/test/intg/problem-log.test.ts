@@ -10,7 +10,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
-test("ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
+test("{§log-row-self-explains} ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-problem-log-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

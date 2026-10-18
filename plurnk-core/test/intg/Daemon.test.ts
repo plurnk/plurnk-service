@@ -104,7 +104,7 @@ const rejectedProblem = async (run: () => unknown): Promise<ProblemDetails> => {
     assert.fail("Expected operation failure.");
 };
 
-test("Daemon: listenerless boot — the seam is live with no socket bound", async () => {
+test("{§methods} Daemon: listenerless boot — the seam is live with no socket bound", async () => {
     await withDaemon(null, async (_db, daemon, _addr) => {
         // No port, no listener — the seam itself is the surface. A basic seam read proves boot.
         const workspaces = await daemon.listWorkspaces();
@@ -189,7 +189,7 @@ test("{§manifest-client-display} {§mimetype-client-display} Daemon composes de
     }
 });
 
-test("Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
+test("{§mimetype-methods} Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
     const db = await openMigrated();
     const discovery = {
         registry: { byExtension: new Map<string, string>(), byFilename: new Map<string, string>() },
@@ -461,7 +461,7 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
     }
 });
 
-test("Daemon: concurrent worker demands share one Functionality activation", async () => {
+test("{§module-workspace-provider} Daemon: concurrent worker demands share one Functionality activation", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-concurrent-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -692,7 +692,7 @@ test("failed worker Functionality deactivation remains resident for the retry ow
     }
 });
 
-test("Daemon first Functionality demand reconciles generated skills for an existing worker", async () => {
+test("{§module-lifecycle} Daemon first Functionality demand reconciles generated skills for an existing worker", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -1079,7 +1079,7 @@ test("{§methods-rebind} workspace.create on an already-attached connection re-b
     });
 });
 
-test("workspace.list returns workspaces most-recent-first", async () => {
+test("{§methods} workspace.list returns workspaces most-recent-first", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         await db.test_workspaces_insert_name_only.run({ name: "first" });
         await db.test_workspaces_insert_name_only.run({ name: "second" });
@@ -1113,7 +1113,7 @@ test("{§methods-workspace-attach} workspace.attach binds to an existing workspa
     });
 });
 
-test("workspace.attach to nonexistent workspace returns an exact Problem", async () => {
+test("{§methods-workspace-attach} workspace.attach to nonexistent workspace returns an exact Problem", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1126,7 +1126,7 @@ test("workspace.attach to nonexistent workspace returns an exact Problem", async
     });
 });
 
-test("providers.list returns parsed aliases with active marker", async () => {
+test("{§methods} providers.list returns parsed aliases with active marker", async () => {
     await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1193,7 +1193,7 @@ test("{§notifications-workspace-created} workspace/created notification broadca
         } finally { observer.close(); creator.close(); }
     });
 });
-test("the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process", async () => {
+test("{§methods-event-subscribe} the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process", async () => {
     // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
     // subscribes here and owns its client fan-out; core has no transport connections.
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -1214,7 +1214,7 @@ test("the client-interface seam — subscribeToEvents delivers workspace-scoped 
     });
 });
 
-test("the client-interface seam does not manufacture a resolver from an ownerless durable row", async () => {
+test("{§proposal-list} the client-interface seam does not manufacture a resolver from an ownerless durable row", async () => {
     await withDaemon(null, async (db, daemon, _addr) => {
         const workspaceId = await insertWorkspace(db, `prop-seam-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -1451,7 +1451,7 @@ test("{§methods-log-read} the client-interface seam — readLog returns a works
     });
 });
 
-test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
+test("{§methods} the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
@@ -1639,7 +1639,7 @@ test("{§application-worker-observation} the client-interface seam — forkWorke
     });
 });
 
-test("the module setup seam registers a live tag, dispatchable through the engine", async () => {
+test("{§extension-namespace-arbitration} the module setup seam registers a live tag, dispatchable through the engine", async () => {
     // The generic module-load hook builds the RegistryEntry with its own
     // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -1664,7 +1664,7 @@ test("the module setup seam registers a live tag, dispatchable through the engin
     });
 });
 
-test("the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
+test("{§live-updates-stream-event-fires-on-chunk} the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
     // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
     // the log/entry + stream/concluded. dispatchClientAction routes through engine.dispatch identically to
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the
@@ -1708,7 +1708,7 @@ test("the client-interface seam — a dispatched execution's stdout streams as s
     });
 });
 
-test("the client-interface seam — the boot plug-point hands a registered module a live ApplicationPort", async () => {
+test("{§module-lifecycle} the client-interface seam — the boot plug-point hands a registered module a live ApplicationPort", async () => {
     // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
     // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
     const db = await openMigrated();
@@ -1874,7 +1874,7 @@ test("{§module-shutdown-order} service teardown joins the expired daemon drain 
     assert.deepEqual(events, ["producer stop", "observer close", "database close"]);
 });
 
-test("Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
+test("{§mimetype-owned-lifecycle} Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const events: string[] = [];
@@ -1905,7 +1905,7 @@ test("Daemon.stop disposes its owned mimetypes after derivations exactly once", 
     }
 });
 
-test("Daemon.stop leaves constructor-injected mimetypes caller-owned", async () => {
+test("{§mimetype-owned-lifecycle} Daemon.stop leaves constructor-injected mimetypes caller-owned", async () => {
     const db = await openMigrated();
     const injected = new Mimetypes({
         discovery: {
@@ -1935,7 +1935,7 @@ test("Daemon.stop leaves constructor-injected mimetypes caller-owned", async () 
     }
 });
 
-test("daemon shutdown preserves module and scheme lifecycle failures in one aggregate", async () => {
+test("{§module-shutdown-order} daemon shutdown preserves module and scheme lifecycle failures in one aggregate", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,
@@ -2021,7 +2021,7 @@ test("{§crash-only-stop}: every shutdown owner shares the absolute stop deadlin
     }
 });
 
-test("a module that acquires resources during setup is closed when later setup fails", async () => {
+test("{§module-failure} a module that acquires resources during setup is closed when later setup fails", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,

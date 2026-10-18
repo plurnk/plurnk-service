@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import LogVisibility from "./LogVisibility.ts";
 import LineAnchors from "../content/line-anchors.ts";
 
-test("LogVisibility composes whole and surgical scoped KILLs as one-way interval algebra", () => {
+test("{§log-kill-scope} LogVisibility composes whole and surgical scoped KILLs as one-way interval algebra", () => {
     assert.deepEqual(LogVisibility.apply([], [1, -1], 30), [[1, -1]]);
     const one = LogVisibility.apply([], [20, 20], 30);
     assert.deepEqual(one, [[20, 20]]);
@@ -14,7 +14,7 @@ test("LogVisibility composes whole and surgical scoped KILLs as one-way interval
     assert.deepEqual(LogVisibility.apply([[1, -1]], [4, 4], 30), [[1, -1]], "nothing restores a suppressed line");
 });
 
-test("LogVisibility intersects bulk numeric scopes with each body", () => {
+test("{§log-kill-scope} LogVisibility intersects bulk numeric scopes with each body", () => {
     assert.deepEqual(
         LogVisibility.resolveScope({ marks: [17, -1] }, "log:///1/1/1/READ", "short\nbody"),
         { ok: true, range: null },
@@ -29,7 +29,7 @@ test("LogVisibility intersects bulk numeric scopes with each body", () => {
     );
 });
 
-test("LogVisibility resolves both published and log-bound anchors in the immutable body", () => {
+test("{§log-kill-scope} LogVisibility resolves both published and log-bound anchors in the immutable body", () => {
     const content = "alpha\nbeta\ngamma";
     const identity = "log:///1/2/3/READ";
     const logAnchor = LineAnchors.token(identity, 2, content);

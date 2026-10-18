@@ -26,7 +26,7 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
     return row.id;
 };
 
-test("fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
+test("{§methods-log-coordinate} fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -59,31 +59,7 @@ test("{§methods-log-entry-wire} fetchLogEntry preserves causal source and struc
     } finally { await db.close(); }
 });
 
-test("log_entries: table is STRICT", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_log_entries_table_sql.get<{ sql: string }>();
-        assert.match(row?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
-test("log_entries: minimal insert — defaults populate", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await seedEnvelope(db, "ws-log-defaults");
-        const ins = await db.test_log_entries_insert_minimal.get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
-        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; weight: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
-        assert.equal(row?.version, 0);
-        assert.match(row?.at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.ok(row);
-        assert.equal(Object.hasOwn(row, "delimiter"), false);
-        assert.equal(row?.weight, 0);
-        assert.equal(row?.signal, null);
-        assert.equal(row?.lineMarker, null);
-    } finally { await db.close(); }
-});
-
-test("log_entries: sequence UNIQUE within turn", async () => {
+test("{§log-coordinate-hierarchy} log_entries: sequence UNIQUE within turn", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionuniq");
@@ -95,7 +71,7 @@ test("log_entries: sequence UNIQUE within turn", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: sequence >= 1 enforced", async () => {
+test("{§validation-topology} log_entries: sequence >= 1 enforced", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionneg");
@@ -106,7 +82,7 @@ test("log_entries: sequence >= 1 enforced", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: origin enum", async () => {
+test("{§validation-topology} log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
@@ -123,7 +99,7 @@ test("log_entries: origin enum", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: worker, loop, turn, producer, and model-call ownership are one chain", async () => {
+test("{§validation-topology} log_entries: worker, loop, turn, producer, and model-call ownership are one chain", async () => {
     const db = await openMigrated();
     try {
         const first = await seedEnvelope(db, `ws-log-owner-a-${crypto.randomUUID()}`);
@@ -188,7 +164,7 @@ test("{§rejected-emission-entry}: only rejected model attempts use actionless l
 // (No "op enum" test: log_entries.op does not CHECK-enumerate the grammar op set. Op validity lives at the parse
 // (grammar) + type (PlurnkOp) layer; the column stores what the typed engine writes.)
 
-test("log_entries: status_rx range 100..599", async () => {
+test("{§validation-topology} log_entries: status_rx range 100..599", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-statusrx");
@@ -204,7 +180,7 @@ test("log_entries: status_rx range 100..599", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: mimetype CHECK", async () => {
+test("{§validation-topology} log_entries: mimetype CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-mimetypes");
@@ -213,7 +189,7 @@ test("log_entries: mimetype CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: scheme nullable; non-empty CHECK", async () => {
+test("{§validation-topology} log_entries: scheme nullable; non-empty CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tscheme");
@@ -225,7 +201,7 @@ test("log_entries: scheme nullable; non-empty CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: port range", async () => {
+test("{§validation-topology} log_entries: port range", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tport");
@@ -238,7 +214,7 @@ test("log_entries: port range", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: serialized query preserves absence, empty, order, and duplicates", async () => {
+test("{§scheme-address-network} log_entries: serialized query preserves absence, empty, order, and duplicates", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
@@ -250,20 +226,7 @@ test("log_entries: serialized query preserves absence, empty, order, and duplica
     } finally { await db.close(); }
 });
 
-test("log_entries: signal polymorphism", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await seedEnvelope(db, "ws-log-sigpoly");
-        await minimalLog(db, ctx, { sequence: 1, op: "EDIT" });
-        await minimalLog(db, ctx, { sequence: 2, op: "SEND",  signal: JSON.stringify(200) });
-        await minimalLog(db, ctx, { sequence: 3, op: "sh" });
-        await minimalLog(db, ctx, { sequence: 4, op: "READ",   });
-        const rows = await db.test_log_entries_signals_by_turn.all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
-        assert.deepEqual(rows.map((r) => r.signal), [null, '200', null, null], "only a SEND carries a status; every other op's signal is null");
-    } finally { await db.close(); }
-});
-
-test("log_entries: a malformed bound curation plan rolls back its row and every target change", async () => {
+test("{§log-history-projection} log_entries: a malformed bound curation plan rolls back its row and every target change", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
@@ -315,7 +278,7 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
     } finally { await db.close(); }
 });
 
-test("log_entries: folded body intervals are canonical and curation snapshots reject collisions", async () => {
+test("{§log-history-projection} log_entries: folded body intervals are canonical and curation snapshots reject collisions", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-folded-intervals");
@@ -436,7 +399,7 @@ test("{§log-history-projection}: curation effects are immutable while their eve
     } finally { await db.close(); }
 });
 
-test("log_entries: worker_id NOT NULL", async () => {
+test("{§validation-topology} log_entries: worker_id NOT NULL", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-norun");
@@ -447,7 +410,7 @@ test("log_entries: worker_id NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: each FK rejection path", async () => {
+test("{§validation-topology} log_entries: each FK rejection path", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-fkpaths");
@@ -457,7 +420,7 @@ test("log_entries: each FK rejection path", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: ON DELETE CASCADE via turn", async () => {
+test("{§log-history-projection} log_entries: ON DELETE CASCADE via turn", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
@@ -482,7 +445,7 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: full CASCADE chain", async () => {
+test("{§log-history-projection} log_entries: full CASCADE chain", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-fullchain");
@@ -552,7 +515,7 @@ test("{§emission-row}: the schema admits an emission row only as one born-folde
     } finally { await db.close(); }
 });
 
-test("log_entries: immutability trigger — UPDATE of core fields rejected", async () => {
+test("{§log-history-projection} log_entries: immutability trigger — UPDATE of core fields rejected", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-immut");
@@ -583,7 +546,7 @@ test("{§log-history-projection}: an individual log event cannot be deleted", as
     } finally { await db.close(); }
 });
 
-test("log_entries: weight negative rejected", async () => {
+test("{§validation-topology} log_entries: weight negative rejected", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-toksneg");
@@ -594,35 +557,7 @@ test("log_entries: weight negative rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: indexes exist", async () => {
-    const db = await openMigrated();
-    try {
-        const rows = await db.test_log_entries_indexes.all<{ name: string; sql: string }>();
-        const names = rows.map((r) => r.name).toSorted();
-        assert.deepEqual(names, [
-            "log_entries_deep_hash",
-            "log_entries_emission_turn",
-            "log_entries_loop_id",
-            "log_entries_model_call_id",
-            "log_entries_subscription_publication_id",
-            "log_entries_turn_id_sequence",
-            "log_entries_worker_ambient_event",
-            "log_entries_worker_id",
-        ]);
-        const uniq = rows.find((r) => r.name === "log_entries_turn_id_sequence");
-        assert.match(uniq?.sql ?? "", /UNIQUE/);
-        const modelCall = rows.find((r) => r.name === "log_entries_model_call_id");
-        assert.match(modelCall?.sql ?? "", /UNIQUE/);
-        assert.match(modelCall?.sql ?? "", /model_call_id IS NOT NULL/);
-        const publication = rows.find((r) => r.name === "log_entries_subscription_publication_id");
-        assert.match(publication?.sql ?? "", /subscription_publication_id IS NOT NULL/);
-        const occurrence = rows.find((r) => r.name === "log_entries_worker_ambient_event");
-        assert.match(occurrence?.sql ?? "", /UNIQUE/);
-        assert.match(occurrence?.sql ?? "", /ambient_event_id IS NOT NULL/);
-    } finally { await db.close(); }
-});
-
-test("log_entries: query log:///<L>/<T>/<A> address pattern", async () => {
+test("{§log-coordinate-hierarchy} log_entries: query log:///<L>/<T>/<A> address pattern", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-address");

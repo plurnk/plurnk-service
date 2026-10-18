@@ -69,7 +69,7 @@ test("{§functionality-preparation-cancellation} cancelling a queued publisher n
     available.release();
 });
 
-test("a queued exclusive request blocks later ordinary turns", async () => {
+test("{§module-workspace-quiescence} a queued exclusive request blocks later ordinary turns", async () => {
     const gate = new WorkspaceGate(async (workerId, rootWorkerId) => workerId === rootWorkerId);
     const first = await gate.acquireTurn(1, 1);
     const exclusive = gate.requestExclusive(1);
@@ -119,7 +119,7 @@ test("exclusive mode admits only its selected lineage and serializes those turns
     (await outsider)();
 });
 
-test("a capability replacement acquires only at an immediately quiescent boundary", async () => {
+test("{§module-workspace-quiescence} a capability replacement acquires only at an immediately quiescent boundary", async () => {
     const gate = new WorkspaceGate(async () => false);
     const first = gate.tryExclusive(1);
     assert.ok(first !== null);
@@ -135,7 +135,7 @@ test("a capability replacement acquires only at an immediately quiescent boundar
     settled.release();
 });
 
-test("cancelling a queued turn removes its request without waiting for the workspace", async () => {
+test("{§loop-execution-allowance} cancelling a queued turn removes its request without waiting for the workspace", async () => {
     const gate = new WorkspaceGate(async () => true);
     const exclusive = gate.requestExclusive(1);
     await exclusive.acquired;
@@ -155,7 +155,7 @@ test("cancelling a queued turn removes its request without waiting for the works
     (await gate.acquireTurn(1, 2))();
 });
 
-test("cancellation during an asynchronous lineage check cannot admit the cancelled turn", async () => {
+test("{§loop-execution-allowance} cancellation during an asynchronous lineage check cannot admit the cancelled turn", async () => {
     const checking = Promise.withResolvers<void>();
     const checked = Promise.withResolvers<boolean>();
     const gate = new WorkspaceGate(async () => { checking.resolve(); return checked.promise; });
@@ -180,7 +180,7 @@ test("cancellation during an asynchronous lineage check cannot admit the cancell
     (await gate.acquireTurn(1, 3))();
 });
 
-test("a changed exclusive root invalidates an asynchronous lineage permission", async () => {
+test("{§loop-execution-allowance} a changed exclusive root invalidates an asynchronous lineage permission", async () => {
     const checking = Promise.withResolvers<void>();
     const checked = Promise.withResolvers<boolean>();
     const reconsidered = Promise.withResolvers<void>();
@@ -203,7 +203,7 @@ test("a changed exclusive root invalidates an asynchronous lineage permission", 
     (await waiting)();
 });
 
-test("turn cancellation is admission-scoped, not an implicit release of an already acquired workspace", async () => {
+test("{§loop-execution-allowance} turn cancellation is admission-scoped, not an implicit release of an already acquired workspace", async () => {
     const gate = new WorkspaceGate(async () => true);
     const aborted = new AbortController();
     aborted.abort(new Error("cancelled before admission"));

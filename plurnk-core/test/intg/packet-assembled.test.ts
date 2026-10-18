@@ -77,7 +77,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
     } finally { await db.close(); }
 });
 
-test("assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
+test("{§render-rule-line-navigable-prefix} assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-line-anchor-${crypto.randomUUID()}`);
@@ -110,7 +110,7 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
     } finally { await db.close(); }
 });
 
-test("assembled packet: landed EDIT receipts expose causal parser-recovery evidence only when relevant", async () => {
+test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts expose causal parser-recovery evidence only when relevant", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-edit-parse-issues-${crypto.randomUUID()}`);
@@ -300,7 +300,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
     } finally { await db.close(); }
 });
 
-test("assembled packet: scoped COPY reports both operands and its landed text materialization", async () => {
+test("{§copy-move-observation} assembled packet: scoped COPY reports both operands and its landed text materialization", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-copy-${crypto.randomUUID()}`);
@@ -448,7 +448,7 @@ test("{§schemes-directory} assembled packet: the skills foist surfaces the Work
     }
 });
 
-test("assembled packet: the bodyless Worker reference catalog succeeds when no references are materialized", async () => {
+test("{§actor-boundary-catalog-preview} assembled packet: the bodyless Worker reference catalog succeeds when no references are materialized", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
     const db = await openMigrated();
@@ -579,7 +579,7 @@ test("{§packet-empty-sections} no live children or streams → Open Work states
     } finally { await db.close(); }
 });
 
-test("assembled packet: definition tables compact without changing other whitespace", async () => {
+test("{§definition-table-projection} assembled packet: definition tables compact without changing other whitespace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-${crypto.randomUUID()}`);

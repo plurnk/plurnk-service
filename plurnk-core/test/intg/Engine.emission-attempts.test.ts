@@ -92,7 +92,7 @@ const setup = async (dbPath?: string) => {
     return { db, workspaceId, workerId, loopId, engine, packetNotifications };
 };
 
-test("provider I/O begins only after its pending attempt row is durable", async () => {
+test("{§emission-admission} provider I/O begins only after its pending attempt row is durable", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -304,7 +304,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
     }
 });
 
-test("invalid emissions retry beneath one turn against the identical packet, then admit only the valid response", async () => {
+test("{§emission-admission} invalid emissions retry beneath one turn against the identical packet, then admit only the valid response", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -505,7 +505,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
 });
 
 // {§turn-shape} {§parse-diagnostics}
-test("a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
+test("{§fence-pairing} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
@@ -540,7 +540,7 @@ test("a literal nested NOTE remains data in the complete operation replay and it
     }
 });
 
-test("a provider-authoritative charge is the settled turn and loop cost", async () => {
+test("{§tokenomics-provider-usage} a provider-authoritative charge is the settled turn and loop cost", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new Mock({
@@ -587,7 +587,7 @@ test("a provider-authoritative charge is the settled turn and loop cost", async 
     }
 });
 
-test("finish=length is forensic evidence: a frame that lost its boundary after a statement is admitted with the loss as its diagnostic", async () => {
+test("{§emission-admission} finish=length is forensic evidence: a frame that lost its boundary after a statement is admitted with the loss as its diagnostic", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const lostPrefix = [
@@ -836,7 +836,7 @@ ${renderedRead}
     }
 });
 
-test("a bounded malformed operation defers same-turn completion until the model observes it ({§matcher-refusal})", async () => {
+test("{§matcher-refusal} a bounded malformed operation defers same-turn completion until the model observes it", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -1343,7 +1343,7 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
     } finally { await db.close(); }
 });
 
-test("digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
+test("{§rejected-emission-entry} digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
     // The surveys are the initialization program; with the preview off there is none and no digest stem for it.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -1498,7 +1498,7 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
     }
 });
 
-test("a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
+test("{§turn-never-blank} a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
@@ -1625,7 +1625,7 @@ test("{§provider-guarantees-request-observer} Core rejects a ProviderError whos
     }
 });
 
-test("#161 {§provider-recovery}: a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
+test("{§provider-recovery} a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const content = "\n````SEND\nmust never dispatch\n````";
@@ -1750,7 +1750,7 @@ test("#161 {§provider-recovery}: a complete-looking resource-interrupted attemp
     }
 });
 
-test("an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
+test("{§turn-exception-outcome} an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const root = new Error("attempt classification failed");
@@ -1793,7 +1793,7 @@ test("an internal attempt-processing failure is not mislabeled as a provider fai
     }
 });
 
-test("a valid turn with a failed operation remains recoverable and model-visible", async () => {
+test("{§turn-never-blank} a valid turn with a failed operation remains recoverable and model-visible", async () => {
     const { db, workspaceId, workerId, loopId } = await setup();
     try {
         class Sealed {
@@ -1847,7 +1847,7 @@ test("a valid turn with a failed operation remains recoverable and model-visible
     }
 });
 
-test("(#478) a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
+test("{§output-allowance-notice} a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({

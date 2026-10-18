@@ -4,7 +4,7 @@ import Dsl from "./dsl.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import SeamSocket from "./_seam.ts";
 
-test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
+test("{§methods-op-mirror} op.edit creates an entry via engine.dispatch (origin=client)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -48,7 +48,7 @@ test("{§methods-op-mirror}: op.edit log/entry notification precedes the action 
     });
 });
 
-test("op.read fetches an entry's body", async () => {
+test("{§methods-op-mirror} op.read fetches an entry's body", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -62,7 +62,7 @@ test("op.read fetches an entry's body", async () => {
     });
 });
 
-test("op.read on nonexistent entry returns 404", async () => {
+test("{§methods-op-mirror} op.read on nonexistent entry returns 404", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -73,7 +73,7 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
-test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
+test("{§methods-op-mirror} op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -102,7 +102,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
     });
 });
 
-test("op.* fires log/entry notification with the entry shape", async () => {
+test("{§notifications-log-entry-notify} op.* fires log/entry notification with the entry shape", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -121,7 +121,7 @@ test("op.* fires log/entry notification with the entry shape", async () => {
     });
 });
 
-test("log/entry notification is scoped to workspace", async () => {
+test("{§notifications-envelope-carries-workspaceid} log/entry notification is scoped to workspace", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
@@ -142,7 +142,7 @@ test("log/entry notification is scoped to workspace", async () => {
         } finally { wsA.close(); wsB.close(); }
     });
 });
-test("op.find on empty scope returns 200 with empty results", async () => {
+test("{§find-result-projection} op.find on empty scope returns 200 with empty results", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

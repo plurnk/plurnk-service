@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EntryGraph from "./_entry-graph.ts";
 
-test("EntryGraph.storeBatch reads and validates the service-owned persistence knob", () => {
+test("{§operator-config-only-home} EntryGraph.storeBatch reads and validates the service-owned persistence knob", () => {
     const prior = process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH;
     try {
         process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH = "37";

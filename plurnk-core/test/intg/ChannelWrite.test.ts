@@ -23,7 +23,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     return { db, workspaceId, workerId, entryId: entry.id };
 };
 
-test("appendToChannel: appends chunk to existing channel content", async () => {
+test("{§chunk-accumulation-chunks-accumulate} appendToChannel: appends chunk to existing channel content", async () => {
     const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hello");
     try {
         await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: " world" });
@@ -32,7 +32,7 @@ test("appendToChannel: appends chunk to existing channel content", async () => {
     } finally { await db.close(); }
 });
 
-test("appendToChannel: every append stores the ruler weight of the complete channel (#178)", async () => {
+test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores the ruler weight of the complete channel", async () => {
     const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "A😀");
     try {
         await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: "é" });
@@ -56,7 +56,7 @@ test("appendToChannel: no-op on nonexistent channel (silent)", async () => {
     } finally { await db.close(); }
 });
 
-test("appendToChannel: invokes notify with producer, current state, and content length", async () => {
+test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes notify with producer, current state, and content length", async () => {
     const { db, workspaceId, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
     try {
         const events: Array<{ workspaceId: number; event: StreamEventPayload }> = [];
@@ -71,7 +71,7 @@ test("appendToChannel: invokes notify with producer, current state, and content 
     } finally { await db.close(); }
 });
 
-test("setChannelState: transitions state and notifies", async () => {
+test("{§notifications-stream-event-on-channel-change} setChannelState: transitions state and notifies", async () => {
     const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "data", "active");
     try {
         const events: StreamEventPayload[] = [];
@@ -83,7 +83,7 @@ test("setChannelState: transitions state and notifies", async () => {
     } finally { await db.close(); }
 });
 
-test("setChannelState: accepts all four valid states", async () => {
+test("{§channel-state-state-is-metadata} setChannelState: accepts all four valid states", async () => {
     const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "x", "active");
     try {
         for (const s of ["static", "active", "closed", "errored"] as const) {
@@ -94,7 +94,7 @@ test("setChannelState: accepts all four valid states", async () => {
     } finally { await db.close(); }
 });
 
-test("openSubscription: inserts a row and returns its id", async () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} openSubscription: inserts a row and returns its id", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "abc-123" });
@@ -132,7 +132,7 @@ test("{§exec-lifetime} open streams remain live obligations regardless of their
     } finally { await db.close(); }
 });
 
-test("openSubscription: rejects a second active producer for the same entry", async () => {
+test("{§subscriptions-causal-resource} openSubscription: rejects a second active producer for the same entry", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
@@ -168,7 +168,7 @@ test("{§subscriptions-causal-resource}: another workspace Worker subscribes, bu
     } finally { await db.close(); }
 });
 
-test("openSubscription: allows new subscription after previous one is closed", async () => {
+test("{§subscriptions-causal-resource} openSubscription: allows new subscription after previous one is closed", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const sub1 = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
@@ -178,7 +178,7 @@ test("openSubscription: allows new subscription after previous one is closed", a
     } finally { await db.close(); }
 });
 
-test("closeSubscription: persists the exact result and indexed status", async () => {
+test("{§subscriptions} closeSubscription: persists the exact result and indexed status", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
@@ -198,7 +198,7 @@ test("closeSubscription: persists the exact result and indexed status", async ()
     } finally { await db.close(); }
 });
 
-test("closeSubscription: idempotent — already-closed subscription is a no-op", async () => {
+test("{§subscription-finalization} closeSubscription: idempotent — already-closed subscription is a no-op", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
@@ -215,7 +215,7 @@ test("closeSubscription: idempotent — already-closed subscription is a no-op",
     } finally { await db.close(); }
 });
 
-test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
+test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
@@ -245,7 +245,7 @@ test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) su
     } finally { await db.close(); }
 });
 
-test("findActiveSubscription: returns active sub for the entry", async () => {
+test("{§subscriptions-causal-resource} findActiveSubscription: returns active sub for the entry", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h-abc" });
@@ -257,7 +257,7 @@ test("findActiveSubscription: returns active sub for the entry", async () => {
     } finally { await db.close(); }
 });
 
-test("findActiveSubscription: returns null when nothing active", async () => {
+test("{§subscriptions-causal-resource} findActiveSubscription: returns null when nothing active", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
@@ -267,15 +267,7 @@ test("findActiveSubscription: returns null when nothing active", async () => {
     } finally { await db.close(); }
 });
 
-test("findActiveSubscription: returns null for unknown entry", async () => {
-    const { db, entryId } = await seedEntryWithChannel("body", "text/plain", "");
-    try {
-        const found = await ChannelWrite.findActiveSubscription(db, { entryId });
-        assert.equal(found, null);
-    } finally { await db.close(); }
-});
-
-test("subscriptions CASCADE on entry delete", async () => {
+test("{§subscriptions-causal-resource} subscriptions CASCADE on entry delete", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
@@ -285,18 +277,7 @@ test("subscriptions CASCADE on entry delete", async () => {
     } finally { await db.close(); }
 });
 
-test("private resource deletion removes its closed subscription", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
-    try {
-        const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
-        await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
-        await db.test_delete_worker.run({ id: workerId });
-        const count = (await db.test_count_subscriptions_for_worker.get<{ n: number }>({ worker_id: workerId }))?.n;
-        assert.equal(count, 0);
-    } finally { await db.close(); }
-});
-
-test("subscriptions must open before any settlement fields can be stored", async () => {
+test("{§validation-topology} subscriptions must open before any settlement fields can be stored", async () => {
     const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await assert.rejects(

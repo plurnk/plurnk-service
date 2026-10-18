@@ -5,7 +5,7 @@ import LineAnchors from "./line-anchors.ts";
 
 const identity = "worker:///notes.md";
 
-test("LineAnchors: tokens are deterministic Base62 handles over identity, content, and configured context", () => {
+test("{§line-anchors} LineAnchors: tokens are deterministic Base62 handles over identity, content, and configured context", () => {
     const content = Array.from({ length: 13 }, (_, index) => `line-${index + 1}`).join("\n");
     const token = LineAnchors.token(identity, 7, content);
     assert.match(token, /^@[0-9A-Za-z]{5}$/);
@@ -19,7 +19,7 @@ test("LineAnchors: tokens are deterministic Base62 handles over identity, conten
     assert.equal(LineAnchors.token(identity, 7, outside), token);
 });
 
-test("LineAnchors: context tuning is hash-domain state and fails hard when missing or malformed", () => {
+test("{§line-anchors} LineAnchors: context tuning is hash-domain state and fails hard when missing or malformed", () => {
     const prior = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
     try {
         process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = "2";
@@ -39,7 +39,7 @@ test("LineAnchors: context tuning is hash-domain state and fails hard when missi
     }
 });
 
-test("LineAnchors: rendering preserves physical content and separators while carrying the visible ordinal", () => {
+test("{§line-anchors} LineAnchors: rendering preserves physical content and separators while carrying the visible ordinal", () => {
     const complete = "one\ntwo\nthree\nfour\nfive\nsix\nalpha\r\nbeta\rgamma\nten";
     const projection = "alpha\r\nbeta\rgamma\n";
     const anchors = LineAnchors.project(identity, complete, projection, 7);
@@ -63,7 +63,7 @@ test("LineAnchors: rendering preserves physical content and separators while car
     );
 });
 
-test("LineAnchors: resolution lowers anchors only in line-coordinate positions", () => {
+test("{§line-anchors} LineAnchors: resolution lowers anchors only in line-coordinate positions", () => {
     const content = "alpha\nbeta\ngamma\n";
     const anchors = LineAnchors.tokens(identity, content);
     const first = anchors[0];
@@ -95,7 +95,7 @@ test("LineAnchors: resolution lowers anchors only in line-coordinate positions",
     });
 });
 
-test("LineAnchors: changed content or nearby context makes an authored anchor stale; a moved line keeps it (#428 v2)", () => {
+test("{§line-anchor-disambiguation} LineAnchors: changed content or nearby context makes an authored anchor stale; a moved line keeps it", () => {
     const content = "zero\nalpha\nbeta\ngamma\ndelta\nepsilon\nzeta";
     const anchor = LineAnchors.token(identity, 3, content);
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("beta", "changed")), { marks: [anchor] }), {
@@ -116,7 +116,7 @@ test("LineAnchors: changed content or nearby context makes an authored anchor st
     }, "a range of anchors follows the shift together");
 });
 
-test("LineAnchors: a mutation precondition checks only its anchored neighborhood", () => {
+test("{§line-anchors} LineAnchors: a mutation precondition checks only its anchored neighborhood", () => {
     const content = Array.from({ length: 12 }, (_, index) => `line-${index + 1}`).join("\n");
     const precondition = {
         identity,

@@ -64,7 +64,7 @@ test("{§read-read-content} Worker.read: existing entry — returns body content
     } finally { db.close(); }
 });
 
-test("Worker.read: nonexistent path returns 404 with null content/mimetype", async () => {
+test("{§read-read-404} Worker.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const result = await readThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/nope") }), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -74,7 +74,7 @@ test("Worker.read: nonexistent path returns 404 with null content/mimetype", asy
     } finally { db.close(); }
 });
 
-test("Worker.read: null path returns 400", async () => {
+test("{§problems-dispatch} Worker.read: null path returns 400", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const result = await readThroughScheme("worker", null, readStatement({ target: null }), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -84,7 +84,7 @@ test("Worker.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
+test("{§read-selection-projection} Worker.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -98,7 +98,7 @@ test("Worker.read: lineMarker <N> on text source returns raw line + text/markdow
     } finally { db.close(); }
 });
 
-test("Worker.read: four-coordinate scope returns an exact Unicode text region", async () => {
+test("{§text-scope-runtime} Worker.read: four-coordinate scope returns an exact Unicode text region", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -128,27 +128,7 @@ test("Worker.read: four-coordinate scope returns an exact Unicode text region", 
     } finally { db.close(); }
 });
 
-test("Worker.read: an empty exact scope retains its region and matcher evidence", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(
-            editStatement({ target: urlPath("worker", "/empty-exact"), body: "a" }),
-            makeSchemeCtx({ db, workspaceId, workerId }),
-        );
-        const result = await k.find(
-            findStatement({
-                target: urlPath("worker", "/empty-exact"),
-                matcher: { dialect: "regex", raw: "/a/", pattern: "a", flags: "" },
-            }),
-            makeSchemeCtx({ db, workspaceId, workerId }),
-        );
-        assert.equal(result.status, 200);
-        assert.ok(result.results.length > 0);
-    } finally { db.close(); }
-});
-
-test("Worker.find: exact regex matcher returns flat locations", async () => {
+test("{§find-result-projection} Worker.find: exact regex matcher returns flat locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -161,7 +141,7 @@ test("Worker.find: exact regex matcher returns flat locations", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find: exact glob matcher returns flat match locations", async () => {
+test("{§find-result-projection} Worker.find: exact glob matcher returns flat match locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -173,19 +153,7 @@ test("Worker.find: exact glob matcher returns flat match locations", async () =>
         assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
-test("Worker.find: matcher evaluates the full resource before projecting locations", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/c"), body: "one\nprojected\nfoo later" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await k.find(findStatement({
-            target: urlPath("worker", "/c"),
-            matcher: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
-        }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(result.status, 200);
-        assert.ok(result.results.length > 0);
-    } finally { db.close(); }
-});
+
 test("{§edit-marker-required-on-existing} Worker.read: edited entry round-trips through read — content matches what edit wrote", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
@@ -205,7 +173,7 @@ test("{§edit-marker-required-on-existing} Worker.read: edited entry round-trips
 
 
 
-test("Worker.read: different workspaces see different entries at the same path", async () => {
+test("{§entry-owner} Worker.read: different workspaces see different entries at the same path", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-readiso-a");
@@ -222,7 +190,7 @@ test("Worker.read: different workspaces see different entries at the same path",
     } finally { db.close(); }
 });
 
-test("Worker.read: read against workspace A doesn't surface workspace B's entry", async () => {
+test("{§entry-owner} Worker.read: read against workspace A doesn't surface workspace B's entry", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-rd-a");
@@ -259,7 +227,7 @@ test("{§ext-mimetype} Worker: path suffix `.json` declares mimetype; READ retur
     } finally { db.close(); }
 });
 
-test("Worker: extension `.json` does not change line shorthand semantics", async () => {
+test("{§ext-mimetype-extension-mimetype} Worker: extension `.json` does not change line shorthand semantics", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

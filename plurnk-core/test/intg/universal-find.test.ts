@@ -93,7 +93,7 @@ const parseSend = (dsl: string): SendStatement => {
     return item.statement;
 };
 
-test("data schemes inherit standard FIND after their optional preparation hook", async () => {
+test("{§scheme-surface} data schemes inherit standard FIND after their optional preparation hook", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("prepared", new PreparedDataScheme());
@@ -126,7 +126,7 @@ test("data schemes inherit standard FIND after their optional preparation hook",
     }
 });
 
-test("exact matcher FIND invokes preparation, then returns flat match locations", async () => {
+test("{§scheme-surface} exact matcher FIND invokes preparation, then returns flat match locations", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("prepared", new PreparedDataScheme());
@@ -200,7 +200,7 @@ test("{§find-channel-selection}: exact FIND composes the selected channel's pro
     }
 });
 
-test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead URLs", async () => {
+test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them, and rejects dead URLs", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const http = new Http();
@@ -371,7 +371,7 @@ update
     }
 });
 
-test("non-data schemes without FIND remain honestly unsupported", async () => {
+test("{§op-methods-op-dispatch} non-data schemes without FIND remain honestly unsupported", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     class ControlScheme {

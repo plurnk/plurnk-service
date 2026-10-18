@@ -35,7 +35,7 @@ test("shape guards are mutually exclusive and optional on a scheme result", () =
     assert.equal(Results.isPassthroughResult(results[3]), false);
 });
 
-test("isErrorStatus marks 4xx/5xx and only those", () => {
+test("{§operation-result} isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(200), false);
     assert.equal(Results.isErrorStatus(201), false);
     assert.equal(Results.isErrorStatus(304), false);
@@ -46,7 +46,7 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(500), true);
 });
 
-test("failure delegates to the shared RFC 9457 contract", () => {
+test("{§problem-details} failure delegates to the shared RFC 9457 contract", () => {
     const result = Results.failure(
         "scheme:worker",
         "entry-not-found",
@@ -60,7 +60,7 @@ test("failure delegates to the shared RFC 9457 contract", () => {
     assert.equal("error" in result, false);
 });
 
-test("assert rejects a bare failure and mismatched statuses", () => {
+test("{§log-row-self-explains} assert rejects a bare failure and mismatched statuses", () => {
     assert.throws(() => Results.assert({ status: 404 }), /invalid operation result/);
     assert.throws(() => Results.assert({
         status: 404,
@@ -68,7 +68,7 @@ test("assert rejects a bare failure and mismatched statuses", () => {
     }), /does not match/);
 });
 
-test("attachInstance records the durable log URI", () => {
+test("{§log-row-self-explains} attachInstance records the durable log URI", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");
     assert.equal(result.problem?.instance, "log:///5/2/1/READ");

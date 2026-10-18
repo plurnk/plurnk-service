@@ -137,7 +137,7 @@ test("{§send-premature-terminate} Engine.runLoop: three edits are observed befo
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
+test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -157,7 +157,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     } finally { await db.close(); }
 });
 
-test("maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
+test("{§operator-config-max-turns-ceiling} maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Four continuing turns then completion. A positive cap of 3 would
@@ -222,7 +222,7 @@ test("{§completion-joins-live-work} Engine.runLoop: a completion over a live st
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
+test("{§worker-lifecycle-durable-disposition} Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await new LoopLifecycle(db).finish(loopId, { status: 200 });
@@ -238,7 +238,7 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: a durable 202 park outranks a later abort observation", async () => {
+test("{§worker-lifecycle-durable-disposition} Engine.runLoop: a durable 202 park outranks a later abort observation", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await db.test_set_loop_status.run({
@@ -270,7 +270,7 @@ test("Engine.runLoop: a durable 202 park outranks a later abort observation", as
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: KILL of the current worker cancels its scope", async () => {
+test("{§worker-lifecycle-total-reap} Engine.runLoop: KILL of the current worker cancels its scope", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -290,7 +290,7 @@ test("Engine.runLoop: KILL of the current worker cancels its scope", async () =>
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
+test("{§op-execution-order} Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({
@@ -335,7 +335,7 @@ test("Engine.runLoop: signal abort between turns throws AbortError", async () =>
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: turn sequence numbers monotonic", async () => {
+test("{§lifecycle-terms} Engine.runLoop: turn sequence numbers monotonic", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -377,7 +377,7 @@ going
     } finally { await db.close(); }
 });
 
-test("the full terminal enumeration names itself — max_turns included", async () => {
+test("{§loop-terminals} the full terminal enumeration names itself — max_turns included", async () => {
     const db = await openMigrated();
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {

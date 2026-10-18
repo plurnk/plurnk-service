@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.t
 
 const TERMINAL = new Set([200, 413, 429, 499, 500, 508]);
 
-test("N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
+test("{§worker-auto-name} N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-uniq-${crypto.randomUUID()}`);
@@ -47,7 +47,7 @@ test("{§worker-auto-name}: concurrent unnamed forks atomically claim distinct s
     } finally { await db.close(); }
 });
 
-test("an automatic fork of a maximum-length parent remains a mintable worker name", async () => {
+test("{§worker-name-minting} an automatic fork of a maximum-length parent remains a mintable worker name", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-name-${crypto.randomUUID()}`);
@@ -60,7 +60,7 @@ test("an automatic fork of a maximum-length parent remains a mintable worker nam
     } finally { await db.close(); }
 });
 
-test("a fork inherits the parent's loops as HISTORY (clamped terminal), never frozen-live", async () => {
+test("{§machine-processes-fork-copies-the-log} a fork inherits the parent's loops as HISTORY (clamped terminal), never frozen-live", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);

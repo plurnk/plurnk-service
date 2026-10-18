@@ -246,7 +246,7 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
     }
 });
 
-test("Digest: operation and request-only turns remain visibly distinct", async () => {
+test("{§digest-turn-artifact-identity} Digest: operation and request-only turns remain visibly distinct", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-packet-algebra-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

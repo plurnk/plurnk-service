@@ -10,7 +10,7 @@ import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
-test("input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
+test("{§provider-generation-envelope} input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
     const KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const prev = KEYS.map((k) => process.env[k]);
     process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "3000";
@@ -39,7 +39,7 @@ const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
 
-test("Engine.runTurn: context budget readout carries partition-derived maximum and assembled total", async () => {
+test("{§context-gauge} Engine.runTurn: context budget readout carries partition-derived maximum and assembled total", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -63,7 +63,7 @@ test("Engine.runTurn: context budget readout carries partition-derived maximum a
     } finally { await db.close(); }
 });
 
-test("Core starts curation at provider input capacity without inventing another budget", async () => {
+test("{§context-budget} Core starts curation at provider input capacity without inventing another budget", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

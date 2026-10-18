@@ -148,7 +148,7 @@ test("{§derivation-dedup-parallel} a failed derivation joins every launched sib
     }
 });
 
-test("an entry-local derivation failure is terminal, explicit, and does not block readiness", async () => {
+test("{§derivation-member-failure} an entry-local derivation failure is terminal, explicit, and does not block readiness", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `failed-${crypto.randomUUID()}`);
@@ -176,7 +176,7 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
     }
 });
 
-test("an internal projection defect propagates and leaves the artifact retryable", async () => {
+test("{§derivation-member-failure} an internal projection defect propagates and leaves the artifact retryable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-defect-${crypto.randomUUID()}`);
@@ -320,7 +320,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
     } finally { await mimetypes.dispose(); await db.close(); }
 });
 
-test("successful projection degradations surface once per maintenance pass", async () => {
+test("{§derivation-member-failure} successful projection degradations surface once per maintenance pass", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-notice-${crypto.randomUUID()}`);
@@ -385,7 +385,7 @@ test("successful projection degradations surface once per maintenance pass", asy
     }
 });
 
-test("an index-persistence contract failure propagates and remains retryable instead of becoming a resource failure", async () => {
+test("{§derivation-member-failure} an index-persistence contract failure propagates and remains retryable instead of becoming a resource failure", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `persistence-${crypto.randomUUID()}`);

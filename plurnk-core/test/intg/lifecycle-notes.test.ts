@@ -74,7 +74,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
     } finally { await db.close(); }
 });
 
-test("#713: empty WAIT falls through and SEND plus a retrieval observes before concluding", async () => {
+test("{§wait-obligation-matrix} empty WAIT falls through and SEND plus a retrieval observes before concluding", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-fallthrough");

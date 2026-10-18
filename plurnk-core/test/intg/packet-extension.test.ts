@@ -83,7 +83,7 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
     } finally { await db.close(); }
 });
 
-test("extension packet control: duplicate section names fail at the owning scheme boundary", async () => {
+test("{§packet-extension-transform} extension packet control: duplicate section names fail at the owning scheme boundary", async () => {
     const schemes = new SchemeRegistry();
     schemes.register("broken", {
         manifest: {

@@ -25,7 +25,7 @@ const context = (content: string | undefined): PlurnkSchemeContext => ({
     },
 } as unknown as PlurnkSchemeContext);
 
-test("readable preserves a present empty projection and reserves null for absence", async () => {
+test("{§scheme-projection} readable preserves a present empty projection and reserves null for absence", async () => {
     assert.deepEqual(
         await new DbProjectionCaps(context("")).readable("<div></div>", "text/html"),
         {
@@ -63,14 +63,14 @@ test("{§scheme-projection} binary retains the bounded source beside an optional
     });
 });
 
-test("projection identity delegates to the configured mimetype framework", async () => {
+test("{§scheme-projection} projection identity delegates to the configured mimetype framework", async () => {
     assert.equal(
         await new DbProjectionCaps(context("")).identity("application/pdf"),
         "application/pdf-identity",
     );
 });
 
-test("binary classification delegates to installed handler declarations", async () => {
+test("{§mimetype-classification-consumption} binary classification delegates to installed handler declarations", async () => {
     const projection = new DbProjectionCaps(context(""));
     assert.equal(await projection.isBinary("text/x-binary"), true);
     assert.equal(await projection.isBinary("application/json"), false);
@@ -94,7 +94,7 @@ test("{§mimetype-binary-input} source acquisition enforces the ceiling even wit
     assert.equal(closed, true);
 });
 
-test("parser-recovery inspection requests metadata without structural channels", async () => {
+test("{§mimetype-parse-issues} parser-recovery inspection requests metadata without structural channels", async () => {
     let options: unknown;
     const ctx = {
         mimetypes: {
@@ -108,7 +108,7 @@ test("parser-recovery inspection requests metadata without structural channels",
     assert.deepEqual(options, { channels: [], parseIssues: true });
 });
 
-test("parser-recovery inspection distinguishes clean content from unavailable evidence", async () => {
+test("{§edit-result-receipt-projection} parser-recovery inspection distinguishes clean content from unavailable evidence", async () => {
     const clean = {
         mimetypes: {
             async process() {
@@ -133,7 +133,7 @@ test("parser-recovery inspection distinguishes clean content from unavailable ev
     assert.equal(await new DbProjectionCaps(missingGrammar).parseIssues("package p", "text/x-go"), undefined);
 });
 
-test("parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
+test("{§edit-result-copy-move-effects} parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
     const notices: unknown[] = [];
     const ctx = {
         mimetypes: {
@@ -150,7 +150,7 @@ test("parser-recovery inspection surfaces tooling failure without failing the mu
     }]);
 });
 
-test("a typed mimetype input ceiling failure crosses the capability unchanged", async () => {
+test("{§mimetype-binary-input} a typed mimetype input ceiling failure crosses the capability unchanged", async () => {
     const cause = new MimetypeInputLimitError({
         mimetype: "application/pdf",
         maximumBytes: 3,

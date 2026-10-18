@@ -210,7 +210,7 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
     }
 });
 
-test("child provider input distinguishes omitted, explicit inherit, and an alias", () => {
+test("{§methods-loop-run-child-provider} child provider input distinguishes omitted, explicit inherit, and an alias", () => {
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", undefined), undefined);
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", null), null);
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", "fast"), "fast");

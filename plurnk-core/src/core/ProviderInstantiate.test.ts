@@ -33,7 +33,7 @@ test("{§observability-genai-conventions} provider identity is independent of it
 // A per-alias baseUrl (PLURNK_BASEURL_<alias>) reaches endpoint resolution ahead of
 // OPENAI_BASE_URL. Here alias.baseUrl and OPENAI_BASE_URL point at different ports;
 // the construction probe must hit the alias's port, never the env's.
-test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL", async () => {
+test("{§provider-resolution} instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL", async () => {
     const hit: string[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = ((u: string | URL | Request, ...rest: unknown[]) => {
@@ -106,7 +106,7 @@ test("{§provider-surface-identity} a pollable provider exposes the lower operat
     }
 });
 
-test("the process cache separates aliases and provider tuning for the same wire model", async () => {
+test("{§provider-instantiation-alias-resolution} the process cache separates aliases and provider tuning for the same wire model", async () => {
     const realFetch = globalThis.fetch;
     const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_cachecap";
     const previous = process.env[key];
@@ -132,7 +132,7 @@ test("the process cache separates aliases and provider tuning for the same wire 
     }
 });
 
-test("a registered handle cannot shadow changed provider tuning", async () => {
+test("{§provider-instantiation-alias-resolution} a registered handle cannot shadow changed provider tuning", async () => {
     const realFetch = globalThis.fetch;
     const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_registeredcap";
     const previous = process.env[key];
@@ -160,7 +160,7 @@ test("a registered handle cannot shadow changed provider tuning", async () => {
     }
 });
 
-test("the process cache separates durable efforts for one route", async () => {
+test("{§provider-instantiation-alias-resolution} the process cache separates durable efforts for one route", async () => {
     const spec = {
         alias: `reasoning-cache-${crypto.randomUUID()}`,
         provider: "mocktest",
@@ -176,7 +176,7 @@ test("the process cache separates durable efforts for one route", async () => {
     assert.notEqual(adaptive, high);
 });
 
-test("an exact route uses global provider tuning and never fabricates an alias scope", () => {
+test("{§worker-effort} an exact route uses global provider tuning and never fabricates an alias scope", () => {
     const route = { provider: "mocktest", model: "same-model" };
     const env = {
         PLURNK_PROVIDERS_EFFORT: "adaptive",
@@ -189,7 +189,7 @@ test("an exact route uses global provider tuning and never fabricates an alias s
     );
 });
 
-test("an exact-route handle never inherits the daemon default alias's configuration scope", () => {
+test("{§grammar-configuration-admission} an exact-route handle never inherits the daemon default alias's configuration scope", () => {
     const provider = new Mock({ contextWindow: 32_000, responses: [] });
     ProviderInstantiate.registerInstance(provider, {
         provider: "mocktest",
@@ -209,7 +209,7 @@ test("an exact-route handle never inherits the daemon default alias's configurat
     );
 });
 
-test("route-scoped GBNF cannot bind to a provider with no route identity", () => {
+test("{§grammar-configuration-admission} route-scoped GBNF cannot bind to a provider with no route identity", () => {
     const provider = new Mock({ contextWindow: 32_000, responses: [] });
     assert.throws(
         () => ProviderInstantiate.validateGrammarConfiguration(provider, {

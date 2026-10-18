@@ -14,7 +14,7 @@ test("{§packet-items} StoredPacket: NULL is the singular no-request representat
 
 // {§packet-items} — storage splits a packet into the bag (turns.packet) and its sections (rows);
 // the two halves rejoin to the exact measured request.
-test("StoredPacket: request-only round trip preserves the exact measured request", () => {
+test("{§packet-items} StoredPacket: request-only round trip preserves the exact measured request", () => {
     const packet = request();
     const bag = JSON.parse(StoredPacket.stringify(packet)) as Record<string, unknown>;
     assert.equal(bag.sections, undefined, "the bag carries no sections");
@@ -35,20 +35,20 @@ test("{§packet-stored-shape}: assistant-role sections retain their bodies and p
     assert.deepEqual(sections[1].items, [packet.sections[1].content]);
 });
 
-test("StoredPacket: a section's items must join back to its content", () => {
+test("{§packet-items} StoredPacket: a section's items must join back to its content", () => {
     const packet = request();
     const broken = { ...packet, sections: packet.sections.map((section) => ({ ...section, items: ["not", "the content"] })) };
     assert.throws(() => StoredPacket.sections(broken), /items do not join to its content/);
 });
 
-test("StoredPacket: admission extends the request without changing its weight", () => {
+test("{§packet-stored-shape} StoredPacket: admission extends the request without changing its weight", () => {
     const packet = StoredPacket.admit(request(), { content: "response", ops: [], reasoning: null }, undefined);
     assert.equal(packet.weight, 3);
     assert.equal(packet.assistantRaw, null);
     assert.equal(StoredPacket.isAdmitted(packet), true);
 });
 
-test("StoredPacket: attribution evidence is a canonical opaque tag set", () => {
+test("{§attribution} StoredPacket: attribution evidence is a canonical opaque tag set", () => {
     assert.throws(
         () => StoredPacket.assert({ ...request(), attributions: ["topic:search", "creator:ada"] }),
         /packet\.attributions must be deduplicated and sorted/,
@@ -63,7 +63,7 @@ test("StoredPacket: attribution evidence is a canonical opaque tag set", () => {
     );
 });
 
-test("StoredPacket: malformed durable shapes fail with their causal location", () => {
+test("{§packet-stored-shape} StoredPacket: malformed durable shapes fail with their causal location", () => {
     assert.throws(() => StoredPacket.parse("{"), /contains invalid JSON/);
     assert.throws(() => StoredPacket.parse("{}", "turn 7"), /turn 7 has an invalid packet shape/);
     assert.throws(

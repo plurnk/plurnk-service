@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 
-test("LiveSubscriptions routes one cancellation through the registered handle", async () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions routes one cancellation through the registered handle", async () => {
     const registry = new LiveSubscriptions();
     let calls = 0;
     registry.register(7, { cancel: async () => { calls += 1; } });
@@ -12,7 +12,7 @@ test("LiveSubscriptions routes one cancellation through the registered handle", 
     assert.equal(calls, 1, "repeated cancellation shares the one owned teardown");
 });
 
-test("LiveSubscriptions distinguishes an absent live handle from successful cancellation", async () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions distinguishes an absent live handle from successful cancellation", async () => {
     const registry = new LiveSubscriptions();
     assert.equal(await registry.cancel(7), false);
 
@@ -27,7 +27,7 @@ test("LiveSubscriptions rejects duplicate ownership", () => {
     assert.throws(() => registry.register(7, { cancel() {} }), /already registered/);
 });
 
-test("LiveSubscriptions preserves a synchronous teardown failure as the shared rejection", async () => {
+test("{§subscription-finalization} LiveSubscriptions preserves a synchronous teardown failure as the shared rejection", async () => {
     const registry = new LiveSubscriptions();
     const failure = new Error("teardown failed");
     registry.register(7, { cancel() { throw failure; } });

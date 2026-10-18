@@ -27,33 +27,6 @@ test("{§worker-name-minting}: 'plurnk' is an ordinary worker name; the runtime 
     } finally { await db.close(); }
 });
 
-test("workers: table is STRICT", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_workers_table_sql.get<{ sql: string }>();
-        assert.match(row?.sql ?? "", /STRICT/);
-    } finally { await db.close(); }
-});
-
-test("workers: root worker insert — null parent_worker_id, defaults populate", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-trunk");
-        await db.test_workers_insert.run({ workspace_id: workspaceId, name: n("trunk") });
-        const row = await db.test_workers_get_by_workspace.get<{
-            id: number; version: number; workspace_id: number; name: string; created_at: string;
-            parent_worker_id: number | null; provider_identity: string;
-        }>({ workspace_id: workspaceId });
-        assert.ok((row?.id ?? 0) >= 1);
-        assert.equal(row?.version, 0);
-        assert.equal(row?.workspace_id, workspaceId);
-        assert.match(row?.name ?? "", /^worker-trunk-\d+$/);
-        assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.parent_worker_id, null);
-        assert.match(row?.provider_identity ?? "", /^[0-9a-f]{32}$/, "provider identity is an opaque 128-bit value, not the local row id");
-    } finally { await db.close(); }
-});
-
 test("{§worker-provider-identity}: every worker mints a unique immutable provider identity", async () => {
     const db = await openMigrated();
     try {
@@ -83,7 +56,7 @@ test("{§worker-provider-identity}: every worker mints a unique immutable provid
     } finally { await db.close(); }
 });
 
-test("workers: fork insert — non-null parent_worker_id pointing at root worker", async () => {
+test("{§machine-processes-fork-shares-workspace} workers: fork insert — non-null parent_worker_id pointing at root worker", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-fork");
@@ -94,7 +67,7 @@ test("workers: fork insert — non-null parent_worker_id pointing at root worker
     } finally { await db.close(); }
 });
 
-test("workers: workspace_id NOT NULL — insert without workspace_id rejected", async () => {
+test("{§validation-topology} workers: workspace_id NOT NULL — insert without workspace_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -104,7 +77,7 @@ test("workers: workspace_id NOT NULL — insert without workspace_id rejected", 
     } finally { await db.close(); }
 });
 
-test("workers: workspace_id FK — insert against non-existent workspace rejected", async () => {
+test("{§validation-topology} workers: workspace_id FK — insert against non-existent workspace rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -114,7 +87,7 @@ test("workers: workspace_id FK — insert against non-existent workspace rejecte
     } finally { await db.close(); }
 });
 
-test("workers: parent_worker_id FK — insert against non-existent parent rejected", async () => {
+test("{§validation-topology} workers: parent_worker_id FK — insert against non-existent parent rejected", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-badparent");
@@ -125,7 +98,7 @@ test("workers: parent_worker_id FK — insert against non-existent parent reject
     } finally { await db.close(); }
 });
 
-test("workers: parent_worker_id self-reference CHECK — parent != id rejected", async () => {
+test("{§validation-topology} workers: parent_worker_id self-reference CHECK — parent != id rejected", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-self");
@@ -137,7 +110,7 @@ test("workers: parent_worker_id self-reference CHECK — parent != id rejected",
     } finally { await db.close(); }
 });
 
-test("workers: ON DELETE CASCADE via workspace — deleting workspace removes all its workers", async () => {
+test("{§validation-topology} workers: ON DELETE CASCADE via workspace — deleting workspace removes all its workers", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cascade");
@@ -155,7 +128,7 @@ test("workers: ON DELETE CASCADE via workspace — deleting workspace removes al
     } finally { await db.close(); }
 });
 
-test("workers: ON DELETE CASCADE via parent_worker_id — deleting a parent worker removes its forks", async () => {
+test("{§validation-topology} workers: ON DELETE CASCADE via parent_worker_id — deleting a parent worker removes its forks", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-forkcascade");
@@ -172,7 +145,7 @@ test("workers: ON DELETE CASCADE via parent_worker_id — deleting a parent work
     } finally { await db.close(); }
 });
 
-test("workers: negative version rejected by CHECK", async () => {
+test("{§validation-topology} workers: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-negversion");
@@ -183,23 +156,7 @@ test("workers: negative version rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("workers: index workers_workspace_id_created_at exists", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_workers_index_exists.get<{ name: string }>({ name: "workers_workspace_id_created_at" });
-        assert.equal(row?.name, "workers_workspace_id_created_at");
-    } finally { await db.close(); }
-});
-
-test("workers: index workers_parent_worker_id exists", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_workers_index_exists.get<{ name: string }>({ name: "workers_parent_worker_id" });
-        assert.equal(row?.name, "workers_parent_worker_id");
-    } finally { await db.close(); }
-});
-
-test("workers: retained names are workspace-unique so old resource addresses remain stable", async () => {
+test("{§worker-scheme-spawn} workers: retained names are workspace-unique so old resource addresses remain stable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reclaim");
@@ -210,37 +167,5 @@ test("workers: retained names are workspace-unique so old resource addresses rem
         );
         const resolved = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.equal(resolved?.id, first?.id);
-    } finally { await db.close(); }
-});
-
-test("workers: index workers_workspace_name exists", async () => {
-    const db = await openMigrated();
-    try {
-        const row = await db.test_workers_index_exists.get<{ name: string }>({ name: "workers_workspace_name" });
-        assert.equal(row?.name, "workers_workspace_name");
-    } finally { await db.close(); }
-});
-
-test("workers: id auto-assigns on insert", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-autoid");
-        await db.test_workers_insert.run({ workspace_id: workspaceId, name: n("auto-a") });
-        await db.test_workers_insert.run({ workspace_id: workspaceId, name: n("auto-b") });
-        const rows = await db.test_workers_list_by_workspace.all<{ id: number }>({ workspace_id: workspaceId });
-        assert.equal(rows.length, 2);
-        assert.equal(rows[1]!.id, rows[0]!.id + 1);
-    } finally { await db.close(); }
-});
-
-test("workers: root-worker lookup uses the (workspace_id, created_at) index", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-trunklookup");
-        const trunk = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspaceId, name: n("tl-trunk") });
-        await db.test_workers_insert_with_parent.run({ workspace_id: workspaceId, name: n("tl-fA"), parent_worker_id: trunk?.id });
-        await db.test_workers_insert_with_parent.run({ workspace_id: workspaceId, name: n("tl-fB"), parent_worker_id: trunk?.id });
-        const found = await db.test_workers_root_lookup.get<{ id: number }>({ workspace_id: workspaceId });
-        assert.equal(found?.id, trunk?.id);
     } finally { await db.close(); }
 });

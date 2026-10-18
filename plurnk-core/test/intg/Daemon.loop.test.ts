@@ -346,7 +346,7 @@ test("{§pinned-wording-core} loop.run requires non-empty prompt", async () => {
     });
 });
 
-test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
+test("{§loop-terminals} loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
     const dsl = "````EDIT (worker:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
@@ -421,7 +421,7 @@ test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme
 });
 
 // {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
-test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
+test("{§methods-event-subscribe} a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     const logged: string[] = [];

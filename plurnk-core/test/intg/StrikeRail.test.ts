@@ -18,14 +18,14 @@ test.afterEach(async () => { await db.close(); });
 const base = { waitRevision: 0, fingerprint: "READ(x)", progressed: false, cut: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
-test("a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
+test("{§engine-rails} a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
     const rail = new StrikeRail(db);
     const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("SEND", 409)] });
     assert.equal(verdict.thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 0, "a soft status is never counted");
 });
 
-test("a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", async () => {
+test("{§engine-rails} a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", async () => {
     const rail = new StrikeRail(db);
     // The retrieval-preemie no-strike leaves the cycle detector as the backstop: a model repeating
     // the IDENTICAL read+conclude turn is loop-detected even with 409 soft.
@@ -34,14 +34,14 @@ test("a genuinely-spinning model is still caught — identical turns cycle-strik
     assert.equal(cycleHit, true, "identical repetition is loop-detected — the spin backstop survives the soft 409");
 });
 
-test("a non-execution hard failure (500-class status) still strikes normally", async () => {
+test("{§engine-rails} a non-execution hard failure (500-class status) still strikes normally", async () => {
     const rail = new StrikeRail(db);
     let crossed = false;
     for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("EDIT", 500)] })).thresholdCrossed || crossed;
     assert.equal(crossed, true, "a non-soft failure status accrues strikes as ever");
 });
 
-test("executor evidence never strikes, wherever it surfaces (#425 F1)", async () => {
+test("{§engine-rails} executor evidence never strikes, wherever it surfaces", async () => {
     // The engine materializes a failed command as a READ[500] carrying the
     // executor's problem identity; the model reads a failed stream and gets the same 500.
     const rail = new StrikeRail(db);
@@ -56,14 +56,14 @@ test("executor evidence never strikes, wherever it surfaces (#425 F1)", async ()
     assert.equal(struck, true, "a non-executor 500 still strikes to the threshold");
 });
 
-test("execution errors are soft regardless of status", async () => {
+test("{§engine-rails} execution errors are soft regardless of status", async () => {
     const rail = new StrikeRail(db);
     await rail.assess(loopId, { ...base, fingerprint: "execution(python3)", outcomes: [outcome("python3", 400)] });
     await rail.assess(loopId, { ...base, fingerprint: "execution(sh)", outcomes: [outcome("sh", 500)] });
     assert.equal(await rail.streak(loopId), 0, "an executor error remains evidence without pricing experimentation into the strike rail");
 });
 
-test("hard outcomes are the non-cycle strike source and accumulate a streak", async () => {
+test("{§engine-rails} hard outcomes are the non-cycle strike source and accumulate a streak", async () => {
     const rail = new StrikeRail(db);
     assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard", outcomes: [outcome(null, 400)] })).thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 1);
@@ -71,7 +71,7 @@ test("hard outcomes are the non-cycle strike source and accumulate a streak", as
     assert.equal(await rail.streak(loopId), 2);
 });
 
-test("multiple sources still count once per turn, and a clean turn resets the streak", async () => {
+test("{§engine-rails} multiple sources still count once per turn, and a clean turn resets the streak", async () => {
     const rail = new StrikeRail(db);
     const struck = await rail.assess(loopId, {
         ...base,

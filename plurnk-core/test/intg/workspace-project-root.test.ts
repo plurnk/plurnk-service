@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
-test("workspace.create with projectRoot round-trips and persists the column", async () => {
+test("{§methods-workspace-create} workspace.create with projectRoot round-trips and persists the column", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -24,7 +24,7 @@ test("workspace.create with projectRoot round-trips and persists the column", as
     });
 });
 
-test("workspace.create without projectRoot leaves the column null (headless)", async () => {
+test("{§methods-workspace-create} workspace.create without projectRoot leaves the column null (headless)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -53,7 +53,7 @@ test("{§pinned-wording-core} workspace.create rejects non-absolute projectRoot"
     });
 });
 
-test("workspace/created notification carries projectRoot", async () => {
+test("{§notifications-workspace-created} workspace/created notification carries projectRoot", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

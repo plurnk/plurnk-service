@@ -528,7 +528,7 @@ test("{§bare-inference} loop cancellation reaches every concurrent BARE call be
 });
 
 // {§bare-inference}
-test("one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
+test("{§bare-inference} one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({

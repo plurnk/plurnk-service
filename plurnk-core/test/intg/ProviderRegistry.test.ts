@@ -42,7 +42,7 @@ test("resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
     assert.equal(alias, null);
 });
 
-test("resolveActiveRoute: returns the matching alias when PLURNK_MODEL set", () => {
+test("{§provider-resolution} resolveActiveRoute: returns the matching alias when PLURNK_MODEL set", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",
@@ -66,7 +66,7 @@ test("resolveActiveRoute: rejects an explicit unknown alias", () => {
     }), /neither a declared alias nor a provider\/model route/);
 });
 
-test("resolveActiveRoute: exact routes require no alias declaration", () => {
+test("{§provider-resolution} resolveActiveRoute: exact routes require no alias declaration", () => {
     assert.deepEqual(resolveActiveRoute({ PLURNK_MODEL: "google/gemini-3-flash" }), {
         provider: "google",
         model: "gemini-3-flash",

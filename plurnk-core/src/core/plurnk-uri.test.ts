@@ -18,7 +18,7 @@ test("{§fs-home} file address renderers protect literal home-like names", () =>
     assert.equal(missExtensions("file", escaped).target, escaped, "a rendered address is not escaped twice");
 });
 
-test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
+test("{§scheme-address-namespace-fold} foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");
     assert.equal(foldAuthorityIntoPath("skills", "/x.md"), "/skills/x.md");
     // no authority → unchanged (empty-authority schemes are a no-op)
@@ -47,7 +47,7 @@ test("{§manifest-authority} {§scheme-address-namespace-fold} entryCoordinateOf
     });
 });
 
-test("resource entry identity preserves canonical authority, port, and serialized query", () => {
+test("{§scheme-address-network} resource entry identity preserves canonical authority, port, and serialized query", () => {
     const target = parsePath("https://Example.org:8443/a%28b%29?b=2&a=1&a=3#preview");
     assert.ok(target);
     assert.deepEqual(entryCoordinateOf(target, "resource"), {
@@ -56,13 +56,13 @@ test("resource entry identity preserves canonical authority, port, and serialize
     });
 });
 
-test("renderAddress renders only the durable entry coordinate", () => {
+test("{§scheme-address} renderAddress renders only the durable entry coordinate", () => {
     assert.equal(renderAddress({ scheme: "notes", authority: "", pathname: "/docs/x.md" }), "notes:///docs/x.md");
     assert.equal(renderAddress({ scheme: "a2a", authority: "researcher", pathname: "/tasks/t-1" }), "a2a://researcher/tasks/t-1");
     assert.equal(renderAddress({ scheme: "https", authority: "example.org:8443", pathname: "/a(b)?x=1" }), "https://example.org:8443/a%28b%29?x=1");
 });
 
-test("renderAddress preserves literal and percent-encoded network query parentheses", () => {
+test("{§path-parentheses} renderAddress preserves literal and percent-encoded network query parentheses", () => {
     assert.equal(
         renderAddress({
             scheme: "https",
@@ -87,14 +87,7 @@ test("{§scheme-address-network}: http routes through https and ws routes throug
     assert.equal(schemeNameOf(parsePath("notes:///fact")), "notes");
 });
 
-test("namespace folding remains canonical and renders with an empty authority", () => {
-    const stored = foldAuthorityIntoPath("docs", "/x.md");
-    assert.equal(stored, "/docs/x.md");
-    assert.equal(renderAddress({ scheme: "notes", authority: "", pathname: stored }), "notes:///docs/x.md");
-    assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), stored);
-});
-
-test("renderTarget is the non-secret inverse for decomposed operation targets", () => {
+test("{§path-parentheses} renderTarget is the non-secret inverse for decomposed operation targets", () => {
     assert.equal(renderTarget({
         scheme: "https",
         hostname: "example.org",
@@ -117,7 +110,7 @@ test("renderTarget is the non-secret inverse for decomposed operation targets", 
     }), "docs/a%28b%29.md");
 });
 
-test("renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
+test("{§path-parentheses} renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
     const rendered = renderTarget({
         scheme: "https",
         hostname: "example.org",

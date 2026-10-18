@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import NoticeChannel from "./NoticeChannel.ts";
 
-test("NoticeChannel validates, broadcasts, and drains one transient observation", () => {
+test("{§notice-drain-on-read} NoticeChannel validates, broadcasts, and drains one transient observation", () => {
     const broadcasts: unknown[] = [];
     const channel = new NoticeChannel({
         notify: (_workspaceId, payload) => broadcasts.push(payload),
@@ -21,7 +21,7 @@ test("NoticeChannel validates, broadcasts, and drains one transient observation"
     assert.deepEqual(channel.drain(2), []);
 });
 
-test("NoticeChannel rejects a malformed observation before fan-out", () => {
+test("{§notice-level} NoticeChannel rejects a malformed observation before fan-out", () => {
     const broadcasts: unknown[] = [];
     const channel = new NoticeChannel({
         notify: (_workspaceId, payload) => broadcasts.push(payload),
@@ -37,7 +37,7 @@ test("NoticeChannel rejects a malformed observation before fan-out", () => {
     assert.deepEqual(broadcasts, []);
 });
 
-test("NoticeChannel broadcasts derivation progress live but retains only its current state", () => {
+test("{§notice-drain-on-read} NoticeChannel broadcasts derivation progress live but retains only its current state", () => {
     const broadcasts: unknown[] = [];
     const channel = new NoticeChannel({
         notify: (_workspaceId, payload) => broadcasts.push(payload),
@@ -62,7 +62,7 @@ test("NoticeChannel broadcasts derivation progress live but retains only its cur
     assert.deepEqual(channel.drain(2), [complete], "the next model packet receives state, not progress history");
 });
 
-test("NoticeChannel broadcasts every provider checkpoint but buffers only its current state", () => {
+test("{§notice-drain-on-read} NoticeChannel broadcasts every provider checkpoint but buffers only its current state", () => {
     const broadcasts: unknown[] = [];
     const channel = new NoticeChannel({
         notify: (_workspaceId, payload) => broadcasts.push(payload),

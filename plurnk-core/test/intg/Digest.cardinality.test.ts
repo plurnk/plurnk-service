@@ -68,7 +68,7 @@ test("{§digest-forensic-fidelity}: original failures, ambient observations and 
     assert.equal(inheritedObservation.ambient_event_id, observation.ambient_event_id, "copying an observation preserves the original occurrence identity");
 });
 
-test("digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
+test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-cardinality-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ServiceTeardown from "./ServiceTeardown.ts";
 
-test("service teardown releases admitted resources in reverse ownership order, exactly once", async () => {
+test("{§crash-only-stop} service teardown releases admitted resources in reverse ownership order, exactly once", async () => {
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); },
@@ -16,7 +16,7 @@ test("service teardown releases admitted resources in reverse ownership order, e
     assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close", "listener.close"]);
 });
 
-test("service teardown runs observability and database phases after daemon failure and preserves every failure", async () => {
+test("{§module-shutdown-order} service teardown runs observability and database phases after daemon failure and preserves every failure", async () => {
     const daemonFailure = new Error("daemon stop failed");
     const observabilityFailure = new Error("observability shutdown failed");
     const databaseFailure = new Error("database close failed");
@@ -39,7 +39,7 @@ test("service teardown runs observability and database phases after daemon failu
     assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close"]);
 });
 
-test("failed startup preserves the originating failure and every teardown failure", async () => {
+test("{§startup-admission-order} failed startup preserves the originating failure and every teardown failure", async () => {
     const startupFailure = new Error("daemon start failed");
     const daemonFailure = new Error("daemon stop failed");
     const observabilityFailure = new Error("observability shutdown failed");
@@ -61,7 +61,7 @@ test("failed startup preserves the originating failure and every teardown failur
     );
 });
 
-test("failed startup rethrows its exact failure when teardown succeeds", async () => {
+test("{§startup-admission-order} failed startup rethrows its exact failure when teardown succeeds", async () => {
     const startupFailure = new Error("daemon start failed");
     const teardown = new ServiceTeardown(async () => {});
 
@@ -71,7 +71,7 @@ test("failed startup rethrows its exact failure when teardown succeeds", async (
     );
 });
 
-test("a repeated signal request performs and reports failed teardown once", async () => {
+test("{§crash-only-stop} a repeated signal request performs and reports failed teardown once", async () => {
     const failure = new Error("daemon stop failed");
     let stops = 0;
     let closes = 0;

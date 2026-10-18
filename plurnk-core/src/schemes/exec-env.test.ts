@@ -33,7 +33,7 @@ test("{§exec-env-scoped} ExecEnv.scoped strips plurnk's own (PLURNK_* + provide
 });
 
 // {§exec-env-scoped} — the ceiling: a command receives only the ambient names the policy names.
-test("ExecEnv.scoped admits only the ambient names the policy names", () => {
+test("{§exec-env-scoped} ExecEnv.scoped admits only the ambient names the policy names", () => {
     const host = {
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
         PATH: "/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
@@ -51,7 +51,7 @@ test("ExecEnv.scoped admits only the ambient names the policy names", () => {
     }
 });
 
-test("ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
+test("{§exec-env-scoped} ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
         PLURNK_SERVICE_EXEC_ENV_EXCLUDE: "TERM,LC_*",
@@ -86,7 +86,7 @@ test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the opera
 
 // {§operator-config-env-defaults} — the subprocess-common floors are declared by
 // @plurnk/plurnk-execs and reach a spawn through the ceiling, which names them.
-test("ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
+test("{§exec-env-scoped} ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,PAGER,GIT_PAGER,NO_COLOR,CI",
         PATH: "/usr/bin", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", CI: "1",

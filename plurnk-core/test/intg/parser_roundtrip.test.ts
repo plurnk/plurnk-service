@@ -55,7 +55,7 @@ test("{§entry-owner} parser roundtrip: EDIT writes the resource", async () => {
 });
 
 // {§empty-section} {§text-scope-semantics}
-test("parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
+test("{§empty-section} parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
@@ -71,7 +71,7 @@ test("parser roundtrip: an empty EDIT section performs a scoped deletion", async
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: multi-statement text parses + dispatches in order", async () => {
+test("{§op-execution-order} parser roundtrip: multi-statement text parses + dispatches in order", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
@@ -99,7 +99,7 @@ third
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: EDIT followed by READ reads back what was written", async () => {
+test("{§universal-read-composition} parser roundtrip: EDIT followed by READ reads back what was written", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-readback");
@@ -121,7 +121,7 @@ test("parser roundtrip: EDIT followed by READ reads back what was written", asyn
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: HTTP-shape path still decomposes authority correctly", async () => {
+test("{§scheme-address-network} parser roundtrip: HTTP-shape path still decomposes authority correctly", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-http");
@@ -181,7 +181,7 @@ for (const [header, body] of [
     });
 }
 
-test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-closer})", () => {
+test("{§fence-closer} parser: a 3-backtick block stays literal in a 4-backtick body", () => {
     const body = "quoted section:\n```EDIT (worker:///inner)\nhello\n```";
     const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
@@ -191,7 +191,7 @@ test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-cl
 
 // {§unclosed-mutation-yields}: an example inside an EDIT is written with a wider fence; at the
 // EDIT's own width a native heading is an operation, closed or not.
-test("parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body ({§unclosed-mutation-yields})", () => {
+test("{§unclosed-mutation-yields} parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body", () => {
     const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
     const bare = parseAll("````EDIT (worker:///demo)\n" + body + "\n````");
     assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "at equal width the inner heading is a second mutation");
