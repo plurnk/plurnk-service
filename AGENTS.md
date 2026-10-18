@@ -156,23 +156,12 @@ before adding a constant, a flag, a parameter default or a settings field.** The
 cascading environment is the only home for a choice; code holds mechanism only.
 What follows here is only the order the layers apply in.
 
-Environment layers highest-precedence-first. `loadEnvFile` is set-if-unset, so a
-value already set earlier (or in the shell) is never overwritten; among the
-repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
-(`plurnk-core` `test:demo`) layers, highest first:
-
-1. the operator's shell env — `scripts/operator-environment.sh` sources `~/.bashrc`
-   before running, so the `<PROVIDER>_API_KEY` credentials (e.g. `DEEPSEEK_API_KEY`)
-   are present and `PLURNK_MODEL=<selector>` here selects the model for one run,
-2. `plurnk-core/.env.test` — the committed real-model gate profile: the posture that is the
-   same on every machine (`PLURNK_SERVICE_FILES_ITEMS=-1`, `PLURNK_SERVICE_GIT_AUTO=1`,
-   ambient operator surfaces cleared). It names no model,
-3. `$XDG_CONFIG_HOME/plurnk/.env` — the operator file. It declares the
-   model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`) and may set `PLURNK_MODEL`
-   as this machine's standing selection; it is operator-owned and never committed,
-4. per-package `.env.defaults` — committed safe defaults plus the authoritative env docs,
-5. `test/floor.ts` — the assembled `.env.defaults` of every installed package,
-   applied set-if-unset so it only fills genuinely-unset knobs.
+The order the layers apply in is {§environment-layers}, and `scripts/environment.mjs` is its
+code: the shell, then `plurnk-core/.env.test` (the committed gate profile), then the operator file
+`$XDG_CONFIG_HOME/plurnk/.env`, then each package's `.env.defaults`, then the assembled floor.
+`loadEnvFile` is set-if-unset and the last `--env-file-if-exists` flag wins; the module encodes
+both, so no launcher spells the cascade again. `scripts/operator-environment.sh` puts the login
+shell's credentials above it all.
 
 Model selection: `PLURNK_MODEL=<selector>` accepts either a declared alias or an
 exact `<provider>/<model>` route; `PLURNK_MODEL_<alias>=<provider>/<model>`

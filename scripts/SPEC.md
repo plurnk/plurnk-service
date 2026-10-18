@@ -42,6 +42,25 @@ through the one seam `scripts/usage.mjs`:
 `scripts/script-help.test.mjs` runs every named script with `--help` and fails on a missing part, a
 non-zero exit, or any other output; `plurnk-core/src/service.ts` answers through its own usage.
 
+## §environment-layers The environment, layered once
+
+A real-model run (the live and demo tiers, the providers' probes, the candidate) is configured by
+these layers, highest precedence first; `scripts/environment.mjs` is their one statement, and
+`scripts/environment.test.mjs` proves the order.
+
+| Layer | Where | Sets |
+| --- | --- | --- |
+| The shell | the login shell, reached through `scripts/operator-environment.sh` | provider credentials; `PLURNK_MODEL=<selector>` for one run |
+| The gate profile | `plurnk-core/.env.test`, committed | the posture that is the same on every machine; names no model |
+| The operator file | `$XDG_CONFIG_HOME/plurnk/.env`, never committed | the model aliases and the standing selection |
+| The package defaults | each package's `.env.defaults`, committed | every choice, with its documentation |
+| The floor | `plurnk-core/test/floor.ts` | every installed package's defaults, set-if-unset |
+
+A launcher spawns node with `realModelNodeFlags` (the last `--env-file-if-exists` wins, so they run
+lowest to highest); a script already running calls `applyRealModelEnvironment` (`loadEnvFile` is
+set-if-unset, so it walks highest first); the candidate daemon's `--env-file` is `gateProfile`. The
+Mock tiers layer only their package's own `.env.defaults` under `test/setup.ts` and are not this cascade.
+
 ## §package-release-contract Independent versions
 
 | Surface | Contract |

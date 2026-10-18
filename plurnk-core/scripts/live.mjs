@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import HostPaths from "../src/core/HostPaths.ts";
 import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
+import { realModelNodeFlags } from "../../scripts/environment.mjs";
 import { tierRunPath } from "../../scripts/test-artifacts.ts";
 import { usage } from "../../scripts/usage.mjs";
 
@@ -48,10 +49,7 @@ export const stampTierRun = (kind, now = new Date()) =>
 // census reporter beside the console's spec reporter; an unstamped one (the driver's own tests) does not.
 export const tierArguments = ({ files, pattern, run }) => [
     "--conditions=plurnk-dev",
-    "--import=./test/floor.ts",
-    "--env-file-if-exists=.env.defaults",
-    `--env-file-if-exists=${new HostPaths().configFile}`,
-    "--env-file-if-exists=.env.test",
+    ...realModelNodeFlags(resolve(workspace, ".."), { operatorFile: new HostPaths().configFile }),
     "--test",
     "--test-concurrency=1",
     "--test-reporter=spec",

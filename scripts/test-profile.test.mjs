@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { liveInvocation } from "../plurnk-core/scripts/live.mjs";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
+import { gateProfile } from "./environment.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const profilePath = resolve(root, "plurnk-core", ".env.test");
@@ -161,13 +162,13 @@ test("live, demo, and benchlet launch through the operator environment", async (
     for (const name of ["pretest:live", "pretest:live:specimen", "pretest:demo", "pretest:demo:zeropin"]) {
         assert.equal(pkg.scripts[name], undefined, `${name} has nothing to regenerate`);
     }
-    assert.ok(live.args.includes("--env-file-if-exists=.env.test"));
+    assert.ok(live.args.includes(`--env-file-if-exists=${gateProfile()}`), "the live tier layers the committed gate profile");
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md");
     assert.equal(pkg.scripts["test:live:zeropin"], "PLURNK_ZERO_PIN=1 npm run test:live");
 
     const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
     const demo = await demoInvocation();
-    assert.ok(demo.args.includes("--env-file-if-exists=.env.test"), "the demo driver loads the shared profile");
+    assert.ok(demo.args.includes(`--env-file-if-exists=${gateProfile()}`), "the demo driver loads the shared profile");
     assert.equal(demo.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md", "the demo driver selects the gate policy");
 
     for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:specimen", "test:benchlet"]) {

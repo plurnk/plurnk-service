@@ -16,6 +16,7 @@ import {
     resolveModel,
 } from "@plurnk/plurnk-models";
 import { usage } from "../../scripts/usage.mjs";
+import { applyRealModelEnvironment } from "../../scripts/environment.mjs";
 
 usage(`
 usage: npm run test:providersPing   (from plurnk-providers)
@@ -23,6 +24,7 @@ Sends one tiny request through every declared alias's provider and reports readi
 Reads: PLURNK_MODEL_<alias> declarations and the credentials of the login shell.
 Writes: a report under the benchmark home ({§test-artifact-retention}) and a summary to stdout.
 `);
+await applyRealModelEnvironment();
 
 const PING_INPUT_WEIGHT = 16;
 const PING_MAX_TOKENS = 16;
