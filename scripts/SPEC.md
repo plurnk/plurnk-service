@@ -62,6 +62,14 @@ on either violation.
 A witness sits beside the file it proves (`scripts/lib/npm-json.test.mjs` beside `npm-json.mjs`); a
 witness of several files, or of the repository, sits at the top level.
 
+## §agents-map The field guide is rules plus a map
+
+`AGENTS.md` holds the rules for working in the repository and a map of where everything else is;
+operating instructions live in the `--help` of the script that performs them ({§script-help}) and in
+the tagged specifications, never in the guide. `scripts/agents-map.test.mjs` keeps the map true: every
+`npm` command it spells is a script of the package it names, every `name:name` script it mentions
+exists in some package.json, and every repository path it names exists.
+
 ## §environment-layers The environment, layered once
 
 A real-model run (the live and demo tiers, the providers' probes, the candidate) is configured by

@@ -10,7 +10,7 @@ import { usage } from "./lib/usage.mjs";
 usage(import.meta, `
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)
 The deterministic gate: root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. A phase's output is printed only when that phase goes red.
-Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change).
+Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change); the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
 Writes: the phase summary to stdout; exit 1 on any red phase.
 `);
 

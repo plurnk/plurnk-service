@@ -1,81 +1,58 @@
 # PLURNK platform monorepo
 
-The field guide: how to work in this repository. It is self-contained — everything
-an agent or a contributor needs to act is here or in the documents it names.
+The field guide: the rules for working in this repository and a map of where everything else is.
+It is self-contained — everything an agent or a contributor needs to act is here or in the
+documents it names — and `scripts/agents-map.test.mjs` keeps every command and path named here
+true ({§agents-map}). How to run a thing is the thing's own `--help`, never a paragraph here.
 
-This repository is an npm workspace containing the daemon
-(`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
-grammar authority, the AG-UI server module, and the extensions included in the default installation. The
-terminal client is a separate repository.
+This repository is an npm workspace containing the daemon (`plurnk-core`, published as
+`@plurnk/plurnk-service`), the contracts and grammar authority, the AG-UI server module, and the
+extensions included in the default installation. The terminal client is a separate repository,
+`../plurnk` beside this one.
 
-## Operations quick reference
+## Map
 
-Where things are, for an agent that has to act before it has read everything:
+| Need | Where |
+|---|---|
+| What a command does | `ls scripts` lists what a person runs ({§scripts-layout}); every script answers `--help` with what it does, what it reads and what it writes ({§script-help}); `npm run` lists each package's names. |
+| Install, build, gate | `npm install`, `npm run build`, `npm test` (the drill, `scripts/drill.mjs`; the pre-push hook runs it on a push to `main`; {§lint-gate}). `CONTRIBUTING.md` § Setup has the lifecycle table. |
+| A choice: a limit, a default, a posture | Each package's `.env.defaults`; `ARCHITECTURE.md` § Configuration authority is the law. The real-model layers, highest first: the shell, `plurnk-core/.env.test`, `$XDG_CONFIG_HOME/plurnk/.env`, the defaults, the floor ({§environment-layers}; `scripts/lib/environment.mjs` is the code). |
+| A model | `PLURNK_MODEL_<alias>=<provider>/<model>` declared once in `$XDG_CONFIG_HOME/plurnk/.env`; `PLURNK_MODEL=<alias>` selects one per run, or standing in that file (`plurnk-aliases/SPEC.md`; provider ids in `plurnk-models`). Credentials live in the login shell, which `scripts/operator-environment.sh` carries into every real-model run. |
+| A real-model run | From `plurnk-core`: `npm run test:live`, `npm run test:demo`, their `--help` for the one-specimen forms; `npm run candidate` at the root for the whole platform ({§candidate-pinned-runtime}). |
+| A run's evidence | `$PLURNK_BENCHMARKS/tier-<live\|demo>-<stamp>/census.md` and each worker's `digest/` ({§tier-census}; the digest's files in `plurnk-digest/README.md`); `npm run tier:history -w @plurnk/plurnk-service` ledgers every run; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy it takes itself ({§share}). The database is evidence; the digest is the diagnostic interface. |
+| The deterministic tiers | `test:lint`, `test:unit`, `test:intg` per package, booted by `plurnk-core/test/setup.ts` (a fake `mocktest` provider on fixture-scaled reserves, never a real model). |
+| A release | `npm run changeset` with the change; `npm run release:version`, `release:check`, `release:publish`, `release:finalize` ({§package-release-contract}, {§release-finalization}); `CONTRIBUTING.md` § Release has the procedure. |
+| The bench | The `plurnk-bench` checkout beside this one; read `../plurnk-bench/deepswe/README.md` before launching anything, and never reconstruct its invocation from memory. |
+| Process boundaries, data flow, ownership | `ARCHITECTURE.md`; a package's public contract is its `SPEC.md`; implementation notes sit near the code they describe. |
 
-- **Models are declared in `$XDG_CONFIG_HOME/plurnk/.env`** (`~/.config/plurnk/.env`),
-  one alias per line: `PLURNK_MODEL_<alias>=<provider>/<model>`. Alias names may carry
-  lowercase (`PLURNK_MODEL_ibm`). `PLURNK_MODEL=<alias>` selects one per run; a
-  `PLURNK_MODEL` in that file is the standing selection.
-- **Provider credentials live in the login shell environment**, never in any `.env`
-  and never in the repository. `scripts/operator-environment.sh` re-executes its
-  command under `~/.bashrc` when one exists (and runs it unchanged otherwise), so
-  every live, demo, bench and candidate run inherits `<PROVIDER>_API_KEY`. Check
+## Rules for operating
+
+- **Credentials** live in the login shell, never in any `.env` and never in the repository. Check
   readiness by name only; never print, echo or log a credential's value.
-- **Run a model** from `plurnk-core`: `PLURNK_MODEL=<alias> npm run test:live`
-  (specimens in `test/live/`), `npm run test:demo` (stories), or
-  `npm run test:live:specimen -- "<exact name>"`. The whole-platform candidate is
-  `npm run candidate` at the root (see README).
-- **Every live or demo run leaves its census and its workers' evidence** under
-  `$PLURNK_BENCHMARKS/tier-<live|demo>-<stamp>/` (`~/benchmarks` when unset): `census.md` has one row
-  per specimen (verdict, skip reason or first failure line, evidence directories, turns, cost) and
-  names the declared aliases that would satisfy each unmet requirement; each worker's
-  `<label>-XXXXXX/` holds `plurnk.db`, `workspace`, `census.json` and `digest/` with `digest.md`
-  (loops, turns, ops, errors, cost), `<worker>-<loop>-<turn>.request.md` (ordered input messages with
-  roles), `.assistant.md` (that turn's raw output), and `.wire.json` (the same ordered text input as
-  JSON, not an HTTP capture). `.user.md` and `.system.md` are role-filtered extracts, not the full
-  request, named by log coordinate. `npm run tier:history -w @plurnk/plurnk-service` ledgers every
-  run's census ({§tier-census}). Read the digest; the database is evidence, never the diagnostic
-  interface. For any other database, `npm run share -- <plurnk.db> [folder]` writes the same folder
-  from a consistent copy it takes itself ({§share}); a live database is safe to name.
-- **A daemon you did not start is a live session** someone is using: never stop it to
-  free a port, and read its database only through `npm run share`. A daemon reads
-  `plurnk-contracts/plurnk.md` from disk when it starts or wakes a worker, not once at
-  boot, so a card edit reaches its workers without a restart.
-- **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals
-  every process using that directory, the daemon included, and `pgrep -f`/`pkill -f`
-  match the calling shell's own command line. When a pattern is unavoidable, bracket its
-  first character (`[d]rill\.mjs`).
-- **The bench lane** is the `plurnk-bench` checkout beside this one; read
-  `deepswe/README.md` there before launching anything, and never reconstruct its
-  invocation from memory.
-- **The gate** is the pre-push drill (lint, unit, intg, client conformance against
-  `../plurnk`); run `npm run -s root:lint` before pushing. Commit subjects are one line of
-  at most 100 characters citing `(#N)`, no body. The drill copies this checkout's
-  `node_modules`, so run
-  `npm install --no-audit --no-fund` after a change to the workspaces or the lockfile. It
-  runs the pushed commit in a throwaway worktree beside this checkout
-  (`plurnk-service.wt-gate-<pid>`, removed when the drill ends), so the working tree may
-  stay dirty and be edited while it runs. Intg scopes to the changed workspaces and runs
-  in full for a root-level, `plurnk-core`, `plurnk-contracts` or `plurnk-parser` change.
-  The drill prints a phase's output only when that phase goes red, so a hung phase shows
-  nothing until its runner exits. GitHub is a mirror of the Forge with no automation of its
-  own: after the gate lands a commit, mirror it with
-  `git push --no-verify github origin/main:refs/heads/main`; a release carries and checks the
-  mirror itself before it records anything ({§release-mirror}).
-- **Releases are independent** ({§package-release-contract}). Every public change lands
-  with its changeset, written by whoever lands the change (`npm run changeset`);
-  `npm run release:version` applies the pending changesets and synchronizes the lockfile.
-  Review and land those changes through the normal gate. From clean canonical `main`
-  checkouts, `npm run release:check -- <new-artifact-directory> <package-directory>...`
-  qualifies only explicitly selected packages, including outside packages when named.
-  `npm run release:publish -- <artifact-directory>` publishes those retained archives in
-  dependency order, verifies the installed composition, and creates signed tags and GitHub
-  release records. Retry with that same artifact directory; do not rebuild an interrupted
-  release. No automatic version stamping or neighboring-repository sweep occurs during
-  publication. See [CONTRIBUTING.md](CONTRIBUTING.md#release) for the complete procedure.
-  Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
-  advisory endpoint drops over-limit requests instead of answering 429, and retries and
-  probes only feed the limit.
+- **A daemon you did not start is a live session**: never stop it to free a port, and read its
+  database only through `npm run share`. A daemon reads `plurnk-contracts/plurnk.md` from disk when
+  it starts or wakes a worker, so a card edit reaches its workers without a restart.
+- **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals every process
+  using that directory, the daemon included, and `pgrep -f`/`pkill -f` match the calling shell's own
+  command line. When a pattern is unavoidable, bracket its first character (`[d]rill\.mjs`).
+- **The gate is the push.** Run `npm run -s root:lint` before pushing. Commit subjects are one line of
+  at most 100 characters citing `(#N)`, no body. The drill runs the pushed commit in a throwaway
+  worktree with this checkout's `node_modules` copied whole, so run `npm install` after a change to
+  the workspaces or the lockfile; the working tree may stay dirty and be edited while it runs. GitHub
+  is a mirror of the Forge with no automation of its own: after the gate lands a commit, mirror it with
+  `git push --no-verify github origin/main:refs/heads/main` ({§release-mirror}).
+- **The client is part of the gate.** The drill's last phase boots the built service and checks the
+  terminal client checkout (`../plurnk`, or `PLURNK_CLIENT_CHECKOUT`) against it
+  ({§agui-first-party-client-conformance}): land a client change before the service push that depends
+  on it; never leave that checkout half-edited while a gate runs; a type a service change moves or
+  removes must leave the client compiling both against this checkout's packed packages and against its
+  published dependencies. Its scripted model (`scripts/fixtures/client-journey-model.mjs`) asserts
+  text from the teaching pages, so a teaching edit updates it in the same landing.
+- **A dogfood session** — an operator driving a daemon through ordinary, unscripted messages — is read
+  like a demo: share its database, then report friction first (refused or failed operations by family),
+  then the message census (was every message answered, in what form, premature endings, packet echoes,
+  anything that ran unasked), then pass rates. An advisory, a strike, an empty turn or a surprise
+  mutation is a failure even when the final text is right.
 
 ## Package ownership
 
@@ -108,120 +85,29 @@ Dependencies should point from consumers to the smallest package that owns the
 required contract. Do not duplicate schemas, package discovery, configuration
 rules, or protocol types in another package.
 
-See `ARCHITECTURE.md` for process boundaries and data flow. Package-level public
-contracts belong in that package's `SPEC.md`; implementation notes belong near
-the code they describe.
+## Rules for the code
 
-## Development
-
-Install and test from the repository root:
-
-```sh
-npm install
-npm test
-```
-
-The development runtime executes TypeScript source with Node's type stripping
-and the `plurnk-dev` export condition. Published executables use `dist`.
-Therefore, build before testing a binary or installed-package path:
-
-```sh
-npm run build
-```
-
-Use the root lockfile. Keep the dependency graph valid under `npm ls --all`.
-Internal workspace dependencies and extension peer dependencies use their declared
-compatible semver ranges; do not force incompatible transitive versions with
-root overrides.
-
-Every publishable workspace whose package projection includes `dist` owns one
-`build:clean` step, begins its complete public `build` with that step, keeps
-emission-only work in `build:dist`, and runs the complete build from `prepack`.
-The root package-build policy and release gates enforce this projection; do not
-introduce package-local cleanup variants.
-
-Build inputs are runtime package inputs. Keep test-only and private harness
-helpers under their test or bench owner rather than compiling them into `dist`.
-When runtime code loads a module by exact path instead of through an export,
-assert that path in the root packed-artifact projection. The manifest a tarball
-carries is a projection too: `scripts/lib/package-projection.mjs` strips the
-monorepo's `plurnk-dev` export condition from every tarball the platform packs
-(the provenance gate, the conformance harness, the publish machine) and refuses
-any remaining export whose target the tarball does not ship (#797).
-
-## Configuration cascade and test tiers
-
-**Read [`ARCHITECTURE.md` § Configuration authority](./ARCHITECTURE.md#configuration-authority)
-before adding a constant, a flag, a parameter default or a settings field.** The
-cascading environment is the only home for a choice; code holds mechanism only.
-What follows here is only the order the layers apply in.
-
-The order the layers apply in is {§environment-layers}, and `scripts/lib/environment.mjs` is its
-code: the shell, then `plurnk-core/.env.test` (the committed gate profile), then the operator file
-`$XDG_CONFIG_HOME/plurnk/.env`, then each package's `.env.defaults`, then the assembled floor.
-`loadEnvFile` is set-if-unset and the last `--env-file-if-exists` flag wins; the module encodes
-both, so no launcher spells the cascade again. `scripts/operator-environment.sh` puts the login
-shell's credentials above it all.
-
-Model selection: `PLURNK_MODEL=<selector>` accepts either a declared alias or an
-exact `<provider>/<model>` route; `PLURNK_MODEL_<alias>=<provider>/<model>`
-declares an optional reusable tuning scope (provider ids in
-`plurnk-models/src/providers.json`). Resolution is `resolveActiveRoute()`
-(plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare reusable
-aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
-redeclare one inline. With no selector anywhere the daemon boots modelless and says
-so; the repository ships neither a model nor a credential.
-
-The root drill (`npm test`) ends with a client conformance phase: it
-boots the built service and compares the terminal client's
-`conformance/agui-client.json` (`../plurnk`) against live
-`discover`, so an action rename, scope, or module-surface change fails this
-repository's push instead of silently breaking the client. The installed CLI
-and TUI journeys require that checkout and its dependencies; `PLURNK_CLIENT_CHECKOUT`
-selects another installed client location instead of the `../plurnk` default. The phase
-reads that checkout as it stands: land a client change before the service push that
-depends on it, and never leave it half-edited while a gate runs. It builds that checkout
-against this checkout's packed packages, while the client's own suite runs on its published
-dependencies, so a type a service change moves or removes must leave the client compiling
-against both. Its scripted model
-(`scripts/fixtures/client-journey-model.mjs`) asserts text from the teaching pages, so a
-teaching edit updates it in the same landing.
-
-Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
-Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with
-fixture-scaled reserves). The **demo** tier drives a REAL model through the prod
-loop via `test/_live-harness.ts` (`liveWorkspace` + `liveLoop`) and uses the floor
-bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh throwaway workspace,
-never the host repo, and is not part of `npm test`. Both tiers route through
-driver scripts (`scripts/live.mjs`, `scripts/demo.mjs`) that layer the full
-cascade (operator-environment.sh → floor.ts → `.env.defaults`, the XDG user `.env`,
-`.env.test`) and place `--test-name-pattern` *before* the file list
-(node ignores it after the files). Run from `plurnk-core`, selecting a model:
-
-```sh
-PLURNK_MODEL=<selector> npm run test:demo               # every demo story
-PLURNK_MODEL=<selector> npm run test:demo:specimen -- <name-substring>   # one story
-PLURNK_MODEL=<selector> npm run test:live                # every live specimen
-PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one specimen
-```
-
-## Dogfood teamwork sessions
-
-An operator drives a daemon through ordinary, unscripted messages — web research,
-questions about plurnk's own syntax, changing their mind mid-task — and the session is then read
-like a demo. Its lack of structure is the point: benchmarks grade the workspace afterwards, a
-session grades the reply. Share the daemon's database; the share takes its own consistent
-copy, so the daemon keeps running.
-
-```sh
-npm run -s share -- ~/.local/share/plurnk/plurnk.db ~/benchmarks/dogfood-teamwork-<stamp>
-```
-
-Report friction first (the standing rule): refused or failed operations by
-family, then the **message census** — was every message answered, in what form (prose answer,
-tolerated SEND, never), premature endings, packet echoes, and anything that ran which the operator
-did not ask for. Pass rates and outcomes come after. An advisory, a strike, an empty turn or a
-surprise mutation is a failure in this tier even when the final text is right.
+- **Read `ARCHITECTURE.md` § Configuration authority before adding a constant, a flag, a parameter
+  default or a settings field.** The cascading environment is the only home for a choice; code holds
+  mechanism only. Declare a reusable model alias once in the operator file and select it per run;
+  never redeclare one inline. With no selector anywhere the daemon boots modelless and says so; the
+  repository ships neither a model nor a credential.
+- **The development runtime executes TypeScript source** with Node's type stripping and the
+  `plurnk-dev` export condition; published executables use `dist`. Build before testing a binary or
+  installed-package path: a source-level test does not prove that an installed executable works.
+- **One lockfile.** Use the root lockfile and keep the dependency graph valid under `npm ls --all`.
+  Internal workspace dependencies and extension peer dependencies use their declared compatible
+  semver ranges; do not force incompatible transitive versions with root overrides.
+- **One build projection.** Every publishable workspace whose package projection includes `dist` owns
+  one `build:clean` step, begins its complete public `build` with that step, keeps emission-only work
+  in `build:dist`, and runs the complete build from `prepack`; the root package-build policy and the
+  release gates enforce this, so introduce no package-local cleanup variant. Build inputs are runtime
+  package inputs: keep test-only and private harness helpers under their test or bench owner rather
+  than compiling them into `dist`. When runtime code loads a module by exact path instead of through
+  an export, assert that path in the root packed-artifact projection. The manifest a tarball carries
+  is a projection too: `scripts/lib/package-projection.mjs` strips the monorepo's `plurnk-dev` export
+  condition from every tarball the platform packs and refuses any remaining export whose target the
+  tarball does not ship (#797).
 
 ## Monorepo contracts
 
