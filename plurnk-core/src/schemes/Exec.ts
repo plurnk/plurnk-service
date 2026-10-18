@@ -5,13 +5,8 @@ import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect } fro
 import {
     InvalidOperationResultError,
     MetadataOptions,
-    NetworkAddress,
-    ResourceNames,
-    WebMaterializationError,
     type ProposalApplyRequest,
     type SchemeHandler,
-    type WebFetchResult,
-    type WebMaterializedResult,
     type WebMaterializer,
 } from "@plurnk/plurnk-schemes";
 import FunctionalityManager from "../server/FunctionalityManager.ts";
@@ -33,20 +28,13 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
-import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
-import WorkerControlAddress from "../core/WorkerControlAddress.ts";
-import Turn from "../core/Turn.ts";
-import AdministrativeLoop from "../core/AdministrativeLoop.ts";
-import RuntimeWorker from "../core/RuntimeWorker.ts";
-import LoopLifecycle from "../core/LoopLifecycle.ts";
-import LogEntryProjection from "../core/LogEntryProjection.ts";
-import LogBody from "../core/LogBody.ts";
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
 import ExecScratch from "./ExecScratch.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
+import ExecEntrySink, { type WebFetch } from "./exec-entry-sink.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -90,11 +78,7 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
     return target.raw;
 };
 
-// {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null —
-// the registry's web materializer ({§web-materialization-contract}: checked byte acquisition,
-// dead-as-null; caller cancellation rejects per {§prefetch}).
-// Injectable because automatic acquisition refuses localhost.
-export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
+export type { WebFetch } from "./exec-entry-sink.ts";
 
 export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
     static validateConfiguration(): void {
@@ -946,192 +930,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         let exitLabel = "did not conclude";
         let stdoutLength = 0;
         let stderrLength = 0;
-        // {§exec-entry-sink} {§env-delta-entry-materialization} — serialize
-        // executor entry() materializations and narrate them through the one
-        // reserved-worker turn owned by this spawn.
-        let entryChain: Promise<unknown> = Promise.resolve();
-        type EntryNarration = {
-            workerId: number;
-            loopId: number;
-            loopSeq: number;
-            turnId: number;
-            turnSeq: number;
-            seq: number;
-        };
-        let narration: EntryNarration | null = null;
-        let narrationResult: SchemeResult = { status: 200 };
-        let entryChainFailed = false;
-        let callerSource: string | undefined;
-        const resolveCallerSource = async (): Promise<string> => {
-            if (callerSource !== undefined) return callerSource;
-            const caller = await db.worker_name_by_id.get<{ name: string }>({ worker_id: ctx.workerId });
-            if (caller === undefined) throw new Error(`entry(): calling worker ${ctx.workerId} does not exist`);
-            callerSource = WorkerControlAddress.render(caller.name);
-            return callerSource;
-        };
-        const publishedNames = new ResourceNames();
-        const entrySink = (requestedPath: string | null, content: string | Uint8Array | null, sink: { mimetype?: string; name?: string }): Promise<string> => {
-            let path = requestedPath;
-            if (path === null) {
-                if (content === null) return Promise.reject(new Error("entry(): an invocation resource requires supplied content"));
-                path = renderAddress({ scheme: runtime, authority: "", pathname: `${pathname}/resources/${publishedNames.allocate(sink.name)}` });
-            }
-            const parsed = parsePath(path);
-            if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
-            if (content !== null && sink.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
-            const address = NetworkAddress.supports(parsed.scheme) ? NetworkAddress.from(parsed) : null;
-            if (address?.hasCredentials === true) return Promise.reject(new Error("entry(): network URL userinfo is not allowed"));
-            const fetchAddress = address !== null && (address.scheme === "http" || address.scheme === "https")
-                ? address
-                : null;
-            const binding = requestedPath === null
-                ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname }, result: null })
-                : this.bindEntryAddress(parsed, ctx);
-            // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
-            // acquisition before the write chain so fetches run in parallel;
-            // only durable entry writes serialize. A null result rejects the sink.
-            let materialized: Promise<WebFetchResult | null> | undefined;
-            if (content === null) {
-                if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
-                materialized = this.#fetchWeb(fetchAddress.url, { signal });
-            } else if (typeof content === "string" && requestedPath !== null) {
-                materialized = Promise.resolve({
-                    url: fetchAddress?.url ?? "http://localhost",
-                    body: content,
-                    mimetype: sink.mimetype as string,
-                    allowConfiguredMaterializer: false,
-                });
-            }
-            const op = async (): Promise<string> => {
-                const resolved = await binding;
-                if (resolved === null) {
-                    throw new Error(`entry(): no entry-bearing scheme is registered for '${path.slice(0, 80)}'`);
-                }
-                if (resolved.result !== null) throw new OperationFailureError(resolved.result);
-                if (resolved.address === null) {
-                    throw new Error(`entry(): '${path.slice(0, 80)}' did not resolve to an entry address`);
-                }
-                const { authority, pathname: entryPathname, scheme } = resolved.address;
-                const entryCoordinate = { authority, pathname: entryPathname };
-                let channels: EntryData["channels"];
-                let decisive: string;
-                let source: string;
-                if (materialized === undefined) {
-                    if (content === null) throw new Error("entry(): missing supplied content");
-                    const entryBody = typeof content === "string" ? { content, mimetype: sink.mimetype! }
-                        : { content: "", bytes: content, mimetype: sink.mimetype! };
-                    const channel = requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme);
-                    if (channel === undefined) throw new Error(`entry(): no default channel for '${scheme}'`);
-                    channels = { [channel]: entryBody };
-                    decisive = typeof content === "string" ? content : `${sink.mimetype}; ${content.byteLength} bytes`;
-                    source = decisive;
-                } else {
-                    const fetched = await materialized;
-                    if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                    let web: WebMaterializedResult;
-                    try {
-                        web = await this.#materializer().materialize(fetched, new DbProjectionCaps(ctx));
-                    } catch (error) {
-                        if (!signal.aborted && error instanceof WebMaterializationError) {
-                            console.error("entry() web materialization failed", { path, error });
-                        }
-                        throw error;
-                    }
-                    channels = this.#materializer().materializedChannels(
-                        web,
-                        content === null && fetchAddress !== null ? { url: fetchAddress.url, method: "GET" } : undefined,
-                    );
-                    decisive = web.readable?.content ?? (web.body.bytes === undefined
-                        ? web.body.content : `${web.body.mimetype}; ${web.body.bytes.byteLength} bytes`);
-                    source = web.body.bytes === undefined ? web.body.content : decisive;
-                }
-                const causalSource = await resolveCallerSource();
-                const written = Results.assert(
-                    await EntryCrud.writeEntry(entryCoordinate, { channels }, ctx, scheme, {
-                        defaultChannel: requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme),
-                        output: requestedPath === null,
-                    }),
-                );
-                if (narration === null) {
-                    const workerId = await RuntimeWorker.ensure(db, ctx.workspaceId);
-                    const loop = await AdministrativeLoop.open(db, workerId);
-                    const turn = await Turn.open(db, {
-                        loopId: loop.id,
-                        producer: "_plurnk",
-                        kind: "operation",
-                    });
-                    narration = {
-                        workerId,
-                        loopId: loop.id,
-                        loopSeq: loop.sequence,
-                        turnId: turn.id,
-                        turnSeq: turn.sequence,
-                        seq: 1,
-                    };
-                }
-                if (narrationResult.status < 400 || written.status >= 400) narrationResult = written;
-                const sequence = narration.seq++;
-                const narrationAttrs = { kind: "entry_materialized" } as const;
-                if (written.problem !== undefined) {
-                    const narrationCoordinate = LogEntryProjection.coordinate(
-                        `${narration.loopSeq}/${narration.turnSeq}/${sequence}`,
-                        { origin: "_plurnk", op: "EDIT", attrs: narrationAttrs },
-                    );
-                    Results.attachInstance(
-                        written,
-                        `log:///${narrationCoordinate}`,
-                    );
-                }
-                const tx = JSON.stringify({ op: "EDIT", body: source });
-                const rx = JSON.stringify(written.problem === undefined
-                    ? {
-                        ...written,
-                        span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
-                    }
-                    : written);
-                const attrs = JSON.stringify(narrationAttrs);
-                if (ctx.weigh === undefined) {
-                    throw new Error("entry(): ctx.weigh is required for curation-weight accounting");
-                }
-                const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
-                    worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
-                    origin: "_plurnk", source: causalSource, model_call_id: null,
-                    op: "EDIT", signal: null,
-                    scheme, username: null, password: null,
-                    hostname: address === null ? null : parsed.hostname,
-                    port: address === null ? null : parsed.port,
-                    pathname: address === null ? entryPathname : PathSyntax.decodeParens(parsed.pathname),
-                    query: address === null ? null : parsed.query,
-                    fragment: null, lineMarker: null,
-                    tx, mimetype_tx: "application/json",
-                    rx,
-                    mimetype_rx: "application/json",
-                    status_rx: written.status,
-                    weight: LogBody.weight({
-                        op: "EDIT",
-                        attrs,
-                        tx,
-                        rx,
-                        mimetypeTx: "application/json",
-                        mimetypeRx: "application/json",
-                    }, ctx.weigh),
-                    state: "resolved", outcome: null,
-                    // Durable provenance for clients/forensics. This is machine
-                    // ambience, not a human/model action waterfall item.
-                    attrs,
-                    initial_folded: "[]",
-                });
-                if (logRow === undefined) throw new Error("entry(): log insert returned no row");
-                if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress({ scheme, authority, pathname: entryPathname });
-            };
-            const run = entryChain.then(op, op);
-            entryChain = run.then(
-                () => undefined,
-                () => { entryChainFailed = true; },
-            );
-            return run;
-        };
+        // {§exec-entry-sink} — the executor's entry() sink and the narration turn it owns live in their own owner;
+        // this spawn's tail settles them.
+        const sink = new ExecEntrySink({
+            ctx, runtime, pathname, signal, executor,
+            bindEntryAddress: (parsed, context) => this.bindEntryAddress(parsed, context),
+            fetchWeb: this.#fetchWeb,
+            materializer: this.#materializer,
+        });
         const executionFailures: unknown[] = [];
         const cancelled = (exitCode?: number): SchemeResult => Results.failure(
             "scheme:exec",
@@ -1153,7 +959,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 const reported: ExecutorResult = await executor.run({
                     registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
-                    entry: entrySink,
+                    entry: sink.entry,
                     // {§executor-interaction-sink} — the executor's signal narrows the execution's, never replaces it.
                     interact: (request, interactionSignal) => {
                         if (ctx.requestInteraction === undefined) {
@@ -1216,38 +1022,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 }
             }
 
-            const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
-            // A timeout aborts the spawn → the executor reports 499; replace the
-            // complete result so status and Problem remain one valid truth.
-            if (timedOut) {
-                const lifetime = formatLifetime(timeoutSec ?? 0);
-                result = Results.failure(
-                    "scheme:exec",
-                    "execution-timeout",
-                    504,
-                    `Execution of '${runtime}' outlived its ${lifetime} lifetime.`,
-                    exitCode === null ? {} : { exitCode },
-                    {
-                        runtime,
-                        lifetime,
-                        stage: "execution",
-                        retryable: false,
-                    },
-                );
-            // The service's own abort knowledge outranks a driver's claim: a
-            // spawn we reaped did not succeed, whatever it resolved under abort.
-            } else if (signal.aborted && result.status < 400) {
-                result = cancelled(exitCode ?? undefined);
-            } else if (result.status < 400 && exitCode === 127 && target === null) {
-                result = this.#namedToolFallThrough(result, runtime, body, ctx);
-            }
-            exitLabel = timedOut
-                ? `timed out after ${(timeoutSec ?? 0) / 60}m`
-                : result.status === 499
-                    ? "aborted"
-                    : exitCode !== null
-                        ? `exit ${exitCode}`
-                        : result.problem?.title.toLowerCase() ?? "completed";
+            ({ result, exitLabel } = this.#settleExecutionResult({ result, timedOut, timeoutSec, signal, target, runtime, body, ctx }));
             const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
             const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
             stdoutLength = stdoutMeta?.contentLength ?? 0;
@@ -1256,46 +1031,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             executionFailures.push(cause);
         }
         {
-            // {§exec-entry-sink} — the spawn tail owns every serialized entry/narration write.
-            const finalizationErrors = [...executionFailures];
-            if (entryChainFailed && narrationResult.status < 400) {
-                narrationResult = Results.failure(
-                    "scheme:exec",
-                    "entry-narration-failed",
-                    500,
-                    "An executor entry could not be materialized or narrated.",
-                    {},
-                    { stage: "entry-materialization", retryable: false },
-                );
-            }
-            try {
-                await entryChain;
-            } catch (cause) {
-                narrationResult = Results.failure(
-                    "scheme:exec",
-                    "entry-narration-failed",
-                    500,
-                    "An executor entry could not be materialized or narrated.",
-                    {},
-                    { stage: "entry-materialization", retryable: false },
-                );
-                finalizationErrors.push(cause);
-            }
-            const completedNarration = narration as EntryNarration | null;
-            if (completedNarration !== null) {
-                try {
-                    await Turn.complete(db, completedNarration.turnId, narrationResult.status);
-                    const closed = await new LoopLifecycle(db).finish(
-                        completedNarration.loopId,
-                        narrationResult,
-                    );
-                    if (closed === null) {
-                        throw new Error(`entry(): narration loop ${completedNarration.loopId} was not open at completion`);
-                    }
-                } catch (cause) {
-                    finalizationErrors.push(cause);
-                }
-            }
+            // {§exec-entry-sink} — the spawn tail settles the entry chain and its narration turn before anything else.
+            const finalizationErrors = [...executionFailures, ...await sink.settle()];
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // {§exec-source-temporary} — cleanup cannot rewrite the settled
             // executor result, but an exceptional failure remains observable.
@@ -1310,10 +1047,62 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             } catch (cause) { finalizationErrors.push(cause); }
             if (finalizationErrors.length === 1) throw finalizationErrors[0];
             if (finalizationErrors.length > 1) {
-                throw new AggregateError(finalizationErrors, `Execution narration ${completedNarration?.turnId ?? "unknown"} failed to settle`);
+                throw new AggregateError(finalizationErrors, `Execution narration ${sink.narrationTurnId ?? "unknown"} failed to settle`);
             }
         }
         return result;
+    }
+
+    // One valid truth for the settled execution: a timeout outranks the executor's report, the service's own abort
+    // knowledge outranks a driver's claim, and a shell's 127 on a tool's name is that tool's refusal
+    // ({§exec-tool-fall-through}).
+    #settleExecutionResult(args: {
+        result: SchemeResult; timedOut: boolean; timeoutSec: number | null; signal: AbortSignal;
+        target: string | null; runtime: string; body: string; ctx: PlurnkSchemeContext;
+    }): { result: SchemeResult; exitLabel: string } {
+        const { timedOut, timeoutSec, signal, target, runtime, body, ctx } = args;
+        let { result } = args;
+        const cancelled = (exitCode?: number): SchemeResult => Results.failure(
+            "scheme:exec",
+            "execution-cancelled",
+            499,
+            `Execution of '${runtime}' was cancelled by the service.`,
+            exitCode === undefined ? {} : { exitCode },
+            { runtime, stage: "execution", retryable: false },
+        );
+        const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
+        // A timeout aborts the spawn → the executor reports 499; replace the
+        // complete result so status and Problem remain one valid truth.
+        if (timedOut) {
+            const lifetime = formatLifetime(timeoutSec ?? 0);
+            result = Results.failure(
+                "scheme:exec",
+                "execution-timeout",
+                504,
+                `Execution of '${runtime}' outlived its ${lifetime} lifetime.`,
+                exitCode === null ? {} : { exitCode },
+                {
+                    runtime,
+                    lifetime,
+                    stage: "execution",
+                    retryable: false,
+                },
+            );
+        // The service's own abort knowledge outranks a driver's claim: a
+        // spawn we reaped did not succeed, whatever it resolved under abort.
+        } else if (signal.aborted && result.status < 400) {
+            result = cancelled(exitCode ?? undefined);
+        } else if (result.status < 400 && exitCode === 127 && target === null) {
+            result = this.#namedToolFallThrough(result, runtime, body, ctx);
+        }
+        const exitLabel = timedOut
+            ? `timed out after ${(timeoutSec ?? 0) / 60}m`
+            : result.status === 499
+                ? "aborted"
+                : exitCode !== null
+                    ? `exit ${exitCode}`
+                    : result.problem?.title.toLowerCase() ?? "completed";
+        return { result, exitLabel };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
