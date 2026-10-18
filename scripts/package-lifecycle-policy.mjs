@@ -4,7 +4,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run lifecycle:check
-Every workspace's test script is exactly its lint, unit and intg tiers in order, with no synonym tiers, so the gate drill finds every tier by name.
+Every workspace's test script is exactly its lint, unit and intg tiers in order, with no synonym tiers, so the gate drill finds every tier by name; a recursive glob in any script is quoted, so node expands it rather than sh.
 Reads: every workspace's package.json.
 Writes: "package lifecycle policy OK" or violations to stdout; exit 1 on any.
 `);
@@ -44,6 +44,15 @@ export const packageLifecycleViolations = (dir, manifest) => {
         if (name === "test" || TEST_TIERS.includes(name) || AUXILIARY_TEST_SCRIPTS.has(name)) continue;
         if (name.startsWith("test:")) {
             violations.push(`${dir}: ${name} is not a classified test lifecycle script`);
+        }
+    }
+    // npm runs a script under sh, which has no globstar: an unquoted `**` expands one level when
+    // anything matches and the deeper suites never run. Quoted, the pattern reaches node, which expands it.
+    for (const [name, command] of Object.entries(scripts)) {
+        for (const token of command.split(/\s+/u)) {
+            if (token.includes("**") && !/^["'].*["']$/u.test(token)) {
+                violations.push(`${dir}: ${name} spells the glob ${token} unquoted; sh expands ** one level, so quote it for node`);
+            }
         }
     }
     return violations;

@@ -77,3 +77,10 @@ test("a workspace cannot impose a build-time prepare script on package consumers
         "consumer-script: prepare runs in package consumers; build checkout state at the root and packed artifacts through prepack",
     ]);
 });
+
+test("a script spells a recursive glob quoted, so node expands it instead of sh", () => {
+    const scripts = { "test:unit": "node --test 'src/**/*.test.ts' \"scripts/**/*.test.mjs\"", test: "npm run test:unit" };
+    assert.deepEqual(packageLifecycleViolations("quoted", { scripts }), []);
+    assert.deepEqual(packageLifecycleViolations("bare", { scripts: { ...scripts, "test:unit": "node --test src/**/*.test.ts" } }),
+        ["bare: test:unit spells the glob src/**/*.test.ts unquoted; sh expands ** one level, so quote it for node"]);
+});
