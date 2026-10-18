@@ -7,7 +7,7 @@ const source = (content, name = "plurnk-x/src/thing.ts") => ({ name, content });
 const run = ({ panels = [], sources = [], allowance = {} }) =>
     envSurfaceViolations({ panels, sources, corpus: sources, allowance });
 
-test("a knob read in shipped source must be declared on a panel, live or as an optional knob", () => {
+test("{§env-surface-policy} a knob read in shipped source must be declared on a panel, live or as an optional knob", () => {
     const panels = [panel("PLURNK_X_LIVE=1\n# PLURNK_X_OPTIONAL=example\n")];
     assert.deepEqual(run({ panels, sources: [source("read(env.PLURNK_X_LIVE); read(env[\"PLURNK_X_OPTIONAL\"]);")] }), []);
     assert.deepEqual(
@@ -16,7 +16,7 @@ test("a knob read in shipped source must be declared on a panel, live or as an o
     );
 });
 
-test("a computed name is a family, covered by one declared example of it", () => {
+test("{§env-surface-policy} a computed name is a family, covered by one declared example of it", () => {
     const panels = [panel("PLURNK_X_LIVE=1\n# PLURNK_EXECS_PYTHON3=0\n")];
     const family = source("const on = env[`PLURNK_EXECS_${runtime}`]; const known = env.PLURNK_EXECS_JQ; use(env.PLURNK_X_LIVE);");
     assert.deepEqual(run({ panels, sources: [family] }), []);
@@ -27,32 +27,32 @@ test("a computed name is a family, covered by one declared example of it", () =>
     );
 });
 
-test("a read never carries its own value: a default in code is a second home for a choice", () => {
+test("{§env-surface-policy} a read never carries its own value: a default in code is a second home for a choice", () => {
     const panels = [panel("PLURNK_X_TURNS=-1\n")];
     const violations = run({ panels, sources: [source("const a = Number(process.env.PLURNK_X_TURNS ?? \"50\");\nconst b = env[\"PLURNK_X_TURNS\"] || 30;")] });
     assert.deepEqual(violations, ["fallback: plurnk-x/src/thing.ts — 2 found, allowance 0"]);
 });
 
-test("a constant named DEFAULT is, by its own name, a default living in code", () => {
+test("{§env-surface-policy} a constant named DEFAULT is, by its own name, a default living in code", () => {
     assert.deepEqual(
         run({ sources: [source("const DEFAULT_MODE = 50;\nclass A { static readonly DEFAULT_POLICY = {}; static #DEFAULT_TIMERS = {}; }")] }),
         ["default-constant: plurnk-x/src/thing.ts — 3 found, allowance 0"],
     );
 });
 
-test("a live declaration nothing consumes means the panel lies", () => {
+test("{§env-surface-policy} a live declaration nothing consumes means the panel lies", () => {
     assert.deepEqual(
         run({ panels: [panel("PLURNK_X_UNUSED=1\n")], sources: [source("export const nothing = 1;")] }),
         ["dead-knob: PLURNK_X_UNUSED — 1 found, allowance 0"],
     );
 });
 
-test("one package owns a key", () => {
+test("{§env-surface-policy} one package owns a key", () => {
     const { duplicates } = readPanels([panel("PLURNK_X=1\n", "plurnk-a/.env.defaults"), panel("PLURNK_X=2\n", "plurnk-b/.env.defaults")]);
     assert.deepEqual(duplicates, ["PLURNK_X: declared by both plurnk-a/.env.defaults and plurnk-b/.env.defaults"]);
 });
 
-test("prose is not a read: comments, messages that merely begin with a name, tests and fixtures", () => {
+test("{§env-surface-policy} prose is not a read: comments, messages that merely begin with a name, tests and fixtures", () => {
     const prose = source([
         "// PLURNK_X_COMMENT named in prose",
         "/* PLURNK_X_BLOCK */",
@@ -63,7 +63,7 @@ test("prose is not a read: comments, messages that merely begin with a name, tes
     assert.equal(stripComments("a // b\n\"c // d\" /* e */ f").replace(/\s+/gu, " "), "a \"c // d\" f");
 });
 
-test("the allowance is a ratchet: new debt is refused, and so is a paid debt left on the books", () => {
+test("{§env-surface-policy} the allowance is a ratchet: new debt is refused, and so is a paid debt left on the books", () => {
     const sources = [source("const DEFAULT_A = 1; const DEFAULT_B = 2;")];
     assert.deepEqual(run({ sources, allowance: { "default-constant": { "plurnk-x/src/thing.ts": 2 } } }), []);
     assert.deepEqual(
@@ -80,13 +80,13 @@ test("the allowance is a ratchet: new debt is refused, and so is a paid debt lef
     );
 });
 
-test("reading the system environment is the mechanism, never a debt", () => {
+test("{§env-surface-policy} reading the system environment is the mechanism, never a debt", () => {
     // Node, the shell and CI all speak it, and the floor is set-if-unset into it.
     const direct = source("const turns = Number(process.env.PLURNK_X_TURNS); const home = process.env.HOME;");
     assert.deepEqual(run({ panels: [panel("PLURNK_X_TURNS=-1\n")], sources: [direct] }), []);
 });
 
-test("a reader that accepts a fallback can state a value the panel never did", () => {
+test("{§env-surface-policy} a reader that accepts a fallback can state a value the panel never did", () => {
     const reader = source("const readInt = (name: string, fallback: number): number => {\n    const raw = process.env[name];\n    return raw === undefined ? fallback : Number(raw);\n};");
     assert.deepEqual(run({ sources: [reader] }), ["reader-fallback: plurnk-x/src/thing.ts — 1 found, allowance 0"]);
     // A parameter named fallback that never touches the environment is somebody else's business.
@@ -95,7 +95,7 @@ test("a reader that accepts a fallback can state a value the panel never did", (
     assert.deepEqual(run({ sources: [source("const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number => {\n    const raw = env[name];\n    if (raw === undefined) throw new Error(name);\n    return Number(raw);\n};")] }), []);
 });
 
-test("a package that ships a panel tests on it, or the floor is a fiction where the code is exercised", () => {
+test("{§env-surface-policy} a package that ships a panel tests on it, or the floor is a fiction where the code is exercised", () => {
     const panels = [panel("PLURNK_X=1\n")];
     const sources = [source("use(env.PLURNK_X);")];
     const manifest = (scripts) => ({ name: "plurnk-x/package.json", content: JSON.stringify({ scripts }) });
@@ -112,7 +112,7 @@ test("a package that ships a panel tests on it, or the floor is a fiction where 
     assert.deepEqual(check({ "test:unit": "npm run build" }), []);
 });
 
-test("a number whose name says duration, size or limit is a choice, unless the register says why it is mechanism", () => {
+test("{§env-surface-policy} a number whose name says duration, size or limit is a choice, unless the register says why it is mechanism", () => {
     const sources = [source("const POLL_INTERVAL_MS = 250;\nclass A { static readonly PAGE_LIMIT = 50; static #RETRY_MAX = 3; }\nconst TEXT_NODE = 3;\nlet depth = 0;")];
     const check = (mechanism) => envSurfaceViolations({ panels: [], sources, corpus: sources, allowance: {}, mechanism });
     // A format code and a loop counter confess nothing; three names do.
@@ -132,7 +132,7 @@ test("a number whose name says duration, size or limit is a choice, unless the r
     assert.deepEqual(check({ ...register, "plurnk-x/src/gone.ts:OLD_LIMIT": "was here" }), ["tunable: plurnk-x/src/gone.ts:OLD_LIMIT — registered as mechanism but gone; strike it from the register"]);
 });
 
-test("a bare number handed to a timer or a deadline is named or read from the panel; it has no register", () => {
+test("{§env-surface-policy} a bare number handed to a timer or a deadline is named or read from the panel; it has no register", () => {
     const bare = source("setTimeout(tick, 5000);\nawait delay(150, undefined, { signal });\nconst signal = AbortSignal.timeout(30_000);");
     assert.deepEqual(run({ sources: [bare] }), ["timer-literal: plurnk-x/src/thing.ts — 3 found, allowance 0"]);
     const named = source("setTimeout(tick, TICK_MS);\nawait delay(Knob.integer(\"PLURNK_X_POLL\", 1));\nsetTimeout(tick, 0);");

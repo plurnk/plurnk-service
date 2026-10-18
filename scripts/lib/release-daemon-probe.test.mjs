@@ -66,7 +66,7 @@ for (const [mode, failure] of [
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("release probe rejects the spawned artifact's wrong version and still reaps it", async () => {
+test("{§release-candidate-graph} release probe rejects the spawned artifact's wrong version and still reaps it", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-version-"));
     const cleanup = join(dir, "closed");
     try {
@@ -81,28 +81,28 @@ test("release probe rejects the spawned artifact's wrong version and still reaps
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("release probe rejects premature child exit with its exact status", async () => {
+test("{§release-candidate-graph} release probe rejects premature child exit with its exact status", async () => {
     await assert.rejects(
         runProbe({ PLURNK_RELEASE_PROBE_FIXTURE: "exit" }),
         /exited before readiness \(7\)/,
     );
 });
 
-test("release probe rejects unsuccessful shutdown after successful readiness", async () => {
+test("{§release-candidate-graph} release probe rejects unsuccessful shutdown after successful readiness", async () => {
     await assert.rejects(
         runProbe({ PLURNK_RELEASE_PROBE_FIXTURE: "fail-stop" }),
         /installed daemon shutdown failed \(9\)/,
     );
 });
 
-test("release probe reaps a nonresponsive daemon but does not call forced shutdown successful", async () => {
+test("{§release-candidate-graph} release probe reaps a nonresponsive daemon but does not call forced shutdown successful", async () => {
     await assert.rejects(
         runProbe({ PLURNK_RELEASE_PROBE_FIXTURE: "hang-stop" }, { stopTimeoutMs: 100 }),
         /installed daemon did not shut down within 100ms; forced termination \(SIGKILL\)/,
     );
 });
 
-test("release probe preserves both a listener failure and an unsuccessful shutdown", async () => {
+test("{§release-candidate-graph} release probe preserves both a listener failure and an unsuccessful shutdown", async () => {
     await assert.rejects(
         runProbe({
             PLURNK_RELEASE_PROBE_FIXTURE: "fail-stop",
@@ -119,14 +119,14 @@ test("release probe preserves both a listener failure and an unsuccessful shutdo
     );
 });
 
-test("release probe preserves a spawn failure instead of masking it during teardown", async () => {
+test("{§release-candidate-graph} release probe preserves a spawn failure instead of masking it during teardown", async () => {
     await assert.rejects(
         runProbe({}, { command: join(tmpdir(), "plurnk-missing-release-probe") }),
         { code: "ENOENT" },
     );
 });
 
-test("release probe rejects a non-AG-UI responder and still reaps the child", async () => {
+test("{§release-candidate-graph} release probe rejects a non-AG-UI responder and still reaps the child", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-http-"));
     const cleanup = join(dir, "closed");
     try {

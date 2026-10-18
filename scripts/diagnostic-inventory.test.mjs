@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeDiagnosticSource, diagnosticInventory } from "./diagnostic-inventory.mjs";
 
-test("diagnostic inventory extracts constructors, parser errors, and recovery clauses with source coordinates", () => {
+test("{§diagnostic-inventory} diagnostic inventory extracts constructors, parser errors, and recovery clauses with source coordinates", () => {
     const records = analyzeDiagnosticSource("plurnk-fixture/src/Example.ts", [
         "const one = Results.failure(",
         "    \"scheme:fixture\", \"missing\", 404, \"The resource does not exist.\", {},",
@@ -48,7 +48,7 @@ test("diagnostic inventory extracts constructors, parser errors, and recovery cl
     ]);
 });
 
-test("diagnostic inventory has deterministic file and source ordering", () => {
+test("{§diagnostic-inventory} diagnostic inventory has deterministic file and source ordering", () => {
     const files = [
         { name: "plurnk-z/src/Z.ts", text: "refuse(\"z\", \"detail\", \"recover\");" },
         { name: "plurnk-a/src/A.ts", text: "Results.problem(\"a\", \"bad\", 400, \"detail\");" },
@@ -62,7 +62,7 @@ test("diagnostic inventory has deterministic file and source ordering", () => {
     );
 });
 
-test("diagnostic inventory distinguishes private helper calls from declarations and regex text", () => {
+test("{§diagnostic-inventory} diagnostic inventory distinguishes private helper calls from declarations and regex text", () => {
     const records = analyzeDiagnosticSource("plurnk-fixture/src/Example.ts", [
         "class Example {",
         "    #failure(code, detail) { return { code, detail }; }",

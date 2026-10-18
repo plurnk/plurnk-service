@@ -27,7 +27,7 @@ test("{§operator-config-env-defaults} a pinned runtime retains the installed na
     assert.equal(catalog(pinned), installed, "linking dependencies preserves every installed owner's panel");
 });
 
-test("candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
+test("{§candidate-pinned-runtime} candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-signal-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");
@@ -102,7 +102,7 @@ test("candidate SIGTERM stops its client and daemon, runs and exports from its p
     assert.equal(existsSync(resolve(candidateDir, "runtime")), false, "the pinned runtime is removed once the digest is written");
 });
 
-test("candidate reaps its daemon when the client is terminated by a signal", { timeout: 30_000 }, async (t) => {
+test("{§candidate-launcher} candidate reaps its daemon when the client is terminated by a signal", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-client-signal-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");
@@ -164,7 +164,7 @@ test("candidate reaps its daemon when the client is terminated by a signal", { t
 });
 
 
-test("candidate deadline snapshot photographs the project root while the run plays on", { timeout: 30_000 }, async (t) => {
+test("{§candidate-launcher} candidate deadline snapshot photographs the project root while the run plays on", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-deadline-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");

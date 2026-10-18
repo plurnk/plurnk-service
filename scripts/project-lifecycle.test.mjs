@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("the root pins the ordinary Node and npm toolchain", async () => {
+test("{§native-source-toolchain} the root pins the ordinary Node and npm toolchain", async () => {
     const manifest = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
     assert.equal(manifest.engines.node, ">=26");
     assert.equal(manifest.packageManager, "npm@12.2.0");

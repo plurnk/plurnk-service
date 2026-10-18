@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { hostPathViolations } from "./host-path-policy.mjs";
 
-test("host path policy rejects direct home reconstruction outside the owning resolver", () => {
+test("{§host-path-layout} host path policy rejects direct home reconstruction outside the owning resolver", () => {
     assert.deepEqual(
         hostPathViolations([{ name: "scripts/tool.mjs", content: 'resolve(homedir(), ".config", "plurnk")' }]),
         ["scripts/tool.mjs: reconstructs a host path from homedir() outside plurnk-core/src/core/HostPaths.ts or scripts/lib/benchmarks-root.mjs"],
@@ -13,7 +13,7 @@ test("host path policy rejects direct home reconstruction outside the owning res
     );
 });
 
-test("host path policy leaves the owning resolver and tests alone", () => {
+test("{§test-artifact-retention} host path policy leaves the owning resolver and tests alone", () => {
     assert.deepEqual(hostPathViolations([
         { name: "plurnk-core/src/core/HostPaths.ts", content: 'resolve(homedir(), ".config")' },
         // {§test-artifact-retention} — the benchmark home's one resolver is the one other owner.

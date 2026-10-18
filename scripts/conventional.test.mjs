@@ -6,32 +6,32 @@ import {
     validateCommitMessage,
 } from "./conventional.mjs";
 
-test("every conventional type is valid for branches and commit subjects", () => {
+test("{§commit-conventions} every conventional type is valid for branches and commit subjects", () => {
     for (const type of CONVENTIONAL_TYPES) {
         assert.deepEqual(validateBranchName(`${type}/project-lifecycle`), [], type);
         assert.deepEqual(validateCommitMessage(`${type}(project): normalize lifecycle\n`), [], type);
     }
 });
 
-test("branch validation admits main and rejects malformed or unknown names", () => {
+test("{§commit-conventions} branch validation admits main and rejects malformed or unknown names", () => {
     assert.deepEqual(validateBranchName("main"), []);
     assert.match(validateBranchName("feature/project-lifecycle")[0], /main or type\/kebab-slug/);
     assert.match(validateBranchName("feat/Project Lifecycle")[0], /main or type\/kebab-slug/);
     assert.match(validateBranchName("feat/not_kebab")[0], /main or type\/kebab-slug/);
 });
 
-test("commit validation retains generated merge and revert subjects", () => {
+test("{§commit-conventions} commit validation retains generated merge and revert subjects", () => {
     assert.deepEqual(validateCommitMessage("Merge branch 'feat/example'\n"), []);
     assert.deepEqual(validateCommitMessage("Revert \"feat: example\"\n"), []);
 });
 
-test("commit validation enforces conventional, bounded, subject-only messages", () => {
+test("{§commit-conventions} commit validation enforces conventional, bounded, subject-only messages", () => {
     assert.match(validateCommitMessage("Update lifecycle\n")[0], /type\(scope\): summary/);
     assert.match(validateCommitMessage(`fix: ${"x".repeat(100)}\n`)[0], /exceeds 100 characters/);
     assert.match(validateCommitMessage("fix: lifecycle\n\nExplanation.\n")[0], /one-liner doctrine/);
     assert.match(validateCommitMessage("fix: lifecycle\n\nCo-Authored-By: someone\n")[0], /one-liner doctrine/);
 });
 
-test("commit templates may retain blank and comment lines after the subject", () => {
+test("{§commit-conventions} commit templates may retain blank and comment lines after the subject", () => {
     assert.deepEqual(validateCommitMessage("fix: lifecycle\n\n# template guidance\n"), []);
 });

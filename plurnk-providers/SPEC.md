@@ -689,8 +689,10 @@ every request:
 | `off` | false | `0` |
 | `adaptive` | true | configured reasoning subset, otherwise omitted |
 
-The template control cannot express distinct fixed effort levels, so this
-adapter advertises only `off` and `adaptive`.
+§llama-template-effort The template control expresses two postures, so on the wire an
+admitted effort rides as `adaptive` and `off` as `off`; a detected llama-server rail admits
+the whole policy vocabulary (`low`, `medium`, `high`), because the chat template, not this
+host, decides what each level means.
 
 The allowance is contained by the request's total output budget. Template calls
 normally use `reasoning_format: "auto"` for a separate

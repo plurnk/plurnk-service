@@ -22,7 +22,7 @@ const fixture = async (t, sources) => {
     return root;
 };
 
-test("runtime direction audit excludes erased imports and re-exports without interpreting TypeScript", async (t) => {
+test("{§runtime-import-direction} runtime direction audit excludes erased imports and re-exports without interpreting TypeScript", async (t) => {
     const root = await fixture(t, {
         "plurnk-core/src/a.ts": 'import type { B } from "./b.js"; export type { B } from "./b.js"; export type A = B; export const a = 1;',
         "plurnk-core/src/b.ts": 'import { a } from "./a.js"; export type B = number; export const b = a;',
@@ -35,7 +35,7 @@ test("runtime direction audit excludes erased imports and re-exports without int
     assert.equal(report.modules.find(({ source }) => source.endsWith("/b.js")).dependencies.length, 1);
 });
 
-test("runtime direction audit retains a side-effect edge beside a type-only import", async (t) => {
+test("{§runtime-import-direction} runtime direction audit retains a side-effect edge beside a type-only import", async (t) => {
     const root = await fixture(t, {
         "plurnk-core/src/a.ts": 'import type { B } from "./b.js"; import "./b.js"; export type A = B; export const a = 1;',
         "plurnk-core/src/b.ts": 'import { a } from "./a.js"; export type B = number; export const b = a;',
@@ -44,7 +44,7 @@ test("runtime direction audit retains a side-effect edge beside a type-only impo
     assert.ok(violations.some(({ rule }) => rule.name === "no-circular"));
 });
 
-test("runtime direction audit enforces owner boundaries on emitted imports", async (t) => {
+test("{§runtime-import-direction} runtime direction audit enforces owner boundaries on emitted imports", async (t) => {
     const root = await fixture(t, {
         "plurnk-core/src/index.ts": "export const value = 1;",
         "plurnk-parser/src/index.ts": "export const parse = 1;",
@@ -58,7 +58,7 @@ test("runtime direction audit enforces owner boundaries on emitted imports", asy
     assert.ok(names.has("parser-only-where-declared"));
 });
 
-test("runtime direction audit reports unresolved imports and refuses missing build output", async (t) => {
+test("{§runtime-import-direction} runtime direction audit reports unresolved imports and refuses missing build output", async (t) => {
     const root = await fixture(t, { "plurnk-core/src/a.ts": 'import "./absent.js";' });
     assert.ok((await inspectDirections(root)).violations.some(({ rule }) => rule.name === "no-unresolved"));
     await rm(join(root, "plurnk-core/dist"), { recursive: true });

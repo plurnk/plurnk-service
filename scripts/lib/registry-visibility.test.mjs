@@ -6,7 +6,7 @@ import {
     awaitRegistryVersion,
 } from "./registry-visibility.mjs";
 
-test("registry visibility tolerates ordinary post-publication propagation", async () => {
+test("{§release-candidate-graph} registry visibility tolerates ordinary post-publication propagation", async () => {
     const observed = [null, "1.7.0", "1.8.0"];
     const waits = [];
 
@@ -21,7 +21,7 @@ test("registry visibility tolerates ordinary post-publication propagation", asyn
     assert.deepEqual(waits, [10_000, 10_000]);
 });
 
-test("registry visibility remains bounded and names the unpublished artifact", async () => {
+test("{§release-candidate-graph} registry visibility remains bounded and names the unpublished artifact", async () => {
     let attempts = 0;
 
     await assert.rejects(

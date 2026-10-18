@@ -10,7 +10,7 @@ import {
 const serviceRoot = "/open/plurnk-service";
 const cwd = "/experiments/current";
 
-test("candidate topology requires an explicit outside client checkout", () => {
+test("{§candidate-launcher} candidate topology requires an explicit outside client checkout", () => {
     for (const value of [undefined, "", "   "]) {
         assert.throws(
             () => resolveCandidateTopology(serviceRoot, {
@@ -21,14 +21,14 @@ test("candidate topology requires an explicit outside client checkout", () => {
     }
 });
 
-test("the explicit client checkout is shared by candidate and release lifecycles", () => {
+test("{§candidate-launcher} the explicit client checkout is shared by candidate and release lifecycles", () => {
     assert.equal(
         resolveClientCheckout({ PLURNK_CLIENT_CHECKOUT: "../client" }, cwd),
         resolve(cwd, "../client"),
     );
 });
 
-test("conformance's sibling default applies only when no client checkout is supplied", () => {
+test("{§candidate-launcher} conformance's sibling default applies only when no client checkout is supplied", () => {
     const sibling = resolve(serviceRoot, "../plurnk");
     for (const value of [undefined, "", "   "]) {
         assert.equal(resolveClientCheckout({ PLURNK_CLIENT_CHECKOUT: value }, cwd, sibling), sibling);
@@ -42,7 +42,7 @@ test("conformance's sibling default applies only when no client checkout is supp
     }
 });
 
-test("candidate topology defaults artifacts to the one benchmark home", () => {
+test("{§test-artifact-retention} candidate topology defaults artifacts to the one benchmark home", () => {
     assert.deepEqual(
         resolveCandidateTopology(serviceRoot, {
             PLURNK_CLIENT_CHECKOUT: "../client",
@@ -58,7 +58,7 @@ test("candidate topology defaults artifacts to the one benchmark home", () => {
     );
 });
 
-test("candidate topology preserves explicit relative experiment overrides", () => {
+test("{§candidate-launcher} candidate topology preserves explicit relative experiment overrides", () => {
     assert.deepEqual(
         resolveCandidateTopology(serviceRoot, {
             PLURNK_CLIENT_CHECKOUT: "  clients/open  ",

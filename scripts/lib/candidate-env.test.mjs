@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
-test("candidate client overrides parse one deterministic string map", () => {
+test("{§candidate-launcher} candidate client overrides parse one deterministic string map", () => {
     assert.deepEqual(
         parseCandidateClientEnv("{\"PLURNK_EXECS_ONLY\":\"atlas\"}"),
         { PLURNK_EXECS_ONLY: "atlas" },
@@ -10,7 +10,7 @@ test("candidate client overrides parse one deterministic string map", () => {
     assert.deepEqual(parseCandidateClientEnv(undefined), {});
 });
 
-test("candidate client overrides reject ambiguous values and daemon routing", () => {
+test("{§candidate-launcher} candidate client overrides reject ambiguous values and daemon routing", () => {
     assert.throws(
         () => parseCandidateClientEnv("[]"),
         /JSON object with string values/,

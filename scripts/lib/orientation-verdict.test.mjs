@@ -36,7 +36,7 @@ const digest = {
     ],
 };
 
-test("orientation verdict accepts a terminal, inspected, evidence-bearing report", () => {
+test("{§orientation-verdict} orientation verdict accepts a terminal, inspected, evidence-bearing report", () => {
     const verdict = evaluateOrientation(record, digest);
     assert.equal(verdict.pass, true);
     assert.deepEqual(verdict.failed, []);
@@ -44,7 +44,7 @@ test("orientation verdict accepts a terminal, inspected, evidence-bearing report
     assert.equal(verdict.costUsd, 42);
 });
 
-test("orientation verdict rejects a plausible answer that did not inspect its evidence", () => {
+test("{§orientation-verdict} orientation verdict rejects a plausible answer that did not inspect its evidence", () => {
     const shallow = structuredClone(record);
     shallow.turns = [{ turn: 1, ops: [{ op: "FIND", target: "**", status: 200, origin: "model" }] }];
     const verdict = evaluateOrientation(shallow, digest);
@@ -71,7 +71,7 @@ test("{§emission-row} orientation verdict counts only the model's own inspectio
     assert.deepEqual(verdict.checks.inspection.detail, { successfulRetrievals: 0, operations: [] });
 });
 
-test("orientation verdict does not count archived issue URLs as inspected repository evidence", () => {
+test("{§orientation-verdict} orientation verdict does not count archived issue URLs as inspected repository evidence", () => {
     const archaeological = {
         ...record,
         response: record.response
@@ -84,7 +84,7 @@ test("orientation verdict does not count archived issue URLs as inspected reposi
     assert.ok(verdict.failed.includes("evidence"));
 });
 
-test("orientation verdict rejects failed documentation publication independently of model success", () => {
+test("{§orientation-verdict} orientation verdict rejects failed documentation publication independently of model success", () => {
     const broken = structuredClone(digest);
     broken.log_entries.push({ turn_id: 1, op: "EDIT", status_rx: 400 });
     const verdict = evaluateOrientation(record, broken);
@@ -92,7 +92,7 @@ test("orientation verdict rejects failed documentation publication independently
     assert.ok(verdict.failed.includes("workspacePublication"));
 });
 
-test("orientation verdict rejects timeout, missing coverage, and empty delivery", () => {
+test("{§orientation-verdict} orientation verdict rejects timeout, missing coverage, and empty delivery", () => {
     const failed = { ...record, response: "", timedOut: true, finalStatus: 499 };
     const verdict = evaluateOrientation(failed, digest);
     assert.equal(verdict.pass, false);
@@ -100,7 +100,7 @@ test("orientation verdict rejects timeout, missing coverage, and empty delivery"
     assert.ok(verdict.failed.includes("coverage"));
 });
 
-test("orientation verdict rejects a report that omits current-forge evidence availability", () => {
+test("{§orientation-verdict} orientation verdict rejects a report that omits current-forge evidence availability", () => {
     const stale = {
         ...record,
         response: record.response.replace(

@@ -22,7 +22,7 @@ const fixture = async (t) => {
     return root;
 };
 
-test("optional type audit checks packed public code with explicit profile and asset exclusions", async (t) => {
+test("{§type-resolution-audit} optional type audit checks packed public code with explicit profile and asset exclusions", async (t) => {
     const root = await fixture(t);
     const calls = [];
     const count = await checkPackageTypes(root, {
@@ -38,7 +38,7 @@ test("optional type audit checks packed public code with explicit profile and as
     ]);
 });
 
-test("optional type audit selects an exact workspace and rejects absent or private selections", async (t) => {
+test("{§type-resolution-audit} optional type audit selects an exact workspace and rejects absent or private selections", async (t) => {
     const root = await fixture(t);
     const calls = [];
     const options = { run: async (...args) => { calls.push(args); return { code: 0, signal: null }; }, report: () => {} };
@@ -49,7 +49,7 @@ test("optional type audit selects an exact workspace and rejects absent or priva
     assert.equal(calls.length, 1, "invalid selections never launch the checker");
 });
 
-test("optional type audit reports every checker failure and does not turn errors into success", async (t) => {
+test("{§type-resolution-audit} optional type audit reports every checker failure and does not turn errors into success", async (t) => {
     const root = await fixture(t);
     let calls = 0;
     await assert.rejects(checkPackageTypes(root, {

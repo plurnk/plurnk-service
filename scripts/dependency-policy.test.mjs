@@ -12,7 +12,7 @@ const workspace = (name, dependencies = [], peerDependencies = []) => ({
     manifest: { name: `@plurnk/${name}`, dependencies: range(dependencies), peerDependencies: range(peerDependencies) },
 });
 
-test("a layered graph keeps both principles", () => {
+test("{§package-graph-policy} a layered graph keeps both principles", () => {
     assert.deepEqual(packageGraphViolations([
         workspace("contracts"),
         workspace("schemes", ["contracts"]),
@@ -21,7 +21,7 @@ test("a layered graph keeps both principles", () => {
     ]), []);
 });
 
-test("a host its module imports closes a cycle, refused by name", () => {
+test("{§package-graph-policy} a host its module imports closes a cycle, refused by name", () => {
     const violations = packageGraphViolations([
         workspace("contracts"),
         workspace("hooks", ["contracts"], ["service"]),
@@ -33,7 +33,7 @@ test("a host its module imports closes a cycle, refused by name", () => {
     );
 });
 
-test("an API that depends on a less stable package is refused naming the edge", () => {
+test("{§package-graph-policy} an API that depends on a less stable package is refused naming the edge", () => {
     // Two leaves depend on api, which depends on impl; impl depends on two packages nobody else uses.
     const violations = packageGraphViolations([
         workspace("contracts"),
@@ -48,13 +48,13 @@ test("an API that depends on a less stable package is refused naming the edge", 
     ]);
 });
 
-test("development dependencies are not package-graph edges", () => {
+test("{§package-graph-policy} development dependencies are not package-graph edges", () => {
     const fixture = workspace("contracts");
     fixture.manifest.devDependencies = range(["service"]);
     assert.deepEqual(packageGraphViolations([fixture, workspace("service", ["contracts"])]), []);
 });
 
-test("the repository's own package graph keeps both principles", async () => {
+test("{§package-graph-policy} the repository's own package graph keeps both principles", async () => {
     const root = path.resolve(import.meta.dirname, "..");
     const { workspaces } = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
     const entries = await Promise.all(workspaces.map(async (dir) => ({

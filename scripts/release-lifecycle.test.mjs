@@ -101,7 +101,7 @@ test("{§release-candidate-graph} incompatible candidate edges cannot publish pa
     assert.deepEqual(calls, []);
 });
 
-test("release qualification audits the installed composition and retains package-owned checks", async () => {
+test("{§release-candidate-graph} release qualification audits the installed composition and retains package-owned checks", async () => {
     const gates = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
     const consumer = await readFile(new URL("./lib/release-consumer.mjs", import.meta.url), "utf8");
     assert.match(consumer, /\["install", "--no-audit", "--no-fund", "--include=peer", \.\.\.specs\]/);

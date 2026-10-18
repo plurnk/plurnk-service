@@ -12,7 +12,7 @@ const valid = {
     },
 };
 
-test("package build policy derives its scope from the published dist projection", () => {
+test("{§build-projection} package build policy derives its scope from the published dist projection", () => {
     assert.equal(shipsDist(valid), true);
     assert.equal(shipsDist({ files: ["assets/**/*"] }), false);
     assert.equal(shipsDist({ files: ["!dist/private.js", "src/**/*"] }), false);
@@ -20,7 +20,7 @@ test("package build policy derives its scope from the published dist projection"
     assert.deepEqual(packageBuildViolations("private", { ...valid, private: true }), []);
 });
 
-test("package build policy admits one clean owner followed by complete emission", () => {
+test("{§build-projection} package build policy admits one clean owner followed by complete emission", () => {
     assert.deepEqual(packageBuildViolations("coherent", valid), []);
     assert.deepEqual(packageBuildViolations("multi-step", {
         ...valid,
@@ -31,7 +31,7 @@ test("package build policy admits one clean owner followed by complete emission"
     }), []);
 });
 
-test("package build policy rejects missing, partial, and duplicate cleanup paths", () => {
+test("{§build-projection} package build policy rejects missing, partial, and duplicate cleanup paths", () => {
     const violations = packageBuildViolations("stale", {
         files: ["dist/**/*"],
         scripts: {

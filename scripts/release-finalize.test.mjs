@@ -70,12 +70,12 @@ const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, 
     return { calls, run, options: { root: "/release-fixture", repo: "plurnk-service", packageFile: "plurnk-core/package.json", version: "1.2.3", commit: COMMIT, notes: "Fixes:\n\n- A verified fix.\n" } };
 };
 
-test("release hosting refuses missing GitHub write authority before publication", async () => {
+test("{§release-finalization} release hosting refuses missing GitHub write authority before publication", async () => {
     const { run } = fixture({ permission: false });
     await assert.rejects(assertReleaseHosting("/release-fixture", "plurnk-service", run), /GitHub.*write/);
 });
 
-test("finalization signs the exact published commit, pushes tags, then creates a verified-tag release", async () => {
+test("{§release-finalization} finalization signs the exact published commit, pushes tags, then creates a verified-tag release", async () => {
     const { calls, run, options } = fixture();
     await finalizeRelease(options, run);
     const sign = calls.findIndex((c) => c[0] === "git" && c[1] === "tag" && c[2] === "-s");
@@ -121,7 +121,7 @@ test("{§release-mirror} a mirror that cannot fast-forward stops publication wit
     assert.ok(!silent.calls.some((c) => c[0] === "gh" && c[2] === "create"));
 });
 
-test("repair requires an existing signed tag, not today's HEAD", async () => {
+test("{§release-finalization} repair requires an existing signed tag, not today's HEAD", async () => {
     const missing = fixture();
     await assert.rejects(finalizeRelease({ ...missing.options, commit: undefined }, missing.run), /existing.*tag/);
     assert.ok(!missing.calls.some((c) => c.includes("push") || c.includes("create")));
@@ -147,7 +147,7 @@ test("{§release-finalization} module tags are independent of the product versio
     }
 });
 
-test("repeating finalization keeps tags and existing release records unchanged", async () => {
+test("{§release-finalization} repeating finalization keeps tags and existing release records unchanged", async () => {
     const { run, options, calls } = fixture();
     await finalizeRelease(options, run);
     calls.length = 0;
@@ -155,7 +155,7 @@ test("repeating finalization keeps tags and existing release records unchanged",
     assert.ok(!calls.some((c) => c.includes("push") || c.includes("create") || c.includes("edit") || c.includes("-s")));
 });
 
-test("repair pushes only missing tags, retaining verification on both remotes", async () => {
+test("{§release-finalization} repair pushes only missing tags, retaining verification on both remotes", async () => {
     for (const missing of ["origin", "github", undefined]) {
         const remoteTags = { origin: "b".repeat(40), github: "b".repeat(40) };
         if (missing !== undefined) delete remoteTags[missing];
@@ -172,7 +172,7 @@ test("repair pushes only missing tags, retaining verification on both remotes", 
     }
 });
 
-test("an unserved version cannot create a tag or a Release", async () => {
+test("{§release-finalization} an unserved version cannot create a tag or a Release", async () => {
     const { run, options, calls } = fixture({ registry: "1.2.2" });
     await assert.rejects(finalizeRelease(options, run), /not served/);
     assert.ok(!calls.some((c) => c.includes("push") || c.includes("-s") || c.includes("create")));
@@ -189,13 +189,13 @@ test("{§release-finalization} npm 12's manifest array preserves publication ver
     assert.ok(calls.some((call) => call[0] === "gh" && call[1] === "release" && call[2] === "create"));
 });
 
-test("a conflicting remote tag is never overwritten or announced", async () => {
+test("{§release-finalization} a conflicting remote tag is never overwritten or announced", async () => {
     const { run, options, calls } = fixture({ tag: true, remoteTag: "c".repeat(40) });
     await assert.rejects(finalizeRelease(options, run), /conflicting.*tag/);
     assert.ok(!calls.some((c) => c.includes("push") || c.includes("create")));
 });
 
-test("GitHub failure propagates; a retry repairs only the missing record", async () => {
+test("{§release-finalization} GitHub failure propagates; a retry repairs only the missing record", async () => {
     const { run, options } = fixture({ tag: true });
     await assert.rejects(finalizeRelease(options, async (cmd, args) => {
         if (cmd === "gh" && args[1] === "create") throw new Error("GitHub unavailable");
@@ -204,7 +204,7 @@ test("GitHub failure propagates; a retry repairs only the missing record", async
     await finalizeRelease(options, run);
 });
 
-test("wrong tag identity, unsigned sources, and unmerged commits cannot be released", async () => {
+test("{§release-finalization} wrong tag identity, unsigned sources, and unmerged commits cannot be released", async () => {
     for (const failure of ["tag", "signature", "ancestry", "gitHead"]) {
         const { run, options, calls } = fixture({ tag: true });
         await assert.rejects(finalizeRelease(options, async (cmd, args, root) => {
@@ -218,7 +218,7 @@ test("wrong tag identity, unsigned sources, and unmerged commits cannot be relea
     }
 });
 
-test("release notes are derived from the exact tagged range, not later commits", async () => {
+test("{§release-finalization} release notes are derived from the exact tagged range, not later commits", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "plurnk-release-notes-"));
     const exec = promisify(execFile);
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));

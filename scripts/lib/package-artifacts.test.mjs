@@ -14,11 +14,11 @@ test("{§mimetype-query-assets} packed MIME queries are complete", async () => {
     );
 });
 
-test("package artifact projection leaves packages without special roots unchanged", () => {
+test("{§packed-projection} package artifact projection leaves packages without special roots unchanged", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-aliases", ["dist/index.js"]), []);
 });
 
-test("model package projection includes the generated runtime catalogs", () => {
+test("{§packed-projection} model package projection includes the generated runtime catalogs", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-models", [
         "dist/index.js", "dist/catalog.json", "dist/providers.json",
     ]), []);
@@ -28,7 +28,7 @@ test("model package projection includes the generated runtime catalogs", () => {
     ]);
 });
 
-test("MCP package projection retains the runtime watchdog loaded beside client.js", () => {
+test("{§packed-projection} MCP package projection retains the runtime watchdog loaded beside client.js", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-mcp", [
         "dist/client.js",
         "dist/mcp-watchdog.mjs",
@@ -40,7 +40,7 @@ test("MCP package projection retains the runtime watchdog loaded beside client.j
     ]);
 });
 
-test("core package projection retains runtime-loaded modules and rejects test helpers", () => {
+test("{§packed-projection} core package projection retains runtime-loaded modules and rejects test helpers", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",
         "dist/launch/Launch.js",
@@ -79,14 +79,14 @@ test("core package projection retains runtime-loaded modules and rejects test he
     ]);
 });
 
-test("digest package projection retains its public entrypoint and snapshot statements", () => {
+test("{§packed-projection} digest package projection retains its public entrypoint and snapshot statements", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-digest", ["dist/index.js", "dist/share.sql"]), []);
     assert.deepEqual(packageArtifactViolations("plurnk-digest", ["dist/index.js"]), [
         "plurnk-digest: required runtime artifact is absent: dist/share.sql",
     ]);
 });
 
-test("PDF package projection rejects the fixture builder", () => {
+test("{§packed-projection} PDF package projection rejects the fixture builder", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-mimetypes-application-pdf", [
         "dist/buildPdf.js",
         "dist/buildPdf.d.ts",
@@ -97,7 +97,7 @@ test("PDF package projection rejects the fixture builder", () => {
     ]);
 });
 
-test("first-party teaching sources are required packed runtime inputs", () => {
+test("{§packed-projection} first-party teaching sources are required packed runtime inputs", () => {
     for (const [owner, paths] of [
         ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/references/extensibility.md", "docs/worker.md", "docs/pattern.md", "docs/delegation.md"]],
         ["plurnk-skills", ["docs/skills.md"]],

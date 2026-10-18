@@ -134,7 +134,7 @@ test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no D
     assert.equal("dry_allowed_length" in (body ?? {}), false);
 });
 
-test("(#483) a detected llama-server rail admits the operator's stated effort", async () => {
+test("{§llama-template-effort} a detected llama-server rail admits the operator's stated effort", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
         const url = requestUrl(input);
         if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));

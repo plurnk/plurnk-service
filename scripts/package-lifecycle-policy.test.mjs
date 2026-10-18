@@ -5,7 +5,7 @@ import {
     packageLifecycleViolations,
 } from "./package-lifecycle-policy.mjs";
 
-test("a workspace test composes its applicable deterministic tiers in canonical order", () => {
+test("{§package-lifecycle} a workspace test composes its applicable deterministic tiers in canonical order", () => {
     const scripts = {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --test src/*.test.js",
@@ -16,7 +16,7 @@ test("a workspace test composes its applicable deterministic tiers in canonical 
     assert.deepEqual(packageLifecycleViolations("complete", { scripts }), []);
 });
 
-test("a workspace may omit an inapplicable canonical tier without a no-op script", () => {
+test("{§package-lifecycle} a workspace may omit an inapplicable canonical tier without a no-op script", () => {
     const scripts = {
         "test:lint": "tsc --noEmit",
         "test:intg": "node --test test/intg/*.test.js",
@@ -26,7 +26,7 @@ test("a workspace may omit an inapplicable canonical tier without a no-op script
     assert.deepEqual(packageLifecycleViolations("parser", { scripts }), []);
 });
 
-test("the lifecycle rejects missing composition and deterministic synonym tiers", () => {
+test("{§package-lifecycle} the lifecycle rejects missing composition and deterministic synonym tiers", () => {
     assert.deepEqual(packageLifecycleViolations("missing", {
         scripts: { "test:unit": "node --test" },
     }), [
@@ -45,7 +45,7 @@ test("the lifecycle rejects missing composition and deterministic synonym tiers"
     ]);
 });
 
-test("external, release, and forensic test commands remain explicitly classified", () => {
+test("{§package-lifecycle} external, release, and forensic test commands remain explicitly classified", () => {
     const scripts = {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --test",
@@ -57,7 +57,7 @@ test("external, release, and forensic test commands remain explicitly classified
     assert.deepEqual(packageLifecycleViolations("classified", { scripts }), []);
 });
 
-test("a workspace must own at least one deterministic tier", () => {
+test("{§package-lifecycle} a workspace must own at least one deterministic tier", () => {
     assert.deepEqual(packageLifecycleViolations("empty", {
         scripts: { test: "node --test" },
     }), [
@@ -66,7 +66,7 @@ test("a workspace must own at least one deterministic tier", () => {
     ]);
 });
 
-test("a workspace cannot impose a build-time prepare script on package consumers", () => {
+test("{§package-lifecycle} a workspace cannot impose a build-time prepare script on package consumers", () => {
     assert.deepEqual(packageLifecycleViolations("consumer-script", {
         scripts: {
             prepare: "npm run build",
@@ -78,7 +78,7 @@ test("a workspace cannot impose a build-time prepare script on package consumers
     ]);
 });
 
-test("a script spells a recursive glob quoted, so node expands it instead of sh", () => {
+test("{§package-lifecycle} a script spells a recursive glob quoted, so node expands it instead of sh", () => {
     const scripts = { "test:unit": "node --test 'src/**/*.test.ts' \"scripts/**/*.test.mjs\"", test: "npm run test:unit" };
     assert.deepEqual(packageLifecycleViolations("quoted", { scripts }), []);
     assert.deepEqual(packageLifecycleViolations("bare", { scripts: { ...scripts, "test:unit": "node --test src/**/*.test.ts" } }),

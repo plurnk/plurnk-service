@@ -27,6 +27,42 @@ shared `.oxlintrc.json`. The gate fails on errors.
 | Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
 | Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |
 
+## Policies the root lint enforces
+
+Each step of `npm run root:lint` is one script with one rule; the rule is stated here and the script
+refuses the tree when it does not hold.
+
+| Policy | Rule |
+| --- | --- |
+| §package-graph-policy Package graph | A framework never depends on an extension of its kind ({§core-extension-composition}); a package never depends on a less stable layer; no cycle; development dependencies are not graph edges; every package that ships an install script is reviewed by name. `scripts/dependency-policy.mjs`. |
+| §env-surface-policy Environment surface | Every number and choice a shipped source reads is declared on a panel (`.env.defaults`), live or as an optional knob; a computed name is a family covered by one declared example; a read never carries its own value and a constant named DEFAULT is a default living in code; a live declaration nothing consumes means the panel lies; one package owns a key; prose, messages, tests and fixtures are not reads; reading the system environment is mechanism, never debt; a number whose name says duration, size or limit is a choice unless the mechanism register says why it is not; the allowance file is a ratchet: new debt is refused, and so is a paid debt left on the books ({§operator-config-env-defaults}). `scripts/env-surface-policy.mjs`. |
+| §build-projection Build projection | Every workspace whose package projection includes `dist` owns one `build:clean`, begins `build` with it, keeps emission-only work in `build:dist` and builds from `prepack`; the scope is derived from the published projection, so a package that ships no `dist` owns no cleanup. `scripts/package-build-policy.mjs`. |
+| §package-lifecycle Package lifecycle | A workspace's `test` is exactly its `test:lint`, `test:unit` and `test:intg` tiers in that order, omitting a tier it does not have, never a synonym tier and never a no-op; a workspace owns at least one tier; external, release and forensic commands keep their classified names; no workspace imposes a `prepare` on consumers; a recursive glob in any script is quoted so node expands it rather than `sh`. `scripts/package-lifecycle-policy.mjs`. |
+| §packed-projection Packed projection | The tarball is a projection of the source: the published manifest carries no `plurnk-dev` export condition and everything else it declares is shipped (a subpath pattern ships when a packed file matches it; a condition aimed outside the tarball names the export and the file); each package's runtime-loaded files are required packed inputs and its test helpers and fixture builders are refused (#797). `scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, checked by `scripts/package-provenance.mjs`. |
+| §diagnostic-inventory Diagnostic inventory | Every Problem code and Notice a package mints is read lexically from its TypeScript — constructors, parser errors and recovery clauses, with source coordinates, in deterministic file and source order; a private helper call, a regex and a string are not declarations. `scripts/diagnostic-inventory.mjs`, the reader behind {§problem-codes-declared}. |
+| §commit-conventions Commit conventions | A commit is one conventional subject line of at most 100 characters with no body; generated merge and revert subjects pass; a template may carry blank and comment lines after the subject; a branch is `main` or `<type>/<kebab-slug>` over the same conventional types. `scripts/conventional.mjs`, run by the git hooks. |
+
+## Audits on demand
+
+| Audit | Rule |
+| --- | --- |
+| §runtime-import-direction Runtime import direction | Over the built output, never the TypeScript: erased imports and type-only re-exports are not edges, a side-effect import beside a type-only import is; owner boundaries hold on emitted imports; an unresolved import or missing build output is a refusal (#1053). `npm run audit:direction`. |
+| §type-resolution-audit Type resolution | Packed public code resolves its exported types from a consumer's view under the `esm-only` profile, assets excluded; a selection names an exact workspace and refuses an absent or private one; every checker failure is reported and none becomes success. `npm run packages:types`. |
+
+## Launchers
+
+§candidate-launcher **The candidate launcher** boots a source-built daemon and the terminal client from
+explicit checkouts: `PLURNK_CLIENT_CHECKOUT` is required, shared by the candidate and release lifecycles,
+and the conformance sibling default applies only when no checkout is supplied; relative experiment
+overrides are preserved; client overrides (`PLURNK_CANDIDATE_CLIENT_ENV`) parse one deterministic string
+map and may not reroute the daemon; a client terminated by a signal reaps the daemon; the grade deadline
+photographs the project root while the run plays on ({§candidate-pinned-runtime}).
+
+§orientation-verdict **The orientation verdict** accepts a report only when it is terminal, inspected its
+evidence (a READ of the repository, not an archived issue URL) and covers the service, the contracts, the
+client, the topology, current work or the forge's unavailability and its own gaps; a timeout, missing
+coverage, empty delivery or a failed documentation publication fails it regardless of the model's answer.
+
 ## §script-help Every entry point explains itself
 
 A script that a package.json names answers `--help` (and `-h`) before it does anything else,

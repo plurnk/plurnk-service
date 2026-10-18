@@ -36,11 +36,11 @@ const parseProfile = (source) => Object.fromEntries(source
         return [match[1], match[2]];
     }));
 
-test("the committed real-model profile contains only universal gate invariants", () => {
+test("{§credential-authority} the committed real-model profile contains only universal gate invariants", () => {
     assert.deepEqual(parseProfile(readFileSync(profilePath, "utf8")), expectedProfile);
 });
 
-test("test entrypoints exclude personal XDG policy while daily driving and explicit benchmark policy remain intact", async (t) => {
+test("{§credential-authority} test entrypoints exclude personal XDG policy while daily driving and explicit benchmark policy remain intact", async (t) => {
     const directory = mkdtempSync(resolve(tmpdir(), "plurnk-policy-profile-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const config = resolve(directory, "plurnk");
@@ -80,7 +80,7 @@ test("test entrypoints exclude personal XDG policy while daily driving and expli
     assert.equal(readFileSync(personalPath, "utf8"), personalPolicy, "the operator's policy is never rewritten");
 });
 
-test("the gate defaults operator schedules to disabled unless explicitly enabled in the shell", () => {
+test("{§credential-authority} the gate defaults operator schedules to disabled unless explicitly enabled in the shell", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "plurnk-schedule-profile-"));
     try {
         const operatorFile = resolve(directory, ".env");
@@ -101,7 +101,7 @@ test("the gate defaults operator schedules to disabled unless explicitly enabled
     }
 });
 
-test("the pre-push gate scrubs git's hook environment before the drill (#402)", () => {
+test("{§credential-authority} the pre-push gate scrubs git's hook environment before the drill (#402)", () => {
     const hook = readFileSync(resolve(root, ".githooks", "pre-push"), "utf8");
     const scrub = hook.indexOf("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR");
     const drill = hook.indexOf("\nnpm test\n");
@@ -109,7 +109,7 @@ test("the pre-push gate scrubs git's hook environment before the drill (#402)", 
     assert.ok(drill !== -1 && scrub < drill, "the scrub precedes the drill, so no gate test inherits GIT_DIR");
 });
 
-test("the pre-push gate drills the pushed commit in a throwaway worktree, never the working tree (#642)", () => {
+test("{§credential-authority} the pre-push gate drills the pushed commit in a throwaway worktree, never the working tree (#642)", () => {
     const hook = readFileSync(resolve(root, ".githooks", "pre-push"), "utf8");
     const add = hook.indexOf('git worktree add --detach --quiet "$gate" "$main_sha"');
     const enter = hook.indexOf('cd "$gate" || exit 1');
@@ -119,7 +119,7 @@ test("the pre-push gate drills the pushed commit in a throwaway worktree, never 
     assert.doesNotMatch(hook, /git status --porcelain/u, "a dirty working tree does not block a push: it is not what the drill tests");
 });
 
-test("a root alias of a workspace script delegates by workspace name and passes its arguments through", () => {
+test("{§credential-authority} a root alias of a workspace script delegates by workspace name and passes its arguments through", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     assert.match(pkg.scripts.start, /^npm start -w @plurnk\/plurnk-service$/u);
     for (const name of ["test:live", "test:demo", "share", "probe:providers"]) {
@@ -127,7 +127,7 @@ test("a root alias of a workspace script delegates by workspace name and passes 
     }
 });
 
-test("live/demo operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
+test("{§credential-authority} live/demo operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
     const home = mkdtempSync(resolve(tmpdir(), "plurnk-operator-env-"));
     try {
         writeFileSync(resolve(home, ".bashrc"), [
@@ -155,7 +155,7 @@ test("live/demo operator bootstrap carries Tavily and Brave from the authoritati
     }
 });
 
-test("live, demo, and benchlet launch through the operator environment", async () => {
+test("{§credential-authority} live, demo, and benchlet launch through the operator environment", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
     // #588: no generated grammar precedes a live or demo run; an operator's own GBNF is a file path.
@@ -180,7 +180,7 @@ test("live, demo, and benchlet launch through the operator environment", async (
     }
 });
 
-test("the candidate daemon loads the same profile below direct benchmark overrides", () => {
+test("{§credential-authority} the candidate daemon loads the same profile below direct benchmark overrides", () => {
     const [profileArg, servicePath, command] = candidateDaemonArgs(root, root);
     assert.deepEqual(
         [profileArg, servicePath, command],
