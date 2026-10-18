@@ -29,7 +29,7 @@ function Icon() {
 }
 `;
 
-describe("conformance: text/x-tsx refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-tsx refs", () => {
     it("typescript refs + JSX component edges; host elements filtered", async () => {
         await runConformance({
             mimetype: "text/x-tsx",

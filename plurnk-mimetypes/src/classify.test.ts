@@ -2,9 +2,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Mimetypes from "../Mimetypes.ts";
-import { classifyMimetype } from "../classify.ts";
-import type { Discovery, HandlerInfo, Registry } from "../types.ts";
+import Mimetypes from "./Mimetypes.ts";
+import { classifyMimetype } from "./classify.ts";
+import type { Discovery, HandlerInfo, Registry } from "./types.ts";
 
 function mk(handlers: HandlerInfo[]): Mimetypes {
     const registry: Registry = { byExtension: new Map(), byFilename: new Map() };
@@ -25,7 +25,7 @@ const info = (mimetype: string, extra: Partial<HandlerInfo> = {}): HandlerInfo =
     ...extra,
 });
 
-describe("{§mimetype-classification} — C1: binary axis (taxonomy heuristic)", () => {
+describe("{§mimetype-classification} binary axis (taxonomy heuristic)", () => {
     const text = [
         "text/plain", "text/markdown", "text/html", "text/csv",
         "application/json", "application/yaml", "application/toml", "application/xml",
@@ -48,7 +48,7 @@ describe("{§mimetype-classification} — C1: binary axis (taxonomy heuristic)",
     });
 });
 
-describe("{§mimetype-classification} - C2: an installed handler's binary declaration wins", () => {
+describe("{§mimetype-classification} an installed handler's binary declaration wins", () => {
     it("declared binary (pdf) is authoritative, source: handler", async () => {
         const m = mk([info("application/pdf", { binary: true })]);
         assert.deepEqual(await m.classify("application/pdf"), { binary: true, source: "handler" });
@@ -59,7 +59,7 @@ describe("{§mimetype-classification} - C2: an installed handler's binary declar
     });
 });
 
-describe("{§mimetype-classification} - C3: unregistered mimetypes still classify", () => {
+describe("{§mimetype-classification} unregistered mimetypes still classify", () => {
     it("a stream label with no installed handler gets the heuristic answer", async () => {
         const m = mk([]);
         assert.deepEqual(await m.classify("application/x-ndjson"), { binary: false, source: "heuristic" });

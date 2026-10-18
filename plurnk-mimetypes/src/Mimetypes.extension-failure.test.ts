@@ -6,9 +6,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import Mimetypes from "../Mimetypes.ts";
-import MimetypeExtensionError from "../MimetypeExtensionError.ts";
-import type { Discovery, HandlerInfo } from "../types.ts";
+import Mimetypes from "./Mimetypes.ts";
+import MimetypeExtensionError from "./MimetypeExtensionError.ts";
+import type { Discovery, HandlerInfo } from "./types.ts";
 
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
@@ -52,7 +52,7 @@ afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("declared mimetype extension failures", () => {
+describe("{§mimetype-handler-contract} declared mimetype extension failures", () => {
     it("surfaces one declaration failure through ready, process, and query", async () => {
         const root = await mkdtemp(path.join(tmpdir(), "plurnk-invalid-mimetype-"));
         roots.push(root);

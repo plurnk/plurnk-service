@@ -6,7 +6,7 @@ import { queryXpathString } from "./query.ts";
 
 const NS = ' xmlns:pk="https://plurnk.xyz/deep-xml/1"';
 
-describe("projectJsonToXml — convention parity with jsonpath shape", () => {
+describe("{§mimetype-channel-architecture} projectJsonToXml: convention parity with jsonpath shape", () => {
     it("function_definition with pk:line/pk:endLine attributes, name as child, params as repeated siblings", () => {
         const json = {
             type: "function_definition",
@@ -126,7 +126,7 @@ describe("projectJsonToXml — convention parity with jsonpath shape", () => {
     });
 });
 
-describe("projectJsonToXml — attrs convention for HTML/XML", () => {
+describe("{§mimetype-channel-architecture} projectJsonToXml: attrs convention for HTML/XML", () => {
     it("renders attrs object entries as XML attributes in the default namespace", () => {
         const json = {
             type: "a",
@@ -163,7 +163,7 @@ describe("projectJsonToXml — attrs convention for HTML/XML", () => {
     });
 });
 
-describe("projectJsonToXml — element names from arbitrary keys are sanitized (valid XML)", () => {
+describe("{§mimetype-channel-architecture} projectJsonToXml: element names from arbitrary keys are sanitized (valid XML)", () => {
     it("a key with spaces/punctuation becomes a valid element name", () => {
         // Outline labels are symbol names — arbitrary text. They must not emit
         // invalid XML like <Given x> (parsed as element 'Given' + attr 'x').

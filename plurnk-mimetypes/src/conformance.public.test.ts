@@ -7,9 +7,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { assertHandlerConformance } from "../conformance.ts";
-import type { ConformanceHandler, ConformanceFixture } from "../conformance.ts";
-import type { MimeRef, MimeSymbol } from "../types.ts";
+import { assertHandlerConformance } from "./conformance.ts";
+import type { ConformanceHandler, ConformanceFixture } from "./conformance.ts";
+import type { MimeRef, MimeSymbol } from "./types.ts";
 
 // A minimal synthetic handler: class `Helper` with method `run`, and inside
 // run an instantiation of Helper. No tree-sitter, no registry — just the duck
@@ -35,7 +35,7 @@ const FIXTURE: ConformanceFixture = {
     expectRefs: [{ name: "Helper", kind: "instantiate" }],
 };
 
-describe("{§mimetype-public-api} — public conformance harness", () => {
+describe("{§mimetype-public-api} public conformance harness", () => {
     it("a conformant handler passes and returns its symbols + references", async () => {
         const { symbols, references } = await assertHandlerConformance(handlerWith(REFS), FIXTURE);
         assert.equal(symbols.length, 2);

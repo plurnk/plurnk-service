@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { isExactModuleAbsent } from "./module-absence.ts";
 import { resolveWasmPath } from "./treesitter/handler.ts";
 
-describe("exact module absence", () => {
+describe("{§mimetype-artifact-absence} exact module absence", () => {
     it("recognizes the exact requested grammar manifest", () => {
         const specifier = "@plurnk/plurnk-mimetypes-grammar-fixture/package.json";
         const error = Object.assign(

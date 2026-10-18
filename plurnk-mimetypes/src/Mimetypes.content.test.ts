@@ -2,9 +2,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Mimetypes from "../Mimetypes.ts";
-import BaseHandler from "../BaseHandler.ts";
-import type { Discovery, HandlerInfo, Registry } from "../types.ts";
+import Mimetypes from "./Mimetypes.ts";
+import BaseHandler from "./BaseHandler.ts";
+import type { Discovery, HandlerInfo, Registry } from "./types.ts";
 
 function makeDiscovery(handlers: HandlerInfo[]): Discovery {
     const byExtension = new Map<string, string>();
@@ -51,7 +51,7 @@ function mk(handler: new (...a: never[]) => BaseHandler) {
     });
 }
 
-describe("content channel — C1: absent by default", () => {
+describe("{§mimetype-content} the content channel is absent by default", () => {
     it("a plain handler populates no content even when the channel is requested", async () => {
         const m = mk(BaseHandler);
         const r = await m.process({ path: "a.tst", content: "hello" }, { channels: ["content"] });
@@ -65,7 +65,7 @@ describe("content channel — C1: absent by default", () => {
     });
 });
 
-describe("content channel — C3: overriding handler surfaces it", () => {
+describe("{§mimetype-content} an overriding handler surfaces the content channel", () => {
     it("MarkdownHandler projects readable text distinct from the body", async () => {
         const m = mk(MarkdownHandler);
         const r = await m.process(

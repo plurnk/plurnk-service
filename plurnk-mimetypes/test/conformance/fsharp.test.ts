@@ -40,7 +40,7 @@ let decoy = "StringDecoy should never surface"
 // CommentDecoy should never surface
 `;
 
-describe("conformance: text/x-fsharp defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-fsharp defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-fsharp",

@@ -32,7 +32,7 @@ class Token {}
 // CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-java defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-java defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-java",

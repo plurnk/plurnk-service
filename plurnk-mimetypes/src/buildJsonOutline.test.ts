@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildJsonOutline } from "./buildJsonOutline.ts";
 import type { MimeSymbol } from "./types.ts";
 
-describe("buildJsonOutline", () => {
+describe("{§mimetype-outline} buildJsonOutline", () => {
     it("returns empty object for empty symbols", () => {
         assert.deepEqual(buildJsonOutline([]), {});
     });

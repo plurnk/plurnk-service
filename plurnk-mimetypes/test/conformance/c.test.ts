@@ -35,7 +35,7 @@ void helper(Token t) {}
 // CommentDecoy() never surfaces
 `;
 
-describe("conformance: text/x-c defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-c defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-c",

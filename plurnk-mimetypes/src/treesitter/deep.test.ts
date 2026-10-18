@@ -8,7 +8,7 @@ import { projectJsonToXml } from "../projectJsonToXml.ts";
 // symbols channel AND the deep-json channel from a single source, and that
 // projectJsonToXml produces a congruent deep-xml view.
 
-describe("TreeSitterLanguageHandler.deepJson — Python", () => {
+describe("{§mimetype-channel-architecture} TreeSitterLanguageHandler.deepJson: Python", () => {
     const entry = lookupTreeSitterLanguage("text/x-python")!;
     const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
 

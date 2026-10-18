@@ -25,7 +25,7 @@ DECOY = "StringDecoy() should never surface"
 # CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-python defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-python defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-python",

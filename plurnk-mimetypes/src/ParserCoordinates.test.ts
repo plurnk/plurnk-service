@@ -16,7 +16,7 @@ function node(startIndex: number, endIndex: number): never {
     } as never;
 }
 
-describe("parser-native source spans", () => {
+describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
     it("materializes Tree-sitter UTF-16 offsets as Unicode-code-point regions", () => {
         const source = "a😀b\r\ncafe\u0301\rz";
         assert.deepEqual(

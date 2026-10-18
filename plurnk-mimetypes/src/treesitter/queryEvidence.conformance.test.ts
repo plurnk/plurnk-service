@@ -18,7 +18,7 @@ const cases: ReadonlyArray<[string, string, number]> = [
     ["text/x-ruby", "def add(a, b)\n  a + b\nend\n", 4],
 ];
 
-describe("tree-sitter query-evidence conformance (shared handler, all grammars)", () => {
+describe("{§mimetype-query-conformance} tree-sitter query-evidence conformance (shared handler, all grammars)", () => {
     for (const [mimetype, source, finalLine] of cases) {
         it(`${mimetype}: both structural dialects retain the exact root region`, async () => {
             const entry = lookupTreeSitterLanguage(mimetype);

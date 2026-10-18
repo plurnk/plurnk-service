@@ -33,7 +33,7 @@ let label = "StringDecoy should never surface"
 (* CommentDecoy should never surface *)
 `;
 
-describe("conformance: text/x-ocaml defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-ocaml defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-ocaml",

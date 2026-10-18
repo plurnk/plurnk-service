@@ -23,7 +23,7 @@ function visitorReturning(symbols: MimeSymbol[]): ExtractionVisitor {
     };
 }
 
-describe("AntlrExtractor", () => {
+describe("{§mimetype-symbol} AntlrExtractor", () => {
     it("orchestrates parseTree -> createVisitor -> visit -> symbols", () => {
         const expected: MimeSymbol[] = [
             { name: "Foo", kind: "class", line: 1, endLine: 10 },
@@ -158,7 +158,7 @@ describe("AntlrExtractor", () => {
     });
 });
 
-describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
+describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed ANTLR parse tree walk", () => {
     // Mock the antlr4ng parse-tree shape: ParserRuleContext with start/stop
     // and children; TerminalNode with `symbol`.
     class Compilation_unitContext {
@@ -286,7 +286,7 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
     });
 });
 
-describe("AntlrExtractor — references channel (ANTLR refs grind)", () => {
+describe("{§mimetype-references} AntlrExtractor references channel", () => {
     it("returns the visitor's refs from a same-shaped visit", async () => {
         const refs = [
             { name: "users", kind: "use" as const, line: 3, column: 6, endLine: 3, endColumn: 11, container: "v_active" },

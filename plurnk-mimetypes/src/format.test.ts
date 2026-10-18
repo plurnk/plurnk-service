@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { format } from "./format.ts";
 import type { MimeSymbol } from "./types.ts";
 
-describe("format", () => {
+describe("{§mimetype-outline} format", () => {
     it("returns empty string for empty input", () => {
         assert.equal(format([]), "");
     });

@@ -31,7 +31,7 @@ function fakeNode(text: string): TreeSitterNode {
     };
 }
 
-describe("TreeSitterExtractor", () => {
+describe("{§mimetype-symbol} TreeSitterExtractor", () => {
     it("{§mimetype-parse-issues} counts parser recovery sites without rejecting the partial tree", async () => {
         const errorNode = {
             ...fakeNode("="),

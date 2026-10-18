@@ -42,7 +42,7 @@ g_tok: Token
 // CommentDecoy
 `;
 
-describe("conformance: text/x-odin defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-odin defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-odin",

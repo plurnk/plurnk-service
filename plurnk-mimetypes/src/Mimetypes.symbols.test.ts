@@ -2,12 +2,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Mimetypes from "../Mimetypes.ts";
-import BaseHandler from "../BaseHandler.ts";
-import TreeSitterLanguageHandler from "../treesitter/handler.ts";
-import { lookupTreeSitterLanguage } from "../treesitter/registry.ts";
-import { withExtractor } from "../withExtractor.ts";
-import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "../types.ts";
+import Mimetypes from "./Mimetypes.ts";
+import BaseHandler from "./BaseHandler.ts";
+import TreeSitterLanguageHandler from "./treesitter/handler.ts";
+import { lookupTreeSitterLanguage } from "./treesitter/registry.ts";
+import { withExtractor } from "./withExtractor.ts";
+import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "./types.ts";
 
 function makeDiscovery(handlers: HandlerInfo[]): Discovery {
     const byExtension = new Map<string, string>();
@@ -23,7 +23,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
     return { registry, handlers: handlerMap, packageAttributions: new Map(), skipped: [] };
 }
 
-describe("{§mimetype-symbol-container} — C1: container + columns flow through the symbols channel", () => {
+describe("{§mimetype-symbol-container} container + columns flow through the symbols channel", () => {
     it("process() returns symbols with container and 1-indexed columns verbatim", async () => {
         class V2Handler extends BaseHandler {
             override extractRaw(): MimeSymbol[] {
@@ -54,7 +54,7 @@ describe("{§mimetype-symbol-container} — C1: container + columns flow through
     });
 });
 
-describe("{§mimetype-symbol-container} — C2: reference mapping nests containers by dotted path", () => {
+describe("{§mimetype-symbol-container} reference mapping nests containers by dotted path", () => {
     it("python: Outer.Inner.deep chain with absent container at top level", async () => {
         const entry = lookupTreeSitterLanguage("text/x-python")!;
         const h = new TreeSitterLanguageHandler(
@@ -75,7 +75,7 @@ describe("{§mimetype-symbol-container} — C2: reference mapping nests containe
     });
 });
 
-describe("{§mimetype-symbol-container} — C3: withExtractor mixin supports container + columns", () => {
+describe("{§mimetype-symbol-container} withExtractor mixin supports container + columns", () => {
     class FakeVisitorBase {
         visit(_tree: unknown): unknown { return null; }
         visitChildren(node: unknown): unknown {

@@ -2,23 +2,23 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import BaseHandler from "../BaseHandler.ts";
-import MimetypeInputError from "../MimetypeInputError.ts";
-import Mimetypes from "../Mimetypes.ts";
-import MimetypeDerivationError from "../MimetypeDerivationError.ts";
-import TreeSitterExtractor from "../TreeSitterExtractor.ts";
-import TreeSitterLanguageHandler from "../treesitter/handler.ts";
+import BaseHandler from "./BaseHandler.ts";
+import MimetypeInputError from "./MimetypeInputError.ts";
+import Mimetypes from "./Mimetypes.ts";
+import MimetypeDerivationError from "./MimetypeDerivationError.ts";
+import TreeSitterExtractor from "./TreeSitterExtractor.ts";
+import TreeSitterLanguageHandler from "./treesitter/handler.ts";
 import type {
     TreeSitterNode,
     TreeSitterParser,
     TreeSitterTree,
-} from "../TreeSitterExtractor.ts";
+} from "./TreeSitterExtractor.ts";
 import type {
     Discovery,
     HandlerInfo,
     MimeRef,
     MimeSymbol,
-} from "../types.ts";
+} from "./types.ts";
 
 const HANDLER_PACKAGE = "@acme/mimetype-fixture";
 const metadata = {
@@ -64,7 +64,7 @@ function fakeNode(text: string): TreeSitterNode {
     };
 }
 
-describe("#92 causal projection failures", () => {
+describe("{§mimetype-error-policy} causal projection failures", () => {
     it("classifies validate() rejection once and preserves its cause", async () => {
         const cause = new SyntaxError("fixture source is malformed");
         class InvalidHandler extends BaseHandler {

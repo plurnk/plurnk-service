@@ -6,7 +6,7 @@ import {
     lookupTreeSitterLanguage,
 } from "./registry.ts";
 
-describe("TreeSitter registry", () => {
+describe("{§mimetype-backend-selection} TreeSitter registry", () => {
     it("lists at least one entry", () => {
         assert.ok(TREE_SITTER_REGISTRY.length >= 1);
     });

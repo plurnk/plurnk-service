@@ -190,7 +190,7 @@ it("projects deterministic framework-owned MIME display metadata without loading
     ]);
 });
 
-describe("Mimetypes — bounded readable projections", () => {
+describe("{§mimetype-binary-input} bounded readable projections", () => {
     it("does not consume binary bytes when the installed handler has no content projection", async () => {
         let consumed = false;
         async function* bytes() {
@@ -263,7 +263,7 @@ describe("Mimetypes — bounded readable projections", () => {
     });
 });
 
-describe("Mimetypes — detection + discovery", () => {
+describe("{§mimetype-detection} detection and discovery", () => {
     it("detect returns null when registry is empty", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         assert.equal(await m.detect({ path: "foo.txt" }), null);
@@ -309,7 +309,7 @@ describe("Mimetypes — detection + discovery", () => {
     });
 });
 
-describe("Mimetypes — getHandler", () => {
+describe("{§mimetype-handler-contract} getHandler", () => {
     it("returns null for unknown mimetype", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         assert.equal(await m.getHandler("text/unknown"), null);
@@ -402,7 +402,7 @@ describe("Mimetypes — getHandler", () => {
     });
 });
 
-describe("Mimetypes — process: metadata + error paths", () => {
+describe("{§mimetype-error-policy} process: metadata and error paths", () => {
     it("returns ok:false metadata-only when detection fails", async () => {
         const m = new Mimetypes({ discovery: makeDiscovery([]) });
         const result = await m.process({ path: "foo.unknown", content: "x" });
@@ -465,7 +465,7 @@ describe("Mimetypes — process: metadata + error paths", () => {
     });
 });
 
-describe("Mimetypes — process: channel selection ({§mimetype-channel-selection})", () => {
+describe("{§mimetype-channel-selection} process: channel selection", () => {
     it("{§mimetype-parse-issues} projects only positive parser-recovery counts when requested", async () => {
         let issues = 3;
         class IssueReportingHandler extends FakePlainHandler {
@@ -566,63 +566,6 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
         assert.equal("references" in r, false);
     });
 
-    it("deepXml alone computes the projection without exposing deepJson", async () => {
-        class WithDeepTree extends BaseHandler {
-            override deepJson(): unknown {
-                return { type: "root", line: 1, endLine: 1, name: "Plain" };
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: WithDeepTree }),
-        });
-        const r = await m.process(
-            { path: "foo.txt", content: "hello" },
-            { channels: ["deepXml"] },
-        );
-        assert.equal(
-            r.deepXml,
-            '<root xmlns:pk="https://plurnk.xyz/deep-xml/1" pk:line="1" pk:endLine="1"><name>Plain</name></root>',
-        );
-        assert.equal("deepJson" in r, false);
-    });
-
-    it("materializes the same symbols-only projection XPath queries without duplicate extraction (#86)", async () => {
-        let deepJsonCalls = 0;
-        let symbolCalls = 0;
-        class SymbolsOnlyHandler extends BaseHandler {
-            override deepJson(): null {
-                deepJsonCalls += 1;
-                return null;
-            }
-            override extractRaw(): MimeSymbol[] {
-                symbolCalls += 1;
-                return [{ name: "Section", kind: "heading", level: 1, line: 3, endLine: 3 }];
-            }
-        }
-        const m = new Mimetypes({
-            discovery: makeDiscovery([plainInfo]),
-            loader: async () => ({ default: SymbolsOnlyHandler }),
-        });
-        const input = { path: "foo.txt", content: "alpha\nbeta\ngamma" };
-
-        const materialized = await m.process(input, { channels: ["symbols", "deepJson", "deepXml"] });
-        assert.equal(deepJsonCalls, 1, "one deep-tree read for the combined request");
-        assert.equal(symbolCalls, 1, "the deep-XML fallback reuses the requested symbols");
-
-        const handler = await m.getHandler("text/plain");
-        assert.ok(handler);
-        assert.equal(materialized.deepXml, await handler.deepXml(input.content));
-
-        const matches = await m.query(input, "//Section");
-        assert.deepEqual(matches[0]?.enclosingRegions, [{
-            startLine: 3,
-            startColumn: 1,
-            endLine: 3,
-            endColumn: 6,
-        }]);
-    });
-
     it("honors a handler deepXml() override for the deepXml channel", async () => {
         class SourceMarkupHandler extends BaseHandler {
             override deepJson(): unknown {
@@ -640,7 +583,7 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
         assert.equal(r.deepXml, "<real-source-markup/>");
     });
 
-    it("references channel defaults to [] ({§mimetype-references})", async () => {
+    it("{§mimetype-references} references channel defaults to []", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
@@ -685,7 +628,7 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
     });
 });
 
-describe("Mimetypes - process: totalLines", () => {
+describe("{§logical-line-count} process: totalLines", () => {
     it("returns 0 for empty content", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
@@ -772,7 +715,7 @@ describe("Mimetypes - process: totalLines", () => {
     });
 });
 
-describe("Mimetypes — query", () => {
+describe("{§mimetype-query} query", () => {
     it("dispatches regex via /pattern/flags expression to the handler", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
@@ -912,7 +855,7 @@ describe("Mimetypes — query", () => {
     });
 });
 
-describe("Mimetypes degradation notices ({§mimetype-error-policy})", () => {
+describe("{§mimetype-error-policy} degradation notices", () => {
     it("a fully-satisfied result carries no notices field", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),

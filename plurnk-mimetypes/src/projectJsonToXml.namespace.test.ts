@@ -3,9 +3,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DOMParser } from "@xmldom/xmldom";
-import { projectJsonToXml } from "../projectJsonToXml.ts";
+import { projectJsonToXml } from "./projectJsonToXml.ts";
 
-describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even with colliding content attrs", () => {
+describe("{§mimetype-channel-architecture} deep-xml is valid XML even with colliding content attrs", () => {
     it("source content with line attribute produces parseable XML", () => {
         // Simulates what an XML handler's deepJson would emit for content
         // <root><foo line="5" id="a">text</foo></root>: a tree where the
@@ -72,7 +72,7 @@ describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even w
     });
 });
 
-describe("{§mimetype-channel-architecture} — C2: bookkeeping attrs use a reserved namespace", () => {
+describe("{§mimetype-channel-architecture} bookkeeping attrs use a reserved namespace", () => {
     it("the root element declares xmlns:pk", () => {
         const xml = projectJsonToXml({ type: "x", line: 1 });
         assert.ok(
@@ -105,7 +105,7 @@ describe("{§mimetype-channel-architecture} — C2: bookkeeping attrs use a rese
     });
 });
 
-describe("{§mimetype-channel-architecture} — C3: consumer can strip bookkeeping cleanly", () => {
+describe("{§mimetype-channel-architecture} consumer can strip bookkeeping cleanly", () => {
     it("removing all pk:* attrs leaves content attrs intact", () => {
         const xml = projectJsonToXml({
             type: "user",

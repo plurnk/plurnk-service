@@ -43,7 +43,7 @@ pub fn main() void {
 // CommentDecoy() never surfaces
 `;
 
-describe("conformance: text/x-zig defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-zig defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-zig",

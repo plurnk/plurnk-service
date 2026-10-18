@@ -21,7 +21,7 @@ function ctx(line: number, endLine?: number): unknown {
     };
 }
 
-describe("withExtractor mixin", () => {
+describe("{§mimetype-symbol-container} withExtractor mixin", () => {
     it("starts with an empty symbols list", () => {
         class V extends withExtractor(StubVisitorBase) {}
         const v = new V();
@@ -166,7 +166,7 @@ describe("withExtractor mixin", () => {
     });
 });
 
-describe("withExtractor — addRef (ANTLR refs grind)", () => {
+describe("{§mimetype-references} withExtractor addRef", () => {
     function refCtx(line: number, column: number, stopLine = line, stopColumn = column, stopText = "x") {
         return { start: { line, column }, stop: { line: stopLine, column: stopColumn, text: stopText } } as never;
     }

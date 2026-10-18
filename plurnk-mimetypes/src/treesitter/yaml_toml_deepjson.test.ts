@@ -5,7 +5,7 @@ import MimetypeInputError from "../MimetypeInputError.ts";
 import TreeSitterLanguageHandler from "./handler.ts";
 import { lookupTreeSitterLanguage } from "./registry.ts";
 
-describe("YAML deepJson via parsed value", () => {
+describe("{§mimetype-channel-architecture} YAML deepJson via parsed value", () => {
     const entry = lookupTreeSitterLanguage("application/yaml")!;
     const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
 
@@ -43,7 +43,7 @@ describe("YAML deepJson via parsed value", () => {
     });
 });
 
-describe("TOML deepJson via parsed value", () => {
+describe("{§mimetype-channel-architecture} TOML deepJson via parsed value", () => {
     const entry = lookupTreeSitterLanguage("application/toml")!;
     const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
 

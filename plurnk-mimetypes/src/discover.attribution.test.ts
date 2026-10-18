@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { discover } from "../discover.ts";
+import { discover } from "./discover.ts";
 
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
@@ -21,7 +21,7 @@ async function makePackage(
     return dir;
 }
 
-describe("discover attribution", () => {
+describe("{§extension-attribution} discover attribution", () => {
     let tmpRoot: string;
 
     before(async () => {

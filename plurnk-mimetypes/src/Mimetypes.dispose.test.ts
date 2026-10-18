@@ -2,17 +2,17 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Mimetypes from "../Mimetypes.ts";
-import MimetypeDerivationError from "../MimetypeDerivationError.ts";
-import BaseHandler from "../BaseHandler.ts";
-import TreeSitterExtractor from "../TreeSitterExtractor.ts";
-import TreeSitterLanguageHandler from "../treesitter/handler.ts";
+import Mimetypes from "./Mimetypes.ts";
+import MimetypeDerivationError from "./MimetypeDerivationError.ts";
+import BaseHandler from "./BaseHandler.ts";
+import TreeSitterExtractor from "./TreeSitterExtractor.ts";
+import TreeSitterLanguageHandler from "./treesitter/handler.ts";
 import type {
     TreeSitterNode,
     TreeSitterParser,
     TreeSitterTree,
-} from "../TreeSitterExtractor.ts";
-import type { HandlerMetadata, MimeSymbol, Discovery, HandlerInfo, Registry } from "../types.ts";
+} from "./TreeSitterExtractor.ts";
+import type { HandlerMetadata, MimeSymbol, Discovery, HandlerInfo, Registry } from "./types.ts";
 
 
 const INFO: HandlerInfo = {
@@ -49,7 +49,7 @@ function lifecycleMimetypes({
     });
 }
 
-describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
+describe("{§mimetype-lifecycle} Mimetypes.dispose()", () => {
     for (const strict of [false, true]) {
         it(`releases cleanly after real missing-grammar resolution (strict=${strict})`, async () => {
             class Handler extends TreeSitterLanguageHandler {
@@ -114,7 +114,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         await assert.doesNotReject(m.dispose());
     });
 
-    it("D5: clears cached handler instances", async () => {
+    it("a handler re-resolves after dispose()", async () => {
         const m = lifecycleMimetypes();
         await m.process({ path: "a.tst", content: "x\ny" }, { channels: ["symbols"] });
         await m.dispose();

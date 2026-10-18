@@ -64,7 +64,7 @@ const THIRD_PARTY_HANDLER_SOURCE = `
     }
 `;
 
-describe("discover", () => {
+describe("{§mimetype-discovery} discover", () => {
     let tmpRoot: string;
 
     before(async () => {
@@ -421,7 +421,7 @@ describe("discover", () => {
     });
 });
 
-describe("discover — scope-agnostic scan ({§mimetype-discovery})", () => {
+describe("{§mimetype-discovery} scope-agnostic scan", () => {
     it("finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-scan-"));
         try {
@@ -556,7 +556,7 @@ describe("discover — scope-agnostic scan ({§mimetype-discovery})", () => {
     });
 });
 
-describe("discover — extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY ({§extension-trust-boundary})", () => {
+describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY", () => {
     async function buildNm(root: string) {
         const nm = path.join(root, "node_modules");
         await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {

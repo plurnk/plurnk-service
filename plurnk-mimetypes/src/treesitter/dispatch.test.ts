@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { discover } from "../discover.ts";
 import Mimetypes from "../Mimetypes.ts";
 
-describe("tree-sitter registry — dispatch wiring", () => {
+describe("{§mimetype-backend-selection} tree-sitter registry: dispatch wiring", () => {
     it("discover() seeds tree-sitter entries by default", async () => {
         const result = await discover({ packageDirs: [] });
         const py = result.handlers.get("text/x-python");

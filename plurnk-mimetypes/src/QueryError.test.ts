@@ -7,7 +7,7 @@ import {
     UnsupportedDialectError,
 } from "./QueryError.ts";
 
-describe("UnsupportedDialectError", () => {
+describe("{§mimetype-query} UnsupportedDialectError", () => {
     it("carries mimetype, dialect, and reason on the instance", () => {
         const err = new UnsupportedDialectError({
             mimetype: "text/plain",
@@ -22,7 +22,7 @@ describe("UnsupportedDialectError", () => {
     });
 });
 
-describe("InvalidExpressionError", () => {
+describe("{§mimetype-query} InvalidExpressionError", () => {
     it("carries dialect and expression on the instance", () => {
         const err = new InvalidExpressionError({
             dialect: "regex",
@@ -44,7 +44,7 @@ describe("InvalidExpressionError", () => {
     });
 });
 
-describe("QueryParseFailureError", () => {
+describe("{§mimetype-query} QueryParseFailureError", () => {
     it("carries mimetype and cause", () => {
         const cause = new SyntaxError("Unexpected token");
         const err = new QueryParseFailureError({

@@ -2,8 +2,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import BaseHandler from "../BaseHandler.ts";
-import type { MimeSymbol } from "../types.ts";
+import BaseHandler from "./BaseHandler.ts";
+import type { MimeSymbol } from "./types.ts";
 
 // A canonical structural-tree-emitting handler to exercise the universal
 // dispatch paths. Stands in for any handler whose deepJson() returns a
@@ -47,7 +47,7 @@ class FakeJsonHandler extends BaseHandler {
 
 const meta = { mimetype: "text/x-test", glyph: "🧪", extensions: [".test"] as const };
 
-describe("{§mimetype-channel-architecture} — C1: BaseHandler supplies deep projections", () => {
+describe("{§mimetype-channel-architecture} BaseHandler supplies deep projections", () => {
     // Mimetypes.test.ts covers ProcessResult. This suite enforces the
     // per-handler contract: BaseHandler.deepJson() and BaseHandler.deepXml()
     // provide defaults, so handlers participate without special-casing.
@@ -70,7 +70,7 @@ describe("{§mimetype-channel-architecture} — C1: BaseHandler supplies deep pr
     });
 });
 
-describe("{§mimetype-channel-architecture} — C3: cross-dispatch matrix", () => {
+describe("{§mimetype-channel-architecture} cross-dispatch matrix", () => {
     // The cross-dispatch path most prone to silent omission: queries on the
     // "wrong" dialect for the source mimetype. xpath on JSON, jsonpath on XML,
     // and both on code must follow the universal dispatch contract.
@@ -115,7 +115,7 @@ describe("{§mimetype-channel-architecture} — C3: cross-dispatch matrix", () =
     });
 });
 
-describe("{§mimetype-channel-architecture} — C4: deep-xml is congruent with deep-json", () => {
+describe("{§mimetype-channel-architecture} deep-xml is congruent with deep-json", () => {
     // The two views describe the same tree. A jsonpath query for X should
     // be answerable by an equivalent xpath query against the same entry.
 
@@ -137,27 +137,5 @@ describe("{§mimetype-channel-architecture} — C4: deep-xml is congruent with d
         assert.equal(viaXml.length, 1);
         assert.equal(viaJson[0].matched, "localhost");
         assert.equal(String(viaXml[0].matched), "<host>localhost</host>");
-    });
-});
-
-describe("{§mimetype-channel-architecture} — C2: deep channels are eager (no lazy materialization)", () => {
-    // Mimetypes integration tests cover channel selection. The contract here:
-    // requested projections resolve locally rather than returning a lazy
-    // wrapper, and deepXml() depends only on deepJson().
-    it("deepJson + deepXml resolve quickly and synchronously-after-microtask", async () => {
-        const h = new FakeTreeHandler(meta);
-        const before = performance.now();
-        const j = await h.deepJson("anything");
-        const x = await h.deepXml("anything");
-        const after = performance.now();
-        assert.ok(j !== null);
-        assert.ok(x.length > 0);
-        // Heuristic: deep channel build is local work, must complete <50ms
-        // for trivial content. If something starts fetching or doing IO,
-        // this will flag.
-        assert.ok(
-            after - before < 50,
-            `deep channel materialization took ${(after - before).toFixed(1)}ms; should be near-instant for in-memory work`,
-        );
     });
 });

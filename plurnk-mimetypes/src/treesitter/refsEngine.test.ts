@@ -3,8 +3,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ParserCoordinateError } from "../ParserCoordinates.ts";
-import { collectReferences } from "../treesitter/refsEngine.ts";
-import type { RefsCaptureNode, RefsQuery } from "../treesitter/refsEngine.ts";
+import { collectReferences } from "./refsEngine.ts";
+import type { RefsCaptureNode, RefsQuery } from "./refsEngine.ts";
 import type { MimeSymbol } from "../types.ts";
 import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 
@@ -32,7 +32,7 @@ const SYMBOLS: MimeSymbol[] = [
     { name: "helper", kind: "function", line: 22, endLine: 25 },
 ];
 
-describe("{§mimetype-references} — C1: container is the innermost def's FULL qualified path", () => {
+describe("{§mimetype-references} container is the innermost def's FULL qualified path", () => {
     it("ref inside a method carries container.parent-composed path", () => {
         const refs = collectReferences(
             fakeQuery([{ name: "ref.call", node: fakeNode("tokenize", 5, 9) }]),
@@ -64,7 +64,7 @@ describe("{§mimetype-references} — C1: container is the innermost def's FULL 
     });
 });
 
-describe("{§mimetype-references} — C2: engine hygiene", () => {
+describe("{§mimetype-references} engine hygiene", () => {
     it("non-ref and unknown-kind captures are ignored", () => {
         const refs = collectReferences(
             fakeQuery([
@@ -135,7 +135,7 @@ describe("{§mimetype-references} — C2: engine hygiene", () => {
     });
 });
 
-describe("{§mimetype-references} — C3: end-to-end through process()", () => {
+describe("{§mimetype-references} end-to-end through process()", () => {
     it("typescript yields classified references via the channel", async () => {
         const { default: Mimetypes } = await import("../Mimetypes.ts");
         const m = new Mimetypes();

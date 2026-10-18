@@ -2,8 +2,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import BaseHandler from "../BaseHandler.ts";
-import type { MimeSymbol } from "../types.ts";
+import BaseHandler from "./BaseHandler.ts";
+import type { MimeSymbol } from "./types.ts";
 
 // Stand-in for any handler whose deepJson() returns a tree with source-line
 // metadata — covers tree-sitter, ANTLR, markdown, code handlers.
@@ -32,7 +32,7 @@ class FakeTreeHandler extends BaseHandler {
 const meta = { mimetype: "text/x-test", glyph: "🧪", extensions: [".test"] as const };
 const source = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
 
-describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects pk:line on element", () => {
+describe("{§mimetype-query-conformance} Q1: xpath QueryMatch.line reflects pk:line on element", () => {
     it("element match returns the source line from pk:line", async () => {
         const h = new FakeTreeHandler(meta);
         const matches = await h.query(source, "xpath", "//function");
@@ -53,7 +53,7 @@ describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects 
         assert.equal(matches[0].enclosingRegions![0].startLine, 73);
     });
 
-    it("computed scalars (count/string/…) carry no lines — no source node ({§mimetype-query-conformance})", async () => {
+    it("{§mimetype-query-conformance} computed scalars (count/string/…) carry no lines — no source node", async () => {
         const h = new FakeTreeHandler(meta);
         const matches = await h.query(source, "xpath", "count(//function)");
         assert.equal(matches.length, 1);

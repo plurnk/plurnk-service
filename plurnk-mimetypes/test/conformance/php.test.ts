@@ -29,7 +29,7 @@ $decoy = "StringDecoy() should never surface";
 // CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-php defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-php defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-php",

@@ -10,7 +10,7 @@ const metadata = {
     extensions: [".txt"] as const,
 };
 
-describe("BaseHandler", () => {
+describe("{§mimetype-handler-contract} BaseHandler", () => {
     it("{§mimetype-content-query} structural evidence addresses its text source even when a readable sibling exists", async () => {
         class Projected extends BaseHandler {
             override content(): string { return "a different readable projection"; }
@@ -66,7 +66,7 @@ describe("BaseHandler", () => {
         assert.equal(h.projectionConfiguration(), "");
     });
 
-    it("returns an empty references list by default ({§mimetype-references})", async () => {
+    it("{§mimetype-references} returns an empty references list by default", async () => {
         const h = new BaseHandler(metadata);
         assert.deepEqual(await h.references("anything"), []);
     });

@@ -44,7 +44,7 @@ const char* DECOY = "StringDecoy() should never surface";
 // CommentDecoy() should never surface
 `;
 
-describe("conformance: text/x-cpp defs + refs ({§mimetype-references})", () => {
+describe("{§mimetype-references} conformance: text/x-cpp defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-cpp",

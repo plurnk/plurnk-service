@@ -21,7 +21,7 @@ DECOY := "StringDecoy in a string"
 .PHONY: all test
 `;
 
-describe("conformance: text/x-makefile defs + refs (dev-DSL grind)", () => {
+describe("{§mimetype-references} conformance: text/x-makefile defs + refs", () => {
     it("passes the shared invariants and expected captures", async () => {
         const { references } = await runConformance({
             mimetype: "text/x-makefile",

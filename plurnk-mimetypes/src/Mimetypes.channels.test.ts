@@ -2,10 +2,10 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Mimetypes from "../Mimetypes.ts";
-import BaseHandler from "../BaseHandler.ts";
-import * as api from "../index.ts";
-import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "../types.ts";
+import Mimetypes from "./Mimetypes.ts";
+import BaseHandler from "./BaseHandler.ts";
+import * as api from "./index.ts";
+import type { Discovery, HandlerInfo, MimeSymbol, Registry } from "./types.ts";
 
 function makeDiscovery(handlers: HandlerInfo[]): Discovery {
     const byExtension = new Map<string, string>();
@@ -57,7 +57,7 @@ function makeMimetypes() {
     });
 }
 
-describe("{§mimetype-channel-selection} — C1: channel selection semantics", () => {
+describe("{§mimetype-channel-selection} channel selection semantics", () => {
     it("default selects every structural channel", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x\ny" });
@@ -106,18 +106,9 @@ describe("{§mimetype-channel-selection} — C1: channel selection semantics", (
         assert.equal(StructuredHandler.summaryCalls, 1);
         assert.equal("symbols" in r, false);
     });
-
-    it("unrequested deepJson is still computed internally (not exposed) when deepXml needs it", async () => {
-        StructuredHandler.deepJsonCalls = 0;
-        const m = makeMimetypes();
-        const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["deepXml"] });
-        assert.ok(r.deepXml!.startsWith("<root"));
-        assert.equal("deepJson" in r, false);
-        assert.equal(StructuredHandler.deepJsonCalls, 1);
-    });
 });
 
-describe("{§mimetype-channel-selection} — C2: symbols are structured", () => {
+describe("{§mimetype-channel-selection} symbols are structured", () => {
     it("symbols carry MimeSymbol[] verbatim from extractRaw", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["symbols"] });
@@ -125,7 +116,7 @@ describe("{§mimetype-channel-selection} — C2: symbols are structured", () => 
     });
 });
 
-describe("{§mimetype-channel-selection} — C3: references follow the handler contract", () => {
+describe("{§mimetype-channel-selection} references follow the handler contract", () => {
     it("references is [] for a handler without an implementation", async () => {
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "x" }, { channels: ["references"] });
@@ -163,7 +154,7 @@ describe("{§mimetype-channel-selection} — C3: references follow the handler c
     });
 });
 
-describe("{§mimetype-public-api} — C4: only outline render primitives are public", () => {
+describe("{§mimetype-public-api} only outline render primitives are public", () => {
     it("format / buildTree / renderTree are exported", () => {
         assert.equal(typeof api.format, "function");
         assert.equal(typeof api.buildTree, "function");

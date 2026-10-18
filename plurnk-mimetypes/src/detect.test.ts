@@ -14,7 +14,7 @@ function registry(opts: {
     };
 }
 
-describe("detect", () => {
+describe("{§mimetype-detection} detect", () => {
     it("returns null when registry is empty and no hint provided", () => {
         assert.equal(detect({ path: "foo.js" }, emptyRegistry()), null);
     });
@@ -129,7 +129,7 @@ describe("detect", () => {
 
 });
 
-describe("emptyRegistry", () => {
+describe("{§mimetype-detection} emptyRegistry", () => {
     it("returns a registry with empty maps", () => {
         const reg = emptyRegistry();
         assert.equal(reg.byExtension.size, 0);

@@ -13,7 +13,7 @@ process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 const fixtureDir = path.join(import.meta.dirname, "fixtures", "text-plain");
 const handlerPath = path.join(fixtureDir, "src", "index.ts");
 
-describe("full pipeline — text/plain fixture (no structural signal)", () => {
+describe("{§mimetype-materialization} full pipeline: text/plain fixture (no structural signal)", () => {
     let tmp: string;
 
     before(async () => {

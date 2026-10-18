@@ -50,7 +50,7 @@ const mimetypes = (
     });
 };
 
-describe("mimetype projection identity", () => {
+describe("{§mimetype-projection-identity} mimetype projection identity", () => {
     it("is stable for identical behavior and changes with live configuration", async () => {
         configuration = "configuration-a";
         const service = mimetypes(info("@community/cobol", "reader-1"));

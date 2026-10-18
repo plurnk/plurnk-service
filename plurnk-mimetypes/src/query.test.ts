@@ -20,7 +20,7 @@ it("{§mimetype-query} projected fields retain enclosing context without claimin
     assert.deepEqual(match.enclosingRegions, [{ startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 }]);
 });
 
-describe("queryRegex — bare patterns", () => {
+describe("{§mimetype-query} queryRegex: bare patterns", () => {
     it("returns a string `matched` per global match", () => {
         const out = queryRegex("foo bar foo", "foo");
         assert.equal(out[0]?.text, "foo", "a regex match carries its own text");
@@ -63,7 +63,7 @@ describe("queryRegex — bare patterns", () => {
     });
 });
 
-describe("queryRegex — anonymous captures", () => {
+describe("{§mimetype-query} queryRegex: anonymous captures", () => {
     it("returns an array of captures under {§mimetype-query}", () => {
         const out = queryRegex("name: alice", "(\\w+): (\\w+)");
         assert.equal(out.length, 1);
@@ -78,7 +78,7 @@ describe("queryRegex — anonymous captures", () => {
     });
 });
 
-describe("queryRegex — named captures", () => {
+describe("{§mimetype-query} queryRegex: named captures", () => {
     it("returns an object with named keys", () => {
         const out = queryRegex("key: value", "(?<key>\\w+): (?<val>\\w+)");
         assert.equal(out.length, 1);
@@ -94,7 +94,7 @@ describe("queryRegex — named captures", () => {
     });
 });
 
-describe("queryRegex — flag handling", () => {
+describe("{§mimetype-query} queryRegex: flag handling", () => {
     it("honors case-insensitive flag", () => {
         const out = queryRegex("Foo FOO foo", "foo", "i");
         assert.equal(out.length, 3);
@@ -130,7 +130,7 @@ describe("queryRegex — flag handling", () => {
     });
 });
 
-describe("queryRegex — error policy", () => {
+describe("{§mimetype-query} queryRegex: error policy", () => {
     it("throws InvalidExpressionError on malformed regex", () => {
         assert.throws(() => queryRegex("text", "(unclosed"), (err: unknown) => {
             return err instanceof InvalidExpressionError && err.dialect === "regex";
@@ -138,7 +138,7 @@ describe("queryRegex — error policy", () => {
     });
 });
 
-describe("queryGlob", () => {
+describe("{§mimetype-query} queryGlob", () => {
     it("matches whole lines (line-anchored)", () => {
         const text = "error: foo\nwarn: bar\nerror: baz";
         const out = queryGlob(text, "error: *");
@@ -230,7 +230,7 @@ describe("queryGlob", () => {
     });
 });
 
-describe("queryJsonpathObject — bare-leaves outline (default)", () => {
+describe("{§mimetype-query} queryJsonpathObject: bare-leaves outline (default)", () => {
     const outline = {
         Top: {
             Section: { Sub: 5 },
@@ -292,7 +292,7 @@ describe("queryJsonpathObject — bare-leaves outline (default)", () => {
     });
 });
 
-describe("queryJsonpathObject - custom region resolver", () => {
+describe("{§mimetype-query} queryJsonpathObject: custom region resolver", () => {
     it("delegates readable-text region resolution by pointer", () => {
         const data = { users: [{ name: "alice" }, { name: "bob" }] };
         const out = queryJsonpathObject(data, "$.users[*].name", (pointer) => {
@@ -316,7 +316,7 @@ describe("queryJsonpathObject - custom region resolver", () => {
     });
 });
 
-describe("queryXpathString — line-less child elements walk to the enclosing span ({§mimetype-query-conformance} symmetry)", () => {
+describe("{§mimetype-query-conformance} queryXpathString: line-less child elements walk to the enclosing span", () => {
     // A bare `name`/`params` field projects to a child element with no pk:line of
     // its own; xpath must report the SAME enclosing span jsonpath's ancestor walk
     // gives the corresponding JSON value — not an absent line.
@@ -344,7 +344,7 @@ describe("queryXpathString — line-less child elements walk to the enclosing sp
     });
 });
 
-describe("outlineLineFor — bare-number outline projection resolver ({§mimetype-query-conformance} symmetry)", () => {
+describe("{§mimetype-query-conformance} outlineLineFor: bare-number outline projection resolver", () => {
     const outline = { Top: { Section: { Sub: 5 }, Other: 7 }, Trailer: 9 };
     const lineFor = outlineLineFor(outline);
 
@@ -372,7 +372,7 @@ describe("outlineLineFor — bare-number outline projection resolver ({§mimetyp
     });
 });
 
-describe("jsonpath recursive descent over deep parse trees", () => {
+describe("{§mimetype-query} jsonpath recursive descent over deep parse trees", () => {
     it("$..* traverses a tree far past json-p3's default 50-node cap", () => {
         // A deepJson-shaped tree with ~200 nodes — mirrors an ANTLR/tree-sitter
         // handler's full parse tree. The default recursion cap threw here,
@@ -384,7 +384,7 @@ describe("jsonpath recursive descent over deep parse trees", () => {
     });
 });
 
-describe("queryXpathString — the reserved pk prefix is bound for provenance attributes ({§mimetype-query})", () => {
+describe("{§mimetype-query} queryXpathString: the reserved pk prefix is bound for provenance attributes", () => {
     const xml = projectJsonToXml({
         type: "document", line: 1, endLine: 3,
         children: [{ type: "heading", line: 2, endLine: 2, level: 2, text: "Testing" }],

@@ -11,7 +11,7 @@ const metadata = {
     extensions: [".test"] as const,
 };
 
-describe("BaseHandler.query — regex default", () => {
+describe("{§mimetype-query} BaseHandler.query: regex default", () => {
     it("applies regex against decoded text content", async () => {
         const h = new BaseHandler(metadata);
         const out = await h.query("foo bar foo", "regex", "foo");
@@ -27,7 +27,7 @@ describe("BaseHandler.query — regex default", () => {
     });
 });
 
-describe("BaseHandler.query — glob default", () => {
+describe("{§mimetype-query} BaseHandler.query: glob default", () => {
     it("applies glob line-anchored against text", async () => {
         const h = new BaseHandler(metadata);
         const out = await h.query("error: foo\nwarn: bar\nerror: baz", "glob", "error: *");
@@ -36,7 +36,7 @@ describe("BaseHandler.query — glob default", () => {
     });
 });
 
-describe("BaseHandler.query — jsonpath default (against outline)", () => {
+describe("{§mimetype-query} BaseHandler.query: jsonpath default (against outline)", () => {
     it("applies jsonpath against the bare-leaves outline from extractRaw", async () => {
         class WithSymbols extends BaseHandler {
             override extractRaw(): MimeSymbol[] {
@@ -63,7 +63,7 @@ describe("BaseHandler.query — jsonpath default (against outline)", () => {
     });
 });
 
-describe("BaseHandler.query — xpath default", () => {
+describe("{§mimetype-query} BaseHandler.query: xpath default", () => {
     it("throws UnsupportedDialectError on the default handler (no xpath path)", async () => {
         const h = new BaseHandler(metadata);
         await assert.rejects(
@@ -96,7 +96,7 @@ describe("BaseHandler.query — xpath default", () => {
     });
 });
 
-describe("BaseHandler.query — subclass overrides", () => {
+describe("{§mimetype-query} BaseHandler.query: subclass overrides", () => {
     it("allows a subclass to override toText for binary content (PDF pattern)", async () => {
         class BinaryWithText extends BaseHandler {
             protected override async toText(content: string | Uint8Array): Promise<string> {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { parseBodyMatcher } from "./parseBodyMatcher.ts";
 import { InvalidExpressionError } from "./QueryError.ts";
 
-describe("parseBodyMatcher", () => {
+describe("{§mimetype-query-input} parseBodyMatcher", () => {
     it("dispatches xpath via // prefix", () => {
         const p = parseBodyMatcher("//user[@role='admin']");
         assert.equal(p.dialect, "xpath");
