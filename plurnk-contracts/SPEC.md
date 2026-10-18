@@ -388,23 +388,13 @@ fence only as the nesting form. Every producer of a statement — the parser, a 
 `/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than its own literal
 (plurnk/plurnk#92).
 
-§naked-operation **A native name with only an optional aside opens without a fence.** A
-column-zero line outside any block containing a native operation's name and at most one complete
-`<!-- aside -->`, with only horizontal whitespace otherwise, opens that operation as if it were
-fenced with the taught three backticks. The aside retains its ordinary meaning: no target or
-modifiers are inferred. Its body runs to a line that is exactly the name
-again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
-naming nothing known is body; the block expects no closer, so its body is never cut
-back ({§closer-fallback}). One warning-severity receipt follows a recovered statement —
-`` `NOTE` opened with no fence; the taught form is three backticks. `` One rule for every native
-operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
-missing-target refusal. A closer the author wrote anyway is still not body: when the body's last line is
-a bare backtick fence that no other fence line in the body pairs with (an odd count of fence lines), that
-line is the block's closer and leaves the body, so `SEND`, then the answer, then a closing fence delivers
-the answer alone. An aside-bearing name inside a body is not a closer. An incomplete or repeated
-aside, an operand, or other heading text does not qualify and remains the unfenced form
-({§unfenced-operation}). Executors are runtimes rather than operations, and reasoning is never
-read this way.
+§naked-operation **A native name with only an optional aside opens without a fence.** A column-zero line outside any block containing a native operation's name and at most one complete `<!-- aside -->`, with only horizontal whitespace otherwise, opens that operation as if it were fenced with the taught three backticks. The aside retains its ordinary meaning: no target or modifiers are inferred. One warning-severity receipt follows a recovered statement — `` `NOTE` opened with no fence; the taught form is three backticks. `` One rule for every native operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary missing-target refusal. Executors are runtimes rather than operations, and reasoning is never read this way.
+
+| Fact | Rule |
+| --- | --- |
+| The body | runs to a line that is exactly the name again, to the next heading ({§fence-heading-in-body}), or to the end of the turn; a fence inside naming nothing known is body; the block expects no closer, so its body is never cut back ({§closer-fallback}) |
+| A closer the author wrote anyway | still not body: when the body's last line is a bare backtick fence that no other fence line in the body pairs with (an odd count of fence lines), that line is the block's closer and leaves the body, so `SEND`, then the answer, then a closing fence delivers the answer alone; an aside-bearing name inside a body is not a closer |
+| Not the form | an incomplete or repeated aside, an operand, or other heading text does not qualify and remains the unfenced form ({§unfenced-operation}) |
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks carrying a heading under {§executor-heading}
@@ -468,20 +458,14 @@ alternative (§4.2), so neither mode chooses among complete readings by cost. Th
 Python (`INDENT`/`DEDENT`) and PHP (heredoc) grammars settle block structure the same way:
 outside the grammar, then hand the lexer tokens.
 
-§pairing-algorithm **Algorithm.** Each line is classified by the lexer's line-start rules: text, a
-bare fence, a labeled fence, a heading, a closer glued to a heading, or a naked operation name.
-A block's contents read the same whatever lies beneath it on the stack, so the pass summarizes
-each (position, block, what the block holds so far) once. For a nested block, the summary maps
-every place the block could end to its cheapest reading up to there; parents compose their
-children's summaries. An outermost block is evaluated in the root's frame, where only the cost
-to the end of the input matters, so it holds one entry. Evaluation runs on an explicit work
-stack. Candidates are taken in preference order and replace one another only by costing
-strictly less, so each entry is the reading a preference-ordered exhaustive search returns.
-Inside a quotation or a nested block the first valid closer closes, CommonMark's rule, applied
-as a disambiguation filter (Klint and Visser, 1994); an operation body keeps the choice between
-nesting and closing. A block opened by a bare fence must hold a line, except a quotation at the
-top level: two stray fences in a row there are an empty quotation, shown and harmless, rather
-than two repairs that a reading could avoid only by hiding an operation.
+§pairing-algorithm **Algorithm.** Each line is classified by the lexer's line-start rules: text, a bare fence, a labeled fence, a heading, a closer glued to a heading, or a naked operation name. Evaluation runs on an explicit work stack.
+
+| Step | Rule |
+| --- | --- |
+| Summaries | a block's contents read the same whatever lies beneath it on the stack, so the pass summarizes each (position, block, what the block holds so far) once; for a nested block, the summary maps every place the block could end to its cheapest reading up to there, and parents compose their children's summaries; an outermost block is evaluated in the root's frame, where only the cost to the end of the input matters, so it holds one entry |
+| Candidates | taken in preference order and replace one another only by costing strictly less, so each entry is the reading a preference-ordered exhaustive search returns |
+| Closers | inside a quotation or a nested block the first valid closer closes, CommonMark's rule, applied as a disambiguation filter (Klint and Visser, 1994); an operation body keeps the choice between nesting and closing |
+| A block opened by a bare fence | must hold a line, except a quotation at the top level: two stray fences in a row there are an empty quotation, shown and harmless, rather than two repairs that a reading could avoid only by hiding an operation |
 
 §pairing-objective **Objective.** A complete reading, one that needs no repair, wins over every
 repaired reading: a complete nested interpretation takes precedence. Each class has its own order.
@@ -507,20 +491,12 @@ body, and ended a turn's KILL inside a WAIT. A summary keeps, for every place a 
 best complete reading under each order and the best repaired reading, so the search stays exact:
 a repaired total may take either class for any of its parts.
 
-§unclosed-mutation-yields **A mutation body never swallows a native operation.** An example
-inside an EDIT is written with a wider outer fence ({§operation-fences}); a heading narrower than
-the EDIT's fence is literal by declaration and stays text. At the EDIT's own width a native
-operation heading runs, closed or not: read as the body's example it would be a *swallowed*
-operation, and a swallowed operation outranks any number of repairs — a reading that swallows one
-is never complete, and among repaired readings the fewest swallowed wins before every other class.
-So where ```` ```EDIT (b.py) ```` follows ```` ```EDIT (a.py) ```` with no closer between, the
-reading that supplies `a.py`'s closer before that heading wins, both EDITs run, and no operation
-heading is written into a file; the same shape with a closer after the example is fence-identical
-and reads the same way. Of 67 recorded EDIT bodies holding a native heading, 66 use the wider fence
-and read unchanged, and the one at equal width (glm run158) had written a test EDIT's heading and
-body into `functional.py` and never run it. Only EDIT mutates from its body, so only EDIT carries
-the rule: an executor heading inside an EDIT keeps the ordinary reading, and SEND, WORK, FORK and
-BARE bodies keep {§prose-code-blocks}.
+§unclosed-mutation-yields **A mutation body never swallows a native operation.** An example inside an EDIT is written with a wider outer fence ({§operation-fences}); a heading narrower than the EDIT's fence is literal by declaration and stays text. At the EDIT's own width a native operation heading runs, closed or not: read as the body's example it would be a *swallowed* operation, and a swallowed operation outranks any number of repairs — a reading that swallows one is never complete, and among repaired readings the fewest swallowed wins before every other class. Only EDIT mutates from its body, so only EDIT carries the rule: an executor heading inside an EDIT keeps the ordinary reading, and SEND, WORK, FORK and BARE bodies keep {§prose-code-blocks}.
+
+| Shape | Reading |
+| --- | --- |
+| ```` ```EDIT (b.py) ```` follows ```` ```EDIT (a.py) ```` with no closer between | the reading that supplies `a.py`'s closer before that heading wins, both EDITs run, and no operation heading is written into a file |
+| The same shape with a closer after the example | fence-identical, and reads the same way |
 
 Equal cost goes to the earlier alternative: nesting before closing in an operation body,
 closing before nesting in a quotation, and a supplied closer before a literal example at a
@@ -621,24 +597,14 @@ draws one warning that it was shown, not run. At the top level, a bare fence who
 operation heading opens that operation instead ({§forgotten-tag}). A labeled block is an example by
 declaration, and nothing else inside draws an advisory.
 
-§forgotten-tag **A tag on the line under a bare fence is the operation.** At the top level, a bare
-fence whose next line is an operation heading, a native name alone or with a slot or an executor's
-name with its operand, opens that operation as if both were written on one line: the heading takes
-its slots, the lines after it are its body, and it closes like any operation. It runs, and one
-warning-severity receipt names the form — `` `READ` ran, though its fence was malformed: the
-opening fence, OP, parameters, and aside share one line. `` Saying that it ran keeps the model from
-issuing it again. Inside a body the same lines stay literal. Measured: of 2,308 naked fences in
-12,797 recorded emissions, 51 open that way and 2,238 hold code or quoted output, which is why a
-bare fence alone draws nothing; in the 10,486-emission fence corpus every one of the 12 that open
-that way was an operation the model meant to run. An example the model means only to show
-belongs in a properly nested body ({§balanced-fences}) or a quotation ({§quotation}).
-So a model may show plurnk's own operations in an answer. Two exceptions keep programs whole:
-CommonMark's own rule that a backtick opener's line carries no further backtick, so
-```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under
-a line carrying a fence run, which is an orphaned closer and quotes nothing. An unknown tag
-without invocation slots is a code block and draws nothing. An offset example draws nothing either
-({§indented-fences}). Quotation outside an operation is
-response text under {§response-text}, not an executable program or a completion envelope.
+§forgotten-tag **A tag on the line under a bare fence is the operation.** At the top level, a bare fence whose next line is an operation heading, a native name alone or with a slot or an executor's name with its operand, opens that operation as if both were written on one line: the heading takes its slots, the lines after it are its body, and it closes like any operation. It runs, and one warning-severity receipt names the form — `` `READ` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line. `` Saying that it ran keeps the model from issuing it again. Inside a body the same lines stay literal. A bare fence alone draws nothing: nearly every one holds code or quoted output. An example the model means only to show belongs in a properly nested body ({§balanced-fences}) or a quotation ({§quotation}), so a model may show plurnk's own operations in an answer. Quotation outside an operation is response text under {§response-text}, not an executable program or a completion envelope.
+
+| Draws nothing | Why |
+| --- | --- |
+| ```` ```READ (x)``` ```` on one line | CommonMark's own rule that a backtick opener's line carries no further backtick: it is inline code and quotes nothing after it |
+| A bare fence directly under a line carrying a fence run | an orphaned closer; it quotes nothing |
+| An unknown tag without invocation slots | a code block |
+| An offset example | {§indented-fences} |
 
 `plurnk.md` names the tab offset as the form for an example, in the aside of its nesting
 example, and shows its own examples offset; the other quoting fences are untaught: a tilde
@@ -676,43 +642,27 @@ reading, with no diagnostic and no teaching (#758):
 
 Tokens keep their source positions; only their order in the stream changes.
 
-§native-tool-calls An emission that yields no operation may be a model's native
-tool-call markup naming a plurnk operation or a known executor, and every popular
-family is read the same way: DeepSeek's `<｜｜DSML｜｜ calls>` and Anthropic-style
-`<function_calls>` blocks of `invoke` elements with `parameter` children; the
-`<tool_call>` family as `<function=NAME>` with `<parameter=key>` children (Qwen,
-MiMo), as a JSON object with `name` and `arguments` (Hermes and kin), or as a name
-followed by `<arg_key>`/`<arg_value>` pairs (GLM); a bare `<function=NAME>` element
-(Llama); Mistral's `[TOOL_CALLS]` JSON array; Llama's `<|python_tag|>` JSON object; and
-Kimi's `<|tool_call_begin|>` sections. Each call is read as that operation's
-canonical fence: `path`/`target`/`file_path`/`file`/`resource`/`uri` fill the target,
-`scope`/`range`/`lines` the scope, as do `start`/`end` written apart and `offset`/`limit`
-(a first line and a count), `pattern`/`regex`/`query` a matcher option, `aside`
-the aside, and `body`/`content`/`command`/`text`/`input` or plain text inside the
-call the body; plurnk slots written after the name are kept, a trailing scope's own
-bracket may close the tag. A block keeps its line count where its lines allow, so
-statement positions name the source line; an inline block grows to its fences.
-DeepSeek writes the whole heading into the invoke's name — `<｜｜DSML｜｜ invoke name="FIND (docs/**)
-/Http404/ <!-- docs mentions -->">`, or `name="sh` with no closing quote and the script on the lines
-below — and the element's content is the body: the first word of the name is the operation, the rest
-its slots, and `parameter` tags around the content are debris, as are a copied facts line
-(`{"lines":6}`) under the heading, a `comment` attribute (the aside), and `<｜｜DSML｜｜tool_calls>`
-spelled without spaces. An executor's unknown parameter is one of its options, `[{"maxTokens":
-"2500"}]`, for its owner to accept or refuse; `bash` names `sh` when `sh` is the registered shell.
-Calls that cannot be mapped draw {§native-tool-call-receipt}.
-Qwen's own shapes read the same way: a flat JSON call whose operation is the value
-of an `op`, `action` or `cmd` key in any case (`{"op": "READ", "path": …, "range": …}`),
-an XML element named by the operation (`<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`,
-`<read path="…"/>`) or by a generic `op` element or function (`<op op="READ" …>`,
-`<op verb="READ" …/>` in `<ops>`, `<op=READ (path) …>`, `<function=OP name="READ" …>`,
-`<function=OP>` around such a JSON call or a plurnk heading), and a plurnk heading written
-as the call's text (`<tool_call>READ (a.py) <60,120>`, `=READ (…)`). Closing tags left over
-from another family (`</parameter>`, `</invoke>`, `</>`) after a call are markup noise;
-`reason` and `description` are the aside; a scope may be a JSON array (`[500,530]`) or a
-`{"start", "end"}` object; an executor's string `input` is its program. A call with an
-unknown name or parameter, or a FIND, READ, EDIT, COPY or MOVE naming no target, leaves the
-whole emission as it was. An emission that already yields an operation is never
-rewritten. No diagnostic, notice or teaching mentions a successful reading (#760).
+§native-tool-calls **An emission that yields no operation may be a model's native tool-call markup naming a plurnk operation or a known executor, and every popular family is read the same way.** A block keeps its line count where its lines allow, so statement positions name the source line; an inline block grows to its fences. A call with an unknown name or parameter, or a FIND, READ, EDIT, COPY or MOVE naming no target, leaves the whole emission as it was; calls that cannot be mapped draw {§native-tool-call-receipt}. An emission that already yields an operation is never rewritten. No diagnostic, notice or teaching mentions a successful reading (#760).
+
+| Family | Shape |
+| --- | --- |
+| DeepSeek | `<｜｜DSML｜｜ calls>` blocks of `invoke` elements with `parameter` children; DeepSeek writes the whole heading into the invoke's name — `<｜｜DSML｜｜ invoke name="FIND (docs/**) /Http404/ <!-- docs mentions -->">`, or `name="sh` with no closing quote and the script on the lines below — and the element's content is the body: the first word of the name is the operation, the rest its slots, and `parameter` tags around the content are debris, as are a copied facts line (`{"lines":6}`) under the heading, a `comment` attribute (the aside), and `<｜｜DSML｜｜tool_calls>` spelled without spaces |
+| Anthropic-style | `<function_calls>` blocks of `invoke` elements with `parameter` children |
+| The `<tool_call>` family | `<function=NAME>` with `<parameter=key>` children (Qwen, MiMo); a JSON object with `name` and `arguments` (Hermes and kin); a name followed by `<arg_key>`/`<arg_value>` pairs (GLM) |
+| Llama | a bare `<function=NAME>` element; a `<\|python_tag\|>` JSON object |
+| Mistral | a `[TOOL_CALLS]` JSON array |
+| Kimi | `<\|tool_call_begin\|>` sections |
+| Qwen's own shapes | a flat JSON call whose operation is the value of an `op`, `action` or `cmd` key in any case (`{"op": "READ", "path": …, "range": …}`); an XML element named by the operation (`<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`, `<read path="…"/>`) or by a generic `op` element or function (`<op op="READ" …>`, `<op verb="READ" …/>` in `<ops>`, `<op=READ (path) …>`, `<function=OP name="READ" …>`, `<function=OP>` around such a JSON call or a plurnk heading); a plurnk heading written as the call's text (`<tool_call>READ (a.py) <60,120>`, `=READ (…)`) |
+
+| Call piece | Read as |
+| --- | --- |
+| `path`/`target`/`file_path`/`file`/`resource`/`uri` | the target |
+| `scope`/`range`/`lines`, `start`/`end` written apart, `offset`/`limit` (a first line and a count), a JSON array (`[500,530]`) or a `{"start", "end"}` object | the scope; plurnk slots written after the name are kept, and a trailing scope's own bracket may close the tag |
+| `pattern`/`regex`/`query` | a matcher option |
+| `aside`, `reason`, `description` | the aside |
+| `body`/`content`/`command`/`text`/`input` or plain text inside the call; an executor's string `input` | the body, an executor's program |
+| An executor's unknown parameter | one of its options, `[{"maxTokens": "2500"}]`, for its owner to accept or refuse; `bash` names `sh` when `sh` is the registered shell |
+| Closing tags left over from another family (`</parameter>`, `</invoke>`, `</>`) after a call | markup noise |
 
 Bare `invoke` elements use the same slots as wrapped calls. A complete JSON object
 inside an invoke supplies arguments when no explicit parameter elements are
@@ -858,25 +808,14 @@ Two keys never reach an owner:
 service's environment option on the operations that open a process or a
 Worker; the shared reader withholds both from the owner's options.
 
-§matcher-option **`pattern` is the matcher, and it lives in the heading.** On
-FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option
-`[{"pattern": "<matcher>"}]` carries the matcher string: the leading prefix
-claims its dialect under {§matcher-prefix-claims}, and
-AstBuilder lifts it into the statement's `matcher` (`MatcherBody | null`),
-positioned dialect errors included. A block that carries only `pattern`
-leaves `metadata: null` for the owner; beside other keys the block stays with
-the owner verbatim, and the owner's reader treats `pattern` as reserved. The
-language lifts only from one block that parses as a JSON array of objects;
-anything else lifts nothing and reaches the owner's `400` untouched. A
-`pattern` that is present but not a string is the language's own positioned
-diagnostic, as is a matcher of a claimed dialect that fails admission. FIND and
-READ bodies become memory under {§retrieval-annotation}; a non-log KILL's body is
-unused and receives the advisory under {§matcher-body-redirect}. The heading line
-is the matcher's home ({§naked-pattern}). EDIT keeps its literal body:
-with a matcher it is the replacement for every selected span ({§edit-pattern}),
-and an absent body deletes them. `PlurnkParser.stringify` writes a lifted matcher
-whose block left no metadata back bare when the bare form reads back identically
-and draws no advisory ({§naked-pattern}), otherwise as `[{"pattern": "…"}]`.
+§matcher-option **`pattern` is the matcher, and it lives in the heading.** On FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option `[{"pattern": "<matcher>"}]` carries the matcher string: the leading prefix claims its dialect under {§matcher-prefix-claims}, and AstBuilder lifts it into the statement's `matcher` (`MatcherBody | null`), positioned dialect errors included. The heading line is the matcher's home ({§naked-pattern}).
+
+| Fact | Rule |
+| --- | --- |
+| The block | one that carries only `pattern` leaves `metadata: null` for the owner; beside other keys the block stays with the owner verbatim, and the owner's reader treats `pattern` as reserved; the language lifts only from one block that parses as a JSON array of objects, and anything else lifts nothing and reaches the owner's `400` untouched |
+| Diagnostics | a `pattern` that is present but not a string is the language's own positioned diagnostic, as is a matcher of a claimed dialect that fails admission |
+| Bodies | FIND and READ bodies become memory under {§retrieval-annotation}; a non-log KILL's body is unused and receives the advisory under {§matcher-body-redirect}; EDIT keeps its literal body: with a matcher it is the replacement for every selected span ({§edit-pattern}), and an absent body deletes them |
+| `PlurnkParser.stringify` | writes a lifted matcher whose block left no metadata back bare when the bare form reads back identically and draws no advisory ({§naked-pattern}), otherwise as `[{"pattern": "…"}]` |
 
 ## 3. Lexical elements
 
@@ -2076,49 +2015,24 @@ diagnostics are:
   it has no pattern to read and is refused as `invalid-operation-syntax` naming what
   is missing. A matcher with a second unescaped `/` is not unclosed: it is
   `/pattern/flags`, and invalid flags keep their native failure with the escape hint.
-- §naked-pattern **The matcher rides the heading bare.** After the path, and any
-  scope or option block, the rest of a FIND, READ or KILL heading line is the
-  matcher, in whichever dialect its first characters claim
-  ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`,
-  `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. One
-  spelling is not a matcher: `#name` alone, a `#` followed by one channel token
-  and nothing else, after a target that names no channel, is that target's
-  channel exactly as if written on the path ({§local-path-fragment}); a target
-  that already names a channel keeps such a token as its pattern. Those
-  matchers remain independent of owner options: a block without `pattern` never
-  erases the heading matcher, and invalid blocks still reach the owning validator.
-  Their heading-line text owns selection independently of annotation or distillation bodies. On EDIT only
-  a sigil lifts, because plain heading-line text is the replacement body it always
-  was; the lines beneath the heading are then the replacement, and none deletes each
-  match ({§edit-pattern}). A trailing `<!-- aside -->` on the same line stays the
-  aside. The lift is exactly what `[{"pattern": "…"}]` produces, and that option
-  remains the escape for a matcher the heading cannot hold bare: one opening with
-  `(`, `<`, `[` or a backtick, one containing `<!--`, and every COPY/MOVE operand.
-  `FIND (src/parser.ts) /\bparse\w+\b/` is the same operation as
-  `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`. `^` claims the regex
-  dialect without slashes or flags: the whole text is the pattern, so
-  `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`.
-  `^` is deliberately absent from `plurnk.md`'s dialect table: a model writes the anchor
-  whether or not it is taught, so the engine honours it without spending hot-path teaching
-  on it. The omission is not drift between the teaching and the engine.
-- §trailing-slots **Slots after the matcher peel off the right.** The heading text after
-  the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the
-  shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a
-  trailing `[option block]` that parses as an array of objects come off the right end in
-  any order, each taken once and only when the heading did not already carry that slot,
-  until what remains is the matcher. `READ (a.rs) /fn resolve_/ <1,-1> <!-- entities -->`
-  is the same operation as `READ (a.rs) <1,-1> /fn resolve_/ <!-- entities -->`, with
-  one warning-severity advisory naming the canonical order for the scope or block:
-  recovery requires a single possible path-slot owner. With multiple slots, a trailing scope
-  or metadata block refuses the heading rather than relocating or discarding the slot.
-  A matcher that
-  itself ends in one of those shapes takes the option escape.
-  `plurnk.md` teaches one order — `OP (path)? <scope|range>? [metadata]? pattern?
-  <!-- aside -->?` — and free ordering is not taught. Small departure, small
-  reinterpretation ({§outside-text}): every slot the model wrote is present and
-  unambiguous, so only their sequence differs from the taught form, and nothing is
-  invented to read it. The advisory names the canonical order rather than refusing,
-  because the operation the model meant is never in doubt.
+- §naked-pattern **The matcher rides the heading bare.** After the path, and any scope or option block, the rest of a FIND, READ or KILL heading line is the matcher, in whichever dialect its first characters claim ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`, `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. `FIND (src/parser.ts) /\bparse\w+\b/` is the same operation as `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`: the lift is exactly what `[{"pattern": "…"}]` produces, and that option remains the escape for a matcher the heading cannot hold bare — one opening with `(`, `<`, `[` or a backtick, one containing `<!--`, and every COPY/MOVE operand.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Not a matcher | `#name` alone, a `#` followed by one channel token and nothing else, after a target that names no channel, is that target's channel exactly as if written on the path ({§local-path-fragment}); a target that already names a channel keeps such a token as its pattern |
+  | Independence | heading matchers remain independent of owner options: a block without `pattern` never erases the heading matcher, and invalid blocks still reach the owning validator; their heading-line text owns selection independently of annotation or distillation bodies |
+  | EDIT | only a sigil lifts, because plain heading-line text is the replacement body it always was; the lines beneath the heading are then the replacement, and none deletes each match ({§edit-pattern}) |
+  | The aside | a trailing `<!-- aside -->` on the same line stays the aside |
+  | `^` | claims the regex dialect without slashes or flags: the whole text is the pattern, so `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`; `^` is deliberately absent from `plurnk.md`'s dialect table — a model writes the anchor whether or not it is taught, so the engine honours it without spending hot-path teaching on it, and the omission is not drift between the teaching and the engine |
+
+- §trailing-slots **Slots after the matcher peel off the right.** The heading text after the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a trailing `[option block]` that parses as an array of objects come off the right end in any order, each taken once and only when the heading did not already carry that slot, until what remains is the matcher. `READ (a.rs) /fn resolve_/ <1,-1> <!-- entities -->` is the same operation as `READ (a.rs) <1,-1> /fn resolve_/ <!-- entities -->`, with one warning-severity advisory naming the canonical order for the scope or block.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Recovery | requires a single possible path-slot owner: with multiple slots, a trailing scope or metadata block refuses the heading rather than relocating or discarding the slot |
+  | A matcher that itself ends in one of those shapes | takes the option escape |
+  | Teaching | `plurnk.md` teaches one order — `OP (path)? <scope\|range>? [metadata]? pattern? <!-- aside -->?` — and free ordering is not taught; small departure, small reinterpretation ({§outside-text}): every slot the model wrote is present and unambiguous, so only their sequence differs from the taught form, and nothing is invented to read it; the advisory names the canonical order rather than refusing, because the operation the model meant is never in doubt |
+
 - §log-heading-notation **The log's heading notation, copied as syntax, is read as the slot it
   stands for.** A packet's log row heading is `### log:///L/T/S/OP → path pattern · N`
   ({§log-wire-format} in the core SPEC); models copy its notation onto their own headings. Each
