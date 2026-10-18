@@ -479,17 +479,13 @@ repaired reading: a complete nested interpretation takes precedence. Each class 
 | Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
 | Other fences read as text | 3 | 5 | The least departure from the fences as written |
 
-Complete readings compare as a single least-errors order over departures from the fences as written,
-and a heading the author enclosed in a wider or labeled fence is the example it was written as, not a
-departure. So a message whose own fence is narrower than the fences wrapping its examples still holds
-them: the reading that lets a wrapper close the message and runs the examples ties on cost and loses on
-preference, since a body nests before it closes ({§balanced-fences}). Once every reading of an
-emission needs a repair, its shape is already broken, and saving a repair is not worth an operation
-the author wrote: across the corpus, readings that traded operations for repairs held a WORK in a
-BARE behind two stray fences, wrote 11,485 characters of operation text into a file as an EDIT
-body, and ended a turn's KILL inside a WAIT. A summary keeps, for every place a block could end, the
-best complete reading under each order and the best repaired reading, so the search stays exact:
-a repaired total may take either class for any of its parts.
+Complete readings compare as a single least-errors order over departures from the fences as written, and a heading the author enclosed in a wider or labeled fence is the example it was written as, not a departure.
+
+| Rule | What |
+| --- | --- |
+| A narrower message fence | a message whose own fence is narrower than the fences wrapping its examples still holds them: the reading that lets a wrapper close the message and runs the examples ties on cost and loses on preference, since a body nests before it closes ({§balanced-fences}) |
+| A broken shape | once every reading of an emission needs a repair, its shape is already broken, and saving a repair is not worth an operation the author wrote |
+| The summary | keeps, for every place a block could end, the best complete reading under each order and the best repaired reading, so the search stays exact: a repaired total may take either class for any of its parts |
 
 §unclosed-mutation-yields **A mutation body never swallows a native operation.** An example inside an EDIT is written with a wider outer fence ({§operation-fences}); a heading narrower than the EDIT's fence is literal by declaration and stays text. At the EDIT's own width a native operation heading runs, closed or not: read as the body's example it would be a *swallowed* operation, and a swallowed operation outranks any number of repairs — a reading that swallows one is never complete, and among repaired readings the fewest swallowed wins before every other class. Only EDIT mutates from its body, so only EDIT carries the rule: an executor heading inside an EDIT keeps the ordinary reading, and SEND, WORK, FORK and BARE bodies keep {§prose-code-blocks}.
 
@@ -717,18 +713,14 @@ is refused; the recovery is the scope's working form ({§parse-recovery}).
 optional target and duration under {§send-wait-scope}. Their literal bodies begin
 below the header.
 
-§target-group **READ and KILL take a target group.** A READ or KILL heading may carry several
-`(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked
-pattern on the heading ({§naked-pattern}) supplies the default for each member without its own
-metadata `pattern`. The parser compiles the complete heading into one ordinary statement per
-member, in authored order, each with its own target, scope, metadata and resolved matcher. No
-duplicated first-member or group representation crosses the parser boundary. Every resulting
-statement retains the heading's source position and aside; a heading-level parse error refuses
-all its members, not valid sibling headings. A distilling body ({§log-kill-distillation}) lands
-once, with the first member. COPY and MOVE keep their two operands with their own meaning
-({§transfer-resource-selections}); every other operation takes one slot, and a second slot on its
-heading is the slot-opener diagnostic. The form is accepted, not taught: it rescues a bulk attempt
-written one path per slot.
+§target-group **READ and KILL take a target group.** A READ or KILL heading may carry several `(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked pattern on the heading ({§naked-pattern}) supplies the default for each member without its own metadata `pattern`. The form is accepted, not taught: it rescues a bulk attempt written one path per slot.
+
+| Fact | Rule |
+| --- | --- |
+| Compilation | the parser compiles the complete heading into one ordinary statement per member, in authored order, each with its own target, scope, metadata and resolved matcher; no duplicated first-member or group representation crosses the parser boundary |
+| Position and aside | every resulting statement retains the heading's source position and aside; a heading-level parse error refuses all its members, not valid sibling headings |
+| A distilling body ({§log-kill-distillation}) | lands once, with the first member |
+| Other operations | COPY and MOVE keep their two operands with their own meaning ({§transfer-resource-selections}); every other operation takes one slot, and a second slot on its heading is the slot-opener diagnostic |
 
 §safe-uri-target-groups **An explicit URI list is a target group.** In READ and KILL only,
 one path slot may contain several explicit `scheme://` URIs separated by top-level commas or
@@ -765,18 +757,13 @@ compact empty block or permit unmatched fences.
 | executors | The input body, including an unbracketed JSON object; metadata requires brackets. |
 | NOTE, WAIT, KILL without a target | The body. |
 
-§bare-option-object A bare option object is the option block, where the house option array owns the
-block. On SEND, BARE, WORK and FORK, heading text after the slots that is exactly one JSON object `{…}`, where the
-heading admits a block (BARE, WORK and FORK only after their target), is read
-as `[{…}]`: the AST carries the array form, the written heading renders it, and one
-warning-severity receipt names the indulgence in place of the {§heading-inline-body} advisory:
-"`SEND` took a bare option object; the taught form is `[{…}]`." Executor headings always read an
-unbracketed object as input under {§heading-inline-body}, regardless of registration or input media
-type; their metadata is only the bracketed slot ({§scheme-metadata-modifier}). A heading that already carries a block keeps the object as
-inline body. On FIND, READ and KILL the same text is the matcher
-({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
-that parses as a JSON object draws one advisory saying so: "`{…}` was read as the
-matcher." ({§diagnostic-observation}).
+§bare-option-object **A bare option object is the option block, where the house option array owns the block.** Executor headings always read an unbracketed object as input under {§heading-inline-body}, regardless of registration or input media type; their metadata is only the bracketed slot ({§scheme-metadata-modifier}).
+
+| Heading | `{…}` after the slots is |
+| --- | --- |
+| SEND, BARE, WORK and FORK, where the heading admits a block (BARE, WORK and FORK only after their target) | read as `[{…}]`: the AST carries the array form, the written heading renders it, and one warning-severity receipt names the indulgence in place of the {§heading-inline-body} advisory: "`SEND` took a bare option object; the taught form is `[{…}]`." |
+| One that already carries a block | inline body |
+| FIND, READ and KILL | the matcher ({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher that parses as a JSON object draws one advisory saying so: "`{…}` was read as the matcher." ({§diagnostic-observation}) |
 
 §operation-aside The final header modifier may be one single-line HTML
 comment. AstBuilder removes its delimiters and surrounding whitespace into
@@ -841,7 +828,7 @@ Worker; the shared reader withholds both from the owner's options.
 | {§turn-disposition} | WAIT requests parking; its literal body does not control scheduling, and its optional target is the label the… |
 | {§send-wait-scope} | WAIT's optional `[seconds]` metadata is a non-negative finite scalar bounding this park, not the lifetime of… |
 | {§send-directed-scope} | A recipient SEND carries an optional numeric scope after its target and metadata through to the addressed… |
-| {§kill-scope} | KILL takes an optional text-coordinate scope beside its target, numeric or anchored (```` ```KILL… |
+| {§kill-scope} | KILL takes an optional text-coordinate scope beside its target, and an optional matcher. |
 | {§bracket-metadata-slot} | Brackets are the owner's metadata modifier: the runtime or MCP service is the fence name, and tool input… |
 | {§text-scope-semantics} | Exact regions use 1-based lines and Unicode code-point columns. |
 | {§bare-statement} | BARE requests one isolated model inference. |
@@ -950,20 +937,13 @@ semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400). A
 targetless message takes no scope. A scope never changes the message body or
 disposition.
 
-§kill-scope KILL takes an optional text-coordinate scope beside its target, numeric or
-anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
-```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
-selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
-Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and
-`matcher`; no grouped AST reaches execution ({§target-group}).
-KILL requires a target. Its body is retained on a `log:///` target, where
-it is the model's distillation of what the KILL retires and lands as its own NOTE row
-({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one
-draws the advisory ({§matcher-body-redirect}). Beneath a `log:///` KILL the body is never read as
-a matcher; an inline pattern on the heading line still lifts.
-Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
-that span — of a log body's packet projection or of an entry's content. Core owns the
-one-way semantics: there is no operation that restores a scoped-away log body.
+§kill-scope **KILL takes an optional text-coordinate scope beside its target, and an optional matcher.** The scope is numeric or anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````); the matcher option selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}). Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and `matcher`; no grouped AST reaches execution ({§target-group}). KILL requires a target.
+
+| Fact | Rule |
+| --- | --- |
+| The body | retained on a `log:///` target, where it is the model's distillation of what the KILL retires and lands as its own NOTE row ({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one draws the advisory ({§matcher-body-redirect}); beneath a `log:///` KILL the body is never read as a matcher, while an inline pattern on the heading line still lifts |
+| Without a scope | KILL retires or deletes the whole target |
+| With one | it removes exactly that span — of a log body's packet projection or of an entry's content; Core owns the one-way semantics: there is no operation that restores a scoped-away log body |
 
 §bracket-metadata-slot Brackets are the owner's metadata modifier: the runtime
 or MCP service is the fence name, and tool input belongs in the body. A bracket
@@ -981,22 +961,16 @@ KILL admits only its one- and two-line forms for canonical log-body visibility:
 | two integers  | Whole physical lines `firstLine..lastLine`                          | Both lines are included                              |
 | four integers | Exact `startLine,startColumn,endLine,endColumn` region              | Start included, end excluded; equality is zero-width |
 
-§text-scope-semantics Exact regions use 1-based lines and Unicode code-point columns. One- and
-two-integer line selections normalize to the same exclusive-end `TextRegion`
-used by four-coordinate selections. Whole-line replacement deliberately
-accounts for newline separators; it is an ergonomic projection over exact
-replacement, not a different mimetype navigation mode. An end bound beyond
-the available content clamps to the final addressable endpoint; the start bound
-must resolve. `-1` as a line coordinate of any form is that final endpoint: the
-append point as a one-integer mutation scope, through the last line in an inclusive
-range, and the end of the content as an exact region's start or end, so `<1,1,-1,1>`
-is the whole text and `<-1,1,-1,1>` appends; as a column it is the end of its line,
-so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to that line. As an unadvertised
-ingestion tolerance, the runtime accepts three integers as
-`startLine,startColumn,endLine` and immediately normalizes them to the complete
-four-coordinate region ending after the final code point of `endLine`.
-Producers never emit that form. Other arities and decimal text coordinates are
-runtime 416 failures.
+§text-scope-semantics **Exact regions use 1-based lines and Unicode code-point columns.** One- and two-integer line selections normalize to the same exclusive-end `TextRegion` used by four-coordinate selections. Whole-line replacement deliberately accounts for newline separators; it is an ergonomic projection over exact replacement, not a different mimetype navigation mode. An end bound beyond the available content clamps to the final addressable endpoint; the start bound must resolve. Other arities and decimal text coordinates are runtime 416 failures.
+
+| `-1` as | Means |
+| --- | --- |
+| A one-integer mutation scope | the append point |
+| The end of an inclusive range | through the last line |
+| An exact region's start or end line | the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends |
+| A column | the end of its line, so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to that line |
+
+An unadvertised ingestion tolerance: the runtime accepts three integers as `startLine,startColumn,endLine` and immediately normalizes them to the complete four-coordinate region ending after the final code point of `endLine`; producers never emit that form.
 
 §bare-statement **BARE requests one isolated model inference.** Its optional
 path names a prompt resource; its body supplies inline prompt text. At least
@@ -1473,20 +1447,13 @@ complete aside opens the operation instead ({§naked-operation}). A registered e
 followed by an operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under
 the executor's own spelling. Quoted blocks, offset lines and names inside a sentence draw nothing.
 
-§recorded-emissions **The parser is regressed against emissions models actually produced,
-not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
-of every distinct parse shape observed across the live and demo drills — the operations
-authored, whether outside text appeared, and
-the status the engine recorded at the time. A fixture encodes what we believe a model
-emits; a recording encodes what one did, so only recordings test the shapes models actually
-produce (#802, #809).
-Shape coverage, not volume, is the point — 120 exemplars are ~60 KB against ~88 MB for
-every emission ever recorded. The recorded status is **provenance, never an assertion**:
-the contract has changed under these turns and will again, so the replay asserts only that
-today's parser still reads each emission the way the corpus says it does. Regenerate with
-`scriptify/extract-emission-corpus.ts --write` after a drill; a changed shape is the
-contract moving and the diff names every shape that moved with it. The extractor also
-reports how many recorded turns concluded in a way the current contract would reject.
+§recorded-emissions **The parser is regressed against emissions models actually produced, not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar of every distinct parse shape observed across the live and demo drills — the operations authored, whether outside text appeared, and the status the engine recorded at the time. A fixture encodes what we believe a model emits; a recording encodes what one did, so only recordings test the shapes models actually produce (#802, #809).
+
+| Fact | Rule |
+| --- | --- |
+| Shape coverage, not volume | 120 exemplars are ~60 KB against ~88 MB for every emission ever recorded |
+| The recorded status | **provenance, never an assertion**: the contract has changed under these turns and will again, so the replay asserts only that today's parser still reads each emission the way the corpus says it does |
+| Regeneration | `scriptify/extract-emission-corpus.ts --write` after a drill; a changed shape is the contract moving and the diff names every shape that moved with it; the extractor also reports how many recorded turns concluded in a way the current contract would reject |
 
 ## 12. Public API
 
@@ -1595,7 +1562,7 @@ than alternate consumer entry points:
 | {§mcp-server-definition} | 13.8 MCP server definitions |
 | {§mcp-oauth} | `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable HTTP server, included in that server's… |
 | {§application-port} | 13.9 Exterior application port |
-| {§application-worker-observation} | Worker observation exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a… |
+| {§application-worker-observation} | Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a… |
 | {§loop-lifecycle-vocabulary} | One projection maps a loop's durable status onto the lifecycle words every client renders, shared by the… |
 | {§application-loop-observation} | Loop observation exposes the durable scheduler state of work loops (excluding maintenance-only administrative… |
 <!-- /map -->
@@ -1850,20 +1817,13 @@ each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 
-§application-worker-observation Worker observation exposes durable identity,
-origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a
-child carrying a fork boundary; `work` for any other child), and `lifecycle`,
-the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle`
-when it has none). `selectWorkerLoop` chooses running before parked before queued;
-ties select the oldest unresolved sequence. With no live work, the latest terminal
-settlement wins (sequence breaks equal timestamps). Newer terminal history never
-hides unfinished work. Maintenance-only loops do not change this projection;
-their ordinary turns and results remain durable history. `readWorker` resolves exactly one id or name and returns
-`null` when absent. `listWorkers` filters collections by origin or lineage
-position; an omitted parent filter means every position and an explicit `null`
-means roots. Singular and plural cardinalities are distinct contracts.
-Observation is not a client binding or permission grant; a client renders kind
-and lifecycle, it never infers them.
+§application-worker-observation **Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none). A client renders kind and lifecycle, it never infers them.
+
+| Fact | Rule |
+| --- | --- |
+| `selectWorkerLoop` | chooses running before parked before queued; ties select the oldest unresolved sequence; with no live work, the latest terminal settlement wins (sequence breaks equal timestamps); newer terminal history never hides unfinished work; maintenance-only loops do not change this projection, and their ordinary turns and results remain durable history |
+| `readWorker` | resolves exactly one id or name and returns `null` when absent |
+| `listWorkers` | filters collections by origin or lineage position; an omitted parent filter means every position and an explicit `null` means roots; singular and plural cardinalities are distinct contracts |
 
 §loop-lifecycle-vocabulary One projection maps a loop's durable status onto the
 lifecycle words every client renders, shared by the status gauge and the worker
