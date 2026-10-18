@@ -111,22 +111,21 @@ composition ({§module-lifecycle}).
 
 ### §env-knob One environment reader
 
-`Knob` reads a declared key by name from the system environment, or an explicitly
-supplied assembled environment: `text`, `list`, `flag` (exactly `0` or `1`), `choice` (one of a
-vocabulary), `percent` (`80%` is 0.8) and `integer(name, floor)` (a safe
-integer of at least the floor, which bounds what the operator may say and is
-never a value used in the operator's place). `family(prefix)` reads every `<prefix><alias>`
-key with a non-empty value, in alias order; an empty value is a member turned off. An unset key is a broken floor
-and remains an internal error. Invalid operator values raise a
-`ConfigurationError` naming the key; the owning capability contains that
-diagnostic without inventing a value ({§configuration-repair-path}).
-The same class is available from `@plurnk/plurnk-meta/configuration-error`
-without loading discovery or observability machinery.
-No reader accepts a fallback: a signature that could carry one is a second
-home for a choice. A supplied environment is authoritative: missing keys do not
-fall through to the process, and reading never mutates either environment.
-Every package reads its knobs through it, so validation and failure wording
-have one home for runtime and offline configuration checks.
+`Knob` reads a declared key by name from the system environment, or an explicitly supplied assembled environment. Every package reads its knobs through it, so validation and failure wording have one home for runtime and offline configuration checks. No reader accepts a fallback: a signature that could carry one is a second home for a choice. A supplied environment is authoritative: missing keys do not fall through to the process, and reading never mutates either environment.
+
+| Reader | Reads |
+| --- | --- |
+| `text`, `list` | as named |
+| `flag` | exactly `0` or `1` |
+| `choice` | one of a vocabulary |
+| `percent` | `80%` is 0.8 |
+| `integer(name, floor)` | a safe integer of at least the floor, which bounds what the operator may say and is never a value used in the operator's place |
+| `family(prefix)` | every `<prefix><alias>` key with a non-empty value, in alias order; an empty value is a member turned off |
+
+| Failure | Rule |
+| --- | --- |
+| An unset key | a broken floor, and remains an internal error |
+| An invalid operator value | raises a `ConfigurationError` naming the key; the owning capability contains that diagnostic without inventing a value ({§configuration-repair-path}); the same class is available from `@plurnk/plurnk-meta/configuration-error` without loading discovery or observability machinery |
 
 ### §resource-environment Named resource environment projection
 

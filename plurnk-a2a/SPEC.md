@@ -166,20 +166,13 @@ Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
 
-§a2a-hosted-credentials **The exposure is a protected resource of the daemon's authority.** When
-the authority has an issuing face ({§credential-authority}), the card declares one `oauth2` scheme
-as its whole security requirement: the `clientCredentials` flow at the daemon's own token endpoint,
-`<issuer>/oauth/token`, with the one scope `a2a`, and `oauth2MetadataUrl` naming the issuer's RFC 8414
-document. The endpoint then admits only an access token the authority issued with that scope, checked
-before the SDK reads anything: no bearer is `401`, `UNAUTHENTICATED`, `ACCESS_TOKEN_REQUIRED` with
-`WWW-Authenticate: Bearer realm="plurnk"`; an unknown, expired, revoked or non-access token is `401`,
-`ACCESS_TOKEN_INVALID` with `error="invalid_token"`; a token without `a2a` is `403`,
-`PERMISSION_DENIED`, `INSUFFICIENT_SCOPE` with `error="insufficient_scope", scope="a2a"`, each in the
-binding's own error shape. The admitted caller is the SDK user named by the credential's subject. A
-remote agent is a declared client of this daemon ({§agui-oauth-clients}) holding the scope `a2a`. The
-card at the well-known path is never behind the perimeter, so a caller can discover the scheme. With
-no face the card declares nothing and the endpoint admits anonymously: the daemon's posture, never
-the exposure's own.
+§a2a-hosted-credentials **The exposure is a protected resource of the daemon's authority.** When the authority has an issuing face ({§credential-authority}), the card declares one `oauth2` scheme as its whole security requirement: the `clientCredentials` flow at the daemon's own token endpoint, `<issuer>/oauth/token`, with the one scope `a2a`, and `oauth2MetadataUrl` naming the issuer's RFC 8414 document. The endpoint then admits only an access token the authority issued with that scope, checked before the SDK reads anything; the admitted caller is the SDK user named by the credential's subject, and a remote agent is a declared client of this daemon ({§agui-oauth-clients}) holding the scope `a2a`. The card at the well-known path is never behind the perimeter, so a caller can discover the scheme. With no face the card declares nothing and the endpoint admits anonymously: the daemon's posture, never the exposure's own.
+
+| Refusal, in the binding's own error shape | Status |
+| --- | --- |
+| No bearer | `401`, `UNAUTHENTICATED`, `ACCESS_TOKEN_REQUIRED` with `WWW-Authenticate: Bearer realm="plurnk"` |
+| An unknown, expired, revoked or non-access token | `401`, `ACCESS_TOKEN_INVALID` with `error="invalid_token"` |
+| A token without `a2a` | `403`, `PERMISSION_DENIED`, `INSUFFICIENT_SCOPE` with `error="insufficient_scope", scope="a2a"` |
 
 §a2a-worker-ownership New Task workers are fresh model children of the configured
 existing parent and inherit its approval owner.
@@ -283,20 +276,13 @@ Agent Card at the definition's URL (`card-unreachable`), and connects only
 through an advertised HTTP+JSON `1.0` interface (`interface-unsupported`),
 reusing an unchanged attachment across publications.
 
-§a2a-outbound-credentials **An `oauth2` authorization obtains its own access token.** It uses
-the `client_credentials` grant at the definition's `tokenUrl`, else at the card's
-`clientCredentials` flow (`token-endpoint-unknown` when neither names one), requesting the
-definition's `scope`, else every scope that flow offers. The token is obtained at preparation
-(`token-unobtainable` when the token endpoint refuses), presented as the bearer on every request,
-and obtained again once when the agent answers `401`. The card is discovered without it. The outcome detail carries
-the card's name, version, description, skill identifiers, and streaming
-capability. The family publishes no runtimes of its own; its snapshot is the
-workspace's `alias → client` map, and its scheme face ({§a2a-scheme-face})
-resolves an authority against the Functionality of the operation's workspace
-(`ctx.workspaceId`):
-an unknown or disabled alias is 404 `agent-not-configured`, an unavailable
-alias carries its one exact preparation Problem. Every worker in a workspace
-resolves the same alias definition; independent workspaces may differ.
+§a2a-outbound-credentials **An `oauth2` authorization obtains its own access token.** It uses the `client_credentials` grant at the definition's `tokenUrl`, else at the card's `clientCredentials` flow (`token-endpoint-unknown` when neither names one), requesting the definition's `scope`, else every scope that flow offers. The token is obtained at preparation (`token-unobtainable` when the token endpoint refuses), presented as the bearer on every request, and obtained again once when the agent answers `401`. The card is discovered without it.
+
+| Fact | Rule |
+| --- | --- |
+| The outcome detail | carries the card's name, version, description, skill identifiers, and streaming capability |
+| The snapshot | the family publishes no runtimes of its own; its snapshot is the workspace's `alias → client` map |
+| The scheme face ({§a2a-scheme-face}) | resolves an authority against the Functionality of the operation's workspace (`ctx.workspaceId`): an unknown or disabled alias is 404 `agent-not-configured`, an unavailable alias carries its one exact preparation Problem; every worker in a workspace resolves the same alias definition, and independent workspaces may differ |
 
 §a2a-problem-detail A2A Problems state the failed boundary fact without
 guessing intent or duplicating structured aliases, URLs, and interfaces in

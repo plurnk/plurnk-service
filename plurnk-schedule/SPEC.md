@@ -44,18 +44,14 @@ status, not a failure or a claim of delivery; no dates or wake conditions change
 
 ## §schedule-zone Zone
 
-`TZ` is the zone a rule is read in and the zone the time is told in. The
-package declares `TZ=UTC` in `.env.defaults`; the operator's environment
-overrides it, a workspace overrides it through the `env` family
-({§workspace-env}), and a Worker's own `env` override wins for the verbs that
-Worker invokes ({§functionality-scope}). A call carrying `env` metadata with
-`TZ` is read in that zone for that call. A rule keeps the zone stamped at its
-`add`; a later `env` change moves no existing rule. Without a `DTSTART` a rule starts when it is read, at the
-next whole second in the effective zone, so its first occurrence is still
-ahead: a workspace rule is read at `add`, a service rule once, when the daemon
-starts, in the service's zone. A floating `DTSTART` is read in the effective
-zone; a `DTSTART` with a `TZID` or a UTC `Z` keeps its own zone. An unknown
-zone refuses with `zone-unknown`.
+`TZ` is the zone a rule is read in and the zone the time is told in. An unknown zone refuses with `zone-unknown`.
+
+| Fact | Rule |
+| --- | --- |
+| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Worker's own `env` override wins for the verbs that Worker invokes ({§functionality-scope}); a call carrying `env` metadata with `TZ` is read in that zone for that call |
+| A rule's zone | the zone stamped at its `add`; a later `env` change moves no existing rule |
+| Without a `DTSTART` | a rule starts when it is read, at the next whole second in the effective zone, so its first occurrence is still ahead: a workspace rule is read at `add`, a service rule once, when the daemon starts, in the service's zone |
+| A `DTSTART` | a floating one is read in the effective zone; one with a `TZID` or a UTC `Z` keeps its own zone |
 
 ## §schedule-clock The clock
 
@@ -72,21 +68,14 @@ like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
 
 ## §schedule-delivery Delivery
 
-The module holds one armed occurrence per enabled (workspace, alias). At the
-occurrence it resolves the target worker by name and delivers the prompt
-through the application port's `runLoop` with the source `schedule://<alias>`.
-The message joins the worker's live loop, waking it if parked, or starts a new
-loop ({§message-arrival}, {§message-causal-source}). Delivery carries no approval
-authority; the receiving worker retains its owner ({§worker-ownership}).
-A future occurrence is not live work for WAIT ({§wait-obligation-matrix}); it
-neither holds a loop open nor concludes it. The next occurrence
-then arms from the present: a late fire delivers once and skips what it
-missed, never a backlog. A missing worker or a refused delivery disarms the
-rule and lists it `unavailable` with the Problem; `enable` retries. A failure
-belongs to the complete definition, including its target and prompt, not just
-the recurrence. Retry or replacement clears it only on successful publication. After
-every delivery attempt the family's outcomes are refreshed where the workspace
-is resident.
+The module holds one armed occurrence per enabled (workspace, alias). At the occurrence it resolves the target worker by name and delivers the prompt through the application port's `runLoop` with the source `schedule://<alias>`. Delivery carries no approval authority; the receiving worker retains its owner ({§worker-ownership}). After every delivery attempt the family's outcomes are refreshed where the workspace is resident.
+
+| Fact | Rule |
+| --- | --- |
+| The message | joins the worker's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-causal-source}) |
+| A future occurrence | not live work for WAIT ({§wait-obligation-matrix}); it neither holds a loop open nor concludes it |
+| The next occurrence | arms from the present: a late fire delivers once and skips what it missed, never a backlog |
+| A missing worker or a refused delivery | disarms the rule and lists it `unavailable` with the Problem; `enable` retries; a failure belongs to the complete definition, including its target and prompt, not just the recurrence, and retry or replacement clears it only on successful publication |
 
 §schedule-first-arming **A new or changed rule's first arming is judged from admission.**
 `add`/`replace` reads the rule at the instant it admits it; preparation and arming come later, and a single
