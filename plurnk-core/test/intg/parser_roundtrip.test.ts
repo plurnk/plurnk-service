@@ -173,7 +173,7 @@ for (const [header, body] of [
     ["SEND (worker:///result)", "Paris"],
     ["sh", "uname -r"],
 ]) {
-    test(`parser: fence length does not change the AST (${header})`, () => {
+    test(`{§fence-boundary} parser: fence length does not change the AST (${header})`, () => {
         const lines = body === "" ? "" : `${body}\n`;
         const short = parseOne(`\`\`\`\`${header}\n${lines}\`\`\`\``);
         const long = parseOne(`\`\`\`\`\`${header}\n${lines}\`\`\`\`\``);

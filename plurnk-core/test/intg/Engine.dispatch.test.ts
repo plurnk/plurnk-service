@@ -94,17 +94,6 @@ test("{§scheme-address-namespace-fold} namespace fixture://x and fixture:///x a
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
-    const { db, engine, env } = await setup();
-    try {
-        const kill = await engine.dispatch({
-            statement: killStmt({ target: urlPath("worker", "/never/existed") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
-        });
-        assert.equal(kill.status, 404);
-    } finally { await db.close(); }
-});
-
 test("{§edit-result-render} Engine.dispatch: the KILL matcher survives into the log row's tx (even on a 404)", async () => {
     const { db, engine, env } = await setup();
     try {

@@ -3,6 +3,8 @@
 The shared invocation, input, and result contracts are {§executor-contract},
 {§executor-stdin}, and {§executor-results}.
 
+§jq-identity-default **An empty body runs the identity filter `.`**: the input passes through unchanged.
+
 ## §problems-executor-jq Problems
 
 | code | status | condition |

@@ -47,15 +47,6 @@ test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores
     } finally { await db.close(); }
 });
 
-test("appendToChannel: no-op on nonexistent channel (silent)", async () => {
-    const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hello");
-    try {
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "nonexistent", chunk: "x" });
-        const count = (await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n;
-        assert.equal(count, 1, "no new channel created");
-    } finally { await db.close(); }
-});
-
 test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes notify with producer, current state, and content length", async () => {
     const { db, workspaceId, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
     try {

@@ -40,7 +40,7 @@ const cases = [
 // {§read-pattern} {§edit-pattern} {§kill-pattern} {§copy-move-pattern}
 for (const specimen of cases) {
     for (const operation of ["FIND", "READ", "EDIT", "KILL", "COPY", "MOVE"] as const) {
-        test(`pattern composition: ${specimen.name} ${operation} selects the advertised content`, async () => {
+        test(`{§mimetype-content-query} pattern composition: ${specimen.name} ${operation} selects the advertised content`, async () => {
             const db = await openMigrated();
             try {
                 const env = await seedEnvelope(db, `patterns-${crypto.randomUUID()}`, { producer: "client" });

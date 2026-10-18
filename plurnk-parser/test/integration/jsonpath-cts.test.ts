@@ -21,7 +21,7 @@ test("{§matcher-refusal} the pinned JSONPath corpus covers every admission and 
 });
 
 for (const item of corpus.tests) {
-    test(`JSONPath CTS: ${item.name}`, () => {
+    test(`{§matcher-prefix-claims} JSONPath CTS: ${item.name}`, () => {
         if (item.invalid_selector) assert.throws(() => engine.compile(item.selector), JSONPathError);
         else assert.doesNotThrow(() => engine.compile(item.selector));
 

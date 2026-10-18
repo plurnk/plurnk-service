@@ -18,7 +18,7 @@ for (const [name, header, body] of [
     ["annotation", "READ (data.json) $[", "retained content"],
 ] as const) {
     for (const separate of [false, true]) {
-        test(`failed ${name} normalization does not leak advisories into ${separate ? "another parse" : "the next statement"}`, () => {
+        test(`{§matcher-refusal} failed ${name} normalization does not leak advisories into ${separate ? "another parse" : "the next statement"}`, () => {
             const malformed = frame(header, body);
             const valid = frame("READ (data.json) $.ok", null);
             const results = separate

@@ -132,7 +132,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
 }
 
 for (const sqliteEnabled of [false, true]) {
-    test(`discover composes installed scheme and MIME display metadata with SQLite ${sqliteEnabled ? "explicitly enabled" : "disabled by default"}`, async (t) => {
+    test(`{§agui-discovery-contract} discover composes installed scheme and MIME display metadata with SQLite ${sqliteEnabled ? "explicitly enabled" : "disabled by default"}`, async (t) => {
         if (sqliteEnabled) {
             const previous = process.env.PLURNK_EXECS_SQLITE;
             process.env.PLURNK_EXECS_SQLITE = "1";

@@ -88,7 +88,7 @@ test("{§module-workspace-quiescence} a queued exclusive request blocks later or
     (await later)();
 });
 
-test("exclusive mode admits only its selected lineage and serializes those turns", async () => {
+test("{§module-workspace-quiescence} exclusive mode admits only its selected lineage and serializes those turns", async () => {
     const descendants = new Set(["7:7", "8:7"]);
     const gate = new WorkspaceGate(async (workerId, rootWorkerId) => descendants.has(`${workerId}:${rootWorkerId}`));
     const exclusive = gate.requestExclusive(1);

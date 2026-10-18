@@ -21,7 +21,7 @@ test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscripti
     assert.equal(await registry.cancel(7), false);
 });
 
-test("LiveSubscriptions rejects duplicate ownership", () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions rejects duplicate ownership", () => {
     const registry = new LiveSubscriptions();
     registry.register(7, { cancel() {} });
     assert.throws(() => registry.register(7, { cancel() {} }), /already registered/);

@@ -8,7 +8,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const sourceFiles = (): string[] =>
     readdirSync(root).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 
-test("provider source does not import the service or database", () => {
+test("{§runtime-import-direction} provider source does not import the service or database", () => {
     for (const file of sourceFiles()) {
         const source = readFileSync(join(root, file), "utf8");
         assert.ok(!/from\s+["']@plurnk\/plurnk-service/.test(source), `${file} imports the service`);

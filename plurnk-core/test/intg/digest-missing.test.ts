@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { missingDigestDirs, recoverDigest } from "../../bin/digest-missing.ts";
 import { openMigrated } from "./_db.ts";
 
-test("digest:missing selects only interrupted benchmark specimens", async () => {
+test("{§tier-census} digest:missing selects only interrupted benchmark specimens", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-missing-"));
     try {
         const interrupted = join(root, "demo-interrupted-a1");
@@ -35,7 +35,7 @@ test("digest:missing selects only interrupted benchmark specimens", async () => 
     }
 });
 
-test("digest:missing replaces an interrupted partial digest with a complete one", async (t) => {
+test("{§tier-census} digest:missing replaces an interrupted partial digest with a complete one", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-recover-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const db = await openMigrated(join(root, "plurnk.db"));

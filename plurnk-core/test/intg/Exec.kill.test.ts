@@ -39,7 +39,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 for (const scheme of ["sh", "exec"]) {
-test(`Engine.dispatch: KILL through ${scheme} aborts a running exec — 200, spawn drained`, async () => {
+test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a running exec — 200, spawn drained`, async () => {
     const db = await openMigrated();
     try {
         const registry = new SchemeRegistry();

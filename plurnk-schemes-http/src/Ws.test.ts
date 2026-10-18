@@ -353,7 +353,7 @@ for (const [form, data] of [
     ["Blob", new Blob([Uint8Array.of(1, 2, 3)])],
     ["ArrayBuffer", new ArrayBuffer(3)],
 ] as const) {
-    test(`READ: a ${form} binary frame terminates the textual owner after its durable prefix`, async () => {
+    test(`{§ws-lifecycle} READ: a ${form} binary frame terminates the textual owner after its durable prefix`, async () => {
         const firstGate = Promise.withResolvers<void>();
         const attempts: string[] = [];
         const sock = fakeSocket();

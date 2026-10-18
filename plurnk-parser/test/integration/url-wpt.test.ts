@@ -32,7 +32,7 @@ test("{§path-syntax} the pinned WPT corpus accounts for every target category",
 });
 
 for (const [index, item] of cases.entries()) {
-    test(`WPT URL ${index}: ${JSON.stringify(item.input)}`, {
+    test(`{§path-syntax} WPT URL ${index}: ${JSON.stringify(item.input)}`, {
         skip: category(item) === "outside-heading" ? "Raw newlines and < are outside the target-slot language." : false,
     }, (t) => {
         const target = PathSyntax.escapeTarget(item.input);

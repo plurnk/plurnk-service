@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { latestStableNodeVersion, namesNodeVersion, versionsNamed } from "../demo/_web-oracle.ts";
 
-test("web story oracle distinguishes latest stable from a newer maintenance date or an LTS label", () => {
+test("{§demo-oracles} web story oracle distinguishes latest stable from a newer maintenance date or an LTS label", () => {
     assert.equal(latestStableNodeVersion([
         { version: "v24.99.2", lts: "Example" },
         { version: "v26.9.2", lts: false },
@@ -15,7 +15,7 @@ test("web story oracle distinguishes latest stable from a newer maintenance date
     }
 });
 
-test("web story oracle requires the actual version, not arbitrary digits or a partial match", () => {
+test("{§demo-oracles} web story oracle requires the actual version, not arbitrary digits or a partial match", () => {
     for (const answer of ["Node.js **v26.10.2** is the latest stable release.", "The latest stable is 26.10.2."]) {
         assert.equal(namesNodeVersion(answer, "v26.10.2"), true);
     }

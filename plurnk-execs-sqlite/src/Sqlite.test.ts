@@ -95,7 +95,7 @@ test("{§executor-sinks} a relative target resolves the database against cwd, no
     }
 });
 
-test("mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (rows)", async () => {
+test("{§sqlite-statement-results} mutation round-trip against a file db: CREATE, INSERT (changes), SELECT (rows)", async () => {
     const db = tempDb();
     const create = await run("CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)", db);
     assert.equal(create.result.status, 200);

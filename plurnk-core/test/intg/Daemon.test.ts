@@ -630,7 +630,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
     }
 });
 
-test("failed worker Functionality deactivation remains resident for the retry owner", async (t) => {
+test("{§module-workspace-residency-facet} failed worker Functionality deactivation remains resident for the retry owner", async (t) => {
     const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
     const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
     process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";

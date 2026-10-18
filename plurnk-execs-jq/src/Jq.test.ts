@@ -89,7 +89,7 @@ test("{§executor-subprocess-routing} a relative target resolves against cwd, no
     assert.equal(out?.trim(), "3", "jq resolved the relative target inside cwd");
 });
 
-test("empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async () => {
+test("{§jq-identity-default} empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async () => {
     const p = tmp();
     await writeFile(p, '{"a":1}');
     const { result, out } = await run("", p);

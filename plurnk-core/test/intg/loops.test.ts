@@ -170,7 +170,7 @@ test("{§validation-topology} loops: worker_id NOT NULL — insert without worke
     } finally { await db.close(); }
 });
 
-test("loops: empty prompt is allowed", async () => {
+test("{§validation-topology} loops: empty prompt is allowed", async () => {
     const db = await openMigrated();
     try {
         const workerId = await seedWorker(db, "ws-loops-emptyprompt");

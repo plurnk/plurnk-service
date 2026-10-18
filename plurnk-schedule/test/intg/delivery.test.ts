@@ -95,7 +95,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
 };
 
 for (const workerName of ["recipient", "Approach_A"]) {
-    test(`a scheduled message reaches ${workerName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
+    test(`{§schedule-delivery} a scheduled message reaches ${workerName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
         await assertDelivery(workerName);
     });
 }

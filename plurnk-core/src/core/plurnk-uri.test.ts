@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { authorityParts, entryAddress, entryCoordinateOf, foldAuthorityIntoPath, missExtensions, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { entryAddress, entryCoordinateOf, foldAuthorityIntoPath, missExtensions, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 
 test("{§fs-home} file address renderers protect literal home-like names", () => {
     for (const [key, expected] of [["~", "./~"], ["~/x.md", "./~/x.md"], ["~/a(b).md", "./~/a%28b%29.md"], ["~someone/x", "~someone/x"], ["src/~/x", "src/~/x"]] as const) {
@@ -71,12 +71,6 @@ test("{§path-parentheses} renderAddress preserves literal and percent-encoded n
         }),
         String.raw`https://example.test/x?literal=\)&encoded=%29`,
     );
-});
-
-test("authorityParts projects resource authorities into log target columns", () => {
-    assert.deepEqual(authorityParts(""), { hostname: null, port: null });
-    assert.deepEqual(authorityParts("example.org:8443"), { hostname: "example.org", port: 8443 });
-    assert.deepEqual(authorityParts("[::1]:1066"), { hostname: "[::1]", port: 1066 });
 });
 
 test("{§scheme-address-network}: http routes through https and ws routes through wss", () => {

@@ -41,7 +41,7 @@ class AttributingHandler extends BaseHandler {
     }
 }
 
-test("Mimetypes composes static tags with hooks from already-loaded handlers only", async () => {
+test("{§extension-attribution} Mimetypes composes static tags with hooks from already-loaded handlers only", async () => {
     const mimetypes = new Mimetypes({
         discovery,
         loader: async () => ({ default: AttributingHandler }),

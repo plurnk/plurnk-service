@@ -311,7 +311,7 @@ test("{§proposal-accept-applies}: an accepted scheme's successful application s
     assert.equal(persisted?.outcome, "queued");
 });
 
-test("applyResolution rejects projected fields that could override the operation result contract", async () => {
+test("{§methods-proposal-resolve} applyResolution rejects projected fields that could override the operation result contract", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
 
     await assert.rejects(

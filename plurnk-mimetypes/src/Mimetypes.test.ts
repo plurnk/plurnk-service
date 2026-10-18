@@ -173,7 +173,7 @@ const binaryInfo: HandlerInfo = {
     source: "package",
 };
 
-it("projects deterministic framework-owned MIME display metadata without loading handlers", async () => {
+it("{§mimetype-client-display} projects deterministic framework-owned MIME display metadata without loading handlers", async () => {
     const unmarked: HandlerInfo = {
         ...plainInfo,
         mimetype: "application/x-unmarked",

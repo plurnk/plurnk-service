@@ -4,7 +4,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 
-test("SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
+test("{§extension-namespace-arbitration} SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
     const r = new SchemeRegistry();
     assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "message", "note", "ops", "reasoning", "worker"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
 });

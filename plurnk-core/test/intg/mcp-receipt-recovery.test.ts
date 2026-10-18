@@ -16,7 +16,7 @@ import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 // {§exec-stream-page} {§stream-observation-result} — the complete MCP transport →
 // execution → invocation receipt → automatic observation → explicit recovery path.
 for (const body of [null, '{"query":"fixture"}']) {
-    test(`MCP ${body === null ? "bodyless" : "one-line JSON"} invocation and output retain distinct readable extents`, { timeout: 30_000 }, async (t) => {
+    test(`{§stream-observation-result} MCP ${body === null ? "bodyless" : "one-line JSON"} invocation and output retain distinct readable extents`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
         const output = Array.from({ length: 40 }, (_, index) => `result ${index + 1}`).join("\n");
         let calls = 0;

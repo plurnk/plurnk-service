@@ -224,7 +224,7 @@ for (const specimen of [
     { label: "non-empty failure", content: "driver failed\n", status: 500 },
     { label: "empty failure", content: "", status: 500 },
 ] as const) {
-    test(`a completed but unobserved ${specimen.label} keeps a same-turn wait alive for its next-packet terminal observation`, async () => {
+    test(`{§exec-stream-page} a completed but unobserved ${specimen.label} keeps a same-turn wait alive for its next-packet terminal observation`, async () => {
         const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
             if (specimen.content !== "") args.write("results", specimen.content);
             return specimen.status === 200

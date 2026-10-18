@@ -39,7 +39,7 @@ for (const media of [
     { kind: "audio", bytes: wav(), mimeType: "audio/wav", hex: /1:52\n2:49\n3:46/u },
 ] as const) {
 for (const modalities of [[media.kind], []] as InputModality[][]) {
-    test(`MCP prompt ${media.kind} READ reaches ${modalities.length ? "native provider input" : "text-only fallback"} without injecting prompt roles`, { timeout: 20_000 }, async (t) => {
+    test(`{§packet-attachment-parts} MCP prompt ${media.kind} READ reaches ${modalities.length ? "native provider input" : "text-only fallback"} without injecting prompt roles`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
         let promptGets = 0;
         const served = await serveMcpHttp(t, createMcpHandler(() => {

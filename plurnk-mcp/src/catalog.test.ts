@@ -117,7 +117,7 @@ test("{§mcp-catalog-deadline}: a real tool operation may outlast the discovery 
 });
 
 for (const [method, collection] of lists) {
-    test(`a missing ${method} leaves the other catalog collections usable`, async (t) => {
+    test(`{§mcp-catalog-list-absence} a missing ${method} leaves the other catalog collections usable`, async (t) => {
         let missing = true;
         const served = await serveMcpHttp(t, handler(), async (request) => {
             const body = await request.clone().json();
@@ -152,7 +152,7 @@ for (const [method, collection] of lists) {
 }
 
 for (const code of [-32602, -32603]) {
-    test(`a list failure ${code} is not treated as an unsupported method`, async (t) => {
+    test(`{§mcp-catalog-list-absence} a list failure ${code} is not treated as an unsupported method`, async (t) => {
         const served = await serveMcpHttp(t, handler(), async (request) => {
             const body = await request.clone().json();
             return body.method === "resources/templates/list"

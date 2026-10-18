@@ -15,7 +15,7 @@ const execution = (target: string | null, body = ""): ScriptReceipt => ({
     attrs: JSON.stringify({ stream }), status_rx: 200, origin: "model",
 });
 
-test("script oracle recognizes actual shell terminal receipts through the daemon", async (approvalContext) => {
+test("{§demo-oracles} script oracle recognizes actual shell terminal receipts through the daemon", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-script-oracle-"));
     try {
@@ -44,13 +44,13 @@ const receipt = (output = "GREETING\n", exitCode = 0, source = stream): ScriptRe
     attrs: JSON.stringify({ streamEnd: output.length }), status_rx: 200, origin: "_plurnk",
 });
 
-test("script oracle accepts native script execution and shell commands with observed successful output", () => {
+test("{§demo-oracles} script oracle accepts native script execution and shell commands with observed successful output", () => {
     for (const exec of [execution("greet.sh"), execution(null, "sh ./greet.sh"), execution(null, "chmod +x greet.sh && ./greet.sh")]) {
         assert.equal(observedScriptExecution([exec], [receipt()], "greet.sh", "GREETING"), true);
     }
 });
 
-test("#807: a model that verifies around the run is not failed for it", () => {
+test("{§demo-oracles} #807: a model that verifies around the run is not failed for it", () => {
     // The recorded specimen (demo-script-mGTn6u): the model listed the file, ran it, and echoed
     // the exit status. The greeting is on its own line between the two; that is better practice
     // than printing it alone, and the oracle must not punish it.
@@ -63,7 +63,7 @@ test("#807: a model that verifies around the run is not failed for it", () => {
     }
 });
 
-test("script oracle rejects claimed, unobserved, failed, unrelated and mismatched executions", () => {
+test("{§demo-oracles} script oracle rejects claimed, unobserved, failed, unrelated and mismatched executions", () => {
     const cases: Array<[ScriptReceipt[], ScriptReceipt[]]> = [
         [[], []],
         [[execution("greet.sh")], []],

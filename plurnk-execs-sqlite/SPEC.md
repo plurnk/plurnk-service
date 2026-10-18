@@ -4,6 +4,8 @@ The shared invocation and result contracts are {§executor-contract} and
 {§executor-results}. Execution uses synchronous `node:sqlite`; cancellation is
 checked before the statement starts, not during its execution.
 
+§sqlite-statement-results **One statement, one result: a mutation reports its `changes`, a query its `rows`**, both against the named database file, which a mutation changes durably.
+
 ## §problems-executor-sqlite Problems
 
 | code | status | condition |

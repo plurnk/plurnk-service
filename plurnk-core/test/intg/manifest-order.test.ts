@@ -17,7 +17,7 @@ const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, schem
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target, lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
-test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
+test("{§find-result-projection} catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `mtime-${crypto.randomUUID()}`);

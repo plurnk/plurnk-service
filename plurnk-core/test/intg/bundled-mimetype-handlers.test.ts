@@ -140,14 +140,14 @@ test("{§mimetype-pdf-facts} the default service installs its image and PDF owne
 });
 
 for (const c of CASES) {
-    test(`${c.label}: extension '${c.ext}' routes to '${c.expectedMimetype}'`, async () => {
+    test(`{§bundled-set} ${c.label}: extension '${c.ext}' routes to '${c.expectedMimetype}'`, async () => {
         await mimetypes.ready();
         const detected = await mimetypes.detect({ ext: c.ext });
         assert.equal(detected, c.expectedMimetype,
             `extension '${c.ext}' should resolve to '${c.expectedMimetype}', got '${detected}'`);
     });
 
-    test(`${c.label}: process produces the structural surface for sample content`, async () => {
+    test(`{§bundled-set} ${c.label}: process produces the structural surface for sample content`, async () => {
         await mimetypes.ready();
         const result = await mimetypes.process({ content: c.sampleContent, ext: c.ext }, { channels: ["symbols"] });
         assert.equal(result.mimetype, c.expectedMimetype);
