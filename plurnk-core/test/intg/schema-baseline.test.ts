@@ -492,7 +492,7 @@ test("{§db-migrations} {§skills-module}: the skills family state moves to its 
 test("{§db-migrations} {§target-group}: stored groups normalize without rewriting original evidence or historic selection meaning", async () => {
     const path = await released(V1_27_0);
     const operation = (heading: string): ReadStatement | KillStatement => {
-        const item = PlurnkParser.parseStatements(PlurnkParser.frame(heading, null)).items.find((item) => item.kind === "statement");
+        const item = PlurnkParser.parseStatements(PlurnkParser.frame(heading, null)).items.find((candidate) => candidate.kind === "statement");
         assert.ok(item?.kind === "statement" && (item.statement.op === "READ" || item.statement.op === "KILL"));
         return item.statement;
     };

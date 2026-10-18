@@ -255,7 +255,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-home} {
                 const notices = notifications() as { notice: Notice }[];
                 const normalized = notices.map(({ notice }) => notice).filter(({ kind }) => kind === "path_normalized");
                 assert.equal(normalized.length, form === "literal" ? 1 : 10, "one notice per authored absolute/home operand, never per bound key or automatic observation");
-                assert.ok(normalized.every(({ source, level }) => source === "scheme:file" && level === "warn"));
+                assert.ok(normalized.every((notice) => notice.source === "scheme:file" && notice.level === "warn"));
                 if (form === "literal") {
                     assert.equal(normalized[0].message, "Path resolved to './~/moved.txt'.");
                     assert.ok(userText(provider.received[2]).includes("./~/source.txt"), "literal keys are rendered as reusable addresses");

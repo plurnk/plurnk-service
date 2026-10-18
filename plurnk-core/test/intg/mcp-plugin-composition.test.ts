@@ -16,7 +16,7 @@ import { mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { waitFor } from "./_rpc.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
-    const item = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) }).items.find((item) => item.kind === "statement");
+    const item = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) }).items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind, "statement");
     return item.statement;
 };

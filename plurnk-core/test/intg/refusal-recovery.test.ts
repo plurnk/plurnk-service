@@ -170,7 +170,7 @@ test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives it
     const stream = await executionAddress(db, ids.turnId, sequence());
     let ended: { status: number; problem: Problem } | undefined;
     for (let attempt = 0; attempt < 60 && ended === undefined; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((settle) => setTimeout(settle, 250));
         const read = await dispatch(`\`\`\`\`READ (${stream})\`\`\`\``);
         if (read.status === 504) ended = read;
     }

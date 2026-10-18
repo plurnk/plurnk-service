@@ -367,7 +367,7 @@ export default class PacketBuilder {
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
         const unchangedLog = logSections.filter((section) => section.slot === "user").every((section) =>
             drafts.some((candidate) => candidate.name === section.name && candidate.content === section.content && candidate.slot === section.slot));
-        const attachments = nativeParts.filter(({ section }) => drafts.some(({ name }) => name === section));
+        const attachments = nativeParts.filter(({ section }) => drafts.some((draft) => draft.name === section));
         const attachmentsWeight = attachments.reduce((sum, { weight }) => sum + weight, 0);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {

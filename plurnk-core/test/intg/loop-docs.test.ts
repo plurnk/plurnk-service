@@ -103,7 +103,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
         });
         assert.equal(result.status, 200);
         const rows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: parentId });
-        assert.deepEqual(rows.filter(({ source }) => source === "worker://child"), [],
+        assert.deepEqual(rows.filter((row) => row.source === "worker://child"), [],
             "the parent's real packet path contains no invented child deliverable");
     } finally { await db.close(); }
 });

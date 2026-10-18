@@ -60,7 +60,7 @@ for (const [op, status] of [["WAIT", 202]] as const) {
                 const warnings = result.items.filter((item) => item.kind === "error");
                 assert.equal(warnings.length, decoration.includes("[") ? 1 : 0, source);
                 assert.ok(warnings.every((item) => item.kind === "error" && item.error.severity === "warning"));
-                const item = result.items.find((item) => item.kind === "statement");
+                const item = result.items.find((candidate) => candidate.kind === "statement");
                 assert.ok(item?.kind === "statement" && TurnDisposition.is(item.statement));
                 const path = decoration.match(/\(([^)]+)\)/u)?.[1] ?? null;
                 assert.equal(item.statement.target?.raw ?? null, path, source);

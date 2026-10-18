@@ -22,7 +22,7 @@ describe("TextHtml — heading extraction", () => {
         const syms = await symbolsOf(html);
         const headings = syms.filter((s) => s.kind === "heading");
         assert.equal(headings.length, 3);
-        assert.deepEqual(headings.map((h) => ({ n: h.name, l: h.level })), [
+        assert.deepEqual(headings.map((heading) => ({ n: heading.name, l: heading.level })), [
             { n: "Top", l: 1 },
             { n: "Section", l: 2 },
             { n: "Sub", l: 3 },

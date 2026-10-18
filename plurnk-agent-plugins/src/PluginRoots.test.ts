@@ -22,7 +22,7 @@ test("{§agent-plugins-roots} earlier roots shadow later ones by manifest name, 
     await plugin(global, "shared", "shared");
     await plugin(global, "beta", "only-global");
     const { plugins, reports } = await PluginRoots.discover([{ scope: "project", directory: project }, { scope: "global", directory: global }]);
-    assert.deepEqual(plugins.map(({ scope, manifest }) => `${scope}:${manifest.name}`), ["project:only-project", "project:shared", "global:only-global"]);
+    assert.deepEqual(plugins.map((plugin) => `${plugin.scope}:${plugin.manifest.name}`), ["project:only-project", "project:shared", "global:only-global"]);
     assert.deepEqual(reports.map(({ root, section, outcome }) => ({ root, section, outcome })), [{ root: join(global, "shared"), section: "client", outcome: "shadowed" }]);
 });
 
@@ -48,7 +48,7 @@ test("{§agent-plugins-roots} explicit installed directories follow roots in the
         { scope: "npm", directory: join(npm, "published") },
         { scope: "npm", directory: join(npm, "other") },
     ]);
-    assert.deepEqual(plugins.map(({ scope, manifest }) => [scope, manifest.name]), [["global", "shared"], ["npm", "npm-only"]]);
+    assert.deepEqual(plugins.map((plugin) => [plugin.scope, plugin.manifest.name]), [["global", "shared"], ["npm", "npm-only"]]);
     assert.deepEqual(reports.map(({ outcome }) => outcome), ["shadowed"]);
 });
 
@@ -60,7 +60,7 @@ test("{§agent-plugins-roots} files, dot-entries, and missing roots hold no plug
     await mkdir(join(base, ".cache"));
     await mkdir(join(base, "data"));
     const { plugins, reports } = await PluginRoots.discover([{ scope: "global", directory: base }, { scope: "absent", directory: join(base, "missing") }]);
-    assert.deepEqual(plugins.map(({ manifest }) => manifest.name), ["real"]);
+    assert.deepEqual(plugins.map((plugin) => plugin.manifest.name), ["real"]);
     assert.deepEqual(reports.map(({ root, path, section, outcome }) => ({ root, path, section, outcome })), [
         { root: join(base, "data"), path: "plugin.json", section: "5.1", outcome: "rejected" },
     ]);
@@ -77,7 +77,7 @@ test("{§agent-plugins-roots} unreadable roots and candidates are reported witho
     const { plugins, reports } = await PluginRoots.discover([
         { scope: "project", directory: invalidRoot }, { scope: "global", directory: validRoot },
     ]);
-    assert.deepEqual(plugins.map(({ manifest }) => manifest.name), ["healthy"]);
+    assert.deepEqual(plugins.map((plugin) => plugin.manifest.name), ["healthy"]);
     assert.deepEqual(reports.map(({ root, outcome }) => ({ root, outcome })), [
         { root: invalidRoot, outcome: "rejected" },
         { root: join(validRoot, "loop"), outcome: "rejected" },

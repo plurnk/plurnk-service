@@ -2,6 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import {
     scopeEnvToAlias,
+    dataCaptureFromEnv,
     costOverrideFromEnv,
     cacheAffinityFromEnv,
     cacheAffinityDeclarationFromEnv,
@@ -145,7 +146,6 @@ test("scopeEnvToAlias: each projection reads one fresh environment snapshot", ()
 });
 
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
-    const { scopeEnvToAlias } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_EFFORT: "off",
         PLURNK_PROVIDERS_EFFORT_turboderp: "high",
@@ -168,7 +168,6 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
 });
 
 test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {
-    const { scopeEnvToAlias } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
         PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
@@ -198,7 +197,6 @@ test("contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when uns
 });
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
-    const { scopeEnvToAlias } = await import("./env.ts");
     const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"];
     const env = {
         PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_BUDGET_LARGEST_ITEMS: "5",
@@ -218,7 +216,6 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
 });
 
 test("capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
-    const { scopeEnvToAlias, dataCaptureFromEnv } = await import("./env.ts");
     const env = {
         PLURNK_PROVIDERS_TOP_LOGPROBS_fireslow: "3",
         PLURNK_PROVIDERS_RAWBODY_fireslow: "1",

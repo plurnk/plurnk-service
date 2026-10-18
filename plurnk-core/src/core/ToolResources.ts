@@ -272,7 +272,7 @@ export default class ToolResources {
             summary,
             [
                 "## Tools", "",
-                ...catalog.map(({ pathname }) => `Complete tool definitions: ${inlineCode(`worker://${pathname}`)}.\n`),
+                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`worker://${tool.pathname}`)}.\n`),
                 toolInvocations.join("\n\n"),
             ],
             detailsBlock,

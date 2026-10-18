@@ -757,7 +757,7 @@ export default class PacketWire {
             ? [tx?.source, tx?.destination]
             : [{ ...tx, target: e.target ?? tx?.target }];
         const paths = selections.map((selection) => PacketWire.#operandPath(selection?.target, options.projectRoot ?? null, authored ?? null));
-        if (pair && typeof e.status === "number" && e.status < 400 && paths.some((path) => path === null)) {
+        if (pair && typeof e.status === "number" && e.status < 400 && paths.some((candidate) => candidate === null)) {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
         for (const field of ["scope", "metadata"] as const) {
@@ -788,7 +788,7 @@ export default class PacketWire {
             return path !== PacketWire.#operandPath(requested, options.projectRoot ?? null, requested);
         });
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
-            : !paired ? parts.join(" ") : resolved ? paths.filter((path) => path !== null).map((path) => `→ ${path}`).join(" ") : null;
+            : !paired ? parts.join(" ") : resolved ? paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ") : null;
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
             && typeof (e.attrs as { worker?: unknown }).worker === "string") {
@@ -1193,7 +1193,7 @@ export default class PacketWire {
                 const parts: ChatContentPart[] = [];
                 for (const [at, section] of sections.entries()) {
                     parts.push({ type: "text", text: `${at === 0 ? "" : "\n\n"}${PacketWire.renderSection(section)}` });
-                    for (const attachment of attachments.filter((attachment) => attachment.section === section.name)) {
+                    for (const attachment of attachments.filter((candidate) => candidate.section === section.name)) {
                         parts.push({ type: "text", text: `\n\n${PacketWire.attachmentCaption(attachment)}` });
                         parts.push({ type: "file", data: await bytesOf(attachment), mediaType: attachment.mimetype });
                     }

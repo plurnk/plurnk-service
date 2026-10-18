@@ -53,7 +53,7 @@ export const packageGraphViolations = (entries) => {
     }]));
     const fanIn = new Map([...names].map((name) => [name, 0]));
     for (const { targets } of edges.values()) {
-        for (const target of new Set(targets.map(({ target }) => target))) fanIn.set(target, fanIn.get(target) + 1);
+        for (const target of new Set(targets.map((edge) => edge.target))) fanIn.set(target, fanIn.get(target) + 1);
     }
     const fanOut = (name) => new Set(edges.get(name).targets.map(({ target }) => target)).size;
     const violations = [];

@@ -104,7 +104,7 @@ try {
         if (!Array.isArray(record.files)) {
             throw new Error(`${manifest.name}: npm pack returned no file projection`);
         }
-        const artifactViolations = packageArtifactViolations(dir, record.files.map(({ path }) => path));
+        const artifactViolations = packageArtifactViolations(dir, record.files.map((file) => file.path));
         if (artifactViolations.length > 0) {
             throw new Error(`${manifest.name}: packed artifacts violate their projection:\n  ${artifactViolations.join("\n  ")}`);
         }

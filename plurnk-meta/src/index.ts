@@ -132,7 +132,7 @@ export default class Meta {
             }
             const native = plugin.manifest.extensions?.["ai.plurnk"];
             if (native === undefined) return null;
-            if (!EXTENSION_KINDS.some((kind) => Meta.declaresKind(native, kind))) {
+            if (!EXTENSION_KINDS.some((candidate) => Meta.declaresKind(native, candidate))) {
                 throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.kind must name one extension kind.`);
             }
             if (kind !== undefined && !Meta.declaresKind(native, kind)) return null;
@@ -143,7 +143,7 @@ export default class Meta {
         if (packageRecord === null) return null;
         const plurnk = packageRecord.plurnk;
         if (!isObject(plurnk) || !(kind === undefined
-            ? EXTENSION_KINDS.some((kind) => Meta.declaresKind(plurnk, kind))
+            ? EXTENSION_KINDS.some((candidate) => Meta.declaresKind(plurnk, candidate))
             : Meta.declaresKind(plurnk, kind))) return null;
         const packageName = typeof packageRecord.name === "string" && packageRecord.name.length > 0 ? packageRecord.name : null;
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };

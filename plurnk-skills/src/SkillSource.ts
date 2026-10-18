@@ -82,7 +82,7 @@ export default class SkillSource {
             maxBuffer: TOOL_OUTPUT_BYTES,
         });
         // execFile rejects on abort before the child necessarily closes; its staging is still in use.
-        const closed = new Promise<void>((resolve) => work.child.once("close", () => resolve()));
+        const closed = new Promise<void>((settle) => work.child.once("close", () => settle()));
         try { return (await work).stdout; }
         finally { await closed; }
     }

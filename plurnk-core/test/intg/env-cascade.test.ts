@@ -564,7 +564,7 @@ test("{§operator-config-discovery} config check accepts future controls without
     });
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
-    t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+    t.after(() => new Promise<void>((settle, reject) => server.close((error) => error ? reject(error) : settle())));
     const address = server.address();
     assert.ok(address !== null && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;

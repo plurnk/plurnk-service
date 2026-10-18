@@ -65,7 +65,7 @@ test("{§rollback} reversals land as one client operation of the acting person, 
         const personLoops = async () => (await daemon.listWorkerLoops({ workspaceId, workerId: runtime }))
             .filter(({ promptSource }) => promptSource === TEST_OWNER);
         const clientMutations = async () => {
-            const operations = new Set((await personLoops()).map(({ sequence }) => sequence));
+            const operations = new Set((await personLoops()).map((loop) => loop.sequence));
             return (await db.log_file_mutations_after.all<{ loop_seq: number; op: string; pathname: string | null; patch: string | null }>({
                 worker_id: runtime, loop_seq: 0, turn_seq: 0, sequence: 0,
             })).filter(({ loop_seq }) => operations.has(loop_seq)).map(({ op, pathname, patch }) => `${op} ${pathname} ${patch === null ? "no patch" : "patch"}`);

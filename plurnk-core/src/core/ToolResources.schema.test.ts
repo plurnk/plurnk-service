@@ -96,7 +96,7 @@ test("{§executor-tool-catalog} links an exact JSON catalog without changing the
         "/_plurnk/tools/gitea/issue%2Fread.json", "/_plurnk/tools/gitea/issue_write.json",
     ], "individual input schemas remain separately readable");
     const withoutDefinitions = ToolResources.render({ ...source, registry: {
-        tools: tools.map(({ target, summary, invocation }) => ({ target, summary, invocation })),
+        tools: tools.map((tool) => ({ target: tool.target, summary: tool.summary, invocation: tool.invocation })),
     } });
     const summary = (content: string) => content.split("## Summary\n\n")[1].split("\n\n")[0];
     assert.equal(summary(resources[0].content), summary(withoutDefinitions[0].content));

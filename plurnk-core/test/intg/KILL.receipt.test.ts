@@ -57,7 +57,7 @@ Continue the task.
                     const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines" });
                     assert.equal(run.finalStatus, 200);
                     const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ worker_id: run.modelWorkerId! });
-                    const kill = rows.find(({ op, origin, source }) => op === "KILL" && origin === "model" && source === null);
+                    const kill = rows.find((row) => row.op === "KILL" && row.origin === "model" && row.source === null);
                     assert.ok(kill, "an entry mutation receipt stays visible on later turns");
                     const rx = JSON.parse(kill.rx);
                     assert.equal(rx.status, 200, JSON.stringify(rx));

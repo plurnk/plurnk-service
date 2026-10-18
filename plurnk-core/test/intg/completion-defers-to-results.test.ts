@@ -47,8 +47,8 @@ for (const [op, maxStrikes] of [["READ (worker:///answer.md)", 0], ["READ (worke
         assert.match(JSON.stringify(provider.received[1]), /42/, "the observation packet contains the result");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
         const authored = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(authored.map(({ op }) => op), [op.split(" ")[0], "SEND", "SEND"], "the model resolves its messages without repeating the answer");
-        assert.equal(authored.find(({ op }) => op === "SEND")?.status_rx, 200, "reply delivery is not deferred");
+        assert.deepEqual(authored.map((row) => row.op), [op.split(" ")[0], "SEND", "SEND"], "the model resolves its messages without repeating the answer");
+        assert.equal(authored.find((row) => row.op === "SEND")?.status_rx, 200, "reply delivery is not deferred");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
         const turns = await Promise.all(result.turnIds.slice(1).map((id) => db.test_get_turn.get<{ status: number }>({ id })));
         assert.deepEqual(turns.map((turn) => turn?.status), [102, 200]);

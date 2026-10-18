@@ -681,7 +681,7 @@ export default class ResourceTransfers {
         if (expectedHash !== undefined && contentHash(original) !== expectedHash) return EditCollision.result(MutationEffects.resourceAddress(destination));
         const result = ByteView.splice(original, [
             { marker: marker.marker, bytes: srcBytes },
-            ...removals.map((marker) => ({ marker, bytes: new Uint8Array() })),
+            ...removals.map((removal) => ({ marker: removal, bytes: new Uint8Array() })),
         ]);
         if ("result" in result) return result.result;
         if (Buffer.from(original).equals(result.bytes)) return { status: 304 };

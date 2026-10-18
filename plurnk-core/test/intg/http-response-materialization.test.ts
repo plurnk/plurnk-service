@@ -82,7 +82,7 @@ test("{§http-channel-outcomes} finite origin statuses never become nonterminal 
     await once(server, "listening");
     t.after(() => {
         server.closeAllConnections();
-        return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        return new Promise<void>((settle, reject) => server.close((error) => error ? reject(error) : settle()));
     });
     const address = server.address();
     assert.ok(address !== null && typeof address !== "string");
@@ -172,7 +172,7 @@ for (const { policy, reuse, conditional } of [
         await once(server, "listening");
         t.after(() => {
             server.closeAllConnections();
-            return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+            return new Promise<void>((settle, reject) => server.close((error) => error ? reject(error) : settle()));
         });
         const address = server.address();
         assert.ok(address !== null && typeof address !== "string");
@@ -778,7 +778,7 @@ test("{§revalidation} wire validators select reuse or reacquisition of durable 
                 await once(server, "listening");
                 t.after(() => {
                     server.closeAllConnections();
-                    return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+                    return new Promise<void>((settle, reject) => server.close((error) => error ? reject(error) : settle()));
                 });
                 const address = server.address();
                 assert.ok(address !== null && typeof address !== "string");

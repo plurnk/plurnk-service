@@ -256,7 +256,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#functionality = new Functionality({
             signal: this.#residency.signal,
             registerModuleAction: (registration) => this.registerModuleAction(registration),
-            registerWorkspaceCapabilityProvider: (owner, provider) => this.registerWorkspaceCapabilityProvider(owner, provider),
+            registerWorkspaceCapabilityProvider: (owner, capabilities) => this.registerWorkspaceCapabilityProvider(owner, capabilities),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
             readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),

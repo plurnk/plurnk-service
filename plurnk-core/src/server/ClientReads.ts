@@ -197,7 +197,7 @@ export default class ClientReads {
                             availableChannels,
                             ...(availableChannels.length === 0
                                 ? {}
-                                : { recovery: `Use one of the available channels: ${availableChannels.map((channel) => `#${channel}`).join(", ")}.` }),
+                                : { recovery: `Use one of the available channels: ${availableChannels.map((available) => `#${available}`).join(", ")}.` }),
                             retryable: false },
                     ));
                 }

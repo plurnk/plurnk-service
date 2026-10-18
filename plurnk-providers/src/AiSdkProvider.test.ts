@@ -2029,7 +2029,6 @@ test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; r
 });
 
 test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
-    const { ProviderError } = await import("./errors.ts");
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
@@ -2141,7 +2140,6 @@ test("{§provider-input-modalities} an unsupported audio codec fails visibly ins
 });
 
 test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
-    const { ProviderError } = await import("./errors.ts");
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
@@ -2345,7 +2343,6 @@ for (const active of [false, true]) {
 
 
 test("retry: exhausting the budget surfaces the classified ProviderError", async () => {
-    const { ProviderError } = await import("./errors.ts");
     const calls = installFetchScript([{ status: 429, retryAfter: 0 }]); // always rate-limited
     const p = testProvider({ ...retryCfg, retryAttempts: 2 });
     await assert.rejects(
@@ -2970,7 +2967,7 @@ for (const streaming of [true, false]) {
             assert.equal(result.assistant.nativeToolCalls, true, "the normalized boundary exposes unexecuted calls without rewriting the finish reason");
             assert.equal(result.accounting.length, 1);
             assert.match(JSON.stringify(result.assistantRaw), /call-native/u);
-            assert.equal(result.notices?.filter(({ message }) => message === "The response included native tool calls, but no tools were declared.").length, 1);
+            assert.equal(result.notices?.filter((notice) => notice.message === "The response included native tool calls, but no tools were declared.").length, 1);
         });
     }
 }

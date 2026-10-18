@@ -234,7 +234,6 @@ test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and de
 
         const projectionCalls: string[] = [];
         const queryCalls: string[] = [];
-        const BaseHandler = (await import("@plurnk/plurnk-mimetypes")).BaseHandler;
         class SpyHandler extends BaseHandler {
             override async content(content: HandlerContent): Promise<undefined> {
                 projectionCalls.push(typeof content === "string" ? content : "");

@@ -156,17 +156,17 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
         [{ id: "prompt-1", content: "Note the plan." }], "the refreshed snapshot holds the prompt once, under the submitter's id");
     assert.ok(truth.some(({ role }) => role === "reasoning"), "the snapshot holds the turn's reasoning");
     // {§agui-projection} #1140 — a tool call carries the operation as authored: its host, scope, pattern and aside.
-    const read = truth.flatMap(({ calls }) => (calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+    const read = truth.flatMap((row) => (row.calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
         .find(({ name }) => name === "READ");
     assert.equal((read?.arguments.target as { raw?: string } | undefined)?.raw, "worker://user/identity.md", "the host addresses the resource");
     assert.ok(read?.arguments.lineMarker !== null && read?.arguments.matcher !== null && read?.arguments.aside === "selected evidence",
         `the scope, pattern and aside ride the arguments: ${JSON.stringify(read?.arguments)}`);
-    const copy = truth.flatMap(({ calls }) => (calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+    const copy = truth.flatMap((row) => (row.calls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
         .find(({ name }) => name === "COPY");
     assert.deepEqual([copy?.arguments.source, copy?.arguments.destination].map((operand) => (operand as { target?: { raw?: string } } | undefined)?.target?.raw),
         ["worker:///notes.md", "worker:///copy.md"], "both COPY operands ride the arguments");
     // {§agui-parse-refusal} #1140 — a refused statement is the call the worker attempted, answered by its refusal.
-    const attempted = truth.flatMap(({ calls }) => (calls as Array<{ callId: string; name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
+    const attempted = truth.flatMap((row) => (row.calls as Array<{ callId: string; name: string; arguments: Record<string, unknown> }> | undefined) ?? [])
         .find(({ name, arguments: args }) => name === "READ" && typeof args.text === "string");
     assert.equal(attempted?.arguments.text, "````READ (worker:///notes.md) <1,\n````", "the attempt is the statement as written");
     const refusal = truth.find(({ role, toolCallId }) => role === "tool" && toolCallId === attempted?.callId);

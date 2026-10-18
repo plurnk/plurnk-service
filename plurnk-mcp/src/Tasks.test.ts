@@ -273,7 +273,7 @@ test("{§mcp-connection-shutdown} concurrent close waits for Task cancellation w
     await closing;
     await rejected;
     assert.equal(connection.activeRequests, 0);
-    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), [taskId]);
     assert.equal(fixture.updates.length, 0);
     await assert.rejects(() => connection.callTool(tool.name, { topic: "late" }), /connection is closed/u);
 });
@@ -306,7 +306,7 @@ test("{§mcp-connection-shutdown} closing during Task subscription acknowledgeme
     await listening.promise;
     await connection.close();
     await rejected;
-    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), [taskId]);
     assert.equal(connection.activeRequests, 0);
 });
 
@@ -339,7 +339,7 @@ test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Tas
         owner.abort(new Error("owner stopped"));
         await waitFor(() => settled);
         await rejected;
-        assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+        assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), [taskId]);
         assert.equal(connection.activeRequests, 0);
         assert.ok((await connection.catalog()).tools.some(({ name }) => name === tool.name),
             "cancelling a Task does not close its shared connection");

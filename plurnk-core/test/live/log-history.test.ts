@@ -110,7 +110,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             .flatMap(({ artifact, program }) => artifact === null || program === null ? [] : [`${artifact}.assistant.md`]);
         const artifactSources = await Promise.all(assistantArtifacts.map((name) => readFile(join(digestDir, name), "utf8")));
         assert.deepEqual(artifactSources, durablePrograms, "every admitted program remains an exact chronological artifact");
-        for (const { turn_id, kind, content } of priorPrograms.filter(({ kind }) => kind === "ops" || kind === "reasoning")) {
+        for (const { turn_id, kind, content } of priorPrograms.filter((program) => program.kind === "ops" || program.kind === "reasoning")) {
             const turn = digest.turns.find(({ id }) => id === turn_id);
             assert.ok(turn?.artifact, `source turn ${turn_id} remains in the digest`);
             const channel = kind === "ops" ? "assistant" : "reasoning";

@@ -54,7 +54,7 @@ test("{§agui-replay} successful replies to the thread are assistant responses i
     ];
     const live = messages.flatMap((message) => tr.logEntry(message));
     assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["First.", "Second."]);
-    const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
+    const [snapshot] = tr.replay(messages.map((message) => message.entry));
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) throw new Error("missing snapshot");
     assert.deepEqual(speech(snapshot.messages), ["First.", "Second."]);
@@ -252,7 +252,7 @@ test("{§message-completion}: delivered completion replies enter live and replay
     const tr = t();
     const live = messages.flatMap((message) => tr.logEntry(message));
     assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["Cancelled this request.", "The answer is **42**."]);
-    const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
+    const [snapshot] = tr.replay(messages.map((message) => message.entry));
     assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
     if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(speech(snapshot.messages), ["Cancelled this request.", "The answer is **42**."]);
@@ -426,7 +426,7 @@ for (const streamed of [false, true]) {
             "one reasoning value per turn, including when a later turn repeats the same text");
         assert.equal(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").length, 4, "three reply SENDs and the WAIT body: a WAIT that carries words speaks them ({§agui-projection})");
         assert.equal(events.filter(({ type }) => type === "ACTIVITY_SNAPSHOT").length, 0);
-        const snapshot = tr.replay(rows.map(({ entry }) => entry)).find(({ type }) => type === "MESSAGES_SNAPSHOT");
+        const snapshot = tr.replay(rows.map((row) => row.entry)).find(({ type }) => type === "MESSAGES_SNAPSHOT");
         assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
         assert.equal(snapshot.messages.filter(({ role }) => role === "reasoning").length, 2,
             "replay also projects the admitted reasoning once per turn");

@@ -124,7 +124,7 @@ for (const op of ["EDIT", "KILL"] as const) {
         assert.equal(await content("/a.txt"), `${op === "EDIT" ? "bar" : ""} one\nfoo two`);
         assert.equal(await content("/b.txt"), `${op === "EDIT" ? "bar" : ""} three\nfoo four`);
         assert.equal(await content("/other.md"), "foo five");
-        assert.deepEqual((await rows()).map(({ op, pathname, status_rx }) => [op, pathname, status_rx]), [[op, "/a.txt", 200], [op, "/b.txt", 200]]);
+        assert.deepEqual((await rows()).map((row) => [row.op, row.pathname, row.status_rx]), [[op, "/a.txt", 200], [op, "/b.txt", 200]]);
         for (const { rx } of await rows()) {
             assert.equal(Object.hasOwn(JSON.parse(rx), "commandsExecuted"), false, "receipts retain only operation results");
             assert.equal(Object.hasOwn(JSON.parse(rx), "commandsOmitted"), false);
@@ -235,9 +235,9 @@ for (const op of ["READ", "EDIT", "KILL"] as const) for (const limit of [0, 1, 2
         for (const [index, [path, original]] of Object.entries(entries).entries()) {
             assert.equal(await content(path), index >= limit || op === "READ" ? original : op === "EDIT" ? "changed" : undefined);
         }
-        assert.equal(receipts.some(({ op }) => op === "NOTE"), limit === Infinity);
-        assert.ok(receipts.some(({ op }) => op === "WAIT"), "WAIT remains exempt");
-        const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((problem) => problem?.type.endsWith("/max-commands-exceeded"));
+        assert.equal(receipts.some((receipt) => receipt.op === "NOTE"), limit === Infinity);
+        assert.ok(receipts.some((receipt) => receipt.op === "WAIT"), "WAIT remains exempt");
+        const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((candidate) => candidate?.type.endsWith("/max-commands-exceeded"));
         if (limit === Infinity) assert.equal(problem, undefined);
         else assert.equal(problem?.omittedOperations, limit === 0 ? 2 : 4 - limit);
     });
@@ -352,7 +352,7 @@ test("{§bulk-resource-targeting} scheme extensions cannot override the command 
         statements: [editStmt(urlPath("channels", "/a.txt"), "updated", fullReplace), noteStmt("exceeds the ceiling")] });
     assert.equal(await content("/a.txt"), "updated");
     const receipts = await rows();
-    assert.equal(receipts.some(({ op }) => op === "NOTE"), false);
-    const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((problem) => problem?.type.endsWith("/max-commands-exceeded"));
+    assert.equal(receipts.some((receipt) => receipt.op === "NOTE"), false);
+    const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((candidate) => candidate?.type.endsWith("/max-commands-exceeded"));
     assert.equal(problem?.omittedOperations, 1);
 });

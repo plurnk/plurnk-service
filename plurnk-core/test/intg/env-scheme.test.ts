@@ -51,7 +51,7 @@ test("{§env-scheme} every effective name reads at env:///NAME; EDIT and KILL ac
         const result = await dispatch({ ...findStmt(parsePath(path), matcher), lineMarker: { marks: [1, -1] } });
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.ok(Array.isArray(result.results));
-        return (result.results.flat() as Array<{ path: string }>).map(({ path }) => path);
+        return (result.results.flat() as Array<{ path: string }>).map((item) => item.path);
     };
 
     // READ: the ceiling's ambient names, workspace defaults; a name outside the ceiling is no resource.

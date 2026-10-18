@@ -106,7 +106,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
         // {§loop-answer}: a loop's answer is a projection of rows the index already covers, not a
         // derived source of its own, so relation matchers read the turns beneath it.
-        const loadMatchable = async () => (await load()).filter(({ pathname }) => relation === null || !/^\/\d+$/.test(pathname));
+        const loadMatchable = async () => (await load()).filter((row) => relation === null || !/^\/\d+$/.test(row.pathname));
         let all = await loadMatchable();
         if (relation !== null && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
             await core.settleDerivations();
@@ -149,10 +149,10 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             };
         });
         const folders = statement.matcher === null ? [...Map.groupBy(all, (row) => row.authority)]
-            .flatMap(([authority, rows]) => pathFolderSummaries(scope, rows.map(({ pathname }) => pathname))
+            .flatMap(([authority, rows]) => pathFolderSummaries(scope, rows.map((row) => row.pathname))
                 .map(({ selector, pathnames }) => ({
                     path: renderAddress({ scheme: this.#kind, authority, pathname: selector }), items: pathnames.length,
-                    weight: pathnames.reduce((sum, pathname) => sum + weigh(byPath.get(renderAddress({ scheme: this.#kind, authority, pathname }))!.content), 0),
+                    weight: pathnames.reduce((sum, member) => sum + weigh(byPath.get(renderAddress({ scheme: this.#kind, authority, pathname: member }))!.content), 0),
                 }))) : [];
         const projectionScope = authorityScope.kind === "glob" ? authorityScope : scope;
         return projectFindResult(statement, projectionScope, resources, folders);

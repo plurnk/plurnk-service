@@ -363,7 +363,6 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
 
         // A member definition grants it + the membership pass runs → it exists.
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "ungran.md", source: "members" });
-        const GitMembership = (await import("../../src/core/git-membership.ts")).default;
         await GitMembership.indexGitMembership(ctx);
         const visible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(visible.status, 200, "the client's explicit grant is what brings it into existence — every visible byte traces to an external grantor");

@@ -48,7 +48,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
         assert.equal(inference?.status, 499);
         assert.ok(inference?.completed_at);
         const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
-        assert.ok(sources.some(({ kind, content }) => kind === "ops" && content === source), "the complete authored program remains evidence");
+        assert.ok(sources.some((row) => row.kind === "ops" && row.content === source), "the complete authored program remains evidence");
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 37, "cancellation does not discard completed inference accounting");
     });
 }

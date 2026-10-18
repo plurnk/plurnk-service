@@ -55,7 +55,7 @@ test("{§functionality-discover-advertisement} each family's discover advertises
             `${name} ${emptyListsAll === true ? "lists everything for a request naming no input" : "requires one of its inputs"}`);
     }
     const workspaceId = await insertWorkspace(db, `discover-advertisement-${crypto.randomUUID()}`);
-    for (const [name, { inputs }] of Object.entries(DISCOVERY).filter(([name]) => name.startsWith("workspace."))) {
+    for (const [name, { inputs }] of Object.entries(DISCOVERY).filter(([action]) => action.startsWith("workspace."))) {
         for (const field of INPUTS.filter((input) => !inputs.includes(input))) {
             const error = await daemon.invokeModuleAction(name, { [field]: field === "configuration" ? {} : "x" }, { scope: "workspace", workspaceId })
                 .then(() => null, (cause: unknown) => cause);

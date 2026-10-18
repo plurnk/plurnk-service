@@ -39,7 +39,7 @@ test("{§resource-tree-scheme} a public module supplies live trees while the hos
         const result = await dispatch({ ...findStmt(parsePath(path), matcher), lineMarker: { marks: [1, -1] } });
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.ok(Array.isArray(result.results));
-        return (result.results.flat() as Array<{ path: string }>).map(({ path }) => path);
+        return (result.results.flat() as Array<{ path: string }>).map((item) => item.path);
     };
     assert.deepEqual(await find("catalog://*/guide.txt", regex("needle")), ["catalog://alpha/guide.txt"]);
     assert.deepEqual(await find("catalog://alpha/*"), ["catalog://alpha/bytes.txt", "catalog://alpha/guide.txt", "catalog://alpha/nested/**"]);

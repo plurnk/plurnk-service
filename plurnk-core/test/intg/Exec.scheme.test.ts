@@ -18,7 +18,7 @@ import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorReg
 import type { Executor } from "@plurnk/plurnk-execs";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import { localPath, readStmt, urlPath } from "./_dsl.ts";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
@@ -597,9 +597,6 @@ test("{§executor-exit-code} sh: an exit code is the answer: channels closed, st
 test("execution: cwd defaults to workspace.project_root when statement target is null", async () => {
     // Writes a file via shell into "$PWD/<marker>", then asserts the file
     // exists at <project_root>/<marker> — proves cwd really was project_root.
-    const { mkdtemp, rm, readFile } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-cwd-default-"));
     const marker = `cwd-default-${crypto.randomUUID().slice(0, 6)}.txt`;
     try {

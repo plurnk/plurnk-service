@@ -331,9 +331,9 @@ test("{§env-delta-no-coalescing} {§env-delta-commons-mutation} commons mutatio
         const mutations = async (workerId: number) => (await db.test_log_entries_by_worker.all<Row>({ worker_id: workerId }))
             .filter(({ op }) => ["EDIT", "COPY", "MOVE", "KILL", "SEND"].includes(op));
         const source = await mutations(child);
-        const parentRows = (await mutations(parent)).filter(({ source }) => source === "worker://child");
-        const independentRows = (await mutations(independent)).filter(({ source }) => source === "worker://child");
-        const lateRows = (await mutations(late)).filter(({ source }) => source === "worker://child");
+        const parentRows = (await mutations(parent)).filter((row) => row.source === "worker://child");
+        const independentRows = (await mutations(independent)).filter((row) => row.source === "worker://child");
+        const lateRows = (await mutations(late)).filter((row) => row.source === "worker://child");
 
         assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL", "EDIT"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
         assert.deepEqual(independentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL"], "every mutation kind that lands a commons effect broadcasts");

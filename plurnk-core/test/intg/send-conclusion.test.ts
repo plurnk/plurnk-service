@@ -275,7 +275,7 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
         assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
-        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ kind, message }) => [kind, message]), [], "annotation draws no notice");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map((notice) => [notice.kind, notice.message]), [], "annotation draws no notice");
     } finally { await db.close(); }
 });
 
@@ -400,7 +400,7 @@ for (const op of ["NOTE", "WAIT"] as const) {
             const result = await turn();
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map((row) => [row.op, row.status_rx]),
                 [["NOTE", 200], [op, op === "WAIT" ? 202 : 200]], "the stray text is the turn's NOTE at its position, never delivered ({§outside-text})");
             assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
         } finally { await db.close(); }

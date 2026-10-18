@@ -222,7 +222,7 @@ test("{§mcp-host-composition}: fixture teardown settles an unanswered Task befo
             preflight: { action: "accept", content: { proceed: true } },
         } }] }), ["profile", "authorize"]);
     });
-    assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), [taskId]);
+    assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), [taskId]);
     assert.deepEqual(fixture.updates, [], "teardown never fabricates a human answer");
     assert.equal(provider?.received.length, 1, "teardown never starts another inference");
 });
@@ -247,7 +247,7 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
         profile: { action: "accept", content: { name: "Ada" } },
         authorize: { action: "accept" },
     } }] }), provider, /Ada reviewed MCP/u);
-    assert.deepEqual(fixture.updates.map(({ taskId, inputResponses }) => ({ taskId, inputResponses })), [{
+    assert.deepEqual(fixture.updates.map((update) => ({ taskId: update.taskId, inputResponses: update.inputResponses })), [{
         taskId,
         inputResponses: {
             profile: { action: "accept", content: { name: "Ada" } },
@@ -296,7 +296,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         };
         assert.deepEqual(await daemon.pendingClientInteractions(snapshot.plurnk.workspace.id), []);
         assert.deepEqual(fixture.updates, []);
-        assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), state === "unsupported-input" ? [taskId] : [],
+        assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), state === "unsupported-input" ? [taskId] : [],
             "unhandled input abandons the live Task; terminal Tasks need no second cancellation");
         assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length, 1);
     });
@@ -338,7 +338,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             assert.equal(loops.find(({ id }) => id === waiting.loopId)?.status, 499);
             assert.equal(provider.received.length, 1, "cancellation never resumes inference");
             assert.equal(fixture.updates.length, 0, "cancelled input is never submitted as a Task answer");
-            assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), stage === "Task" ? [taskId] : [],
+            assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), stage === "Task" ? [taskId] : [],
                 "only a created remote Task is cancelled, before the owning operation settles");
             assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length,
                 stage === "Task" ? 2 : 1, "the interrupted operation is not replayed");
@@ -433,7 +433,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         assert.equal((terminal.outcome as { type?: string }).type, "success");
         assert.equal(provider.received.length, 2, "late input and reconnect do not replay work");
         if (fixture !== undefined && served !== undefined) {
-            assert.deepEqual(fixture.cancellations.map(({ taskId }) => taskId), source === "Task" ? [taskId] : []);
+            assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), source === "Task" ? [taskId] : []);
             assert.deepEqual(fixture.updates, [], "expired human input is not submitted to the server");
             assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length,
                 source === "Task" ? 2 : 1);

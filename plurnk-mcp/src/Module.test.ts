@@ -1292,7 +1292,7 @@ test("{§mcp-module} {§module-contained-configuration} an invalid registry sett
         const h = harness(env);
         await h.setup();
         try {
-            assert.deepEqual(h.module.contained.map(({ key }) => key), [key], "the module contains the setting it cannot use");
+            assert.deepEqual(h.module.contained.map((contained) => contained.key), [key], "the module contains the setting it cannot use");
             assert.equal(h.adapter().discovery, undefined, "the family serves no discovery");
             assert.equal(h.adapter().family, "mcp", "the family itself is registered");
             assert.ok(h.actions.has("workspace.mcp.oauth.begin"), "the module's continuations remain");

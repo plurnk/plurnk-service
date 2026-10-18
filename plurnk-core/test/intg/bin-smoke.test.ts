@@ -254,7 +254,7 @@ test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process 
         host: booted.host, port: booted.port, method: "POST", path: "/agui",
         headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
     });
-    const disconnected = new Promise<Error>((resolve) => pending.on("error", resolve));
+    const disconnected = new Promise<Error>((settle) => pending.on("error", settle));
     let diagnostic = "";
     booted.child.stderr?.on("data", (data: Buffer) => { diagnostic += data.toString(); });
     try {

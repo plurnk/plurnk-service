@@ -114,8 +114,8 @@ it("{§mimetype-derivation-evidence} concurrent projections cannot overwrite eac
     }
     const m = new Mimetypes({ discovery: makeDiscovery([plainInfo]), loader: async () => ({ default: BrokenHandler }) });
     try {
-        const outcomes = await Promise.allSettled(["first.txt", "second.txt"].map((path) =>
-            m.process({ path, content: "source" }, { channels: ["symbols"] })));
+        const outcomes = await Promise.allSettled(["first.txt", "second.txt"].map((file) =>
+            m.process({ path: file, content: "source" }, { channels: ["symbols"] })));
         assert.deepEqual(outcomes.map((outcome) => {
             assert.equal(outcome.status, "rejected");
             if (outcome.status !== "rejected") throw new Error("A broken handler must reject");

@@ -120,7 +120,7 @@ test("PlurnkStatement parser preserves a decimal marker for runtime validation",
 
 test("PlurnkStatement: WAIT retains its literal body", () => {
     const parsed = PlurnkParser.parseStatements("````WAIT\nDecompose the prompt; discover, record, deliver.\n````");
-    const item = parsed.items.find((item) => item.kind === "statement");
+    const item = parsed.items.find((candidate) => candidate.kind === "statement");
     assert.ok(item?.kind === "statement" && item.statement.op === "WAIT");
     assert.equal(item.statement.body, "Decompose the prompt; discover, record, deliver.");
     assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);

@@ -170,7 +170,7 @@ test("{§packet-git-status}: tracking, renames, conflicts, and NUL-safe paths su
         await commit("rename");
         await assert.rejects(git("-c", "commit.gpgsign=false", "merge", "upstream"), { code: 1 });
         const conflicted = await GitState.status(db, workspaceId, undefined);
-        assert.ok(conflicted?.files.some(({ path, status }) => path === "../conflict.txt" && status === "UU"));
+        assert.ok(conflicted?.files.some((file) => file.path === "../conflict.txt" && file.status === "UU"));
         assert.equal(conflicted?.staged, 1);
         assert.equal(conflicted?.unstaged, 1);
     } finally {
