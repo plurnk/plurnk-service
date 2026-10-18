@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run lifecycle:check
 Every workspace's test script is exactly its lint, unit and intg tiers in order, with no synonym tiers, so the gate drill finds every tier by name.
 Reads: every workspace's package.json.

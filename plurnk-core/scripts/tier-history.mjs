@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { benchmarksRoot } from "../../scripts/lib/test-artifacts.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run tier:history [-- live|demo]   (from plurnk-core)
 Ledgers every tier run's census under the benchmark home, one row per specimen with its verdicts over time ({§tier-census}). Read-only.
 Reads: the benchmark home.

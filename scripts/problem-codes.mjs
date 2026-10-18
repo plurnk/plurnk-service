@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { analyzeDiagnosticSource } from "./diagnostic-inventory.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: node scripts/problem-codes.mjs   (a step of npm run root:lint)
 Every Problem code a package mints is named in that package's SPEC.md inside a tagged block ({§problem-codes-declared}), so a code can be found from its symptom.
 Reads: plurnk-*/src and plurnk-*/SPEC.md.

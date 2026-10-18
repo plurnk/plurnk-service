@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { usage } from "../lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run audit:clones
 Copy-paste audit: jscpd over every workspace's runtime source, cross-package pairs only (#891). A report, never a gate.
 Reads: plurnk-*/src.

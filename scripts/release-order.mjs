@@ -1,7 +1,7 @@
 import { selectPackages } from "./lib/release-candidate.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:order -- <package-directory>...
 Prints the selected packages in publication order, one name@version per line.
 Reads: the selected package.json files.

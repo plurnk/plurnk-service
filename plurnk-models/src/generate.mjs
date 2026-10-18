@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { providers as source, generatedAt } from "@opencode-ai/models/snapshot";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run generate   (from plurnk-models)
 Projects the locked models.dev snapshot into the shipped catalog ({§model-catalog-build}).
 Reads: @opencode-ai/models/snapshot.

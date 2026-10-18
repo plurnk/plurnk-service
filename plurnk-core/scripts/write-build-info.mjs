@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run build:info   (a step of npm run build, from plurnk-core)
 Build step: records the build's package version and commit for the executable and makes the installed bin executable.
 Reads: package.json and git.

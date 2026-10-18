@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run test:benchlet -- [benchlet arguments]   (from plurnk-core)
 Runs the DeepSWE benchlet from the bench checkout against this checkout; the benchlet owns the task, the model loop, the oracle and the digest.
 Reads: PLURNK_BENCH_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.

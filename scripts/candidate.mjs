@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { gateResourceEnvironment } from "./lib/gate-environment.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run candidate [-- <client arguments>]
 Boots a source-built daemon and the terminal client from this checkout under a fresh state directory and runs the whole-platform candidate journey ({§candidate-pinned-runtime}).
 Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk), PLURNK_CANDIDATE_CLIENT_ENV, PLURNK_CANDIDATE_SKIP_BUILD, PLURNK_CANDIDATE_GRADE_DEADLINE_SEC; the model and credentials of the operator environment.

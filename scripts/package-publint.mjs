@@ -5,7 +5,7 @@ import { publint } from "publint";
 import { formatMessage, formatMessagePath } from "publint/utils";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run packages:publint [-- --only <workspace-dir>]
 Runs publint over every workspace's manifest and shipped files.
 Reads: every workspace's package.json and files.

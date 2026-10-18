@@ -7,7 +7,7 @@ import { parseArgs, promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run grammars:check | npm run grammars:update   (from plurnk-mimetypes)
 Coordinated grammar package maintenance ({§grammar-package-lifecycle}): check reports what an update would change; update regenerates the packages and commits them, signed.
 Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the grammar sources.

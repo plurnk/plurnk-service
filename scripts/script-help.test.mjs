@@ -50,6 +50,11 @@ test("{§script-help} every named entry point answers --help with usage, reads a
         const lines = result.stdout.trimEnd().split("\n");
         assert.match(lines[0], /^usage: /u, `${file}: the first line names how to run it`);
         if (OWN_USAGE.has(file)) return;
+        const own = names.map((name) => name.slice(name.indexOf(":") + 1));
+        assert.ok(
+            own.some((name) => lines[0].includes(name === "test" ? "npm test" : `npm run ${name}`)) || lines[0].includes(path.basename(file)),
+            `${file}: the usage line names the script (${own.join(", ")}) or its file, not another script's`,
+        );
         assert.ok(lines.length >= 4, `${file}: what it does, Reads: and Writes: follow the usage line`);
         assert.ok(lines.some((line) => line.startsWith("Reads: ")), `${file}: a Reads: line`);
         assert.ok(lines.some((line) => line.startsWith("Writes: ")), `${file}: a Writes: line`);

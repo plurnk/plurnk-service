@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: node scripts/package-build-policy.mjs   (a step of npm run root:lint)
 Every dist-shipping workspace owns build:clean, begins build with it, keeps emission in build:dist and builds from prepack.
 Reads: every workspace's package.json.

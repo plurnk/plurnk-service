@@ -4,7 +4,7 @@ import { rm } from "node:fs/promises";
 import { testArtifactPath } from "./lib/test-artifacts.ts";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: node scripts/reclaim-green-run.mjs <lane>   (after a green test:intg)
 Removes the lane's stamped run directory under the benchmark home: a green suite leaves nothing behind, a red one is never touched ({§test-artifact-retention}).
 Reads: PLURNK_TEST_RUN, the stamp of the run that just passed.

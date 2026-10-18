@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:version
 Applies the pending changesets and synchronizes the lockfile ({§package-release-contract}); takes no version argument.
 Reads: .changeset/*.md.

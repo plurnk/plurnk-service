@@ -12,10 +12,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Policy } from "@plurnk/plurnk-execs";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
-import { installedGrammars } from "./installed-grammars.mjs";
+import { installedGrammars } from "./lib/installed-grammars.mjs";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run test:installation   (from plurnk-core)
 Installs the built package into a clean sandbox as a consumer would and proves it works out of the box: the bin boots its database from the installed dist, serves indexed search without inference, and a fresh install has no active model ({§operator-config-shipped-defaults}).
 Reads: the built workspaces.

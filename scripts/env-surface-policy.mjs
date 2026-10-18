@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: node scripts/env-surface-policy.mjs   (a step of npm run root:lint)
 Counts every number and choice in the sources against the packages' .env.defaults: the cascading environment is the only home for a choice ({§operator-config-env-defaults}).
 Reads: plurnk-*/src, every .env.defaults, scripts/env-surface-allowance.json.

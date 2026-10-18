@@ -23,7 +23,7 @@ import Launch from "@plurnk/plurnk-service/launch";
 import { resolveClientCheckout } from "./lib/project-topology.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run test:client-conformance
 Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§agui-first-party-client-conformance}).
 Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's packed packages.

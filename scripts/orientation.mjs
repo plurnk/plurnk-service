@@ -18,7 +18,7 @@ import { evaluateOrientation } from "./lib/orientation-verdict.mjs";
 import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
 import { usage as explain } from "./lib/usage.mjs";
 
-explain(`
+explain(import.meta, `
 usage: npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]
 Boots a daemon on a fresh project, sends the orientation prompt through the client and grades the reply: metaproject readiness as an operator would meet it.
 Reads: PLURNK_ACCEPTANCE_TIMEOUT, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.

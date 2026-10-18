@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run grammars:verify [-- --contract-only] [-- --only <grammar>]   (from plurnk-mimetypes)
 Grammar package acceptance: each shipped grammar rebuilds reproducibly and honours its contract ({§grammar-package-reproducibility}).
 Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the shipped grammar packages.

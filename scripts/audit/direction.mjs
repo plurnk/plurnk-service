@@ -5,7 +5,7 @@ import { cruise } from "dependency-cruiser";
 import configuration from "../lib/dependency-cruiser.mjs";
 import { usage } from "../lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run audit:direction
 Runtime import-direction audit with dependency-cruiser over the built output: runtime imports are the compiler's output, not a second reading of TypeScript (#1053). On demand, never a gate.
 Reads: each workspace's dist/.

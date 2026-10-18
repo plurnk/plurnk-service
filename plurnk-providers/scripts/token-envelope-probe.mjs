@@ -20,7 +20,7 @@ import {
 import { usage } from "../../scripts/lib/usage.mjs";
 import { applyRealModelEnvironment } from "../../scripts/lib/environment.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run probe:tokens -- --alias <alias>... [--max-output-tokens n] [--prompt-chars n] [--fill c] [--reasoning r] [--timeout-ms n] [--dry-run] [--measure-only] [--label name]   (from plurnk-providers)
 Probes a route's token accounting envelope with real requests and records what each provider charged against what was measured.
 Reads: the named aliases' declarations and credentials from the operator environment.

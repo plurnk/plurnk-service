@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import ServiceHelp from "../src/core/ServiceHelp.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run build:posix   (a step of npm run build, from plurnk-core)
 Build step: generates the shell completions from the executable's own --help.
 Reads: the built executable's usage.

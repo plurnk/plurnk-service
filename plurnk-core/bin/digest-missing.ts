@@ -11,7 +11,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { benchmarksRoot } from "../../scripts/lib/test-artifacts.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run digest:missing   (from plurnk-core)
 Completes the digest for any benchmark worker, directly under the home or inside a tier run, that has a database but no digest ({§tier-census}).
 Reads: the benchmark home.

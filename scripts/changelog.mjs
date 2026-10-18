@@ -8,7 +8,7 @@ import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run changelog -- [--write | --check | --pending]
 Generates CHANGELOG.md from conventional commit subjects between release tags; the file is never edited by hand.
 Reads: git tags and the commit log.

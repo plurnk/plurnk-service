@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { exerciseRuntimeNeutralWorker } from "./runtime-neutral-worker-control.mjs";
+import { exerciseRuntimeNeutralWorker } from "./lib/runtime-neutral-worker-control.mjs";
 import { packRecords } from "../../scripts/lib/npm-json.mjs";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:check   (from plurnk-providers)
 Bundles the runtime-neutral contracts into a browser Worker to prove neither gained a dependency unavailable there.
 Reads: this checkout's packed contracts.

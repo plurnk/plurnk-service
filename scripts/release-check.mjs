@@ -7,7 +7,7 @@ import { assertReleaseHosting, packageReleaseNotes } from "./release-finalize.mj
 import { verifyConsumer } from "./lib/release-consumer.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:check -- <new-artifact-directory> <package-directory>...
 Qualifies the named packages from clean canonical checkouts: packs them, builds the consumer against the archives and runs the package-specific release checks ({§release-candidate-graph}).
 Reads: clean canonical main checkouts, npm publisher authority, the registry.

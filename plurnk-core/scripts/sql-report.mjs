@@ -7,7 +7,7 @@ import { Share } from "@plurnk/plurnk-digest";
 import { sqlFunctionPaths } from "../src/core/sql-functions.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run report:sql -- <database.db> [specimens.json]   (from plurnk-core)
 Workload query report over a consistent snapshot of the named database: plans the registry's statements and reports what the workload exercised ({§db-query-report}). On demand, never a gate.
 Reads: the named database, copied under {§share-snapshot}.

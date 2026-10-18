@@ -4,7 +4,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run packages:types [-- --only <workspace-dir>]
 Checks that every package's exported types resolve from a consumer's view.
 Reads: every workspace's package.json exports.

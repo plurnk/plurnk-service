@@ -18,7 +18,7 @@ import {
 import { usage } from "../../scripts/lib/usage.mjs";
 import { applyRealModelEnvironment } from "../../scripts/lib/environment.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run test:providersPing   (from plurnk-providers)
 Sends one tiny request through every declared alias's provider and reports readiness, latency and cost.
 Reads: PLURNK_MODEL_<alias> declarations and the credentials of the login shell.

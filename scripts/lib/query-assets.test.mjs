@@ -15,7 +15,9 @@ test("{§mimetype-query-assets} built query loading is contained in the packed p
     const workspace = fileURLToPath(new URL("../../plurnk-mimetypes/", import.meta.url));
     const directory = await mkdtemp(join(tmpdir(), "plurnk-query-assets-"));
     try {
-        const { stdout } = await run("npm", ["pack", "--json", "--pack-destination", directory], { cwd: workspace });
+        // --ignore-scripts: prepack would rebuild the checkout's dist while the candidate witnesses boot
+        // from it; this witness packs the built tree as it stands (the gate builds before the unit tier).
+        const { stdout } = await run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", directory], { cwd: workspace });
         const records = packRecords(stdout);
         assert.equal(records.length, 1);
         const [packed] = records;

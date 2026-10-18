@@ -8,7 +8,7 @@ import { projectTarball, resolveProjected } from "./lib/package-projection.mjs";
 import { packRecords } from "./lib/npm-json.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run metadata:check | npm run metadata:write   (--write, --pack, --only <workspace-dir>)
 Records each package's source identity and packed-artifact projection ({§release-candidate-graph}); without --write it compares the recorded facts with the tree.
 Reads: git and npm pack --json for each workspace.

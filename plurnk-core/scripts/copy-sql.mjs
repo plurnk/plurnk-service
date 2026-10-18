@@ -5,7 +5,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run build:sql   (a step of npm run build, from plurnk-core)
 Build step: copies src/**/*.sql beside dist/, since tsc emits only JavaScript and SqlRite loads the statements from disk at runtime.
 Reads: src/**/*.sql.

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run build:local:install | npm run build:local:uninstall   (from plurnk-core)
 Packs every workspace and installs the service into a sandbox outside the repository as a consumer would; also the engine of test:installation.
 Reads: the built workspaces.

@@ -9,7 +9,7 @@ import {
 } from "typescript/unstable/ast";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run diagnostics:inventory
 Lists every Problem code and Notice the production sources mint, by package, read lexically from the TypeScript.
 Reads: plurnk-*/src (tracked files).

@@ -30,7 +30,8 @@ shared `.oxlintrc.json`. The gate fails on errors.
 ## §script-help Every entry point explains itself
 
 A script that a package.json names answers `--help` (and `-h`) before it does anything else,
-through the one seam `scripts/lib/usage.mjs`:
+through the one seam `scripts/lib/usage.mjs`; the seam answers only for the process's main module,
+so a script another script imports stays silent:
 
 | Line | Content |
 | --- | --- |
@@ -39,19 +40,21 @@ through the one seam `scripts/lib/usage.mjs`:
 | `Reads:` | the environment and files it consults |
 | `Writes:` | what it produces, or `nothing` |
 
-`scripts/script-help.test.mjs` runs every named script with `--help` and fails on a missing part, a
-non-zero exit, or any other output; `plurnk-core/src/service.ts` answers through its own usage.
+`scripts/script-help.test.mjs` runs every named script with `--help` and fails on a missing part, a usage
+line that does not name the script, a non-zero exit, or any other output; `plurnk-core/src/service.ts`
+answers through its own usage.
 
 ## §scripts-layout One directory lists what a person runs
 
-`ls scripts` is the map of the repository's own tooling: every code file at its top level and under
-`audit/` is an entry point that a package.json script or a git hook names, and nothing names a module
-under `lib/`. `scripts/layout.test.mjs` fails on either violation.
+`ls scripts` is the map of a package's own tooling, at the root and in each workspace: every code file
+at the top of a `scripts/` directory (and under the root's `audit/`) is an entry point that a package.json
+script or a git hook names, and nothing names a module under its `lib/`. `scripts/layout.test.mjs` fails
+on either violation.
 
 | Directory | Holds |
 | --- | --- |
 | `scripts/` | the entry points; `SPEC.md`; the data files a policy step reads |
-| `scripts/lib/` | the modules the entry points and the workspaces import |
+| `scripts/lib/` | the modules the entry points import; the root's also serve the workspaces' harnesses |
 | `scripts/audit/` | the on-demand audits (`npm run audit:*`) and their configuration |
 | `scripts/anatomy/` | the refactoring tools, run by hand; their README is their map |
 | `scripts/fixtures/` | the data the witnesses read |

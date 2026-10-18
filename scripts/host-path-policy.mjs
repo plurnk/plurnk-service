@@ -3,7 +3,7 @@ import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: node scripts/host-path-policy.mjs   (a step of npm run root:lint)
 Every daemon host path is formed in HostPaths.ts and the benchmark home in benchmarks-root.mjs ({§test-artifact-retention}); no other source spells one.
 Reads: every tracked text source.

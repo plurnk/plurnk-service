@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:gate [-- --only <package-dir>]...
 Candidate-only release checks: dependency and packed-artifact facts plus the package-specific checks that have no ordinary test-tier meaning.
 Reads: the workspaces and the installed tree.

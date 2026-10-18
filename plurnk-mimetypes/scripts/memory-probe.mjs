@@ -10,7 +10,7 @@ import v8 from "node:v8";
 import Mimetypes from "../src/Mimetypes.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run memory:probe   (from plurnk-mimetypes)
 Resident-memory probe for the tree-sitter path: parses generated sources through the production framework and attributes RSS by mapping, telling WASM linear memory from V8 heap ({§mimetype-lifecycle}). A report, never a gate.
 Reads: TARGET_BYTES, DISCOVER_CWD.

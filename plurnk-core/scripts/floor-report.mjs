@@ -15,7 +15,7 @@ import { parseLogRecords } from "../test/LogRecords.ts";
 import { contentWeight } from "../src/core/content-weight.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run report:floor   (from plurnk-core)
 Measures the packet token floor: the input weight of a fresh worker's first model call in an empty project under the selected configuration. A report, never a gate; always exits 0.
 Reads: the Mock-tier bootstrap and .env.defaults.

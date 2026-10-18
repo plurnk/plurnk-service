@@ -10,6 +10,7 @@ Deterministic helpers for reading and reshaping large classes. They were written
 | `SPEC=spec.json carry-or-share.mjs <shared-module.ts> <doc> <const>...` | the spec's origin | decides, by usage, which of the named top-level consts only the spec's members use (added to the spec's `carryConsts`, transitively) and which the origin still needs (moved into the shared module, imported back) |
 | `strip-unused-imports.mjs <file.ts>...` | the files | removes import specifiers no code outside the import block and comments uses |
 | `spec-tag-inventory.mjs` | every `SPEC.md` and source file under the working directory | declared tags, where they are cited from, and the per-SPEC list of tags nothing cites |
+| `harness-usage.mjs [--suites]` | `plurnk-core/test/intg` | which exports of the integration harness each suite uses, so a helper change is read against the suites it can redden (#887) |
 
 ## Extracting a class
 

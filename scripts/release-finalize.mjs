@@ -6,7 +6,7 @@ import { readCandidate, readJson } from "./lib/release-candidate.mjs";
 import { viewManifest } from "./lib/npm-json.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:finalize -- <artifact-directory>
 Creates the tags and GitHub release records a qualified, published artifact directory is still missing ({§release-finalization}); publishes nothing to the registry.
 Reads: the retained qualification evidence and the registry's view of each package.

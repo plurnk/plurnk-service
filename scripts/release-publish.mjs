@@ -6,7 +6,7 @@ import { publishCandidates } from "./lib/release-registry.mjs";
 import { assertReleaseHosting, finalizeCandidate, packageReleaseNotes } from "./release-finalize.mjs";
 import { usage } from "./lib/usage.mjs";
 
-usage(`
+usage(import.meta, `
 usage: npm run release:publish -- <qualified-artifact-directory>
 Publishes the retained archives in dependency order, verifies the installed composition, carries the GitHub mirror to the canonical main and creates signed tags and release records ({§release-finalization}, {§release-mirror}). Retry with the same directory; never rebuild.
 Reads: npm publisher and forge authority, the artifact directory.
