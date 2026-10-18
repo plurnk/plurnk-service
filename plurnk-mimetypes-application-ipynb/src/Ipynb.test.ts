@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Ipynb from "./Ipynb.ts";
-import { project } from "./Ipynb.ts";
+import Ipynb, { project } from "./Ipynb.ts";
 import { notebook } from "../test/notebook.ts";
 
 const META = { mimetype: "application/x-ipynb+json", glyph: "📓", extensions: [".ipynb"] };

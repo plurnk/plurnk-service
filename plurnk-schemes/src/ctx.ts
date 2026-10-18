@@ -12,9 +12,8 @@ import type {
     RangeExtent,
     SendStatement,
     MessageResource,
-    MessageResourceReceipt,
+    MessageResourceReceipt,TextRegion
 } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";

@@ -3,8 +3,7 @@
 // {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
 
 import { createParser, type ParseError } from "eventsource-parser";
-import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState, WebMaterializer } from "@plurnk/plurnk-schemes";
-import type { ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "@plurnk/plurnk-schemes";
+import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState, WebMaterializer, ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "@plurnk/plurnk-schemes";
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -255,7 +254,7 @@ export default class Http implements SchemeHandler {
 
     // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
     // remote resource - reject rather than silently ignore the model's intent.
-    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], _ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statements.length !== 1) {
             return Http.#bad(
                 409,
@@ -359,7 +358,7 @@ export default class Http implements SchemeHandler {
     }
 
     // {§turn-disposition} — SEND is messaging; lifecycle operations never reach a scheme.
-    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
+    async send(statement: SendStatement, _ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
                 stage: "target-validation",

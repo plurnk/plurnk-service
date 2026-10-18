@@ -12,11 +12,10 @@ import type {
     ClientInteractionProjection,
     ProposalProjection,
     ProposalResolution,
-    ProviderAccounting,
+    ProviderAccounting,ClientInteractionResolution
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
-import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamEvent, termination } from "../test/notification-fixture.ts";

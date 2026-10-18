@@ -136,7 +136,7 @@ test("candidate reaps its daemon when the client is terminated by a signal", { t
     });
     t.after(() => {
         try {
-            process.kill(-child.pid, "SIGKILL");
+            if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
         } catch (error) {
             if (error?.code !== "ESRCH") throw error;
         }

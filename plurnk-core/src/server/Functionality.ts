@@ -19,8 +19,6 @@ import type {
     FunctionalityProvenance,
     JsonSchema,
     Notice,
-} from "@plurnk/plurnk-contracts";
-import type {
     FunctionalityAdmission,
     FunctionalityCaller,
     FunctionalityFamilyHandle,
@@ -31,7 +29,7 @@ import type {
     FunctionalityPrepared,
     FunctionalityPreparedDefinition,
     WorkspaceCapabilityIdentity,
-    WorkspaceCapabilityGate,
+    WorkspaceCapabilityGate
 } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery, ModuleActionRegistration } from "@plurnk/plurnk-modules";

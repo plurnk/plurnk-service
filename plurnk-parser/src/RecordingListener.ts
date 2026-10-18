@@ -21,6 +21,7 @@ export default class RecordingListener extends BaseErrorListener {
     }
 
     override syntaxError(
+        // oxlint-disable-next-line typescript/no-explicit-any -- antlr4ng's ErrorListener declares `Recognizer<any>`
         recognizer: Recognizer<any>,
         offendingSymbol: Token | null,
         line: number,

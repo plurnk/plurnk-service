@@ -4,9 +4,8 @@ import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Digest } from "@plurnk/plurnk-digest";
+import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { Share } from "@plurnk/plurnk-digest";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§share} {§share-scope}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {

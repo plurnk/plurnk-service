@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 const task = PlurnkParser.frame("WAIT", '[{"content":"Observe the result.","status":"completed"}]');
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

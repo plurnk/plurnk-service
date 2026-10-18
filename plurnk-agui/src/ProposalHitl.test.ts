@@ -10,9 +10,8 @@ import { proposalKey } from "./AguiPlus.ts";
 import type {
     ClientInteractionProjection,
     ProposalProjection,
-    ProposalResolution,
+    ProposalResolution,ClientInteractionResolution
 } from "@plurnk/plurnk-contracts";
-import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { wireRow } from "../test/log-fixture.ts";
 

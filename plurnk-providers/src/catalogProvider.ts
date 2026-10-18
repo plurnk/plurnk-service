@@ -25,7 +25,7 @@ import {
 import AiSdkProvider, {
     type AiSdkProviderConfig,
     type GrammarStyle,
-    type NativeEffort,
+    type NativeEffort,type AiSdkProviderOptions,type CacheAffinity,type NativeRequestControls
 } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
@@ -39,7 +39,6 @@ import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModelSource } from "./aiSdkTransport.ts";
-import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
@@ -160,7 +159,6 @@ export const providerFromSdkModel = ({
     reasoningResponseProviderOptions,
     additiveReasoningProvider,
     requestControls,
-    sdkPackage,
     grammarStyle,
     endpoint,
 }: {

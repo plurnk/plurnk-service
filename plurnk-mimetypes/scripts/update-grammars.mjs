@@ -3,8 +3,7 @@
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseArgs } from "node:util";
-import { promisify } from "node:util";
+import { parseArgs, promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
@@ -20,7 +19,7 @@ const readJson = async (filename) => JSON.parse(await readFile(filename, "utf8")
 
 const defaultRun = async (command, args, cwd) => {
     try {
-        const { stdout = "", stderr = "" } = await execFileAsync(command, args, {
+        const { stdout, stderr } = await execFileAsync(command, args, {
             cwd,
             encoding: "utf8",
         });

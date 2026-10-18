@@ -4,10 +4,9 @@
 import type {
     ReadStatement, SendStatement, DispositionStatement, NoteStatement, KillStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,
+    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,RuntimeTag
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,

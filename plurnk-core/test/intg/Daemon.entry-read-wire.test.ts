@@ -7,8 +7,7 @@ import type {
     SchemeHandler,
     SchemeManifest,
 } from "@plurnk/plurnk-schemes";
-import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { Validator, type ClientEntry, type EntryReadResult as EntryReadWire } from "@plurnk/plurnk-contracts";
+import { type ParsedPath, Validator, type ClientEntry, type EntryReadResult as EntryReadWire } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";

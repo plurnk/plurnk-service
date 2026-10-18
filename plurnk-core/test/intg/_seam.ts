@@ -5,10 +5,9 @@
 // notification fan-in that integration tests need. Its operations are one person's client
 // operations ({§connection-lifecycle}): they journal in the workspace's runtime worker,
 // attributed to `owner`, and act for the bound model worker when there is one.
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ClientEnvelope, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
-import type { ClientEnvelope } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { namedModelWorker } from "./_workers.ts";
 

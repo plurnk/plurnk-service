@@ -8,8 +8,7 @@ import assert from "node:assert/strict";
 import { A2a, type A2aClientResolver } from "@plurnk/plurnk-a2a";
 import type Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { Executor, RuntimeRegistration } from "@plurnk/plurnk-execs";
 import HttpListener from "../../src/server/HttpListener.ts";
 import type { HttpHost } from "@plurnk/plurnk-contracts/port";
 

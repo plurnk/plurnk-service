@@ -4,19 +4,17 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { type ExecStatement } from "@plurnk/plurnk-contracts";
-import { Results, type ExecArgs, type ExecInput, type RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
+import { Results, type ExecArgs, type ExecInput, type RuntimeInvocationDecl, type Executor } from "@plurnk/plurnk-execs";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 interface Run {
     readonly body: string;

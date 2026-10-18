@@ -2,9 +2,8 @@ import {
     InvalidOperationResultError,
     Problems,
     Validator,
-    type ProblemDetails,
+    type ProblemDetails,type TextRegion
 } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
 
 export type { ProblemDetails };
 export { InvalidOperationResultError };

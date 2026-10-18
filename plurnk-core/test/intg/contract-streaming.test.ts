@@ -78,11 +78,9 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "partial", mimetype: "text/plain", state: "active" } },
                 });
-                let subscription: StreamSubscription | undefined;
-                subscription = await ctx.subscriptions.open(request.pathname, {
+                const subscription: StreamSubscription = await ctx.subscriptions.open(request.pathname, {
                     cancel: async () => {
                         teardownByHandle.push(HANDLE);
-                        if (subscription === undefined) throw new Error("stream subscription missing");
                         await subscription.close(
                             Results.failure("scheme:fakestream", "cancelled", 499, "The stream was cancelled by KILL."),
                             "cancelled by KILL",

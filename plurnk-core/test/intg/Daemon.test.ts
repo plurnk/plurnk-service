@@ -12,10 +12,9 @@ import { tmpdir } from "node:os";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { bindListener } from "./_a2a.ts";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Dsl from "./dsl.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { namedModelWorker } from "./_workers.ts";
 import {

@@ -780,7 +780,7 @@ export default class DrainSupervisor {
     // {§module-shutdown-order}: the producer emits synchronously, while the
     // supervisor owns the asynchronous scheduler work and its shutdown truth.
     notifyWakeWorker(payload: WakeWorkerPayload): void {
-        this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
+        void this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
     }
 
     async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
@@ -790,7 +790,7 @@ export default class DrainSupervisor {
         for (const { worker_id: workerId } of recipients) {
             // {§worker-optimistic-settlement}: the sender must finish its own
             // program while the recipient coalesces replies and conclusions.
-            this.#trackSettlement(this.settleCompletionWake(workspaceId, workerId, systemPrompt), "wake-on-reply");
+            void this.#trackSettlement(this.settleCompletionWake(workspaceId, workerId, systemPrompt), "wake-on-reply");
         }
     }
 
@@ -888,7 +888,7 @@ export default class DrainSupervisor {
         const timer = setTimeout(() => {
             if (this.#loopTimers.get(loopId)?.timer !== timer) return;
             this.#loopTimers.delete(loopId);
-            this.#trackSettlement(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, loopId, revision), "wake-on-completion");
+            void this.#trackSettlement(this.#wakeTimedLoop(workspaceId, workerId, systemPrompt, loopId, revision), "wake-on-completion");
         }, Math.max(1, Math.min(dueAt - Date.now(), 2_147_483_647)));
         timer.unref();
         this.#loopTimers.set(loopId, { workerId, revision, dueAt, timer });
@@ -1052,7 +1052,7 @@ export default class DrainSupervisor {
         const { terminatedAt } = await this.#lifecycle.observation(event.loopId);
         this.#discardLoopNotices(event.loopId);
         this.#emit(workspaceId, "loop/terminated", { ...event, terminatedAt });
-        this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");
+        void this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");
     }
 
     // {§worker-lifecycle-child-wake}: completion belongs to a task, not drain teardown.

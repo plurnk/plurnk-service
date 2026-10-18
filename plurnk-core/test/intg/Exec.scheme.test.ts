@@ -7,23 +7,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ownWorker } from "./_approval.ts";
-import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
-import { makeSchemeCtx } from "./_scheme.ts";
+import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import type { SchemeManifest } from "../../src/core/types.ts";
-import { schemeManifest } from "./_scheme.ts";
 import { localPath, readStmt, urlPath } from "./_dsl.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_JQ = "1";
 

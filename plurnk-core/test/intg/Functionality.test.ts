@@ -1,5 +1,4 @@
-import { TEST_OWNER } from "./_approval.ts";
-import { serverProposals } from "./_approval.ts";
+import { TEST_OWNER, serverProposals } from "./_approval.ts";
 // {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
 // through a fixture adapter: one client projection, one generated runtime,
 // one durable workspace-owned state, one atomic publication.
@@ -14,9 +13,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { FunctionalityFamilyHandle, FunctionalityListResult, FunctionalityOutcome, FunctionalityProvenance, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
 import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/ModuleHost.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";

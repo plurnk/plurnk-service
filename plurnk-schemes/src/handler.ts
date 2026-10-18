@@ -30,10 +30,9 @@ import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAdd
 import type { WebMaterializer } from "./WebMaterialization.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
-import type { SchemeManifest } from "./types.ts";
+import type { SchemeManifest, EntryCoordinate } from "./types.ts";
 import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ByteSource } from "./ByteSource.ts";
-import type { EntryCoordinate } from "./types.ts";
 
 export interface RepresentationPreparationRequest {
     readonly target: ParsedPath;

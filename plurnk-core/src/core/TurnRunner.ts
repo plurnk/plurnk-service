@@ -1,13 +1,14 @@
-import type { RequestPacket } from "./StoredPacket.ts";
+import StoredPacket, { type RequestPacket, type PacketAssistant } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import WorkerOwners from "./WorkerOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
-import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
-import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, NoteStatement, ParseAttempt } from "@plurnk/plurnk-contracts";
+import {
+    aggregateProviderAccounting, ProviderError, scopeEnvToAlias,
+    type GrammarEvidence, type Provider, type ProviderAttempt, type ProviderAttemptFinishReason, type ProviderRequestAccounting, type ProviderResponse,
+} from "@plurnk/plurnk-providers";
+import type { BareStatement, CapabilityPolicy, FindStatement, Notice, NoteStatement, ParseAttempt, PlurnkStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -57,9 +58,8 @@ import type ClientInteractions from "./ClientInteractions.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import ProviderRecovery from "./ProviderRecovery.ts";
 import ProblemLog from "./ProblemLog.ts";
-import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
+import { type StrikeOutcome } from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage, type WindowOverflow } from "./PacketBuilder.ts";
-import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import { observed, observedSync } from "../observe/spans.ts";
@@ -122,8 +122,6 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderResponse } from "@plurnk/plurnk-providers";
-import { ProviderError, scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
@@ -419,7 +417,6 @@ export default class TurnRunner {
     readonly #weighContent: (text: string) => number;
     readonly #notices: NoticeChannel;
     readonly #problems: ProblemLog;
-    readonly #strikes: StrikeRail;
     readonly #packets: PacketBuilder;
     readonly #dispatcher: Dispatcher;
     readonly #liveSubscriptions: LiveSubscriptions;
@@ -444,7 +441,6 @@ export default class TurnRunner {
         weigh,
         notices,
         problems,
-        strikes,
         packets,
         dispatcher,
         liveSubscriptions,
@@ -462,7 +458,6 @@ export default class TurnRunner {
         weigh: (text: string) => number;
         notices: NoticeChannel;
         problems: ProblemLog;
-        strikes: StrikeRail;
         packets: PacketBuilder;
         dispatcher: Dispatcher;
         liveSubscriptions: LiveSubscriptions;
@@ -480,7 +475,6 @@ export default class TurnRunner {
         this.#weighContent = weigh;
         this.#notices = notices;
         this.#problems = problems;
-        this.#strikes = strikes;
         this.#packets = packets;
         this.#dispatcher = dispatcher;
         this.#liveSubscriptions = liveSubscriptions;
@@ -1265,9 +1259,8 @@ export default class TurnRunner {
         attempts.railGrammar = await this.#operatorGrammar(provider);
         attempts.wellFormed = await this.#bodyChecks(workspaceId);
         const attemptLimit = readEmissionAttempts();
-        const strikeStreak = await this.#strikes.streak(loopId);
         for (let attempt = 1; attempt <= attemptLimit;) {
-            const verdict = await this.#issueProviderCall(args, request, attempts, attempt, strikeStreak);
+            const verdict = await this.#issueProviderCall(args, request, attempts, attempt);
             if (verdict === "admitted") break;
             if (verdict === "rejected") attempt++;
         }
@@ -1318,7 +1311,7 @@ export default class TurnRunner {
     // re-issues the same emission attempt; the parser's admission is the one verdict
     // on a completed exchange.
     async #issueProviderCall(
-        args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, attempt: number, strikeStreak: number,
+        args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, attempt: number,
     ): Promise<"admitted" | "rejected" | "reissued"> {
         const { provider, workspaceId, workerId, loopId } = args;
         // A recovery re-issue does not consume a grammar-emission attempt. Every
@@ -1352,7 +1345,7 @@ export default class TurnRunner {
         const reasoning = this.#reasoningObserver(args, request.turnId, modelCall);
         let completedResponse: ProviderResponse;
         try {
-            completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, strikeStreak);
+            completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning);
         } catch (error) {
             if (error instanceof ProviderError
                 && ProviderRecovery.RECOVERABLE.has(error.kind)
@@ -1445,7 +1438,7 @@ export default class TurnRunner {
     // asserted whether it resolved or failed.
     async #generate(
         { provider, workspaceId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
-        modelCall: ModelCall, reasoning: ReasoningObserver, strikeStreak: number,
+        modelCall: ModelCall, reasoning: ReasoningObserver,
     ): Promise<ProviderResponse> {
         return await observed( // {§observability-boundary}
             genAiRequestName(provider.model),

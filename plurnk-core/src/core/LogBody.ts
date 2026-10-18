@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecutionOp } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -8,7 +8,6 @@ import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";
 import ByteView from "../content/byte-view.ts";
-import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 export interface LogBodyRow {
     readonly op: string | null;

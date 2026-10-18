@@ -5,16 +5,14 @@ import { isAbsolute } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import Results, { OperationFailureError } from "../core/results.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
-import type { ProposalResolution } from "@plurnk/plurnk-contracts";
-import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
-import {
+import { type ProposalResolution,
     Validator,
     PathSyntax,
     PlurnkParseError,
     type CapabilityPolicy,
     type ClientInteractionResolution,
-    type MessageResource,
-} from "@plurnk/plurnk-contracts";
+    type MessageResource } from "@plurnk/plurnk-contracts";
+import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 
 
 export default class ClientInput {

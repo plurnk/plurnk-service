@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type JsonSchema, isExecution } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 import type {
@@ -7,7 +7,6 @@ import type {
     RuntimeSummaryDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
-import { isExecution } from "@plurnk/plurnk-contracts";
 
 export interface ToolResource {
     readonly pathname: string;

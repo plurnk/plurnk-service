@@ -1,9 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
-import { TurnDisposition, type DispositionStatement } from "@plurnk/plurnk-contracts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, type DispositionStatement, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 const ops = (result: ReturnType<typeof PlurnkParser.parse>) =>
     result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

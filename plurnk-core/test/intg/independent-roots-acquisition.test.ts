@@ -55,7 +55,7 @@ test("independent root workers share one acquired https representation in their 
             scheme: "https", authority: "example.org", pathname: "/feed",
         });
         assert.deepEqual(
-            owners.map(({ workspace_id, content }) => ({ content })),
+            owners.map(({ content }) => ({ content })),
             [{ content: bodies[0] }],
             "one resource at the workspace coordinate",
         );

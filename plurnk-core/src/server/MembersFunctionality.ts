@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -20,15 +20,6 @@ import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import PathGlob from "../core/PathGlob.ts";
 import Paths from "../Paths.ts";
-import type {
-    FunctionalityAdmission,
-    FunctionalityCaller,
-    FunctionalityOutcome,
-    FunctionalityPreparation,
-    FunctionalityPrepared,
-    FunctionalityServiceDefinition,
-    WorkspaceCapabilityIdentity,
-} from "@plurnk/plurnk-contracts";
 import type { FunctionalityAddressing, FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 
 const MEMBERS_FAMILY = "members";

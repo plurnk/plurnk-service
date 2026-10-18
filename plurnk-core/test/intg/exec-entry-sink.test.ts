@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { ExecStatement, FindStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, PlurnkStatement, ReadStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -19,7 +19,6 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,

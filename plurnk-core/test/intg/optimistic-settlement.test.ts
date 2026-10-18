@@ -9,10 +9,9 @@ import test from "node:test";
 import type {
     ChatMessage,
     Provider,
-    ProviderResponse,
+    ProviderResponse,InputModality
 } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { InputModality } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { testProviderCapacity } from "./_provider.ts";

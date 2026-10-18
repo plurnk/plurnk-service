@@ -7,19 +7,8 @@
 // shared STATE. This is the flagship choreography de-risked as logic before code.
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
-import type { JsonPatch } from "@ag-ui/core";
-import type { Interrupt, ResumeEntry } from "@ag-ui/core";
-import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting } from "@plurnk/plurnk-contracts";
-import type {
-    ApplicationLoopProjection,
-    ApplicationProviderAlias,
-    ClientInteractionProjection,
-    ClientInteractionResolution,
-    FunctionalityPreparationActivity,
-    ModelRoute,
-    ProblemDetails,
-    ProposalResolution,
-} from "@plurnk/plurnk-contracts";
+import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
+import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the

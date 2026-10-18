@@ -73,7 +73,6 @@ export default class ExecScheduler {
 
         const executionsAhead = state.active + state.queue.length;
         const deferred = Promise.withResolvers<Release>();
-        let waiter: Waiter;
         const onAbort = (): void => {
             const index = state.queue.indexOf(waiter);
             if (index === -1) return;
@@ -82,7 +81,7 @@ export default class ExecScheduler {
             deferred.resolve(() => {});
             this.#forgetEmpty(workspaceId, state);
         };
-        waiter = { signal, resolve: deferred.resolve, onAbort };
+        const waiter: Waiter = { signal, resolve: deferred.resolve, onAbort };
         state.queue.push(waiter);
         signal.addEventListener("abort", onAbort, { once: true });
         if (signal.aborted) onAbort();

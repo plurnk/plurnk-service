@@ -34,11 +34,10 @@ type Replayed = { id: string; role: string; content?: unknown; toolCalls?: Reado
 const transcript = (messages: readonly Replayed[] | undefined): Array<Record<string, unknown>> => (messages ?? []).map(({ id, role, content, toolCalls }) =>
     toolCalls === undefined ? { id, role, content } : { id, role, calls: toolCalls.map(({ function: { name } }) => name) });
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Problems, Validator } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, isExecution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
-import { isExecution } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { replayState } from "../test/state-replay.ts";
 

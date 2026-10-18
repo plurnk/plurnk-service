@@ -1,7 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
-import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, UNKNOWN_POSITION, PathSyntax, isExecution } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -15,7 +15,6 @@ import type { AppliedProposalResolution, ProposalSettlement } from "./ProposalLi
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryAddress, foldAuthorityIntoPath, renderAddress, renderAuthoredTarget, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import WorkerName from "./WorkerName.ts";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import FileAddress from "./FileAddress.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -24,8 +23,7 @@ import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
-import Results from "./results.ts";
-import { OperationFailureError } from "./results.ts";
+import Results, { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
@@ -53,7 +51,6 @@ import DurableStatement from "./DurableStatement.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // READ/FIND are not gated — they read, never mutating an entry.

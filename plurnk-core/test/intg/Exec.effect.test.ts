@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ownWorker } from "./_approval.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { type ExecStatement } from "@plurnk/plurnk-contracts";
+import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -19,10 +19,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
-import { BaseExecutor, type Effect, type ExecArgs } from "@plurnk/plurnk-execs";
+import { BaseExecutor, type Effect, type ExecArgs, type Executor } from "@plurnk/plurnk-execs";
 import { localPath } from "./_dsl.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_SQLITE = "1";
 

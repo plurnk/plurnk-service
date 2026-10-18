@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { CapabilityPolicy, ExecStatement } from "@plurnk/plurnk-contracts";
+import type { CapabilityPolicy, ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -15,7 +15,6 @@ import { completeStmt, copyStmt, editStmt, killStmt, moveStmt, readStmt, urlPath
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({

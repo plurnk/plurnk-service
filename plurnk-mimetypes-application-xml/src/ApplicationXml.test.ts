@@ -183,16 +183,16 @@ describe("ApplicationXml — parse issues ({§mimetype-parse-issues})", () => {
 
     it("an undeclared-to-xmldom entity is one recovery site; the document still has its symbols", async () => {
         const h = new ApplicationXml(metadata);
-        assert.equal(await h.parseIssues(internalSubset), 1);
-        assert.deepEqual((await h.extractRaw(internalSubset)).map(({ name, kind }) => `${kind}:${name}`), ["module:page", "field:title", "field:usage"]);
+        assert.equal(h.parseIssues(internalSubset), 1);
+        assert.deepEqual(h.extractRaw(internalSubset).map(({ name, kind }) => `${kind}:${name}`), ["module:page", "field:title", "field:usage"]);
         assert.notEqual(await h.deepJson(internalSubset), null);
         assert.equal((await h.query(internalSubset, "xpath", "//section")).length, 1, "XPath runs over the recovered document");
     });
 
     it("content that is not a document has no symbols and no deep projection, one issue, and never throws", async () => {
         const h = new ApplicationXml(metadata);
-        assert.equal(await h.parseIssues(template), 1);
-        assert.deepEqual(await h.extractRaw(template), []);
+        assert.equal(h.parseIssues(template), 1);
+        assert.deepEqual(h.extractRaw(template), []);
         assert.equal(await h.deepJson(template), null);
         await assert.rejects(h.query(template, "xpath", "//ShortName"), { name: "QueryParseFailureError" }, "a structural query still says the source does not parse");
         assert.equal((await h.query(template, "regex", "Put e\\.g\\.")).length, 1, "text matching is unaffected");
@@ -200,7 +200,7 @@ describe("ApplicationXml — parse issues ({§mimetype-parse-issues})", () => {
 
     it("a well-formed document reports no issues", async () => {
         const h = new ApplicationXml(metadata);
-        assert.equal(await h.parseIssues("<doc><a id=\"x\"/></doc>"), 0);
-        assert.equal(await h.parseIssues(""), 0);
+        assert.equal(h.parseIssues("<doc><a id=\"x\"/></doc>"), 0);
+        assert.equal(h.parseIssues(""), 0);
     });
 });

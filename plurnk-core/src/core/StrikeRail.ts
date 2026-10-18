@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import type { OperationResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { OperationResult, PlurnkStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a completion claim strikes
 // (a completion joins live work, {§completion-joins-live-work}; a claim over settled results

@@ -152,7 +152,7 @@ describe("AntlrExtractor", () => {
         const e = new Extractor(metadata);
         assert.equal(await e.symbolsRaw("anything"), "class Foo [1-10]");
         assert.deepEqual(
-            await e.extractRaw("anything"),
+            e.extractRaw("anything"),
             [{ name: "Foo", kind: "class", line: 1, endLine: 10 }],
         );
     });
@@ -298,7 +298,7 @@ describe("AntlrExtractor — references channel (ANTLR refs grind)", () => {
             }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(await e.references("content"), refs);
+        assert.deepEqual(e.references("content"), refs);
     });
 
     it("returns [] when the visitor emits no refs (default ANTLR handler)", async () => {
@@ -307,7 +307,7 @@ describe("AntlrExtractor — references channel (ANTLR refs grind)", () => {
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
         }
         const e = new Extractor(metadata);
-        assert.deepEqual(await e.references("content"), []);
+        assert.deepEqual(e.references("content"), []);
     });
 
     it("preserves a parser defect on the references projection", async () => {

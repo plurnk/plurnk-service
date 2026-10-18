@@ -9,7 +9,7 @@ import {
     type ChatMessage,
     type ProviderRequestCapture,
 } from "@plurnk/plurnk-providers";
-import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Validator, type OperationResult, type ProblemDetails, isExecutionOp } from "@plurnk/plurnk-contracts";
 import type {
     WorkerRow,
     LoopRow,
@@ -24,7 +24,6 @@ import type {
     CacheLedgerEntry,
 } from "./digest-rows.ts";
 import { EDIT_FORMS } from "./digest-rows.ts";
-import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 function* projectRows<T, R>(rows: Iterable<T>, project: (row: T) => R): Generator<R> {
     for (const row of rows) yield project(row);

@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, isExecution } from "@plurnk/plurnk-contracts";
 import RuntimeSummary from "./RuntimeSummary.ts";
 import type {
     RuntimeBodyDecl,
@@ -10,7 +10,6 @@ import type {
     RuntimeTargetDecl,
     RuntimeTargetKind,
 } from "./types.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
 
 const TARGET_KINDS = new Set<RuntimeTargetKind>(["literal", "path", "resource", "script"]);
 

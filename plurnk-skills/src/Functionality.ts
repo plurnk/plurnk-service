@@ -12,19 +12,10 @@ import {
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
-    type SkillDefinition,
+    type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity
 } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import type {
-    FunctionalityDefinitionSource,
-    FunctionalityFamilyHandle,
-    FunctionalityOutcome,
-    FunctionalityPreparation,
-    FunctionalityPrepared,
-    FunctionalityServiceDefinition,
-    WorkspaceCapabilityIdentity,
-} from "@plurnk/plurnk-contracts";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import SkillSource from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";

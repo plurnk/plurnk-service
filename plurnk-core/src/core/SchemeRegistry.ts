@@ -11,7 +11,7 @@ import {
     type PacketSectionDraft,
     type PacketSectionTransformer,
     type SchemeHandler,
-    type WebMaterializer,
+    type WebMaterializer,type RuntimeSchemeFacet
 } from "@plurnk/plurnk-schemes";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
@@ -21,7 +21,6 @@ import type { RuntimeNamespaceOwner } from "./ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import { docsExcludeSet } from "./teaching.ts";
 import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
-import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import Meta, {
     TEACHING_CORPUS,
     type ExtensionAttribution,

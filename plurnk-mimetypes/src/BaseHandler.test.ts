@@ -92,7 +92,7 @@ describe("BaseHandler", () => {
         }
         const h = new TestHandler(metadata);
         assert.deepEqual(
-            await h.extractRaw("anything"),
+            h.extractRaw("anything"),
             [
                 { name: "A", kind: "class", line: 1, endLine: 5 },
                 { name: "B", kind: "class", line: 10, endLine: 15 },

@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
@@ -13,7 +13,6 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.t
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // This file isolates the hold decision after ordinary optimistic settlement:
 // disabling the latter keeps the selected-vs-unselected runtime distinction as

@@ -1,7 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { readFile } from "node:fs/promises";
-import fs from "node:fs/promises";
+import fs, { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";

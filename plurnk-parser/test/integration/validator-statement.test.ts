@@ -333,14 +333,14 @@ test("PlurnkStatement: rejects unknown op", () => {
 });
 
 test("PlurnkStatement: rejects missing required field", () => {
-    const stmt: any = baseFields("EDIT");
+    const stmt: Record<string, unknown> = baseFields("EDIT");
     delete stmt.position;
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });
 
 test("PlurnkStatement: rejects extra property", () => {
-    const stmt: any = { ...baseFields("EDIT"), surprise: "field" };
+    const stmt: Record<string, unknown> = { ...baseFields("EDIT"), surprise: "field" };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
 });

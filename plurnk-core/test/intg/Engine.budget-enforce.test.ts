@@ -2,14 +2,13 @@
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
-import { chatMessageText } from "@plurnk/plurnk-providers";
+import { chatMessageText, Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";

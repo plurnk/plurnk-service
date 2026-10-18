@@ -6,7 +6,7 @@ import { ownWorker, TEST_OWNER } from "./_approval.ts";
 // the same hotload/withdrawal at the next packet, the same persistence,
 // shared visibility, workspace isolation, concurrency, and rollback. No step encodes a family's
 // management grammar; only the definition payloads and the liveness probe differ.
-import { chatMessageText } from "@plurnk/plurnk-providers";
+import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -18,7 +18,6 @@ import type { AddressInfo } from "node:net";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Validator } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
-import { Mock } from "@plurnk/plurnk-providers";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { OutboundModule as A2aOutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";

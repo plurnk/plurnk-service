@@ -1,4 +1,4 @@
-import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement } from "./types.ts";
+import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement, InputModality, Effort } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -7,7 +7,6 @@ import Meta, {
     type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { WIRE_FLEX_MARGIN, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget, flexedResponseMax, requestCapacityDecision } from "./capacity.ts";
-import type { InputModality, Effort } from "./types.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries before throwing one of these, so re-hitting the same

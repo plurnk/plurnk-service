@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import type { RuntimeInvocationDecl, Executor } from "@plurnk/plurnk-execs";
 import type { Db } from "./Db.ts";
 import Engine from "./Engine.ts";
 import ExecutorRegistry, { type RegistryEntry } from "./ExecutorRegistry.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { SchemeManifest } from "./scheme-types.ts";
 

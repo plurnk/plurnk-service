@@ -12,10 +12,9 @@ import type { AiSdkProviderExtension, Provider } from "./types.ts";
 import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-aliases";
-import { scopeEnvToAlias } from "./env.ts";
+import { scopeEnvToAlias, contextWindowFromEnv } from "./env.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
-import { contextWindowFromEnv } from "./env.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import Meta, {
     type ExtensionAttribution,
@@ -61,6 +60,7 @@ export const instantiateProvider = async (
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
     if (name === "openai") return compatibleProviderFromEnv(env, model, baseUrl);
+    // oxlint-disable-next-line typescript/no-useless-default-assignment -- tsc reads both fields as optional; the defaults are the contract
     const { registry, skipped, packageAttributions = new Map(), grammarStyles = new Map() } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {

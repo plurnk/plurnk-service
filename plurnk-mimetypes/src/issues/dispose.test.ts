@@ -13,8 +13,7 @@ import type {
     TreeSitterParser,
     TreeSitterTree,
 } from "../TreeSitterExtractor.ts";
-import type { HandlerMetadata, MimeSymbol } from "../types.ts";
-import type { Discovery, HandlerInfo, Registry } from "../types.ts";
+import type { HandlerMetadata, MimeSymbol, Discovery, HandlerInfo, Registry } from "../types.ts";
 
 
 const INFO: HandlerInfo = {
@@ -228,6 +227,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
                 descendantsOfType: () => [],
             };
             class Query {
+                // oxlint-disable-next-line no-useless-constructor -- the stub keeps web-tree-sitter's Query(language, source) arity
                 constructor(_language: unknown, _source: string) {}
                 captures(): [] { return []; }
                 delete(): void {

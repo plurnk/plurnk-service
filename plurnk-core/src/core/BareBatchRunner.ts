@@ -38,7 +38,6 @@ export default class BareBatchRunner {
         provider,
         turnId,
         workspaceId,
-        workerId,
         loopId,
         loopSequence,
         turnSequence,

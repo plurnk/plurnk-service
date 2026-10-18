@@ -50,7 +50,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     type Listed = { alias: string; origin: string; state: string; detail?: { name: string; skills: string[] }; problem?: ProblemDetails };
     const states = async (): Promise<string[]> =>
         (await invoke<{ definitions: Listed[] }>("list", {})).definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
-    const document = async (alias: string, workerId = model): Promise<string | undefined> => {
+    const document = async (alias: string, _workerId = model): Promise<string | undefined> => {
         const references = await daemon.engine.referenceEntries(workspaceId);
         return references.find(({ pathname }) => pathname === `/_plurnk/a2a/${alias}.md`)?.content;
     };

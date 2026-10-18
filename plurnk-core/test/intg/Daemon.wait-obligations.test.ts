@@ -10,7 +10,7 @@ import { withDaemon, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { namedModelWorker } from "./_workers.ts";
 
-test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
+test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async () => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.
     const provider = new Mock({
         contextWindow: 65536,

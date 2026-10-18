@@ -23,8 +23,8 @@ test("{§exec-concurrency}: an aborted waiter never takes a FIFO slot", async ()
     const cancelled = scheduler.admit(1, cancelledController.signal);
     const next = scheduler.admit(1, new AbortController().signal);
     const admissions: string[] = [];
-    cancelled.ready.then(() => admissions.push("cancelled"));
-    next.ready.then(() => admissions.push("next"));
+    void cancelled.ready.then(() => admissions.push("cancelled"));
+    void next.ready.then(() => admissions.push("next"));
 
     assert.equal(running.queued, false);
     assert.equal(cancelled.executionsAhead, 1);

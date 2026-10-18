@@ -4,6 +4,7 @@ import type { ExtractionVisitor, MimeRef, MimeSymbol, RefKind, SymbolKind } from
 
 // Generic constructor shape for any antlr4ng generated visitor. The `any[]`
 // rest is required by TypeScript's mixin pattern (TS2545).
+// oxlint-disable-next-line typescript/no-explicit-any -- TS2545: a mixin base must take a single `any[]` rest parameter
 type VisitorCtor = new (...args: any[]) => {
     visit(tree: unknown): unknown;
     visitChildren(node: unknown): unknown;

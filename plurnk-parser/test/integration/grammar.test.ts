@@ -1,9 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser, parsePath } from "../../src/index.ts";
-import { PlurnkParseError, Validator } from "@plurnk/plurnk-contracts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, Validator, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 
 // {§fence-heading-in-body} — the executors these witnesses invoke, as the host would name them.

@@ -5,9 +5,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
-import { Digest } from "@plurnk/plurnk-digest";
+import { Digest, DigestRender } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { DigestRender } from "@plurnk/plurnk-digest";
 import type { Db } from "../../src/core/Db.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 

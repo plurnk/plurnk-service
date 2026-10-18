@@ -708,14 +708,13 @@ for (const silent of [false, true]) {
                 const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
                 // Turn 1's provider call is held open; two prompts arrive meanwhile.
                 await mock.entered;
-                let first;
                 try {
                     for (const [id, prompt] of [[3, "the first follow-up"], [4, "the second follow-up"]] as const) {
                         const r = await rpcCall(ws, id, "loop.run", { prompt });
                         assert.equal((r.result as { action: string }).action, "injected_next_turn", JSON.stringify(r.result ?? r.error));
                     }
                 } finally { release(); }
-                first = await firstPromise;
+                const first = await firstPromise;
                 const loopId = (first.result as { loopId: number }).loopId;
                 const done = await waitFor(
                     () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter((e) => e.loopId === loopId),

@@ -14,7 +14,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
@@ -24,7 +24,6 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, ro
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,

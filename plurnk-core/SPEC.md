@@ -3932,6 +3932,12 @@ The model is NOT a stream/event consumer — turn-based only; sees whatever's in
 
 SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
 
+§persistence-via-sqlrite Every daemon read and write of a plurnk database goes through a SqlRite
+statement owned by the package that owns the table ({§sql-ts-boundary}). `node:sqlite` is imported
+only by the `plurnk-execs-sqlite` executor, which operates the model's own databases, and by a
+witness that inspects a database's catalog after the daemon has closed it; the lint gate refuses
+every other import ({§lint-gate}), and each permitted one states its reason at the import.
+
 ### §db-durability Connection durability
 
 The service launcher applies `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` through SqlRite's

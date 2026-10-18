@@ -15,7 +15,7 @@ import { ownWorker } from "./_approval.ts";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExecStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -23,7 +23,6 @@ import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { localPath } from "./_dsl.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // Exercise optional implementations too; executor-defaults.test.ts covers their
 // shipped admission and model-facing survey. {§executor-default-inventory}

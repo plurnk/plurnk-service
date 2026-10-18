@@ -7,12 +7,25 @@
 | Runtime | Node 26 or newer; source execution uses native type stripping, and published execution uses built ESM. ESNext is a compiler target, not permission to require an API absent from the supported runtime. |
 | Compiler | TypeScript 7, ESNext target and libraries, NodeNext module semantics. Workspaces inherit the shared base; browser checks add DOM libraries without Node globals. |
 | Source | Verbatim imports and erasable-only syntax keep direct and built execution aligned. Preserve useful type abstractions; do not require transformation-only TypeScript syntax. |
-| Lint | No `var`, explicit `any`, deprecated APIs, or unprefixed Node built-ins in handwritten source. Prefer `const` in runtime code and scripts; test setup may retain staged initialization. Generated/vendor code remains outside source-style enforcement. |
+| Lint | No `var`, explicit `any`, deprecated APIs, or unprefixed Node built-ins in handwritten source. `const` for every binding assigned once, tests included; a binding a closure reads before its one assignment (`let owner; t.after(() => owner?.stop())`) stays `let`. Generated/vendor code remains outside source-style enforcement. |
 | Resources | Use native resource management where the owned resource implements disposal and the lexical lifetime fits. Callbacks, process-local handles, and asynchronous lifetimes need not become `using` declarations. |
 
 The ordinary gate checks source and built behavior. A stylistic sweep is not an
 invitation to replace sound types, invent compatibility code, or change external
 protocol support.
+
+## §lint-gate Lint is a gate
+
+`oxlint` runs beside `tsc` in the lint tier (`npm run lint:oxlint`, part of root
+`test:lint`), over every workspace's sources, tests and `scripts/`, from the one
+shared `.oxlintrc.json`. The gate fails on errors.
+
+| Element | Contract |
+| --- | --- |
+| Categories | `correctness`, `suspicious` and `perf` are errors, with the typescript, unicorn, oxc, import, promise and node plugins. |
+| Exceptions | A rule the codebase judges is named in the config with its reason: a warning while its sites are rewritten, or off when it is an opinion rather than an idiom here. |
+| Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
+| Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |
 
 ## §package-release-contract Independent versions
 

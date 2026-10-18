@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -24,7 +24,6 @@ import PacketBuilder from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
-import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
@@ -314,7 +313,6 @@ export default class Engine {
             weigh: this.#weighContent,
             notices: this.#notices,
             problems: this.#problems,
-            strikes: this.#strikes,
             packets: this.#packets,
             dispatcher: this.#dispatcher,
             liveSubscriptions: this.#liveSubscriptions,

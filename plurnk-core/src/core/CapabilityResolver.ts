@@ -3,9 +3,8 @@ import {
     type CapabilityDescriptor,
     type CapabilityPolicy,
     type CapabilityProjection,
-    type PlurnkStatement,
+    type PlurnkStatement,isExecution,isExecutionOp,type RuntimeTag,type ParsedPath
 } from "@plurnk/plurnk-contracts";
-import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -16,7 +15,6 @@ import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
-import { isExecution, isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // {§capability-policy-cascade} A denial names the ring that refused.
 type CapabilityScope = "service" | "workspace" | "owner";

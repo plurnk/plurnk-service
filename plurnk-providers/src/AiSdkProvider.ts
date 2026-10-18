@@ -6,13 +6,12 @@
 // ordinary vendor protocol. The compatible URL path serves only PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort } from "./types.ts";
+import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
 import type { CallWarning, JSONValue } from "ai";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import type { InputModality } from "./types.ts";
 import { executeAiSdkModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./aiSdkTransport.ts";
 import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import { prepareRetries } from "ai/internal";

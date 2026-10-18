@@ -1,7 +1,6 @@
 import { Knob } from "@plurnk/plurnk-meta";
 import { createHash } from "node:crypto";
-import type { LineMarker, TextLineMarker } from "@plurnk/plurnk-contracts";
-import type { EditStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, TextLineMarker, EditStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 

@@ -14,7 +14,7 @@ const values = {
     pid: process.pid,
 };
 if (process.env.MCP_ENV_MARKER) appendFileSync(process.env.MCP_ENV_MARKER, `${JSON.stringify(values)}\n`);
-await serveStdio(() => {
+serveStdio(() => {
     const server = new McpServer({ name: `env-${values.witness ?? "missing"}`, version: "1.0.0" });
     server.registerTool("environment", { description: "Read this fixture's launch environment.", inputSchema: z.object({}) },
         async () => ({ content: [{ type: "text", text: JSON.stringify(values) }] }));

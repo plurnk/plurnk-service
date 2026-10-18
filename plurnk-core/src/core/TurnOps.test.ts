@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type DispositionStatement } from "@plurnk/plurnk-contracts";
+import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type DispositionStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 
 test("{§emission-row} the frozen projection keeps every header and body whole, and adds no nested operations", () => {

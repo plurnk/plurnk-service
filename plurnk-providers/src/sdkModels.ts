@@ -8,7 +8,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
-import { providerSetting } from "./provider-env.ts";
+import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import { providerModelOptions } from "./model-options.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
@@ -26,7 +26,6 @@ import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { AiSdkProviderOptions, CacheAffinity, NativeRequestControls } from "./AiSdkProvider.ts";
 import type { ProviderCostNormalizer } from "./types.ts";
-import { providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import { cacheAffinityDeclarationFromEnv } from "./env.ts";
 import { withoutNativeToolsFetch } from "./native-tools.ts";
 

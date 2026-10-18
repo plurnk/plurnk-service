@@ -14,6 +14,7 @@ import Matcher from "../../src/content/matcher.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import type { MatchItem } from "../../src/schemes/_entry-find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -37,17 +38,12 @@ const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null)
      position: { line: 1, column: 1 },
 });
 
-const matchLines = (
-    matches: ReadonlyArray<any> | undefined,
-): number[] => {
-    return (matches ?? []).flatMap((match: any) => match.region?.startLine !== undefined ? [match.region.startLine] : []);
-};
+// A catalog resource is a tuple; only a match location carries a region or a locator.
+const matchLines = (matches: readonly MatchItem[] | undefined): number[] =>
+    (matches ?? []).flatMap((match) => !Array.isArray(match) && match.region?.startLine !== undefined ? [match.region.startLine] : []);
 
-const matchLocators = (
-    matches: ReadonlyArray<any> | undefined,
-): string[] => {
-    return (matches ?? []).flatMap((match: any) => match.locator !== undefined ? [match.locator] : []);
-};
+const matchLocators = (matches: readonly MatchItem[] | undefined): string[] =>
+    (matches ?? []).flatMap((match) => !Array.isArray(match) && match.locator !== undefined ? [match.locator] : []);
 
 const setup = async () => {
     const db = await openMigrated();

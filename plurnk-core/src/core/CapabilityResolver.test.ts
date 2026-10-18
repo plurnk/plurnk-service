@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PLURNK_OPS, type CapabilityDescriptor, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, type CapabilityDescriptor, type PlurnkStatement, isExecution } from "@plurnk/plurnk-contracts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import SchemeRegistry from "./SchemeRegistry.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
 
 const statement = (source: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: ["tools", "resource-tool", "optional-resource"] });

@@ -1,7 +1,7 @@
 // {§entry-owner} {§execution-output-identity}
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, ReadStatement, UrlPath, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
@@ -12,7 +12,6 @@ import WorkerName, { WorkerNameError } from "../../src/core/WorkerName.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { clientRead } from "./_client-read.ts";
-import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_JQ = "1";
 

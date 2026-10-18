@@ -207,7 +207,7 @@ test("{§module-discovery}: a package names its entry as an export subpath, reso
 test("{§module-self-activation}: a module's own configuration error is attributed to that module", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-config-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const meta = await import.meta.resolve("@plurnk/plurnk-meta");
+    const meta = import.meta.resolve("@plurnk/plurnk-meta");
     const misconfigured = await packageOf(root, "@acme/misconfigured", { plurnk: { kind: "module", module: "./module" } },
         `import { ConfigurationError } from ${JSON.stringify(meta)};\nexport default () => { throw new ConfigurationError("ACME_SETTING", "ACME_SETTING must be a number."); };`);
     const healthy = await packageOf(root, "@acme/healthy", { plurnk: { kind: "module", module: "./module" } }, "export default { setup() {} };");

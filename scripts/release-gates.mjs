@@ -3,10 +3,9 @@
 // plus the few package-specific checks that have no ordinary test-tier meaning.
 // Usage: node scripts/release-gates.mjs [--only <pkg-dir>]...
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { promisify, parseArgs } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseArgs } from "node:util";
 
 const run = promisify(execFile);
 const { values } = parseArgs({ options: { only: { type: "string", multiple: true } } });

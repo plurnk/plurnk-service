@@ -9,7 +9,7 @@ import {
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ProblemDetails,
-    type ProposalResolution,
+    type ProposalResolution,type LogEntryWire
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import {
@@ -21,7 +21,6 @@ import {
     resolutionFromResume,
 } from "./AguiPlus.ts";
 import type { AguiEvent, ProposalNotification } from "./types.ts";
-import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type HitlPort = Pick<
     ApplicationPort,

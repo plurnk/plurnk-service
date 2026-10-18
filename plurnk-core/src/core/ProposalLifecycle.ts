@@ -7,7 +7,7 @@ import {
     type OperationResult,
     type PlurnkStatement,
     type ProposalProjection,
-    type ProposalDisposition,
+    type ProposalDisposition,isExecution,type ProposalResolution
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -28,7 +28,6 @@ import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
-import { isExecution, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import type { OrchestrationProposalAttrs } from "./mutation-types.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}

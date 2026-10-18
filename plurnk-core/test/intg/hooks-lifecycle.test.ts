@@ -9,12 +9,10 @@ import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
-import { makeMockResponse } from "./_mock.ts";
-import { makeRawMockResponse } from "./_mock.ts";
-import type { ApplicationOperationEvent } from "@plurnk/plurnk-contracts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import type { ApplicationOperationEvent, ProposalProjection } from "@plurnk/plurnk-contracts";
 import type { HookEvent } from "../../../plurnk-hooks/src/EventProjection.ts";
 import { namedModelWorker } from "./_workers.ts";
-import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 
 interface TerminalEvent {
     readonly workspaceId: number;

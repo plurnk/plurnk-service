@@ -1,5 +1,4 @@
-import { BaseHandler, TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol } from "@plurnk/plurnk-mimetypes";
 import { Lexer, type Token } from "marked";
 import { parseDocument } from "yaml";
 import MarkdownSource from "./MarkdownSource.ts";

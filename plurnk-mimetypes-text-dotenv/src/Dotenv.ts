@@ -1,6 +1,5 @@
 import { parseEnv } from "node:util";
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes";
 
 // {§dotenv-values}: Node owns value semantics; only source coordinates are projected here.
 export default class Dotenv extends BaseHandler {
@@ -76,7 +75,8 @@ export function parseDotenv(text: string): DotenvVar[] {
             // Node's quoted value ends at the first matching quote, even across lines.
             const quote = text[start];
             if (quote === '"' || quote === "'" || quote === "`") closing = text.indexOf(quote, start + 1);
-            while (closing !== undefined && end + 1 < lines.length && lines[end].contentEnd < closing) end++;
+            // oxlint-disable-next-line no-unmodified-loop-condition -- `closing` bounds the scan; `end` is the loop variable
+        while (closing !== undefined && end + 1 < lines.length && lines[end].contentEnd < closing) end++;
         }
         const values = parseEnv(text.slice(lines[i].start, lines[end].contentEnd));
         const remainder = text.slice(start, lines[end].contentEnd);

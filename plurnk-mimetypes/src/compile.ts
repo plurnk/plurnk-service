@@ -23,7 +23,7 @@ export async function runCompile(opts: CompileOptions = {}): Promise<void> {
     try {
         files = (await fs.readdir(grammarDir)).filter((f) => f.endsWith(".g4"));
     } catch (cause) {
-        throw new Error(`Cannot read grammar directory ${grammarDir}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        throw new Error(`Cannot read grammar directory ${grammarDir}.`, { cause });
     }
     if (files.length === 0) {
         throw new Error(`No .g4 files found in ${grammarDir}`);

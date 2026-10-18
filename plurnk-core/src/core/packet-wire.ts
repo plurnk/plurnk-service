@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, type ParsedPath, type PlurnkStatement, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ParsedPath, type PlurnkStatement, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
 import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
@@ -164,7 +164,6 @@ export interface RenderedLog {
 
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
 import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
-import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 interface RenderedLogRow {
     readonly content: string;

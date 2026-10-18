@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import type { ExecStatement, UrlPath } from "@plurnk/plurnk-contracts";
-import type { Effect } from "@plurnk/plurnk-execs";
+import type { Effect, Executor } from "@plurnk/plurnk-execs";
 import type {
     RepresentationPreparationRequest,
     SchemeCtx,
@@ -18,7 +18,6 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import Exec from "../../src/schemes/Exec.ts";

@@ -1,4 +1,4 @@
-import { serverProposals } from "./_approval.ts";
+import { serverProposals, ownWorker } from "./_approval.ts";
 // {§provider-recovery} — a transient provider failure never ends a loop: the turn records the
 // failure, backs off, and re-issues its call; when the recovery budget is spent the loop parks
 // like a [202] wait and the next prompt resumes it with its log intact.
@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
-import { ownWorker } from "./_approval.ts";
 import { viableWindow } from "./_provider.ts";
 import { makeMockResponse } from "./_mock.ts";
 

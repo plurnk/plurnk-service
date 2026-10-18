@@ -65,7 +65,7 @@ declare module "xpath" {
     export function parse(expression: string): unknown;
 }
 
-type Ctor<T> = new (...args: any[]) => T;
+type Ctor<T> = new (...args: never[]) => T;
 
 type SchemeMetadata = string[] | null;
 type Slots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: LineMarker | null };

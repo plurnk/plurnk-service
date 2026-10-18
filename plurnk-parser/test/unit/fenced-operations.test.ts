@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { Validator } from "@plurnk/plurnk-contracts";
-import { isExecution, writtenOp } from "@plurnk/plurnk-contracts";
+import { Validator, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Registered tags are lowercase ({§executor-runtime-declaration}); the fence may spell them in any case.
 const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "tostring", "valueof"];

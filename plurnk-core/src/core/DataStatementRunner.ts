@@ -4,7 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import { entryCoordinateOf, missDetail, missExtensions, renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
 import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -16,8 +16,6 @@ import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type BoundEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
 
 type SchemeMethods = Partial<Record<keyof SchemeHandler, SchemeMethod>>;
 

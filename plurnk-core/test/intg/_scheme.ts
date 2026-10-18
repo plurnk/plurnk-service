@@ -2,8 +2,7 @@
 
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
-import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import Engine from "../../src/core/Engine.ts";

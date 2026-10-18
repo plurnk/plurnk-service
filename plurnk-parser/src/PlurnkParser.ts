@@ -3,6 +3,8 @@ import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
+// The contexts AstBuilder builds statements from: the statement rules the walk recognizes by rule index.
+type BuildContext = Parameters<typeof AstBuilder.build>[0];
 import NativeToolCalls from "./NativeToolCalls.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
@@ -14,9 +16,8 @@ import {
     type ParseResult,
     type PlurnkStatement,
     type Position,
-    type ResourceSelection,
+    type ResourceSelection,PLURNK_OPS,writtenOp
 } from "@plurnk/plurnk-contracts";
-import { PLURNK_OPS, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct
@@ -237,7 +238,7 @@ export default class PlurnkParser {
     static #run(
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
-        buildFn: (ctx: any) => PlurnkStatement[] = (ctx: any) => AstBuilder.build(ctx),
+        buildFn: (ctx: BuildContext) => PlurnkStatement[] = (ctx) => AstBuilder.build(ctx),
         options: ParseOptions = {},
         tier: "statements" | "model" | "reasoning" = "statements",
     ): { result: ParseResult; lexer: plurnkLexer } {
@@ -427,11 +428,12 @@ export default class PlurnkParser {
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
         items: ParseItem[],
-        buildFn: (ctx: any) => PlurnkStatement[],
+        buildFn: (ctx: BuildContext) => PlurnkStatement[],
         boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {
-            const c = child as any;
+            // A child is a rule context or a terminal: the walk reads whichever fields the node has.
+            const c = child as Partial<ParserRuleContext> & { symbol?: Token | null; exception?: unknown };
             const start = c.start ?? c.symbol;
             const stop = c.stop ?? c.symbol;
             if (!start) continue;
@@ -458,7 +460,7 @@ export default class PlurnkParser {
                     }
                 } else {
                     try {
-                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(c));
+                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(c as BuildContext));
                         for (const statement of statements) items.push({ kind: "statement", statement });
                         // {§error-shape} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
@@ -472,7 +474,7 @@ export default class PlurnkParser {
                     }
                 }
             } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
-                PlurnkParser.#collect(c, errors, consumedErrors, items, buildFn, boundary);
+                PlurnkParser.#collect(c as ParserRuleContext, errors, consumedErrors, items, buildFn, boundary);
             }
         }
     }

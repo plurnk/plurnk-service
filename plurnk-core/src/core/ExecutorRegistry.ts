@@ -10,9 +10,8 @@ import type {
 import Meta, {
     type PackageAttributions,
     type ExtensionAttribution,
-    type ExtensionAttributionContext,
+    type ExtensionAttributionContext,ConfigurationError,Knob
 } from "@plurnk/plurnk-meta";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export type RuntimeNamespaceOwner =
     | { readonly kind: "package"; readonly name: string }

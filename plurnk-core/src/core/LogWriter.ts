@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 // Durable operation recording: one log row per dispatched statement, split out of Dispatcher.
 import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import ExecutionOutputs from "./ExecutionOutputs.ts";
@@ -13,8 +13,6 @@ import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
 
 // The columns `engine_insert_log_entry` takes, as one dispatch writes them.
 export interface LogRecord extends Record<string, unknown> {

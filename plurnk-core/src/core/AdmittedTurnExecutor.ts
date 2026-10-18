@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -22,8 +22,6 @@ import { isContextReceipt, reserved, type ContextFit } from "./ContextFit.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
 
 // SEND recipients and delegation own their input; resource operations use the manifest.
 const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK"]);

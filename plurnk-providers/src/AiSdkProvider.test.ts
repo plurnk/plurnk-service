@@ -129,7 +129,7 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
 // so tests can assert what the spine sent on the wire.
 const sseStream = (chunks: unknown[]) => {
     const normalized = chunks.map((value, index) => {
-        const chunk = value as Record<string, any>;
+        const chunk = value as { usage?: { cached_tokens?: number } & Record<string, unknown>; choices?: unknown };
         const usage = chunk.usage !== undefined
             ? {
                 ...chunk.usage,

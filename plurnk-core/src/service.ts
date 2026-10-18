@@ -30,10 +30,9 @@ import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
 import { startObservability, validateObservabilityConfiguration } from "./observe/init.ts";
-import { Digest } from "@plurnk/plurnk-digest";
+import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
-import { Share } from "@plurnk/plurnk-digest";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.

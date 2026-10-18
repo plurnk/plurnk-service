@@ -8,12 +8,7 @@ import { readDefinition } from "./definition.ts";
 import { isDeepStrictEqual } from "node:util";
 import { SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
 import type { PluginContext } from "./PluginConfiguration.ts";
-import type { Notice } from "@plurnk/plurnk-contracts";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
-import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
-import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import {
+import { type Notice,
     Problems,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
@@ -28,8 +23,11 @@ import {
     type McpOAuthBeginResult,
     type JsonSchema,
     type ProblemDetails,
-    type WorkspaceCapabilityIdentity,
-} from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
+import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 
 import ServerConnection, {
     AuthorizationRequiredError,

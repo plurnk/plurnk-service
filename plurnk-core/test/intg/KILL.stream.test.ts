@@ -79,11 +79,9 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                 });
-                let subscription: StreamSubscription | undefined;
-                subscription = await ctx.subscriptions.open(request.pathname, {
+                const subscription: StreamSubscription = await ctx.subscriptions.open(request.pathname, {
                     cancel: async () => {
                         teardownCalls.push(handle);
-                        if (subscription === undefined) throw new Error("stream subscription missing");
                         await subscription.close(
                             Results.failure("scheme:teststream", "cancelled", 499, "The stream was cancelled by KILL."),
                             "cancelled by KILL",
