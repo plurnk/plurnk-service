@@ -39,6 +39,8 @@ import { execRouteOf } from "./exec-runtime.ts";
 import ExecEntrySink, { type WebFetch } from "./exec-entry-sink.ts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
+// What an accepted execution proposal's application reports: started, queued, or the refusal.
+type ApplyOutcome = SchemeResultBase & { outcome?: string; body?: string; result?: object };
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "node", "python3", etc.
@@ -720,11 +722,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     async applyResolution(
         args: ProposalApplyRequest,
         ctx: CoreSchemeCallContext,
-    ): Promise<SchemeResultBase & {
-        outcome?: string;
-        body?: string;
-        result?: object;
-    }> {
+    ): Promise<ApplyOutcome> {
         const core = this.coreContext(ctx);
         const execution = this.#prepareExecution();
         const attrs = args.attrs as Partial<ExecAttrs>;
@@ -750,139 +748,20 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // files retain their environment; only standalone sources need a copy.
         let tempPath: string | null = null;
         if (attrs.resourceSource !== undefined) {
-            const sourceTarget = parsePath(attrs.resourceSource);
-            if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
-                throw new InvalidOperationResultError("The accepted execution proposal has an invalid scheme source address.");
-            }
-            const source = await this.readExecSource({
-                op: "READ",
-                aside: null,
-                target: sourceTarget,
-                metadata: null,
-                lineMarker: { marks: [1, -1] },
-                matcher: null,
-                body: null,
-                position: { line: 0, column: 0 },
-            }, core);
-            const read = source.result;
-            if (read.status >= 400) {
-                // {§exec-target-routing} — the failure stays the owning READ's (#163); the execution
-                // contract rides its recovery, because a stream address in the target slot is
-                // almost always a command that belonged beneath a targetless heading (#425 F4).
-                const problem = read.problem === undefined ? undefined : {
-                    ...read.problem,
-                    recovery: Exec.sourceRecovery(attrs.resourceSource, read.problem.recovery),
-                };
-                return Results.assert({ ...read, outcome: "scheme_source_read_failed", ...(problem === undefined ? {} : { problem }) });
-            }
-            const content = (read as { content?: unknown }).content;
-            if (typeof content !== "string") {
-                return Results.failure(
-                    "scheme:exec",
-                    "source-content-unavailable",
-                    422,
-                    `Scheme '${sourceTarget.scheme}' did not supply content for the ${runtime} source.`,
-                    { outcome: "scheme_source_content_unavailable" },
-                    {
-                        scheme: sourceTarget.scheme,
-                        sourceStatus: read.status,
-                        retryable: false,
-                    },
-                );
-            }
-            if (source.nativePath !== null) {
-                target = source.nativePath;
-            } else {
-                tempPath = this.#sourceScratch().path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
-                await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
-                target = tempPath;
-            }
+            const realized = await this.#realizeSource(attrs.resourceSource, runtime, core);
+            if ("status" in realized) return realized;
+            ({ target, tempPath } = realized);
         }
         if (body.length === 0 && target === null) {
             throw new InvalidOperationResultError("The accepted execution proposal has neither a body nor a realized target.");
         }
 
-        // Resolve the runtime's executor from the boot registry, then seed
-        // channels from its declared topology ({§executor-channels}). Each executor declares its own
-        // shape (subprocess → stdout/stderr; search → results; etc.).
-        if (core.executors === undefined) {
-            throw new InvalidOperationResultError("An accepted execution proposal has no executor registry.");
-        }
-        const resolved = core.executors.entry(runtime, core.workspaceId);
-        if (resolved === undefined || !resolved.available) {
-            throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
-        }
-        // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
-        // effect fact rides the hold predicate unchanged through application.
-        const seedChannels: EntryData["channels"] = {};
-        for (const [name, decl] of Object.entries(resolved.executor.channels)) {
-            seedChannels[name] = {
-                content: "",
-                mimetype: decl.mimetype,
-                state: decl.defaultState ?? "active",
-            };
-        }
-        const seed: EntryData = { channels: seedChannels };
-        // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
-        // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, {
-            defaultChannel: resolved.executor.defaultChannel, output: true,
-        });
-        if (entryId === null) {
-            return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
-                outcome: "entry_write_failed",
-            }, {
-                runtime,
-                stage: "stream-creation",
-                retryable: false,
-            });
-        }
-
-        const subscriptionId = await ChannelWrite.openSubscription(core.db, {
-            workerId: core.workerId, entryId, scheme: runtime,
-            handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
-            turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
-            detached: attrs.detached === true, // {§worker-obligations} — "detached" is nobody's obligation
-            publishedChannel: resolved.executor.publishedChannel,
-            source: attrs.coordinate === undefined ? undefined
-                : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
-        });
-
-        const controller = new AbortController();
-        let detachParent = (): void => {};
-        // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
-        // only KILL, the worker's total reap, and daemon shutdown end it.
-        if (core.signal !== undefined && attrs.detached !== true) {
-            const parent = core.signal;
-            // {§worker-lifecycle-exec-epoch-bound}
-            // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
-            // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
-            // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
-            // the reason is always the bounded housekeeping reap. Attach the listener FIRST,
-            // then re-check `aborted`: a listener added to an already-aborted signal never
-            // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
-            // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
-            // doubled fire is harmless. {§exec-lifetime}
-            const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
-            parent.addEventListener("abort", onParentAbort, { once: true });
-            detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
-            if (parent.aborted) controller.abort(ExecAbort.teardownReason());
-        }
-        const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs, attrs.input === "open");
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
-        const lifecycle = new LiveSubscription({
-            db: core.db, registry: this.liveSubscriptions(),
-            identity: {
-                workspaceId: core.workspaceId, workerId: core.workerId, entryId,
-                target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
-            },
-            handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
-            release: () => {
-                detachParent();
-                this.#activeAborts.delete(subscriptionId);
-                this.#activeSpawns.delete(subscriptionId);
-            },
-            notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
+        const stream = await Exec.#openStreamEntry(core, runtime, pathname);
+        if ("status" in stream) return stream;
+        const { resolved, entryId } = stream;
+        const { subscriptionId, controller, input, lifecycle } = await this.#bindSpawnLifecycle({
+            core, attrs, resolved, runtime, body, target, pathname, entryId, effect, invocation,
+            inputTimeoutMs: execution.inputTimeoutMs,
         });
 
         const run = async () => {
@@ -926,6 +805,161 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 },
             }
             : { status: 200, outcome: "started" };
+    }
+
+    // {§exec-source-temporary} A standalone source read through its own scheme and realized where the executor can
+    // run it: a native file is its own path; anything else is written once under the scratch directory
+    // ({§exec-scratch-directory}). A failed read stays the owning READ's failure.
+    async #realizeSource(resourceSource: string, runtime: string, core: PlurnkSchemeContext): Promise<{ target: string; tempPath: string | null } | ApplyOutcome> {
+        const sourceTarget = parsePath(resourceSource);
+        if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
+            throw new InvalidOperationResultError("The accepted execution proposal has an invalid scheme source address.");
+        }
+        const source = await this.readExecSource({
+            op: "READ",
+            aside: null,
+            target: sourceTarget,
+            metadata: null,
+            lineMarker: { marks: [1, -1] },
+            matcher: null,
+            body: null,
+            position: { line: 0, column: 0 },
+        }, core);
+        const read = source.result;
+        if (read.status >= 400) {
+            // {§exec-target-routing} — the failure stays the owning READ's (#163); the execution
+            // contract rides its recovery, because a stream address in the target slot is
+            // almost always a command that belonged beneath a targetless heading (#425 F4).
+            const problem = read.problem === undefined ? undefined : {
+                ...read.problem,
+                recovery: Exec.sourceRecovery(resourceSource, read.problem.recovery),
+            };
+            return Results.assert({ ...read, outcome: "scheme_source_read_failed", ...(problem === undefined ? {} : { problem }) });
+        }
+        const content = (read as { content?: unknown }).content;
+        if (typeof content !== "string") {
+            return Results.failure(
+                "scheme:exec",
+                "source-content-unavailable",
+                422,
+                `Scheme '${sourceTarget.scheme}' did not supply content for the ${runtime} source.`,
+                { outcome: "scheme_source_content_unavailable" },
+                {
+                    scheme: sourceTarget.scheme,
+                    sourceStatus: read.status,
+                    retryable: false,
+                },
+            );
+        }
+        if (source.nativePath !== null) return { target: source.nativePath, tempPath: null };
+        const tempPath = this.#sourceScratch().path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
+        await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        return { target: tempPath, tempPath };
+    }
+
+    // Resolve the runtime's executor from the boot registry, then seed the stream entry's channels from its
+    // declared topology ({§executor-channels}): each executor declares its own shape (subprocess → stdout/stderr;
+    // search → results; etc.).
+    static async #openStreamEntry(core: PlurnkSchemeContext, runtime: string, pathname: string): Promise<{ resolved: RegistryEntry; entryId: number } | ApplyOutcome> {
+        if (core.executors === undefined) {
+            throw new InvalidOperationResultError("An accepted execution proposal has no executor registry.");
+        }
+        const resolved = core.executors.entry(runtime, core.workspaceId);
+        if (resolved === undefined || !resolved.available) {
+            throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
+        }
+        // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
+        // effect fact rides the hold predicate unchanged through application.
+        const seedChannels: EntryData["channels"] = {};
+        for (const [name, decl] of Object.entries(resolved.executor.channels)) {
+            seedChannels[name] = {
+                content: "",
+                mimetype: decl.mimetype,
+                state: decl.defaultState ?? "active",
+            };
+        }
+        const seed: EntryData = { channels: seedChannels };
+        // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
+        // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
+        const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, {
+            defaultChannel: resolved.executor.defaultChannel, output: true,
+        });
+        if (entryId === null) {
+            return Results.failure("scheme:exec", "stream-entry-write-failed", 500, `The ${runtime} stream entry could not be created.`, {
+                outcome: "entry_write_failed",
+            }, {
+                runtime,
+                stage: "stream-creation",
+                retryable: false,
+            });
+        }
+        return { resolved, entryId };
+    }
+
+    // The spawn's live subscription and cancellation scope: the stream subscription opened, the controller bound
+    // to the loop's teardown unless detached ({§exec-lifetime}), the input receiver, the abort registry entry, and
+    // the LiveSubscription whose release unbinds them all.
+    async #bindSpawnLifecycle(args: {
+        core: PlurnkSchemeContext;
+        attrs: Partial<ExecAttrs>;
+        resolved: RegistryEntry;
+        runtime: string;
+        body: string;
+        target: string | null;
+        pathname: string;
+        entryId: number;
+        effect: Effect;
+        invocation: ExecStatement;
+        inputTimeoutMs: number;
+    }): Promise<{ subscriptionId: number; controller: AbortController; input: ExecutionInput; lifecycle: LiveSubscription }> {
+        const { core, attrs, resolved, runtime, body, target, pathname, entryId, effect, invocation, inputTimeoutMs } = args;
+        const subscriptionId = await ChannelWrite.openSubscription(core.db, {
+            workerId: core.workerId, entryId, scheme: runtime,
+            handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
+            turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
+            detached: attrs.detached === true, // {§worker-obligations} — "detached" is nobody's obligation
+            publishedChannel: resolved.executor.publishedChannel,
+            source: attrs.coordinate === undefined ? undefined
+                : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
+        });
+
+        const controller = new AbortController();
+        let detachParent = (): void => {};
+        // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
+        // only KILL, the worker's total reap, and daemon shutdown end it.
+        if (core.signal !== undefined && attrs.detached !== true) {
+            const parent = core.signal;
+            // {§worker-lifecycle-exec-epoch-bound}
+            // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
+            // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
+            // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
+            // the reason is always the bounded housekeeping reap. Attach the listener FIRST,
+            // then re-check `aborted`: a listener added to an already-aborted signal never
+            // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
+            // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
+            // doubled fire is harmless. {§exec-lifetime}
+            const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
+            parent.addEventListener("abort", onParentAbort, { once: true });
+            detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
+            if (parent.aborted) controller.abort(ExecAbort.teardownReason());
+        }
+        const input = new ExecutionInput(controller.signal, inputTimeoutMs, attrs.input === "open");
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
+        const lifecycle = new LiveSubscription({
+            db: core.db, registry: this.liveSubscriptions(),
+            identity: {
+                workspaceId: core.workspaceId, workerId: core.workerId, entryId,
+                target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
+            },
+            handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
+            release: () => {
+                detachParent();
+                this.#activeAborts.delete(subscriptionId);
+                this.#activeSpawns.delete(subscriptionId);
+            },
+            notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
+        });
+        return { subscriptionId, controller, input, lifecycle };
     }
 
     // Bridge the executor's sink-style contract (write/setState/emit)
