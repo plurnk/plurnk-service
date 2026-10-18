@@ -27,7 +27,8 @@ Core's internal owners compose without becoming new package or public seams:
 
 | Owner | Machine |
 |-------|---------|
-| `Daemon` | Process/module lifecycle, dependency composition, provider policy, notifications, and the external client façade. |
+| `Daemon` | Process/module lifecycle, dependency composition, notifications, and the external client façade. |
+| `WorkerModels` | A worker's model, effort and spawn override: the durable selection and its client get/set surface, the loop's immutable snapshot and the conflicts an injection may not introduce, and the catalog a client lists. |
 | `DrainSupervisor` | One worker's queue consumer, message admission and orphan recovery, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
 | `Engine` | Loop lifecycle and the public turn, dispatch, derivation, and proposal façades. |
 | `TurnRunner` | Model inference and `_plurnk` initialization, from materialization and output admission through operation settlement. |

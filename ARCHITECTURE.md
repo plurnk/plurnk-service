@@ -438,6 +438,7 @@ the submitter the owner of the shared runtime.
 | Workspaces, workers, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
+| A worker's model, effort and spawn model | `WorkerModels` owns the durable selection and the loop's immutable route snapshot ({§worker-model-selection}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | External conversation identity | The adapter interprets its protocol identifiers; core retains opaque worker references with referential integrity ({§worker-external-reference}). Connections and presentation remain client-interface state. |

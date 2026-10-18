@@ -6,7 +6,7 @@ import type { Effort } from "@plurnk/plurnk-contracts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
-import WorkerModelResolver from "../../src/server/WorkerModelResolver.ts";
+import WorkerModels from "../../src/server/WorkerModels.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_db.ts";
@@ -792,10 +792,10 @@ test("{§worker-model-selection}: work admitted during provider validation preve
         const before = await daemon.readWorkerModel(identity);
         const validating = Promise.withResolvers<void>();
         const release = Promise.withResolvers<void>();
-        const validate = WorkerModelResolver.prototype.supportedEfforts;
-        t.mock.method(WorkerModelResolver.prototype, "supportedEfforts", async function (
-            this: WorkerModelResolver,
-            policy: Parameters<WorkerModelResolver["supportedEfforts"]>[0],
+        const validate = WorkerModels.prototype.supportedEfforts;
+        t.mock.method(WorkerModels.prototype, "supportedEfforts", async function (
+            this: WorkerModels,
+            policy: Parameters<WorkerModels["supportedEfforts"]>[0],
         ) {
             if (policy.effort === "high") {
                 validating.resolve();

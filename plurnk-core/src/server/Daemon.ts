@@ -17,7 +17,7 @@ import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAccounting, ProviderSpec } from "@plurnk/plurnk-providers";
-import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
+import { routeForSpec } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
@@ -60,7 +60,7 @@ import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
 import ContentUse from "../core/ContentUse.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
-import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
+import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
@@ -75,9 +75,8 @@ import type { AgentRootScope } from "./AgentRoots.ts";
 import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
-import { listModelCatalog } from "./model-catalog.ts";
-import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
-import WorkerModelResolver from "./WorkerModelResolver.ts";
+import { daemonFailure } from "./daemon-results.ts";
+import WorkerModels, { type EffortSource } from "./WorkerModels.ts";
 import ClientReads from "./ClientReads.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 
@@ -105,27 +104,12 @@ const clientActionFailure = (error: unknown): SchemeResult => {
 };
 
 export type ChannelRow = { name: string } & ClientEntryChannel;
-export type EffortSource = "default" | "explicit";
-export type WorkerGenerationPolicyRow = {
-    model_route_id: number | null;
-    spawn_model_route_id: number | null;
-    effort: Effort | null;
-    // {§worker-effort-source} — `explicit` only through worker.effort.set.
-    effort_source: EffortSource;
-};
-type LoopGenerationPolicy = {
-    providerSpec: ProviderSpec;
-    childProviderSpec: ProviderSpec | null;
-    effort: Effort;
-};
-
 // The callbacks the Daemon hands its engine and drain supervisor, by the types those owners declare.
 type EngineCallbacks = ConstructorParameters<typeof Engine>[0];
 type InjectWorker = NonNullable<EngineCallbacks["injectWorker"]>;
 type InjectWorkerArgs = Parameters<InjectWorker>[0];
 type InjectWorkerResult = Awaited<ReturnType<InjectWorker>>;
 type DrainCallbacks = ConstructorParameters<typeof DrainSupervisor>[0];
-type InjectionCompatibilityArgs = Parameters<DrainCallbacks["assertInjectionCompatibility"]>[0];
 type DrainRunLoopArgs = Parameters<DrainCallbacks["runLoop"]>[0];
 type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
 
@@ -201,7 +185,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
-    readonly #workerModels: WorkerModelResolver;
+    readonly #workerModels: WorkerModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
@@ -338,7 +322,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 MessageAbandonment.complete(this.#engine, this.#db, workspaceId, workerId, loopId, status),
             lifecycle: this.#lifecycle,
             injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress, opener) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress, opener),
-            assertInjectionCompatibility: (args) => this.#assertInjectionCompatibility(args),
+            assertInjectionCompatibility: (args) => this.#workerModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),
             loopUsage: (loopId) => this.#engine.loopUsage(loopId),
             loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
@@ -362,7 +346,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
         });
-        this.#workerModels = new WorkerModelResolver({ db: this.#db });
+        this.#workerModels = new WorkerModels({ db: this.#db, provider: this.#provider });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
     }
 
@@ -371,7 +355,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // neither. Fire-and-forget: the returned drain runs independently (the sister is its own worker).
     // {§machine-processes}
     async #injectWorker({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments, opener }: InjectWorkerArgs): Promise<InjectWorkerResult> {
-        await this.#assertModelWorker(workspaceId, workerId);
+        await this.#workerModels.assertModelWorker(workspaceId, workerId);
         const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
         if (sender === undefined || sender.workspace_id !== workspaceId) {
             throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
@@ -394,7 +378,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             effort = targetPolicy.effort;
             childProviderSpec = await this.#workerModels.resolveWorkerSpawnModel(workerId, undefined);
         } else {
-            const parentPolicy = await this.#providerPolicyForLoop(sourceLoopId);
+            const parentPolicy = await this.#workerModels.loopPolicy(sourceLoopId);
             providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
             effort = parentPolicy.effort;
             // {§worker-model-selection} — lineage inheritance by value:
@@ -435,37 +419,19 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { action, loopId, message: message.path };
     }
 
-    // {§worker-model-selection} An omitted selector keeps the loop's durable provider; only an explicit selection is
-    // checked against it (a deliberate switch). Effort, the spawn model and an explicit turn ceiling are checked alike.
-    async #assertInjectionCompatibility({ loopId, providerSpec, providerSpecExplicit, effort, childProviderSpec, turnCeiling }: InjectionCompatibilityArgs): Promise<void> {
-        // An omitted selector keeps the loop's durable provider; only an
-        // explicit selection is checked against it (a deliberate switch).
-        if (providerSpecExplicit !== false) {
-            await this.#assertLoopProvider(loopId, providerSpec);
-        }
-        await this.#assertLoopEffort(loopId, effort);
-        if (childProviderSpec !== undefined) {
-            await this.#assertLoopChildProvider(loopId, childProviderSpec);
-        }
-        await this.#assertLoopMaxTurns(
-            loopId,
-            turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
-        );
-    }
-
     // The drain callback is the final provider/model boundary. Every admission path, including boot recovery,
     // terminates here.
     async #runDrainLoop({ workspaceId, workerId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
         // The drain callback is the final provider/model boundary. Every
         // admission path, including boot recovery, terminates here.
-        await this.#assertModelWorker(workspaceId, workerId);
+        await this.#workerModels.assertModelWorker(workspaceId, workerId);
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
             // Worker settings can change while Functionality remains
             // resident. Reconcile the worker-private discovery surface
             // at the same pre-inference boundary used for activation.
             await this.#residency.reconcile(workspaceId);
-            const { provider: loopProvider, childProvider } = await this.#providersForLoop(loopId);
+            const { provider: loopProvider, childProvider } = await this.#workerModels.providersForLoop(loopId);
             return await this.#engine.runLoop({
                 provider: loopProvider,
                 childProvider,
@@ -574,13 +540,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async readMessages(args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
-        await this.#assertModelWorker(args.workspaceId, args.workerId);
+        await this.#workerModels.assertModelWorker(args.workspaceId, args.workerId);
         return MessageResources.read(this.#db, args);
     }
 
     // {§methods-worker-inbox}
     async readInbox(args: { workspaceId: number; workerId: number }): Promise<ApplicationInboxMessage[]> {
-        await this.#assertModelWorker(args.workspaceId, args.workerId);
+        await this.#workerModels.assertModelWorker(args.workspaceId, args.workerId);
         return MessageResources.inbox(this.#db, args);
     }
 
@@ -598,7 +564,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         const recipientLoopId = args.loopId === undefined ? undefined : ClientInput.assertId("runLoop", "loopId", args.loopId);
-        await this.#assertModelWorker(workspaceId, workerId);
+        await this.#workerModels.assertModelWorker(workspaceId, workerId);
         const attachments = ClientInput.assertMessageResources("runLoop", args.attachments);
         const body = ClientInput.assertPrompt("runLoop", args.prompt, attachments.length > 0);
         const source = ClientInput.assertOptionalSource("runLoop", args.source);
@@ -659,120 +625,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 
-    // {§worker-model-selection} — the loop's durable snapshot is the immutable route ids,
-    // resolved through model_routes at the claim boundary; never re-resolved through the
-    // alias cascade (a changed alias declaration must not rewrite history).
-    async #providerPolicyForLoop(loopId: number): Promise<LoopGenerationPolicy> {
-        const row = await this.#db.drain_loop_generation_policy.get<WorkerGenerationPolicyRow>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
-        const providerSpec = await specForRoute(this.#db, row.model_route_id);
-        if (providerSpec === null) {
-            throw new Error(`loop ${loopId}: persisted provider selection is missing — refusing boot-default substitution`);
-        }
-        if (row.effort === null) {
-            throw new Error(`loop ${loopId}: persisted effort is missing`);
-        }
-        return {
-            providerSpec,
-            childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
-            effort: row.effort };
-    }
-
-    async #providerSpecForLoop(loopId: number): Promise<ProviderSpec> {
-        return (await this.#providerPolicyForLoop(loopId)).providerSpec;
-    }
-
-    async #providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
-        const policy = await this.#providerPolicyForLoop(loopId);
-        const provider = await this.#workerModels.providerForPolicy(policy.providerSpec, policy.effort);
-        const childProvider = policy.childProviderSpec === null
-            ? provider
-            : await this.#workerModels.providerForPolicy(policy.childProviderSpec, policy.effort);
-        return { provider, childProvider };
-    }
-
-    async #assertLoopProvider(loopId: number, requested: ProviderSpec): Promise<void> {
-        const selected = await this.#providerSpecForLoop(loopId);
-        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-provider-conflict",
-                409,
-                `Loop ${loopId} uses ${modelRouteLabel(selected)}, not ${modelRouteLabel(requested)}.`,
-                {
-                    loopId,
-                    ...(selected.alias === undefined ? {} : { selectedAlias: selected.alias }),
-                    selectedModel: `${selected.provider}/${selected.model}`,
-                    ...(requested.alias === undefined ? {} : { requestedAlias: requested.alias }),
-                    requestedModel: `${requested.provider}/${requested.model}`,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another provider.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopEffort(loopId: number, requested: Effort): Promise<void> {
-        const selected = (await this.#providerPolicyForLoop(loopId)).effort;
-        if (selected !== requested) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-effort-conflict",
-                409,
-                `Loop ${loopId} uses effort '${selected}', not '${requested}'.`,
-                {
-                    loopId,
-                    selectedEffort: selected,
-                    requestedEffort: requested,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another effort.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopChildProvider(loopId: number, requested: ProviderSpec | null): Promise<void> {
-        const selected = (await this.#providerPolicyForLoop(loopId)).childProviderSpec;
-        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
-            throw daemonFailure(
-                "daemon:provider",
-                "loop-child-provider-conflict",
-                409,
-                `Loop ${loopId} already has a different child provider policy.`,
-                {
-                    loopId,
-                    selectedChildAlias: selected?.alias ?? null,
-                    selectedChildModel: selected === null ? null : `${selected.provider}/${selected.model}`,
-                    requestedChildAlias: requested?.alias ?? null,
-                    requestedChildModel: requested === null ? null : `${requested.provider}/${requested.model}`,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before changing its child provider policy.",
-                    retryable: false },
-            );
-        }
-    }
-
-    async #assertLoopMaxTurns(loopId: number, requested: number | undefined): Promise<void> {
-        if (requested === undefined) return;
-        const durable = await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId });
-        if (durable === undefined) throw new Error(`inject: loop ${loopId} has no durable turn ceiling`);
-        if (durable.max_turns !== requested) {
-            throw daemonFailure(
-                "daemon:loop",
-                "turn-ceiling-conflict",
-                409,
-                `Loop ${loopId} has turn ceiling ${durable.max_turns}, not ${requested}.`,
-                {
-                    loopId,
-                    selectedMaximumTurns: durable.max_turns,
-                    requestedMaximumTurns: requested,
-                    stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another turn ceiling.",
-                    retryable: false },
-            );
-        }
-    }
-
     async ensureRuntimeWorker(workspaceId: number): Promise<number> {
         const checked = ClientInput.assertId("worker.ensure-runtime", "workspaceId", workspaceId);
         if (await this.#db.envelope_get_workspace.get({ id: checked }) === undefined) {
@@ -805,139 +657,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
-    // {§worker-model-selection} — project a worker's durable model and spawn override
-    // for a client-interface get/set surface. Ownership is checked at this boundary.
-    async readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
-        const workspaceId = ClientInput.assertId("worker.model.get", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.model.get", "workerId", args.workerId);
-        await this.#assertModelWorker(workspaceId, workerId);
-        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        if (row === undefined) throw new Error(`worker ${workerId}: model route row missing`);
-        const modelSpec = await specForRoute(this.#db, row.model_route_id);
-        const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
-        return {
-            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.effort, row.effort_source),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.effort, row.effort_source) };
+    // {§worker-model-selection} {§worker-effort} — the worker's durable model, effort and spawn override are
+    // WorkerModels' to read and set; the port's entry points delegate.
+    readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
+        return this.#workerModels.readWorkerModel(args);
     }
 
-    // {§worker-model-selection} — persist an explicit model selection onto the worker
-    // and return the resolved spec. An unresolvable selector fails loud here.
-    async setWorkerModel(args: { workspaceId: number; workerId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
-        const workspaceId = ClientInput.assertId("worker.model.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
-        await this.#assertModelWorker(workspaceId, workerId);
-        const selector = ClientInput.assertSelector("worker.model.set", "selector", args.selector);
-        let chosen: Effort | undefined;
-        if (args.effort !== undefined) {
-            try {
-                chosen = Validator.assertEffort(args.effort);
-            } catch (cause) {
-                throw daemonFailure("daemon:input", "effort-invalid", 400,
-                    cause instanceof Error ? cause.message : "The effort is invalid.", { field: "effort", retryable: false });
-            }
-        }
-        const policy = await this.#workerModels.resolveWorkerModel(workerId, selector, chosen);
-        if (policy === null) {
-            throw new OperationFailureError(Results.failure(
-                "daemon:provider",
-                "not-configured",
-                501,
-                "No provider is configured for this worker.",
-                {},
-                { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
-            ));
-        }
-        return projectModelRoute(policy.providerSpec, policy.effort, policy.effortSource);
+    setWorkerModel(args: { workspaceId: number; workerId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
+        return this.#workerModels.setWorkerModel(args);
     }
 
-    // {§worker-effort} — the worker's effort is durable and
-    // provider-relative. A model-less worker remains explicitly uninitialized.
-    async readWorkerEffort(args: {
-        workspaceId: number;
-        workerId: number;
-    }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
-        const workspaceId = ClientInput.assertId("worker.effort.get", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.effort.get", "workerId", args.workerId);
-        await this.#assertModelWorker(workspaceId, workerId);
-        await this.#workerModels.resolveWorkerModel(workerId, undefined);
-        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
-        if (row.model_route_id === null) {
-            if (row.effort !== null) {
-                throw new Error(`worker ${workerId}: effort exists without a model route`);
-            }
-            return { effort: null, source: "default", supportedEfforts: [] };
-        }
-        if (row.effort === null) {
-            throw new Error(`worker ${workerId}: durable model has no effort`);
-        }
-        return {
-            effort: row.effort,
-            source: row.effort_source,
-            supportedEfforts: await this.#workerModels.supportedEfforts(row) };
+    readWorkerEffort(args: { workspaceId: number; workerId: number }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
+        return this.#workerModels.readWorkerEffort(args);
     }
 
-    // {§worker-effort} — mutate between loops, validate against both
-    // the worker model and its optional spawn model, then persist atomically.
-    async setWorkerEffort(args: {
-        workspaceId: number;
-        workerId: number;
-        effort: unknown;
-    }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
-        const workspaceId = ClientInput.assertId("worker.effort.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.effort.set", "workerId", args.workerId);
-        let effort: Effort;
-        try {
-            effort = Validator.assertEffort(args.effort);
-        } catch (cause) {
-            throw daemonFailure(
-                "daemon:input",
-                "effort-invalid",
-                400,
-                cause instanceof Error ? cause.message : "The effort is invalid.",
-                { field: "effort", retryable: false },
-            );
-        }
-        await this.#assertModelWorker(workspaceId, workerId);
-        // A model-less worker takes the default first; an existing pair is replaced, not re-validated, so an
-        // effort its model no longer supports can be corrected ({§worker-effort}).
-        const current = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        if (current?.model_route_id === null) await this.#workerModels.resolveWorkerModel(workerId, undefined);
-        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
-        const spec = await specForRoute(this.#db, row.model_route_id);
-        if (spec === null) {
-            throw daemonFailure(
-                "daemon:provider",
-                "worker-model-unset",
-                409,
-                `Worker ${workerId} has no model against which to validate an effort.`,
-                {
-                    workerId,
-                    stage: "provider-selection",
-                    recovery: "Select a model before selecting its effort.",
-                    retryable: false },
-            );
-        }
-        const supportedEfforts = await this.#workerModels.persistGenerationPolicy(workerId, {
-            model_route_id: row.model_route_id,
-            spawn_model_route_id: row.spawn_model_route_id,
-            effort,
-            effort_source: "explicit" });
-        return { effort, source: "explicit", supportedEfforts };
+    setWorkerEffort(args: { workspaceId: number; workerId: number; effort: unknown }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
+        return this.#workerModels.setWorkerEffort(args);
     }
 
-    // {§worker-model-selection} — persist the worker's spawn override; a null
-    // selector means inherit (clears the override).
-    async setWorkerSpawnModel(args: { workspaceId: number; workerId: number; selector: string | null }): Promise<ModelRoute | null> {
-        const workspaceId = ClientInput.assertId("worker.child.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.child.set", "workerId", args.workerId);
-        await this.#assertModelWorker(workspaceId, workerId);
-        const selector = ClientInput.assertChildSelector("worker.child.set", args.selector);
-        const spec = await this.#workerModels.resolveWorkerSpawnModel(workerId, selector);
-        if (spec === null) return null;
-        const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        return projectModelRoute(spec, row?.effort ?? null, row?.effort_source ?? "default");
+    setWorkerSpawnModel(args: { workspaceId: number; workerId: number; selector: string | null }): Promise<ModelRoute | null> {
+        return this.#workerModels.setWorkerSpawnModel(args);
     }
 
     async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {
@@ -958,52 +697,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 409,
                 `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
                 { workerId, workspaceId, actualWorkspaceId: owner.workspace_id },
-            );
-        }
-    }
-
-    // {§machine-processes} — provider inference is an exclusive capability of a
-    // model worker. The same assertion is used by early client admissions, the final
-    // drain callback, and the model, reasoning, and spawn-model controls
-    // ({§worker-model-selection}), so recovery and internal callers cannot bypass it.
-    async #assertModelWorker(workspaceId: number, workerId: number): Promise<void> {
-        const worker = await this.#db.envelope_get_worker_by_id.get<{
-            workspace_id: number;
-            origin: string;
-        }>({ id: workerId });
-        if (worker === undefined) {
-            throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
-                404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
-            );
-        }
-        if (worker.workspace_id !== workspaceId) {
-            throw daemonFailure(
-                "daemon:worker",
-                "workspace-mismatch",
-                409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                {
-                    workerId,
-                    workspaceId,
-                    actualWorkspaceId: worker.workspace_id,
-                    retryable: false },
-            );
-        }
-        if (worker.origin !== "model") {
-            throw daemonFailure(
-                "daemon:worker",
-                "model-worker-required",
-                409,
-                `Worker ${workerId} is not a model worker.`,
-                {
-                    workerId,
-                    actualOrigin: worker.origin,
-                    recovery: "Select or create a model worker.",
-                    retryable: false },
             );
         }
     }
@@ -1056,7 +749,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const contextWorkerId = args.contextWorkerId === undefined
             ? undefined
             : ClientInput.assertId("operation.dispatch-batch", "contextWorkerId", args.contextWorkerId);
-        if (contextWorkerId !== undefined) await this.#assertModelWorker(workspaceId, contextWorkerId);
+        if (contextWorkerId !== undefined) await this.#workerModels.assertModelWorker(workspaceId, contextWorkerId);
         const { statements } = args;
         if (statements.length === 0) return [];
         return await this.#clientOperation({ workspaceId, actor, contextWorkerId, onLoop: args.onLoop }, async (dispatch) => {
@@ -1170,33 +863,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
-        const active = process.env.PLURNK_MODEL?.toLowerCase();
-        let aliases;
-        try { aliases = parseAliasesFromEnv(); }
-        catch (cause) {
-            if (!(cause instanceof ConfigurationError)) throw cause;
-            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
-        }
-        return {
-            aliases: aliases.map((a) => {
-                const isActive = active === a.alias;
-                // {§agui-provider-routes} — the route a worker seeded from this alias gets: what it would read back.
-                let effort;
-                try { effort = ProviderInstantiate.configuredEffort(a); }
-                catch (cause) {
-                    const invalid = new ConfigurationError("PLURNK_PROVIDERS_EFFORT", cause instanceof Error ? cause.message : String(cause), { cause });
-                    throw new OperationFailureError(Results.configurationFailure(invalid), { cause });
-                }
-                return {
-                    ...projectModelRoute(a, effort, "default"), alias: a.alias, active: isActive,
-                    inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null };
-            }) };
+        return this.#workerModels.listProviders();
     }
 
-    // {§model-catalog} The catalog is a bounded, daemon-local projection.
-    // It performs no provider I/O and never changes the worker's selection.
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
-        return listModelCatalog(query);
+        return this.#workerModels.listModels(query);
     }
 
     // {§client-display-capabilities} Core composes the installed family
@@ -1531,7 +1202,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const workerId = ClientInput.assertId("run.fork", "workerId", args.workerId);
         const name = ClientInput.assertOptionalWorkerName("run.fork", "name", args.name);
         // {§machine-processes-worker-origin} A branch is a model's: only a model worker's log forks.
-        await this.#assertModelWorker(workspaceId, workerId);
+        await this.#workerModels.assertModelWorker(workspaceId, workerId);
         if (name !== undefined) {
             const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) {
