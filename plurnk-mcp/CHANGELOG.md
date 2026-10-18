@@ -1,5 +1,22 @@
 # @plurnk/plurnk-mcp
 
+## 3.2.1
+
+### Patch Changes
+
+- f320b9b: `FunctionalityPrepared` gains a required synchronous `publish()` returning an
+  undo. Candidate state goes live there, inside the coordinator's registry
+  commit, with no I/O; `commit()` is post-publication settlement; `abort()`
+  discards an unpublished candidate. The coordinator composes the adapter's undo
+  with its own view rollback. MCP consumes a pending OAuth candidate at publish,
+  so a callback replayed after publication is `404 oauth-not-pending` with no
+  window (#1155).
+- Updated dependencies [f320b9b]
+- Updated dependencies [a619ed6]
+- Updated dependencies [acffc4f]
+- Updated dependencies [dc0808c]
+  - @plurnk/plurnk-contracts@5.0.0
+
 ## 3.2.0
 
 - Prepare configured MCP servers concurrently and expose each alias in flight.

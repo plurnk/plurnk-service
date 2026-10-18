@@ -1,5 +1,83 @@
 # @plurnk/plurnk-service
 
+## 4.2.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @plurnk/plurnk-mimetypes-application-ipynb@2.0.2
+
+## 4.2.0
+
+### Minor Changes
+
+- d67251b: A model's READ of an untracked file, or a FIND whose text pattern matches inside
+  one, proposes the file's admission through the proposal lifecycle (202, body
+  `{"files": [...]}`, effect `host`): accepted by policy where nobody reviews or by
+  the reviewer otherwise, it is admitted as the Worker's own `members (add)` and
+  the operation runs again; rejected, it admits nothing. The universe is listed
+  whenever the knob is on ({§membership-auto-add}; #1160).
+- a2b6275: A file path beyond the project root is spelled as the absolute path it names —
+  in addresses, misses and the `path_normalized` notice — never as a `../` climb;
+  a path inside the root stays project-relative. An absolute spelling of a path
+  beyond the root is already canonical and earns no notice
+  ({§file-path-normalization}; #1146).
+- d4f8760: `PLURNK_MEMBERS_AUTO_ADD=1` (default): a model's READ of an untracked, unignored,
+  unexcluded project file admits it as the Worker's own member definition and reads
+  it; a FIND lists such files as `untracked` and admits the ones its text pattern
+  matches; a `member_added` notice announces each admission. Indexed dialects see
+  members only; the members scope still bounds every admission; `0` restores the
+  baseline (#1154).
+- a619ed6: The card states its NOTE rule as one command, `YOU MUST persist all new facts,
+  ideas, and plans in NOTEs on every turn.`, and the reminder returns: a model
+  turn that continues or parks without a NOTE in its program or from its
+  reasoning is told so in the next packet by the `engine:turn` notice
+  `continued_without_note` (`level: warn`, that command as its directive). A
+  notice, never a failure ({§continued-without-note}).
+
+### Patch Changes
+
+- 5450069: The finish reason is the AI SDK's unified classification; the raw vendor value
+  rides beside it. A finish the SDK classifies as `error` fails the attempt as
+  `generation_failed` (502, not re-issued; Core settles it on the provider
+  response contract). The dropped-output rule, its `output_dropped` kind and
+  `PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS` are gone: billed output tokens are
+  accounting, never evidence of missing text, so a completed answer is admitted
+  with absent, summarized or verbatim reasoning (#1156, #1157).
+- f320b9b: `FunctionalityPrepared` gains a required synchronous `publish()` returning an
+  undo. Candidate state goes live there, inside the coordinator's registry
+  commit, with no I/O; `commit()` is post-publication settlement; `abort()`
+  discards an unpublished candidate. The coordinator composes the adapter's undo
+  with its own view rollback. MCP consumes a pending OAuth candidate at publish,
+  so a callback replayed after publication is `404 oauth-not-pending` with no
+  window (#1155).
+- acffc4f: The card teaches NOTE as working memory — save all new facts, ideas and plans
+  for later turns — with `fact`, `idea` and `plan` examples in place of `plan`,
+  `finding`, `decision` and `next`. The initialization turn's two NOTEs follow:
+  both carry the `plan` aside, and the opening plan's third step saves facts,
+  ideas and plans (#1153).
+- Updated dependencies [5450069]
+- Updated dependencies [f320b9b]
+- Updated dependencies [a619ed6]
+- Updated dependencies [acffc4f]
+- Updated dependencies [dc0808c]
+  - @plurnk/plurnk-providers@4.0.0
+  - @plurnk/plurnk-contracts@5.0.0
+  - @plurnk/plurnk-modules@4.0.1
+  - @plurnk/plurnk-mcp@3.2.1
+  - @plurnk/plurnk-a2a@4.0.1
+  - @plurnk/plurnk-skills@3.0.3
+  - @plurnk/plurnk-schedule@3.0.4
+  - @plurnk/plurnk-parser@4.2.0
+  - @plurnk/plurnk-agui@4.0.1
+  - @plurnk/plurnk-digest@3.2.2
+  - @plurnk/plurnk-agent-skills@2.0.3
+  - @plurnk/plurnk-execs@4.0.1
+  - @plurnk/plurnk-hooks@2.0.3
+  - @plurnk/plurnk-mimetypes@3.0.4
+  - @plurnk/plurnk-schemes@3.2.2
+  - @plurnk/plurnk-schemes-http@2.0.3
+
 ## 4.1.0
 
 ### Minor Changes

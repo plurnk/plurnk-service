@@ -1,5 +1,11 @@
 # @plurnk/plurnk-mimetypes-application-ipynb
 
+## 2.0.2
+
+### Patch Changes
+
+- Peer range `@plurnk/plurnk-contracts` moves to `^5.0.0`.
+
 ## 2.0.1
 
 ### Patch Changes

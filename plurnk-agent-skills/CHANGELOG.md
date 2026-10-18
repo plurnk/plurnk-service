@@ -1,5 +1,15 @@
 # @plurnk/plurnk-agent-skills
 
+## 2.0.3
+
+### Patch Changes
+
+- Updated dependencies [f320b9b]
+- Updated dependencies [a619ed6]
+- Updated dependencies [acffc4f]
+- Updated dependencies [dc0808c]
+  - @plurnk/plurnk-contracts@5.0.0
+
 ## 2.0.2
 
 - Update compatible dependency ranges: `@plurnk/plurnk-contracts@4.0.0`.

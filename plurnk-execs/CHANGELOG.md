@@ -1,5 +1,16 @@
 # @plurnk/plurnk-execs
 
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies [f320b9b]
+- Updated dependencies [a619ed6]
+- Updated dependencies [acffc4f]
+- Updated dependencies [dc0808c]
+  - @plurnk/plurnk-contracts@5.0.0
+  - @plurnk/plurnk-parser@4.2.0
+
 ## 4.0.0
 
 - **Breaking:** shell execution uses an absolute executable `SHELL`, falling

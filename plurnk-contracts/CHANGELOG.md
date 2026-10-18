@@ -1,5 +1,39 @@
 # @plurnk/plurnk-contracts
 
+## 5.0.0
+
+### Major Changes
+
+- f320b9b: `FunctionalityPrepared` gains a required synchronous `publish()` returning an
+  undo. Candidate state goes live there, inside the coordinator's registry
+  commit, with no I/O; `commit()` is post-publication settlement; `abort()`
+  discards an unpublished candidate. The coordinator composes the adapter's undo
+  with its own view rollback. MCP consumes a pending OAuth candidate at publish,
+  so a callback replayed after publication is `404 oauth-not-pending` with no
+  window (#1155).
+
+### Minor Changes
+
+- dc0808c: Fence pairing: a heading the author enclosed in a wider or labeled fence is the
+  example it was written as, at no cost to a complete reading; only a declared
+  code block discarded as text still counts with a hidden operation. A message
+  whose own fence is narrower than the fences wrapping its examples now holds them
+  instead of running them ({§pairing-objective}, {§balanced-fences}; #1147).
+
+### Patch Changes
+
+- a619ed6: The card states its NOTE rule as one command, `YOU MUST persist all new facts,
+  ideas, and plans in NOTEs on every turn.`, and the reminder returns: a model
+  turn that continues or parks without a NOTE in its program or from its
+  reasoning is told so in the next packet by the `engine:turn` notice
+  `continued_without_note` (`level: warn`, that command as its directive). A
+  notice, never a failure ({§continued-without-note}).
+- acffc4f: The card teaches NOTE as working memory — save all new facts, ideas and plans
+  for later turns — with `fact`, `idea` and `plan` examples in place of `plan`,
+  `finding`, `decision` and `next`. The initialization turn's two NOTEs follow:
+  both carry the `plan` aside, and the opening plan's third step saves facts,
+  ideas and plans (#1153).
+
 ## 4.1.0
 
 ### Minor Changes

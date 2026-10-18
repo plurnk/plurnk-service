@@ -1,5 +1,23 @@
 # @plurnk/plurnk-parser
 
+## 4.2.0
+
+### Minor Changes
+
+- dc0808c: Fence pairing: a heading the author enclosed in a wider or labeled fence is the
+  example it was written as, at no cost to a complete reading; only a declared
+  code block discarded as text still counts with a hidden operation. A message
+  whose own fence is narrower than the fences wrapping its examples now holds them
+  instead of running them ({§pairing-objective}, {§balanced-fences}; #1147).
+
+### Patch Changes
+
+- Updated dependencies [f320b9b]
+- Updated dependencies [a619ed6]
+- Updated dependencies [acffc4f]
+- Updated dependencies [dc0808c]
+  - @plurnk/plurnk-contracts@5.0.0
+
 ## 4.1.0
 
 ### Minor Changes
