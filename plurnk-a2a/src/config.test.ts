@@ -188,7 +188,7 @@ test("{§configuration-repair-path} hosted A2A reports typed input failures inde
         "an invalid outbound resource does not poison the separate inbound exposure");
 });
 
-test("hosted exposure is disabled without identity requirements and rejects unsupported declarations", () => {
+test("{§a2a-environment-projection} hosted exposure is disabled without identity requirements and rejects unsupported declarations", () => {
     assert.equal(hostedAgentConfiguration({ ...floor, PLURNK_A2A_EXPOSE: "0" }), null);
     assert.equal(hostedAgentConfiguration(floor), null);
     assert.throws(

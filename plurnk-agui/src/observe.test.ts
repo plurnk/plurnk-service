@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { aguiRouteTemplate } from "./observe.ts";
 
-test("AG-UI observation classifies routes without exporting input paths", () => {
+test("{§observability-boundary} AG-UI observation classifies routes without exporting input paths", () => {
     assert.equal(aguiRouteTemplate("POST", "/"), "unmatched");
     assert.equal(aguiRouteTemplate("POST", "/agui"), "/agui");
     assert.equal(aguiRouteTemplate("OPTIONS", "/secret-in-path?token=xyzzy"), "preflight");

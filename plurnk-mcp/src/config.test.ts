@@ -188,7 +188,7 @@ test("{§mcp-configuration} explicit HTTP endpoints and registries need not be l
     }
 });
 
-test("timeouts are required positive integers owned by .env.defaults", () => {
+test("{§mcp-configuration} timeouts are required positive integers owned by .env.defaults", () => {
     assert.equal(connectTimeoutMs(floor), 30000);
     assert.equal(requestTimeoutMs(floor), 86400000);
     assert.throws(

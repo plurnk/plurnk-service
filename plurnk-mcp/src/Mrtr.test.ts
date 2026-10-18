@@ -21,7 +21,7 @@ const resolved = (payload: unknown): ClientInteractionResolution => ({
     payload,
 });
 
-test("one input_required round becomes one atomic client interaction", async () => {
+test("{§mcp-host-composition} one input_required round becomes one atomic client interaction", async () => {
     const connection = configured();
     const requests: ClientInteractionRequest[] = [];
     const interact: ClientInteractionHandler = async (request) => {
@@ -56,7 +56,7 @@ test("one input_required round becomes one atomic client interaction", async () 
     }
 });
 
-test("multi-round tool calls preserve opaque state and fresh interaction responses", async () => {
+test("{§mcp-host-composition} multi-round tool calls preserve opaque state and fresh interaction responses", async () => {
     const connection = configured();
     const requests: ClientInteractionRequest[] = [];
     const interact: ClientInteractionHandler = async (request) => {
@@ -76,7 +76,7 @@ test("multi-round tool calls preserve opaque state and fresh interaction respons
     }
 });
 
-test("client cancellation becomes a standard elicitation cancellation response", async () => {
+test("{§mcp-host-composition} client cancellation becomes a standard elicitation cancellation response", async () => {
     const connection = configured();
     try {
         const result = await connection.callTool(
@@ -93,7 +93,7 @@ test("client cancellation becomes a standard elicitation cancellation response",
     }
 });
 
-test("form and URL responses are validated before retrying the origin", async () => {
+test("{§mcp-host-composition} form and URL responses are validated before retrying the origin", async () => {
     const connection = configured();
     try {
         await assert.rejects(
@@ -131,7 +131,7 @@ test("form and URL responses are validated before retrying the origin", async ()
     }
 });
 
-test("resource reads and prompt retrievals share the same interaction contract", async () => {
+test("{§mcp-core-matrix} resource reads and prompt retrievals share the same interaction contract", async () => {
     const connection = configured();
     const operations: unknown[] = [];
     const interact: ClientInteractionHandler = async (request) => {
@@ -154,7 +154,7 @@ test("resource reads and prompt retrievals share the same interaction contract",
     }
 });
 
-test("requestState-only continuation needs no fabricated client response", async () => {
+test("{§mcp-host-composition} requestState-only continuation needs no fabricated client response", async () => {
     const connection = configured();
     let interactions = 0;
     try {
@@ -175,7 +175,7 @@ test("requestState-only continuation needs no fabricated client response", async
     }
 });
 
-test("interactive continuation fails explicitly without an interaction owner", async () => {
+test("{§mcp-host-composition} interactive continuation fails explicitly without an interaction owner", async () => {
     const connection = configured();
     try {
         await assert.rejects(
@@ -187,7 +187,7 @@ test("interactive continuation fails explicitly without an interaction owner", a
     }
 });
 
-test("one operation rejects a non-converging server at the standard ten-round bound", async () => {
+test("{§mcp-host-composition} one operation rejects a non-converging server at the standard ten-round bound", async () => {
     const connection = configured();
     let interactions = 0;
     try {
@@ -212,7 +212,7 @@ test("one operation rejects a non-converging server at the standard ten-round bo
     }
 });
 
-test("unclaimed input families fail without opening a client interaction", async () => {
+test("{§mcp-host-composition} unclaimed input families fail without opening a client interaction", async () => {
     const connection = configured();
     let interactions = 0;
     try {

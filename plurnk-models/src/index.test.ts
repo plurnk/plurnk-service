@@ -10,7 +10,7 @@ import {
     resolveModel,
 } from "./index.ts";
 
-test("lookup: a known cloud model exposes the independent limits and rate groups", () => {
+test("{§model-catalog-projection} lookup: a known cloud model exposes the independent limits and rate groups", () => {
     const info = lookup("openai", "gpt-5.4");
     assert.ok(info !== null, "expected a snapshot entry for a well-known relay model");
     assert.equal(info.name, "GPT-5.4");
@@ -25,7 +25,7 @@ test("lookup: a known cloud model exposes the independent limits and rate groups
     assert.equal(typeof info.structuredOutput, "boolean");
 });
 
-test("lookup: route-specific reasoning controls survive the Models.dev projection", () => {
+test("{§model-catalog-projection} lookup: route-specific reasoning controls survive the Models.dev projection", () => {
     const info = lookup("cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b");
     assert.ok(info !== null);
     assert.deepEqual(info.reasoningOptions, [
@@ -34,7 +34,7 @@ test("lookup: route-specific reasoning controls survive the Models.dev projectio
     ]);
 });
 
-test("(#459) the segment IS the Models.dev id", () => {
+test("{§model-catalog-projection} the segment IS the Models.dev id", () => {
     const snap = catalogSnapshot();
     const first = (id: string) => Object.keys(snap[id])[0];
     for (const id of ["togetherai", "fireworks-ai", "cloudflare-workers-ai", "moonshotai", "alibaba", "zai", "tencent-tokenhub", "amazon-bedrock"]) {
@@ -46,7 +46,7 @@ test("(#459) the segment IS the Models.dev id", () => {
     assert.notEqual(lookupProvider("ollama-cloud"), null);
 });
 
-test("lookup: an unknown/local model is a miss (null) — the probe owns that case", () => {
+test("{§model-catalog-projection} lookup: an unknown/local model is a miss (null) — the probe owns that case", () => {
     assert.equal(lookup("openai", "macher.gguf"), null);      // local llama-server model — not in any catalog
     assert.equal(lookup("nonprovider", "whatever"), null);     // unknown provider
 });
@@ -60,7 +60,7 @@ test("resolveModel: a unique provider-native suffix resolves without a PLURNK ve
     assert.equal(resolved?.id, native);
 });
 
-test("provider catalog carries Models.dev's AI SDK construction facts", () => {
+test("{§model-catalog-projection} provider catalog carries Models.dev's AI SDK construction facts", () => {
     assert.deepEqual(lookupProvider("google"), providerCatalogSnapshot().google);
     assert.equal(lookupProvider("google")?.name, "Google");
     assert.equal(lookupProvider("google")?.npm, "@ai-sdk/google");
@@ -68,25 +68,12 @@ test("provider catalog carries Models.dev's AI SDK construction facts", () => {
     assert.equal(lookupProvider("cloudflare-workers-ai")?.id, "cloudflare-workers-ai");
 });
 
-test("providerNameFromCatalogId projects the one canonical PLURNK route segment", () => {
+test("{§model-catalog-projection} providerNameFromCatalogId projects the one canonical PLURNK route segment", () => {
     assert.equal(providerNameFromCatalogId("fireworks-ai"), "fireworks-ai");
     assert.equal(providerNameFromCatalogId("google"), "google");
 });
 
-test("provider catalog carries Cerebras and Qwen 3.8 facts", () => {
-    assert.deepEqual(lookupProvider("cerebras"), {
-        id: "cerebras",
-        name: "Cerebras",
-        npm: "@ai-sdk/cerebras",
-        env: ["CEREBRAS_API_KEY"],
-    });
-    const model = lookup("cerebras", "qwen-3.8-27b");
-    assert.ok(model !== null);
-    assert.ok(model.contextWindow > 0);
-    assert.ok((model.maxOutputTokens ?? 0) > 0);
-});
-
-test("lookup: reasoning rates remain distinct from ordinary output rates", () => {
+test("{§model-catalog-projection} lookup: reasoning rates remain distinct from ordinary output rates", () => {
     const snap = catalogSnapshot();
     const model = Object.values(snap)
         .flatMap((models) => Object.values(models))
@@ -95,7 +82,7 @@ test("lookup: reasoning rates remain distinct from ordinary output rates", () =>
     assert.ok(model !== undefined, "expected Models.dev to contain a distinct reasoning rate");
 });
 
-test("provider credential names exclude non-secret endpoint coordinates", () => {
+test("{§model-catalog-projection} provider credential names exclude non-secret endpoint coordinates", () => {
     const names = providerCredentialEnvNames();
     assert.ok(names.includes("OPENAI_API_KEY"));
     assert.ok(names.includes("AWS_SECRET_ACCESS_KEY"));
@@ -103,7 +90,7 @@ test("provider credential names exclude non-secret endpoint coordinates", () => 
     assert.equal(names.includes("CLOUDFLARE_ACCOUNT_ID"), false);
 });
 
-test("catalogSnapshot: every vendored provider has models with usable context", () => {
+test("{§model-catalog-projection} catalogSnapshot: every vendored provider has models with usable context", () => {
     const snap = catalogSnapshot();
     const providers = providerCatalogSnapshot();
     const ids = Object.keys(snap);

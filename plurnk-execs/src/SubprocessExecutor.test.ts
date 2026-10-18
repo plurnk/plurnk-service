@@ -29,7 +29,7 @@ const exec = async (runtime: string, command: string, opts: { signal?: AbortSign
     return { result, out, states, events };
 };
 
-test("SubprocessExecutor declares stdout + stderr channels", () => {
+test("{§executor-channels} SubprocessExecutor declares stdout + stderr channels", () => {
     const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
     assert.deepEqual(ex.channels, {
         stdout: { mimetype: "text/stream" },
@@ -37,25 +37,25 @@ test("SubprocessExecutor declares stdout + stderr channels", () => {
     });
 });
 
-test("probe: default (no binary) → available", async () => {
+test("{§executor-probe} probe: default (no binary) → available", async () => {
     const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
     assert.deepEqual(await ex.probe(), { available: true });
 });
 
-test("effect: subprocess is always host (regardless of target)", () => {
+test("{§executor-effect} effect: subprocess is always host (regardless of target)", () => {
     const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/work/dir"), "host");
 });
 
-test("cwd is the process working dir when there is no target", async () => {
+test("{§executor-subprocess-routing} cwd is the process working dir when there is no target", async () => {
     const dir = realpathSync(tmpdir());
     const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir });
     assert.equal(result.status, 200);
     assert.equal(realpathSync(out.stdout.trim()), dir);
 });
 
-test("a shell target is one script file, without executable permission or command parsing", async (t) => {
+test("{§executor-subprocess-routing} a shell target is one script file, without executable permission or command parsing", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "executor-script-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const target = join(directory, "script with spaces;literal.sh");
@@ -65,7 +65,7 @@ test("a shell target is one script file, without executable permission or comman
     assert.equal(out.stdout, "hello from stdin");
 });
 
-test("a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
+test("{§executor-stdin} a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
     // `cat` with no argument reads fd0 to EOF. With a dangling pipe this blocks
     // forever and parks the loop until a client cancel; /dev/null delivers
     // immediate EOF, so it exits 0 cleanly. If the fix regresses, this test
@@ -96,13 +96,13 @@ test("{§executor-stdin}: a script's initial body precedes later input without i
     assert.equal(stdout, "initial\nlater");
 });
 
-test("env: a scoped env is handed to the child verbatim", async () => {
+test("{§executor-sinks} env: a scoped env is handed to the child verbatim", async () => {
     const { result, out } = await exec("sh", 'echo "$FOO"', { env: { FOO: "scoped-value" } });
     assert.equal(result.status, 200);
     assert.equal(out.stdout.trim(), "scoped-value");
 });
 
-test("env: scoping hides host secrets; default inherits them", async () => {
+test("{§executor-sinks} env: scoping hides host secrets; default inherits them", async () => {
     process.env.PLURNK_TEST_SECRET = "leak-me";
     try {
         // Consumer-scoped env without the secret → the child cannot read it.
@@ -130,7 +130,7 @@ class DirectArgvExec extends SubprocessExecutor {
     }
 }
 
-test("command-tokenization failures return a durable input Problem", async () => {
+test("{§problems-executor-input} command-tokenization failures return a durable input Problem", async () => {
     const states: { channel: string; state: string }[] = [];
     const result = await new DirectArgvExec({ runtime: "direct", glyph: "d" }).run({
         metadata: null,
@@ -152,7 +152,7 @@ test("command-tokenization failures return a durable input Problem", async () =>
     ]);
 });
 
-test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
+test("{§executor-subprocess} spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
         metadata: null,
@@ -174,32 +174,32 @@ class BinExec extends SubprocessExecutor {
     protected override get binary(): string { return this.#bin; }
 }
 
-test("probe: present binary → available with version detail", async () => {
+test("{§executor-probe} probe: present binary → available with version detail", async () => {
     const { available, detail } = await new BinExec("node").probe();
     assert.equal(available, true);
     assert.match(String(detail), /^v?\d+\./);
 });
 
-test("probe: missing binary → unavailable with actionable detail", async () => {
+test("{§executor-probe} probe: missing binary → unavailable with actionable detail", async () => {
     const { available, detail } = await new BinExec("definitely-not-a-real-binary-xyz").probe();
     assert.equal(available, false);
     assert.match(String(detail), /not found on PATH/);
 });
 
-test("probe honors a pre-aborted signal → unavailable, no child spawned", async () => {
+test("{§executor-probe} probe honors a pre-aborted signal → unavailable, no child spawned", async () => {
     const ac = new AbortController();
     ac.abort();
     const { available } = await new BinExec("node").probe(ac.signal);
     assert.equal(available, false);
 });
 
-test("probe accepts a live signal and still reports version when not aborted", async () => {
+test("{§executor-probe} probe accepts a live signal and still reports version when not aborted", async () => {
     const { available, detail } = await new BinExec("node").probe(new AbortController().signal);
     assert.equal(available, true);
     assert.match(String(detail), /^v?\d+\./);
 });
 
-test("sh: stdout streamed, channels closed, exit 0", async () => {
+test("{§executor-exit-code} sh: stdout streamed, channels closed, exit 0", async () => {
     const { result, out, states, events } = await exec("sh", "echo hello");
     assert.deepEqual(result, { status: 200, exitCode: 0 });
     assert.equal(out.stdout, "hello\n");
@@ -233,12 +233,12 @@ test("{§executor-exit-code} a signal the consumer did not send is a terminated-
     ]);
 });
 
-test("sh: stderr captured into the stderr channel", async () => {
+test("{§executor-channels} sh: stderr captured into the stderr channel", async () => {
     const { out } = await exec("sh", "echo to-err 1>&2");
     assert.equal(out.stderr, "to-err\n");
 });
 
-test("spawn failure returns a durable Problem instead of transient notices", async () => {
+test("{§executor-exit-code} spawn failure returns a durable Problem instead of transient notices", async () => {
     const { result, states, events } = await exec("definitely-not-a-real-binary-xyz", "noop");
     assert.equal(result.status, 500);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/spawn-failed");
@@ -247,7 +247,7 @@ test("spawn failure returns a durable Problem instead of transient notices", asy
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("abort mid-run → status 499", async () => {
+test("{§executor-cancellation} abort mid-run → status 499", async () => {
     const controller = new AbortController();
     const promise = exec("sh", "sleep 5", { signal: controller.signal });
     controller.abort();
@@ -257,7 +257,7 @@ test("abort mid-run → status 499", async () => {
     assert.equal(states.at(-1)?.state, "errored");
 });
 
-test("abort terminates the whole process group — no shell grandchild survives", async () => {
+test("{§executor-cancellation} abort terminates the whole process group — no shell grandchild survives", async () => {
     // Unique, long-lived duration so the spawned `sleep` is matchable via pgrep
     // and can't collide with another test's process.
     const dur = `9999.${process.hrtime.bigint().toString().slice(-9)}`;
@@ -274,7 +274,7 @@ test("abort terminates the whole process group — no shell grandchild survives"
     assert.equal(survivors, "", `leaked process(es) after abort: ${survivors}`);
 });
 
-test("KILL[code]: a signal on the abort reason delivers exactly that code, not the default SIGHUP", async () => {
+test("{§executor-cancellation} KILL[code]: a signal on the abort reason delivers exactly that code, not the default SIGHUP", async () => {
     const controller = new AbortController();
     // Traps USR1 only — catching the echo proves SIGUSR1 was delivered; the
     // default SIGHUP would terminate it without firing the USR1 trap.
@@ -286,7 +286,7 @@ test("KILL[code]: a signal on the abort reason delivers exactly that code, not t
     assert.match(out.stdout, /CAUGHT_USR1/, "the USR1 trap fired → the override code was delivered");
 });
 
-test("loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
+test("{§executor-cancellation} loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
     const controller = new AbortController();
     // node swallows SIGHUP and stays alive — so the worker can only settle because
     // the grace-timed SIGKILL fired. A plain KILL (polite, no reap) would leave it.
@@ -297,7 +297,7 @@ test("loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-
     assert.equal(result.status, 499, "the housekeeping SIGKILL reaped the HUP-ignoring process");
 });
 
-test("stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is the exit code", async () => {
+test("{§executor-exit-code} stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is the exit code", async () => {
     // `head -c 0` exits without reading; a large stdin payload forces the write
     // to land after death often enough that an unguarded end() EPIPEs uncaught.
     // With the guard, every iteration settles on the child's own exit.

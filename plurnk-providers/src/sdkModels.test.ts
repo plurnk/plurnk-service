@@ -105,7 +105,7 @@ test("{§model-catalog-readiness}: an authenticated operator declaration reports
     );
 });
 
-test("createSdkModel constructs Cerebras from Models.dev facts", () => {
+test("{§provider-sdk-boundary} createSdkModel constructs Cerebras from Models.dev facts", () => {
     const sdk = createSdkModel("cerebras", "gemma-4-31b", {
         CEREBRAS_API_KEY: "test-key",
     });
@@ -135,7 +135,7 @@ test("{§openrouter-app-attribution} attribution rejects malformed URLs", () => 
     );
 });
 
-test("the Google SDK adapter owns its readable-reasoning response projection", () => {
+test("{§provider-readable-reasoning} the Google SDK adapter owns its readable-reasoning response projection", () => {
     assert.deepEqual(
         createSdkModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
         { google: { thinkingConfig: { includeThoughts: true } } },
@@ -146,7 +146,7 @@ test("the Google SDK adapter owns its readable-reasoning response projection", (
     );
 });
 
-test("createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
+test("{§provider-monetary-evidence} createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
     const sdk = createSdkModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",
     });
@@ -238,7 +238,7 @@ test("{§provider-model-options} explicit stable-system cache breakpoints exist 
         "the shipped defaults declare nothing for a closed model family, and identity reconstructs nothing");
 });
 
-test("an operator-declared compatible provider receives no guessed cache extension", () => {
+test("{§provider-cache-affinity} an operator-declared compatible provider receives no guessed cache extension", () => {
     const sdk = createSdkModel("acme", "model", {
         ACME_API_KEY: "key",
         PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
@@ -249,7 +249,7 @@ test("an operator-declared compatible provider receives no guessed cache extensi
     assert.equal(sdk?.systemCacheProviderOptions, undefined);
 });
 
-test("#157: a cataloged compatible provider fails before transport when its declared credential is absent", () => {
+test("{§model-catalog-readiness} a cataloged compatible provider fails before transport when its declared credential is absent", () => {
     assert.throws(
         () => createSdkModel("deepseek", "deepseek-v4-flash", {}),
         /deepseek provider: DEEPSEEK_API_KEY must be set/,

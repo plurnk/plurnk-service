@@ -38,29 +38,29 @@ const harness = () => {
     return { writes, states, events, args };
 };
 
-test("BaseExecutor: constructor binds runtime tag and glyph", () => {
+test("{§executor-contract} BaseExecutor: constructor binds runtime tag and glyph", () => {
     const ex = new EchoExecutor({ runtime: "news", glyph: "📰" });
     assert.equal(ex.runtime, "news");
     assert.equal(ex.glyph, "📰");
 });
 
-test("BaseExecutor: declares its own channel topology", () => {
+test("{§executor-channels} BaseExecutor: declares its own channel topology", () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     assert.deepEqual(ex.channels, { results: { mimetype: "application/json" } });
 });
 
-test("BaseExecutor: default effect is the conservative `host`", () => {
+test("{§executor-effect} BaseExecutor: default effect is the conservative `host`", () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/some/path"), "host");
 });
 
-test("BaseExecutor: default probe is available", async () => {
+test("{§executor-probe} BaseExecutor: default probe is available", async () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.deepEqual(await ex.probe(), { available: true });
 });
 
-test("BaseExecutor.run: writes to declared channel and closes it", async () => {
+test("{§executor-sinks} BaseExecutor.run: writes to declared channel and closes it", async () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const h = harness();
     const result = await ex.run(h.args({ runtime: "search", body: "pie recipes" }));
@@ -83,7 +83,7 @@ test("{§executor-output-address} BaseExecutor.run: matched tag flows through to
 
 // {§executor-output-address} Executor-as-scheme projection.
 
-test("BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
+test("{§executor-output-address} BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
     const executor = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" });
     const m = executor.manifest;
     assert.equal(m.name, "sqlite", "scheme name is the tag");
@@ -97,7 +97,7 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     assert.equal(m.volatile, true);
 });
 
-test("BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
+test("{§executor-channels} BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
     class Subproc extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { stdout: { mimetype: "text/stream" }, stderr: { mimetype: "text/stream" } };
@@ -110,7 +110,7 @@ test("BaseExecutor: defaultChannel is the first declared channel, overridable", 
     assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
 });
 
-test("ExecArgs.write: an executor stamps the real per-call output mimetype", async () => {
+test("{§executor-sinks} ExecArgs.write: an executor stamps the real per-call output mimetype", async () => {
     class TypedExec extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { results: { mimetype: "application/json" } };
@@ -126,7 +126,7 @@ test("ExecArgs.write: an executor stamps the real per-call output mimetype", asy
     assert.deepEqual(h.writes[0], { channel: "results", chunk: "[1,2,3]", mimetype: "application/json" });
 });
 
-test("ExecArgs.write: mimetype is optional — omitting it leaves no stamp (back-compat)", async () => {
+test("{§executor-sinks} ExecArgs.write: mimetype is optional — omitting it leaves no stamp", async () => {
     const h = harness();
     await new EchoExecutor({ runtime: "x", glyph: "" }).run(h.args());
     assert.equal(h.writes[0].mimetype, undefined);

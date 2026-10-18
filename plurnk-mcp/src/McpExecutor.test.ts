@@ -86,7 +86,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
     await access(pathname);
 };
 
-test("runtime declaration derives the server summary from the chain", async () => {
+test("{§mcp-summary-derivation} runtime declaration derives the server summary from the chain", async () => {
     const declaration = runtimeDecl("echo", serverSummary("echo", undefined), false);
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
@@ -97,7 +97,7 @@ test("runtime declaration derives the server summary from the chain", async () =
     assert.equal(declaration.details, undefined);
 });
 
-test("MCP executor requires a tool target instead of duplicating catalog discovery", async () => {
+test("{§problems-mcp} MCP executor requires a tool target instead of duplicating catalog discovery", async () => {
     const { connection, executor } = configured();
     try {
         const h = harness();
@@ -111,7 +111,7 @@ test("MCP executor requires a tool target instead of duplicating catalog discove
     }
 });
 
-test("MCP executor publishes exact enabled targets as one immutable registry", async () => {
+test("{§mcp-tool-presentation} MCP executor publishes exact enabled targets as one immutable registry", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -150,7 +150,7 @@ test("{§mcp-model-projection} a tool's annotations.readOnlyHint alone makes its
     }
 });
 
-test("configured tool policy fails setup when the server lacks an exact name", async () => {
+test("{§mcp-setup} configured tool policy fails setup when the server lacks an exact name", async () => {
     const { connection } = configured();
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
@@ -374,7 +374,7 @@ test("{§mcp-header-declarations} a refused declaration is the tool-header-inval
     assert.equal(result.problem?.retryable, false);
 });
 
-test("MCP executor keeps elicitation on its generic client interaction sink", async () => {
+test("{§mcp-core-matrix} MCP executor keeps elicitation on its generic client interaction sink", async () => {
     const connection = new ServerConnection(stdioServer("interaction", [interactionFixture]), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
         PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
@@ -467,7 +467,7 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
     }
 });
 
-test("MCP progress and cancellation remain on the owning execution lifecycle over stdio", async (t) => {
+test("{§mcp-host-composition} MCP progress and cancellation remain on the owning execution lifecycle over stdio", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "cancelled");
@@ -527,7 +527,7 @@ test("MCP progress and cancellation remain on the owning execution lifecycle ove
     }
 });
 
-test("MCP executor backstops core admission against disabled targets", async () => {
+test("{§mcp-tool-presentation} MCP executor backstops core admission against disabled targets", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();

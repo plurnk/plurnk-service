@@ -4,7 +4,7 @@ import * as Contracts from "./index.ts";
 import { UNKNOWN_POSITION, Validator } from "./index.ts";
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 
-test("ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
+test("{§contract-proposal-projection} ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
     assert.deepEqual(proposalProjectionSchema.properties.op.anyOf[0].enum, Contracts.PLURNK_OPS);
     assert.equal(proposalProjectionSchema.properties.op.anyOf[1].pattern, Contracts.RUNTIME_TAG.source);
 });
@@ -71,7 +71,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
     ]);
 });
 
-test("unknown statement position is one frozen contracts-owned value", () => {
+test("{§parser-position} unknown statement position is one frozen contracts-owned value", () => {
     assert.deepEqual(UNKNOWN_POSITION, { line: 0, column: 0 });
     assert.equal(Object.isFrozen(UNKNOWN_POSITION), true);
     assert.equal(Validator.validatePosition(UNKNOWN_POSITION).valid, true);

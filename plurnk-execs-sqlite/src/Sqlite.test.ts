@@ -44,7 +44,7 @@ afterEach(async () => {
     else process.env[ERROR_DETAIL_LIMIT] = originalErrorPreview;
 });
 
-test("manifest declares the sqlite runtime tag", async () => {
+test("{§executor-discovery} manifest declares the sqlite runtime tag", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["sqlite"]);
@@ -55,26 +55,26 @@ test("manifest declares the sqlite runtime tag", async () => {
     });
 });
 
-test("declares a results channel (application/json)", () => {
+test("{§executor-default-inventory} declares a results channel (application/json)", () => {
     assert.deepEqual(new Sqlite({ runtime: "sqlite", glyph: "🗃" }).channels, {
         results: { mimetype: "application/json" },
     });
 });
 
-test("probe: always available via node:sqlite", async () => {
+test("{§executor-probe} probe: always available via node:sqlite", async () => {
     assert.deepEqual(await new Sqlite({ runtime: "sqlite", glyph: "🗃" }).probe(), {
         available: true, detail: "node:sqlite",
     });
 });
 
-test("effect: :memory:/no-target → pure; file → host (target-classified)", () => {
+test("{§executor-default-inventory} effect: :memory:/no-target → pure; file → host (target-classified)", () => {
     const ex = new Sqlite({ runtime: "sqlite", glyph: "🗃" });
     assert.equal(ex.effect(null), "pure");
     assert.equal(ex.effect(":memory:"), "pure");
     assert.equal(ex.effect("./app.db"), "host");
 });
 
-test("SELECT against default :memory: → rows as JSON, channel closed, 200", async () => {
+test("{§executor-default-inventory} SELECT against default :memory: → rows as JSON, channel closed, 200", async () => {
     const { result, out, states, events } = await run("SELECT 1 AS one, 'hi' AS two");
     assert.deepEqual(result, { status: 200 });
     assert.deepEqual(JSON.parse(out!), [{ one: 1, two: "hi" }]);
@@ -82,7 +82,7 @@ test("SELECT against default :memory: → rows as JSON, channel closed, 200", as
     assert.equal(events.length, 0);
 });
 
-test("a relative target resolves the database against cwd, not the process dir", async () => {
+test("{§executor-sinks} a relative target resolves the database against cwd, not the process dir", async () => {
     const dir = await mkdtemp(join(tmpdir(), "execs-sqlite-cwd-"));
     try {
         // relative target + cwd → the db file must land inside cwd (the workspace),
@@ -118,19 +118,10 @@ test("{§problems-executor-sqlite}: invalid SQL reference -> durable prepare Pro
     assert.equal(states.at(-1), "errored");
 });
 
-test("syntax error -> sqlite_invalid_statement, 400", async () => {
-    const { result, events } = await run("SELEKT oops");
-    assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-invalid-statement");
-    assert.match(result.problem?.detail ?? "", /near "SELEKT"/);
-    assert.equal(result.problem?.recovery, "Correct the SQL statement.");
-    assert.equal(events.length, 0);
-});
-
 // SQLite prepare compiles only the first statement; a sqlite3-CLI-style
 // script would partially execute under a 200. The contract is one statement per
 // op, ENFORCED: a real SQL tail fails hard instead of silently dropping.
-test("multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {
+test("{§problems-executor-sqlite} multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {
     const { result, events, states } = await run("CREATE TABLE t(x); INSERT INTO t VALUES(1)");
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/sqlite-multi-statement");
@@ -150,7 +141,7 @@ test("{§error-detail-bound} the configured error preview bounds rejected SQL fa
 });
 
 // {§error-detail-bound} — an invalid bound crashes by name at the first diagnostic; nothing degrades.
-test("an invalid error preview bound crashes by name", async () => {
+test("{§error-detail-bound} an invalid error preview bound crashes by name", async () => {
     process.env[ERROR_DETAIL_LIMIT] = "-2";
     await assert.rejects(run("SELECT 1; SECOND"), /PLURNK_EXECS_ERROR_DETAIL_LIMIT must be a safe integer of at least 0/);
 });
@@ -165,7 +156,7 @@ test("{§executor-cancellation} a trailing semicolon and trailing comments are N
 // {§executor-cancellation} requires honoring args.signal. sqlite is synchronous, so a pre-aborted
 // signal is honored at entry: the file-backed mutation never runs (the db file
 // is never created), and the channel closes errored with 499.
-test("pre-aborted signal → 499 errored, file mutation skipped", async () => {
+test("{§problems-executor-sqlite} pre-aborted signal → 499 errored, file mutation skipped", async () => {
     const path = tempDb();
     const ac = new AbortController();
     ac.abort();

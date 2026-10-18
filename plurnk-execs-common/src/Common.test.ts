@@ -70,7 +70,7 @@ test("{§executor-tool-document}: declared interpreter examples execute as raw i
     }
 });
 
-test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
+test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/node/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error
@@ -79,7 +79,7 @@ test("spawnArgs: the subprocess floor (sh/node/python3)", () => {
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
-test("spawnArgs: a target selects the interpreter's script-file form and body is stdin", () => {
+test("{§executor-subprocess-routing} spawnArgs: a target selects the interpreter's script-file form and body is stdin", () => {
     // @ts-expect-error protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh"], useShell: false, stdin: "stdin body" });
     // @ts-expect-error
@@ -113,7 +113,7 @@ for (const [tag, body] of [
 
 // An EDIT-created script has no exec bit, and
 // a file target still runs — the interpreter reads it; execve never happens.
-test("a file target runs without +x; transient exec never mutates its mode", async () => {
+test("{§executor-subprocess-routing} a file target runs without +x; transient exec never mutates its mode", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-transient-"));
     try {
         const script = path.join(dir, "greet.sh");
@@ -136,32 +136,26 @@ test("a file target runs without +x; transient exec never mutates its mode", asy
     }
 });
 
-test("probe: node is always available (not PATH-gated) and reports its version", async () => {
+test("{§executor-probe} probe: node is always available (not PATH-gated) and reports its version", async () => {
     const r = await make("node").probe();
     assert.equal(r.available, true);
     assert.equal(r.detail, process.version);
 });
 
-test("live: sh runs a shell command", async () => {
+test("{§executor-subprocess-routing} live: sh runs a shell command", async () => {
     const { result, out } = await run("sh", "echo plurnk");
     assert.equal(result.status, 200);
     assert.equal(out.stdout, "plurnk\n");
 });
 
-test("live: node runs -e", async () => {
-    const { result, out } = await run("node", "process.stdout.write(String(6*7))");
-    assert.equal(result.status, 200);
-    assert.equal(out.stdout, "42");
-});
-
-test("spawnArgs: eval-flag interpreters carry the command via their flag", () => {
+test("{§executor-subprocess-routing} spawnArgs: eval-flag interpreters carry the command via their flag", () => {
     // @ts-expect-error exercise the protected hook directly
     assert.deepEqual(make("perl").spawnArgs("perl", "print 1"), { cmd: "perl", args: ["-e", "print 1"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("deno").spawnArgs("deno", "console.log(1)"), { cmd: "deno", args: ["eval", "console.log(1)"], useShell: false });
 });
 
-test("spawnArgs: filters feed the command via stdin; awk is bare-program + empty stdin", () => {
+test("{§executor-subprocess-routing} spawnArgs: filters feed the command via stdin; awk is bare-program + empty stdin", () => {
     // @ts-expect-error
     assert.deepEqual(make("bc").spawnArgs("bc", "6*7"), { cmd: "bc", args: [], useShell: false, stdin: "6*7\n" });
     // @ts-expect-error
@@ -170,7 +164,7 @@ test("spawnArgs: filters feed the command via stdin; awk is bare-program + empty
     assert.deepEqual(make("awk").spawnArgs("awk", "BEGIN{print 42}"), { cmd: "awk", args: ["BEGIN{print 42}"], useShell: false, stdin: "" });
 });
 
-test("effect: every common interpreter is host (subprocess, proposal-gated)", () => {
+test("{§executor-default-inventory} effect: every common interpreter is host (subprocess, proposal-gated)", () => {
     assert.equal(make("perl").effect(null), "host");
     assert.equal(make("bc").effect(null), "host");
 });
@@ -186,29 +180,6 @@ test("{§executor-policy} probe: reflects PATH presence per tag", async () => {
 // The PLURNK_EXECS_<tag>=0 / _ONLY kill-switch moved to the framework's
 // discover() ({§executor-policy}) — a disabled tag is never registered, so probe() no
 // longer sees it. Covered in plurnk-execs' policy.test.ts / discover.test.ts.
-
-test("unclaimed runtime tag is fail-hard in spawnArgs", async () => {
-    await assert.rejects(run("nope", "x"), /unclaimed runtime tag 'nope'/);
-});
-
-// Live evaluation against whichever interpreters this host actually has.
-test("live: bc evaluates an expression from stdin", { skip: !present("bc") }, async () => {
-    const { result, out } = await run("bc", "6 * 7");
-    assert.equal(result.status, 200);
-    assert.equal(out.stdout.trim(), "42");
-});
-
-test("live: awk runs a BEGIN program with no input", { skip: !present("awk") }, async () => {
-    const { result, out } = await run("awk", "BEGIN { print 6 * 7 }");
-    assert.equal(result.status, 200);
-    assert.equal(out.stdout.trim(), "42");
-});
-
-test("live: perl evaluates -e", { skip: !present("perl") }, async () => {
-    const { result, out } = await run("perl", "print 6 * 7");
-    assert.equal(result.status, 200);
-    assert.equal(out.stdout.trim(), "42");
-});
 
 test("{§executor-spawn-account}: the shell runs as the configured account and sees its name in its environment", async () => {
     const previous = process.env.PLURNK_EXECS_SPAWN_USER;

@@ -4,7 +4,7 @@ import type { JSONRPCMessage, Transport } from "@modelcontextprotocol/client";
 
 import ExtensionChannel from "./extensionChannel.ts";
 
-test("coalesced core progress is delivered before its response settles", async () => {
+test("{§mcp-core-matrix} coalesced core progress is delivered before its response settles", async () => {
     const observed: string[] = [];
     let pending = true;
     const transport: Transport = {

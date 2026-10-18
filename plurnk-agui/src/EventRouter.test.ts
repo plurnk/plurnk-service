@@ -30,7 +30,7 @@ test("{§agui-workspace-state} workspace preparation is replaceable state, never
         /workspace\/preparation notification/);
 });
 
-test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
+test("{§agui-projection} log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 2, sequence: 3, tx: { body: "hello" }, rx: { answers: ["agui://anonymous/threads/t/messages/m"] }, turn_id: 1 } });
     const types = new Set(evs.map((e) => e.type));
     assert.ok(types.has(EventType.TEXT_MESSAGE_START) && types.has(EventType.TEXT_MESSAGE_CONTENT) && types.has(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
@@ -58,7 +58,7 @@ test("{§agui-gate-deferral} reasoning/event validates and projects the standard
     assert.equal(r.reasoningOpen, false, "{§agui-gate-deferral}: the end phase closes the lifecycle");
 });
 
-test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {
+test("{§agui-projection} log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {
     const r = router();
     const call = r.route("log/entry", { entry: { id: 2, worker_id: 10, loop_id: 2, origin: "model", op: "EDIT", loop_seq: 1, turn_seq: 2, sequence: 4, scheme: "file", pathname: "a.ts", tx: { body: "diff" }, rx: "ok", turn_id: 1 } });
     assert.equal(call.find((e) => e.type === "TOOL_CALL_START") !== undefined, true, "an op row is a tool call");
@@ -67,7 +67,7 @@ test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISH
     assert.equal(term[term.length - 1].type, "RUN_FINISHED", "200 terminates the worker");
 });
 
-test("notice → plurnk.notice custom; stopped-world events defer to ProposalHitl", () => {
+test("{§agui-projection} notice → plurnk.notice custom; stopped-world events defer to ProposalHitl", () => {
     const r = router();
     const notice = r.route("notice/event", { workerId: 10, loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info" } });
     assert.deepEqual(notice, [{
@@ -79,7 +79,7 @@ test("notice → plurnk.notice custom; stopped-world events defer to ProposalHit
     assert.deepEqual(r.route("loop/interaction", interaction), [], "the router yields client interactions to ProposalHitl");
 });
 
-test("packet chronology and derivation progress ride replaceable standard STATE", () => {
+test("{§agui-state-patches} packet chronology and derivation progress ride replaceable standard STATE", () => {
     const r = router();
     const packet = r.route("loop/packet", { workerId: 10, loopId: 4, packetCount: 3 });
     assert.deepEqual(packet, [{
@@ -111,7 +111,7 @@ test("packet chronology and derivation progress ride replaceable standard STATE"
     assert.equal(progress.length, 1, "routine indexing has one state channel, not a duplicate transcript Notice");
 });
 
-test("indexing completion clears activity; failures retain an explicit diagnostic", () => {
+test("{§agui-projection} indexing completion clears activity; failures retain an explicit diagnostic", () => {
     const r = router();
     const notice = {
         source: "engine:derivation", kind: "search_progress", level: "info",
@@ -156,7 +156,7 @@ test("{§agui-projection} a stream's progress and conclusion are execution metad
         "the conclusion rides plurnk.stream alone, its exact terminal Problem preserved");
 });
 
-test("terminated serves the standard RAW channel — the provider's native completion frame", () => {
+test("{§agui-run-outcome} terminated serves the standard RAW channel — the provider's native completion frame", () => {
     const meta = { model: "gemma-4-26B.gguf", finish_reason: "stop", timings: { predicted_ms: 900 } };
     const ev = router().route("loop/terminated", termination({ usage: loopUsage({ inputTokens: 5, outputTokens: 6, curationBudget: 200000, meta }) }));
     const raw = ev.find((e) => e.type === "RAW") as { event: unknown; source?: string } | undefined;

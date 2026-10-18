@@ -145,7 +145,7 @@ const interactionHandler = (): McpHttpHandler => createMcpHandler(() => {
     keepAliveMs: 0,
 });
 
-test("Streamable HTTP carries the current envelope and ordinary tool calls", async (t) => {
+test("{§mcp-transports} Streamable HTTP carries the current envelope and ordinary tool calls", async (t) => {
     const served = await serveMcpHttp(t, handler());
     const connection = new ServerConnection(httpServer("http", served.url), floor);
     t.after(() => connection.close());
@@ -192,7 +192,7 @@ test("{§mcp-redirect-refused} a redirected endpoint fails naming its target, an
     assert.equal(elsewhere.requests.length, 0, "the other origin received nothing, the configured header included");
 });
 
-test("HTTP bearer credentials expand only while preparing a connection", async (t) => {
+test("{§mcp-server-settings} HTTP bearer credentials expand only while preparing a connection", async (t) => {
     const served = await serveMcpHttp(t, handler(), (request) =>
         request.headers.get("authorization") === "Bearer secret"
             ? null
@@ -381,7 +381,7 @@ test("{§mcp-endpoint-security} HTTP transport does not permit non-TLS OAuth tok
     assert.equal(externalRequests, 0, "TLS validation refuses before any token request");
 });
 
-test("HTTP progress and stream cancellation settle the same request", async (t) => {
+test("{§mcp-transports} HTTP progress and stream cancellation settle the same request", async (t) => {
     let startWait = (): void => undefined;
     const waitStarted = new Promise<void>((resolve) => { startWait = resolve; });
     let recordCancellation = (): void => undefined;
@@ -408,7 +408,7 @@ test("HTTP progress and stream cancellation settle the same request", async (t) 
     );
 });
 
-test("Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
+test("{§mcp-core-matrix} Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
     const served = await serveMcpHttp(t, interactionHandler());
     const connection = new ServerConnection(httpServer("interaction", served.url), floor);
     t.after(() => connection.close());
@@ -451,7 +451,7 @@ test("Streamable HTTP retries MRTR with a fresh ID and exact private continuatio
     });
 });
 
-test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding", async (t) => {
+test("{§mcp-core-matrix} interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding", async (t) => {
     let origin = "";
     const tokenRequests: URLSearchParams[] = [];
     const served = await serveMcpHttp(t, handler(), (request) => {
@@ -763,7 +763,7 @@ const pagedHandler = (pages: Array<{ tools: string[]; nextCursor?: string }>): M
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
-test("a catalog whose pagination never converges is an error, never a partial listing", async (t) => {
+test("{§mcp-catalog-convergence} a catalog whose pagination never converges is an error, never a partial listing", async (t) => {
     const served = await serveMcpHttp(t, pagedHandler([
         { tools: ["page_0"], nextCursor: "1" },
         { tools: ["page_1"], nextCursor: "1" },
@@ -776,7 +776,7 @@ test("a catalog whose pagination never converges is an error, never a partial li
     });
 });
 
-test("a converging paginated catalog aggregates every page", async (t) => {
+test("{§mcp-catalog-convergence} a converging paginated catalog aggregates every page", async (t) => {
     const served = await serveMcpHttp(t, pagedHandler([
         { tools: ["page_0"], nextCursor: "1" },
         { tools: ["page_1"], nextCursor: "2" },

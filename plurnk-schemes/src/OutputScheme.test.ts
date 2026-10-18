@@ -2,7 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import OutputScheme from "./OutputScheme.ts";
 
-test("manifestFromRuntime: derives a read-only-output manifest from the runtime decl", () => {
+test("{§executor-scheme-output} manifestFromRuntime: derives a read-only-output manifest from the runtime decl", () => {
     const runtime = {
         name: "sh", glyph: "🐚",
         channels: { stdout: "text/plain", stderr: "text/plain" }, defaultChannel: "stdout",
@@ -20,7 +20,7 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.equal(m.modelVisible, true);
 });
 
-test("manifestFromRuntime: presentation is optional", () => {
+test("{§executor-scheme-output} manifestFromRuntime: presentation is optional", () => {
     const m = OutputScheme.manifestFromRuntime({ name: "bc", channels: { stdout: "text/plain" }, defaultChannel: "stdout" });
     assert.equal(m.name, "bc");
     assert.equal(m.glyph, undefined);

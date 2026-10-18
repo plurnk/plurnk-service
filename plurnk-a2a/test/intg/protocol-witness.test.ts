@@ -85,7 +85,7 @@ test("{§a2a-protocol-witness} streams the ordered task, working, artifact, and 
     }
 });
 
-test("cancels a working task through the same HTTP+JSON binding", async (t) => {
+test("{§a2a-protocol-witness} cancels a working task through the same HTTP+JSON binding", async (t) => {
     const agent = await startDemoAgent("wait-for-cancel");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -117,7 +117,7 @@ test("cancels a working task through the same HTTP+JSON binding", async (t) => {
     ]);
 });
 
-test("preserves a direct Message response without fabricating a Task", async (t) => {
+test("{§a2a-protocol-witness} preserves a direct Message response without fabricating a Task", async (t) => {
     const agent = await startDemoAgent("direct-message");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -139,7 +139,7 @@ test("preserves a direct Message response without fabricating a Task", async (t)
     }
 });
 
-test("continues one input-required Task with the same Task and Context identities", async (t) => {
+test("{§a2a-protocol-witness} continues one input-required Task with the same Task and Context identities", async (t) => {
     const agent = await startDemoAgent("input-required");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -193,7 +193,7 @@ test("continues one input-required Task with the same Task and Context identitie
     assert.equal(completed.artifacts[0]?.parts[0]?.content?.value, "received: Boston to Helsinki");
 });
 
-test("retains multiple Artifacts as distinct Task outputs", async (t) => {
+test("{§a2a-protocol-witness} retains multiple Artifacts as distinct Task outputs", async (t) => {
     const agent = await startDemoAgent("multiple-artifacts");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -218,7 +218,7 @@ test("retains multiple Artifacts as distinct Task outputs", async (t) => {
     assert.notEqual(stored.artifacts[0]?.artifactId, stored.artifacts[1]?.artifactId);
 });
 
-test("allows distinct Tasks to share one Context", async (t) => {
+test("{§a2a-protocol-witness} allows distinct Tasks to share one Context", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);

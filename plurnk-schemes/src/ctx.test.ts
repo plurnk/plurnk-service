@@ -189,13 +189,13 @@ const makeCtx = () => {
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };
 };
 
-test("ctx: entry addresses do not acquire resources", async () => {
+test("{§capability-ctx} ctx: entry addresses do not acquire resources", async () => {
     const { ctx } = makeCtx();
     assert.equal(await ctx.entries.address("/x"), "test://owner/x");
     assert.equal((await ctx.entries.read("/x")).status, 404);
 });
 
-test("ctx: entries cap does real CRUD scoped to the store", async () => {
+test("{§capability-ctx} ctx: entries cap does real CRUD scoped to the store", async () => {
     const { ctx } = makeCtx();
     const data: EntryData = {
         channels: { body: { content: "hi", mimetype: "text/markdown" } },
@@ -214,7 +214,7 @@ test("ctx: entries cap does real CRUD scoped to the store", async () => {
     assert.equal((await ctx.entries.read("notes:///x")).status, 404);
 });
 
-test("ctx: channels append accumulates (append-only store)", async () => {
+test("{§capability-ctx} ctx: channels append accumulates (append-only store)", async () => {
     const { ctx } = makeCtx();
     await ctx.entries.write("notes:///x", { channels: {} });
     await ctx.channels.append("notes:///x", "body", "foo");
@@ -223,7 +223,7 @@ test("ctx: channels append accumulates (append-only store)", async () => {
     assert.equal(r.entry?.channels.body.content, "foobar");
 });
 
-test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
+test("{§scheme-subscriptions} ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
     const { ctx } = makeCtx();
     const handle: SubscriptionHandle = { cancel() {} };
     const signal = await ctx.subscriptions.open("/r-1", handle);
@@ -231,7 +231,7 @@ test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
     assert.equal(signal.aborted, false);
 });
 
-test("ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
+test("{§scheme-subscriptions} ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
 
@@ -242,7 +242,7 @@ test("ctx: the opened subscription is the retainable chunk and settlement capabi
     assert.deepEqual(inspect().closed, { result: { status: 200 }, summary: "detached complete" });
 });
 
-test("ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
+test("{§scheme-subscriptions} ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.notifyChunk("stdout", "line1\n");
@@ -254,7 +254,7 @@ test("ctx: notifyChunk is fused — one call appends AND emits an event", async 
     assert.match(events[0], /stdout:active:6/);
 });
 
-test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
+test("{§scheme-subscriptions} ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.notifyChunk("body", "<html>hi</html>", "text/html");
@@ -264,7 +264,7 @@ test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", 
     assert.equal(chunks[1].mimetype, undefined);
 });
 
-test("ctx: the subscription's close composites state + wake (stream concluded)", async () => {
+test("{§scheme-subscriptions} ctx: the subscription's close composites state + wake (stream concluded)", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.close(
@@ -283,7 +283,7 @@ test("ctx: the subscription's close composites state + wake (stream concluded)",
     assert.equal(woken, 1); // close fires the worker wake
 });
 
-test("ctx: ProposalAware hook applies a resolution and returns a result", async () => {
+test("{§capability-ctx} ctx: ProposalAware hook applies a resolution and returns a result", async () => {
     const { ctx } = makeCtx();
     // proposals are NOT an injected cap — a scheme implements this hook and
     // the engine calls it on accept. Minimal conformant scheme:

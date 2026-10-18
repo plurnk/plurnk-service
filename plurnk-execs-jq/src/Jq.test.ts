@@ -33,35 +33,35 @@ const tmpFiles: string[] = [];
 const tmp = (): string => { const p = join(tmpdir(), `execs-jq-${process.hrtime.bigint()}.json`); tmpFiles.push(p); return p; };
 test.afterEach(async () => { await Promise.all(tmpFiles.splice(0).map((p) => rm(p, { force: true }))); });
 
-test("manifest declares jq", async () => {
+test("{§executor-discovery} manifest declares jq", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["jq"]);
 });
 
-test("channels: results (application/jsonl)", () => {
+test("{§executor-default-inventory} channels: results (application/jsonl)", () => {
     assert.deepEqual(new Jq({ runtime: "jq", glyph: "🧰" }).channels, { results: { mimetype: "application/jsonl" } });
 });
 
-test("effect: inline/-n → pure; file-path data source → read", () => {
+test("{§executor-default-inventory} effect: inline/-n → pure; file-path data source → read", () => {
     const j = new Jq({ runtime: "jq", glyph: "🧰" });
     assert.equal(j.effect(null), "pure");
     assert.equal(j.effect("./data.json"), "read");
 });
 
-test("probe: reflects jq on PATH", async () => {
+test("{§executor-probe} probe: reflects jq on PATH", async () => {
     const r = await new Jq({ runtime: "jq", glyph: "🧰" }).probe();
     assert.equal(r.available, HAS_JQ);
 });
 
-test("inline (-n): a self-contained program computes with no data source", { skip: !HAS_JQ }, async () => {
+test("{§executor-default-inventory} inline (-n): a self-contained program computes with no data source", { skip: !HAS_JQ }, async () => {
     const { result, out, states } = await run("[1,2,3] | add");
     assert.equal(result.status, 200);
     assert.equal(out?.trim(), "6");
     assert.deepEqual(states, ["closed"]);
 });
 
-test("multi-value object output is one compact JSON value per line — honest JSONL", { skip: !HAS_JQ }, async () => {
+test("{§executor-default-inventory} multi-value object output is one compact JSON value per line — honest JSONL", { skip: !HAS_JQ }, async () => {
     // Without -c this object stream pretty-prints across multiple lines and is
     // A comma-joined stream is neither valid application/json nor valid JSONL.
     const { result, out } = await run("[{a:1},{a:2}] | .[]");
@@ -71,7 +71,7 @@ test("multi-value object output is one compact JSON value per line — honest JS
     assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ a: 1 }, { a: 2 }], "every line is a standalone JSON value");
 });
 
-test("a file-path target is filtered", { skip: !HAS_JQ }, async () => {
+test("{§executor-default-inventory} a file-path target is filtered", { skip: !HAS_JQ }, async () => {
     const p = tmp();
     await writeFile(p, JSON.stringify({ users: [{ name: "ada" }, { name: "alan" }] }));
     const { result, out } = await run(".users[].name", p);
@@ -79,7 +79,7 @@ test("a file-path target is filtered", { skip: !HAS_JQ }, async () => {
     assert.deepEqual(out!.trim().split("\n"), ['"ada"', '"alan"']);
 });
 
-test("a relative target resolves against cwd, not the process dir", { skip: !HAS_JQ }, async () => {
+test("{§executor-subprocess-routing} a relative target resolves against cwd, not the process dir", { skip: !HAS_JQ }, async () => {
     const full = tmp();
     await writeFile(full, JSON.stringify([{ x: 1 }, { x: 2 }, { x: 3 }]));
     // cwd = the file's dir, target = only its basename → resolves solely because
@@ -97,7 +97,7 @@ test("empty body defaults to the identity filter `.`", { skip: !HAS_JQ }, async 
     assert.deepEqual(JSON.parse(out!), { a: 1 });
 });
 
-test("env: honors a scoped env; vars the consumer dropped read as null", { skip: !HAS_JQ }, async () => {
+test("{§executor-sinks} env: honors a scoped env; vars the consumer dropped read as null", { skip: !HAS_JQ }, async () => {
     // PATH is needed for spawn to locate jq; FOO is the only data var exposed.
     const seen = await run("env.FOO", null, { PATH: process.env.PATH, FOO: "bar" });
     assert.equal(seen.result.status, 200);

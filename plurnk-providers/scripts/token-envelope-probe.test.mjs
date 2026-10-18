@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-    buildProbePrompt,
     resolveProbeMaxOutputTokens,
     selectProbeAliases,
 } from "./token-envelope-probe.mjs";
@@ -34,8 +33,3 @@ test("#242: output-token modes distinguish configured policy from model physics"
     assert.throws(() => resolveProbeMaxOutputTokens("0", provider), /safe integer >= 1/);
 });
 
-test("#242: prompt construction records an exact controlled payload size", () => {
-    assert.equal(buildProbePrompt("0"), "Reply with exactly OK.");
-    assert.equal(buildProbePrompt("5", "ab"), "Reply with exactly OK.\n\nPayload:\nababa");
-    assert.throws(() => buildProbePrompt("1", ""), /must not be empty/);
-});

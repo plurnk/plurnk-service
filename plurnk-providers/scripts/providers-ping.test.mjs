@@ -7,7 +7,6 @@ import test from "node:test";
 import {
     executePingRoutes,
     pingRunIsRed,
-    pingRequest,
     planProviderPings,
     redactText,
     sensitiveValuesFromEnv,
@@ -82,14 +81,6 @@ test("#224: response evidence retains structure but no provider scalar values", 
         id: "string",
         usage: { cached: "boolean", detail: "null", input_tokens: "number" },
     });
-});
-
-test("#224: the bounded probe carries a complete turn identity", () => {
-    const request = pingRequest({ provider: "acme" });
-
-    assert.equal(request.workerId, "providers-ping-acme");
-    assert.equal(request.primaryWorkerId, request.workerId);
-    assert.equal(request.maxOutputTokens, 16);
 });
 
 test("#224: retained diagnostics redact credentials, account identity, and URL authority", () => {

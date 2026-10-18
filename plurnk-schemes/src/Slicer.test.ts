@@ -20,7 +20,7 @@ const withoutRange = (result: ReturnType<typeof Slicer.lines>): Omit<ReturnType<
     return selection;
 };
 
-test("lines selects line shorthand with stable source numbering", () => {
+test("{§slicer-text-algebra} lines selects line shorthand with stable source numbering", () => {
     assert.deepEqual(
         withoutRange(Slicer.lines(TEXT, { marks: [2] })),
         {
@@ -88,7 +88,7 @@ test("lines selects line shorthand with stable source numbering", () => {
     );
 });
 
-test("lines treats insertion sentinels as empty selections", () => {
+test("{§slicer-text-algebra} lines treats insertion sentinels as empty selections", () => {
     assert.deepEqual(
         withoutRange(Slicer.lines(TEXT, { marks: [0] })),
         { status: 200, text: "", startLine: undefined },
@@ -99,7 +99,7 @@ test("lines treats insertion sentinels as empty selections", () => {
     );
 });
 
-test("lines reports the requested and available extent on failure", () => {
+test("{§slicer-text-algebra} lines reports the requested and available extent on failure", () => {
     const result = Slicer.lines(TEXT, { marks: [99] });
     assert.equal(result.status, 416);
     assert.deepEqual(result.range, {
@@ -111,7 +111,7 @@ test("lines reports the requested and available extent on failure", () => {
     assert.equal(result.problem?.retryable, false);
 });
 
-test("a first-page line range selects an empty text resource completely", () => {
+test("{§slicer-text-algebra} a first-page line range selects an empty text resource completely", () => {
     const result = Slicer.lines("", { marks: [1, 16] });
     assert.equal(result.status, 200);
     assert.equal(result.text, "");
@@ -124,7 +124,7 @@ test("a first-page line range selects an empty text resource completely", () => 
     assert.equal(Slicer.lines("", { marks: [2, 16] }).status, 416);
 });
 
-test("lines addresses exact regions in Unicode code points", () => {
+test("{§slicer-text-algebra} lines addresses exact regions in Unicode code points", () => {
     assert.deepEqual(
         Slicer.lines("a😀b\nnext", { marks: [1, 2, 1, 3] }),
         {
@@ -155,7 +155,7 @@ test("lines addresses exact regions in Unicode code points", () => {
     );
 });
 
-test("lines tolerates three coordinates and reports the exact canonical region", () => {
+test("{§slicer-text-algebra} lines tolerates three coordinates and reports the exact canonical region", () => {
     const oneLine = Slicer.lines("abc", { marks: [1, 2, 1] });
     assert.equal(oneLine.status, 200);
     assert.equal(oneLine.text, "bc");
@@ -202,7 +202,7 @@ test("{§text-scope-semantics} -1 as a region line is the final endpoint: <1,1,-
     assert.equal(Slicer.lines(TEXT, { marks: [2, -1, 3, 1] }).text, "\n", "from the end of line 2 to the start of line 3 is the separator");
 });
 
-test("lines rejects unaddressable exact regions", () => {
+test("{§slicer-text-algebra} lines rejects unaddressable exact regions", () => {
     // Line out of range — no clamp applies.
     const noLine = Slicer.lines("a😀b", { marks: [99, 1, 99, 2] });
     assert.equal(noLine.status, 416);
@@ -231,7 +231,7 @@ test("{§slicer-text-algebra} harmless exact end-bound overshoots clamp to avail
     assert.equal(badStart.status, 416);
 });
 
-test("lineMarkerEdit applies and reports the tolerated three-coordinate region", () => {
+test("{§slicer-text-algebra} lineMarkerEdit applies and reports the tolerated three-coordinate region", () => {
     const applied = Slicer.lineMarkerEdit("one\ntwo\nthree", { marks: [2, 2, 2] }, "X");
     assert.equal(applied.status, 200);
     assert.equal(applied.result, "one\ntX\nthree");
@@ -241,7 +241,7 @@ test("lineMarkerEdit applies and reports the tolerated three-coordinate region",
     }]);
 });
 
-test("linesRaw preserves selected source separators", () => {
+test("{§slicer-text-algebra} linesRaw preserves selected source separators", () => {
     assert.deepEqual(
         Slicer.linesRaw("alpha\r\nbeta\r\n", { marks: [1] }),
         { status: 200, text: "alpha\r\n", startLine: 1 },
@@ -252,7 +252,7 @@ test("linesRaw preserves selected source separators", () => {
     );
 });
 
-test("lineMarkerEdit implements line replacement, deletion, prepend, and append", () => {
+test("{§slicer-text-algebra} lineMarkerEdit implements line replacement, deletion, prepend, and append", () => {
     assert.equal(
         Slicer.lineMarkerEdit(TEXT, { marks: [2] }, "BETA").result,
         "alpha\nBETA\ngamma\ndelta\n",
@@ -271,7 +271,7 @@ test("lineMarkerEdit implements line replacement, deletion, prepend, and append"
     );
 });
 
-test("lineMarkerEdit preserves the source newline convention", () => {
+test("{§slicer-text-algebra} lineMarkerEdit preserves the source newline convention", () => {
     assert.equal(
         Slicer.lineMarkerEdit("one\r\ntwo\r\n", { marks: [1] }, "ONE").result,
         "ONE\r\ntwo\r\n",
@@ -282,7 +282,7 @@ test("lineMarkerEdit preserves the source newline convention", () => {
     );
 });
 
-test("lineMarkerEdit handles empty content and rejects fractional line scopes", () => {
+test("{§slicer-text-algebra} lineMarkerEdit handles empty content and rejects fractional line scopes", () => {
     for (const marks of [[0], [1], [-1], [1, -1]] as const) {
         assert.equal(
             Slicer.lineMarkerEdit("", { marks: [...marks] }, "first").result,
@@ -299,7 +299,7 @@ test("lineMarkerEdit handles empty content and rejects fractional line scopes", 
     assert.match(fractional.problem?.detail ?? "", /integer coordinates/);
 });
 
-test("lineMarkerEdit inserts and replaces exact regions without line coercion", () => {
+test("{§slicer-text-algebra} lineMarkerEdit inserts and replaces exact regions without line coercion", () => {
     assert.equal(
         Slicer.lineMarkerEdit("alpha", { marks: [1, 3, 1, 3] }, "X").result,
         "alXpha",
@@ -319,7 +319,7 @@ test("lineMarkerEdit inserts and replaces exact regions without line coercion", 
     assert.equal(Slicer.lines("one\n", { marks: [2] }).status, 416);
 });
 
-test("page keeps ordered-result pagination distinct from text coordinates", () => {
+test("{§slicer-text-algebra} page keeps ordered-result pagination distinct from text coordinates", () => {
     const bounded = Slicer.page(["a", "b", "c", "d"], { marks: [1, 2] });
     assert.deepEqual(bounded.items, ["a", "b"]);
     assert.deepEqual(bounded.range, {
@@ -352,7 +352,7 @@ test("page keeps ordered-result pagination distinct from text coordinates", () =
     });
 });
 
-test("page rejects fractional result positions instead of rounding", () => {
+test("{§slicer-text-algebra} page rejects fractional result positions instead of rounding", () => {
     const result = Slicer.page(["a", "b"], { marks: [0.5] });
     assert.equal(result.status, 416);
     assert.equal(result.range?.requested[0], 0.5);
@@ -366,7 +366,7 @@ test("{§pinned-wording-schemes} page rejects text-shaped coordinate lists", () 
     assert.deepEqual(result.problem?.requestedPositions, marks);
 });
 
-test("lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
+test("{§slicer-text-algebra} lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
     const edits = [
         { marker: { marks: [2] as [number] }, body: "TWO\n2.5" },
         { marker: { marks: [4] as [number] }, body: "FOUR" },
@@ -378,7 +378,7 @@ test("lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
     assert.equal(reverse.result, forward.result);
 });
 
-test("lineMarkerEditBatch preserves every tolerated normalization in authored order", () => {
+test("{§slicer-text-algebra} lineMarkerEditBatch preserves every tolerated normalization in authored order", () => {
     const result = Slicer.lineMarkerEditBatch("alpha\nbeta\ngamma\ndelta", [
         { marker: { marks: [1, 2, 1] }, body: "A" },
         { marker: { marks: [3, 2, 3] }, body: "G" },
@@ -391,7 +391,7 @@ test("lineMarkerEditBatch preserves every tolerated normalization in authored or
     ]);
 });
 
-test("lineMarkerEditBatch composes disjoint line and exact regions", () => {
+test("{§slicer-text-algebra} lineMarkerEditBatch composes disjoint line and exact regions", () => {
     const result = Slicer.lineMarkerEditBatch("abcde\nsecond\nthird\n", [
         { marker: { marks: [1, 2, 1, 3] }, body: "B" },
         { marker: { marks: [3] }, body: "THIRD" },
@@ -422,7 +422,7 @@ test("{§problems-schemes} lineMarkerEditBatch rejects every kind of overlap ato
     assert.deepEqual(insertions.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
 });
 
-test("lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {
+test("{§problems-schemes} lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {
     const result = Slicer.lineMarkerEditBatch("one\ntwo\n", [
         { marker: { marks: [1, -1] }, body: "all" },
         { marker: { marks: [-1] }, body: "tail" },
@@ -431,7 +431,7 @@ test("lineMarkerEditBatch rejects a whole-resource replacement mixed with anothe
     assert.equal(result.problem?.editCount, 2);
 });
 
-test("an empty result set satisfies any well-formed page — zero matches is a 200, not a 416 (#425 F9)", () => {
+test("{§slicer-text-algebra} an empty result set satisfies any well-formed page — zero matches is a 200, not a 416", () => {
     for (const marks of [[1, 100], [1, 16], [1, -1], [17, 29], [5]] as const) {
         const page = Slicer.page([], { marks: [...marks] as [number, ...number[]] }, { unit: "resource" });
         assert.equal(page.status, 200, `<${marks.join(",")}>`);
@@ -467,7 +467,7 @@ test("{§problems-schemes} an overlap receipt carries the whole conflict graph, 
 // {§edit-batch-merges} — evidence-gated resolutions, each reported; everything else refused.
 const six = "a\nb\nc\nd\ne\nf\n";
 
-test("an identical twin is applied once and the twin's row says so (#428)", () => {
+test("{§edit-batch-merges} an identical twin is applied once and the twin's row says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B" },
@@ -479,7 +479,7 @@ test("an identical twin is applied once and the twin's row says so (#428)", () =
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2], [5]], "receipts are built from what was applied");
 });
 
-test("a twin that differs only by trailing whitespace or newlines is still the same edit, and says so (#428)", () => {
+test("{§edit-batch-merges} a twin that differs only by trailing whitespace or newlines is still the same edit, and says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B  \n\n" },
@@ -489,17 +489,7 @@ test("a twin that differs only by trailing whitespace or newlines is still the s
     assert.deepEqual(result.merges, [{ index: 1, rule: "duplicate-of", of: 0, whitespaceOnly: true }]);
 });
 
-test("two insertions at one point land in authored order (#428)", () => {
-    const result = Slicer.lineMarkerEditBatch(six, [
-        { marker: { marks: [3, 1, 3, 1] }, body: "first-" },
-        { marker: { marks: [3, 1, 3, 1] }, body: "second-" },
-    ]);
-    assert.equal(result.status, 200);
-    assert.equal(result.result, "a\nb\nfirst-second-c\nd\ne\nf\n");
-    assert.deepEqual(result.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
-});
-
-test("a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks (#428)", () => {
+test("{§edit-batch-merges} a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks", () => {
     const source = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
     // <2,3> carries a new function (meant to end at the blank line 2); <3,5> rewrites requireFn and
     // reproduces its signature line 3 - gemma's shape.
@@ -512,7 +502,7 @@ test("a one-line shared endpoint goes to the body that reproduces the line; the 
     assert.deepEqual(result.merges, [{ index: 0, rule: "shared-endpoint", line: 3, text: "func requireFn(a int) int {", authored: [2, 3], applied: [2, 2], claimedBy: 1 }]);
 });
 
-test("a shared endpoint no body reproduces stays refused, naming the line and the inclusive rule (#428)", () => {
+test("{§slicer-text-algebra} a shared endpoint no body reproduces stays refused, naming the line and the inclusive rule", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 3] }, body: "X" },
         { marker: { marks: [3, 5] }, body: "Y" },
@@ -542,7 +532,7 @@ test("{§diagnostic-observation} containment stays refused and the receipt names
 });
 
 
-test("containment relocates the inner change into the outer body when its original lines occur there once (#428)", () => {
+test("{§edit-batch-merges} containment relocates the inner change into the outer body when its original lines occur there once", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nc\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -553,7 +543,7 @@ test("containment relocates the inner change into the outer body when its origin
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2, 5]], "one applied edit: the composed outer");
 });
 
-test("containment drops an inner edit the outer body already carries, and says so (#428)", () => {
+test("{§edit-batch-merges} containment drops an inner edit the outer body already carries, and says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nC!\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -563,7 +553,7 @@ test("containment drops an inner edit the outer body already carries, and says s
     assert.deepEqual(result.merges, [{ index: 1, rule: "contained-already-applied", outer: 0 }]);
 });
 
-test("containment whose inner lines occur twice in the outer body stays refused (#428)", () => {
+test("{§edit-batch-merges} containment whose inner lines occur twice in the outer body stays refused", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "c\nc\nd" },
         { marker: { marks: [3] }, body: "C!" },

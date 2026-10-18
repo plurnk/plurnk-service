@@ -5,7 +5,7 @@ import { buildPdf } from "./buildPdf.ts";
 
 const handler = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] });
 
-test("validate accepts the %PDF- magic, with or without a BOM, and refuses anything else", () => {
+test("{§mimetype-pdf-facts} validate accepts the %PDF- magic, with or without a BOM, and refuses anything else", () => {
     const pdf = buildPdf({ title: "T" });
     handler.validate(pdf);
     handler.validate(new Uint8Array([0xef, 0xbb, 0xbf, ...pdf]));
@@ -13,7 +13,7 @@ test("validate accepts the %PDF- magic, with or without a BOM, and refuses anyth
     assert.throws(() => handler.validate("text"), /Uint8Array/u);
 });
 
-test("facts are the page tree's count and the byte size; nothing is extracted", () => {
+test("{§mimetype-pdf-facts} facts are the page tree's count and the byte size; nothing is extracted", () => {
     const pdf = buildPdf({ title: "T" });
     assert.deepEqual(handler.facts(pdf), { pages: 1, bytes: pdf.length });
     assert.equal(handler.content(pdf), `PDF document, 1 page, ${pdf.length} bytes`);
@@ -21,13 +21,13 @@ test("facts are the page tree's count and the byte size; nothing is extracted", 
     assert.deepEqual(handler.deepJson(pdf), { pages: 1, bytes: pdf.length });
 });
 
-test("a compressed page tree yields no page count, only the size", () => {
+test("{§mimetype-pdf-facts} a compressed page tree yields no page count, only the size", () => {
     const opaque = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<< /Type /ObjStm /N 3 >>\nstream\n \nendstream\nendobj\n%%EOF\n");
     assert.deepEqual(handler.facts(opaque), { pages: null, bytes: opaque.length });
     assert.equal(handler.content(opaque), `PDF document, ${opaque.length} bytes`);
 });
 
-test("the root page tree's count wins over intermediate nodes", () => {
+test("{§mimetype-pdf-facts} the root page tree's count wins over intermediate nodes", () => {
     const nested = new TextEncoder().encode([
         "%PDF-1.4",
         "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",

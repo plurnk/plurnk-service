@@ -5,7 +5,7 @@ import { PacketSections, type PacketSectionDraft, type PacketSectionTransformer 
 const section = (over: Partial<PacketSectionDraft> = {}): PacketSectionDraft =>
     ({ name: "x", slot: "system", header: null, content: "", ...over });
 
-test("PacketSectionTransformer: a scheme reshapes the section list (add/reorder)", async () => {
+test("{§scheme-packet-transform} PacketSectionTransformer: a scheme reshapes the section list (add/reorder)", async () => {
     const t: PacketSectionTransformer = {
         transformSections(sections) {
             return [...sections, section({ name: "footer", slot: "user", content: "fin" })];
@@ -16,7 +16,7 @@ test("PacketSectionTransformer: a scheme reshapes the section list (add/reorder)
     assert.deepEqual(out.map((s) => s.name), ["tools", "footer"]);
 });
 
-test("PacketSectionTransformer: async transform + removal supported", async () => {
+test("{§scheme-packet-transform} PacketSectionTransformer: async transform + removal supported", async () => {
     const t: PacketSectionTransformer = {
         async transformSections(sections) {
             return sections.filter((s) => s.slot === "system");
@@ -27,12 +27,12 @@ test("PacketSectionTransformer: async transform + removal supported", async () =
     assert.equal(out[0].slot, "system");
 });
 
-test("PacketSections: exact valid drafts preserve their list", () => {
+test("{§scheme-packet-transform} PacketSections: exact valid drafts preserve their list", () => {
     const drafts = [section({ name: "definition" }), section({ name: "prompt", slot: "user" }), section({ name: "authored", slot: "assistant" })];
     assert.equal(PacketSections.assertDrafts(drafts), drafts);
 });
 
-test("PacketSections: malformed draft lists fail with their exact location", () => {
+test("{§scheme-packet-transform} PacketSections: malformed draft lists fail with their exact location", () => {
     assert.throws(() => PacketSections.assertDrafts(null), /packet section drafts must be an array/);
     assert.throws(
         () => PacketSections.assertDrafts([{ name: "x", slot: "tool", header: null, content: "" }]),

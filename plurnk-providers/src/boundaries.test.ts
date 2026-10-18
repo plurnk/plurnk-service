@@ -16,7 +16,7 @@ test("provider source does not import the service or database", () => {
     }
 });
 
-test("provider source does not import the PLURNK parser", () => {
+test("{§parser-consumers} provider source does not import the PLURNK parser", () => {
     for (const file of sourceFiles()) {
         const source = readFileSync(join(root, file), "utf8");
         assert.ok(

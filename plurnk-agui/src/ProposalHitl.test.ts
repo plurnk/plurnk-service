@@ -129,7 +129,7 @@ test("{§agui-proposal-resolve} start(): a loop/proposal event → a gate on the
     assert.ok(!m.subscribed(), "stop() unsubscribes");
 });
 
-test("start(): a generic loop/interaction is its own call, under the requested tool name and schema", async () => {
+test("{§agui-proposal-resolve} start(): a generic loop/interaction is its own call, under the requested tool name and schema", async () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
@@ -157,7 +157,7 @@ test("start(): a generic loop/interaction is its own call, under the requested t
     hitl.stop();
 });
 
-test("resolve(): a complete standard resume resolves the exact worker proposal", async () => {
+test("{§agui-proposal-resolve} resolve(): a complete standard resume resolves the exact worker proposal", async () => {
     const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
     const hitl = new ProposalHitl(m.seam, collect());
     assert.deepEqual(await hitl.resolve(3, OWNER, [{ interruptId: proposalKey(42), status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
@@ -204,7 +204,7 @@ test("{§agui-proposal-disposition} resurface(): a workspace's pending stopped-w
     assert.deepEqual(delivery.batch.events, []);
 });
 
-test("resolve(): proposals and interactions share one complete worker-scoped resume", async () => {
+test("{§agui-proposal-resolve} resolve(): proposals and interactions share one complete worker-scoped resume", async () => {
     const m = mockSeam(
         [proposal({ logEntryId: 42, loopId: 7 })],
         [interaction({ interactionId: 12, loopId: 7 })],
@@ -223,7 +223,7 @@ test("resolve(): proposals and interactions share one complete worker-scoped res
     }]);
 });
 
-test("interrupt resume validation exposes exact Problems with the complete pending set", async () => {
+test("{§agui-proposal-resolve} interrupt resume validation exposes exact Problems with the complete pending set", async () => {
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, loopId: 7 }),
         proposal({ logEntryId: 6, loopId: 7, coordinate: "1/1/6", target: { scheme: "file", authority: null, pathname: "b" } }),

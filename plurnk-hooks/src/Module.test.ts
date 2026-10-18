@@ -61,7 +61,7 @@ test("{§hooks-event-projection} common hook names retain native evidence withou
     ]);
 });
 
-test("[{§hooks-command-delivery}] selected events reach one no-shell command as exact JSON stdin", async () => {
+test("{§hooks-command-delivery} selected events reach one no-shell command as exact JSON stdin", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-hooks-"));
     try {
         const script = join(root, "capture.mjs");
@@ -143,7 +143,7 @@ test("{§hooks-failure-isolation} a broken stdin does not release ownership befo
     assert.throws(() => process.kill(pid, 0), (cause: NodeJS.ErrnoException) => cause.code === "ESRCH", "close must await its child, including after stdin fails");
 });
 
-test("[{§hooks-failure-isolation}] command failures are reported after the event source returns", async () => {
+test("{§hooks-failure-isolation} command failures are reported after the event source returns", async () => {
     const reports: Array<{ message: string; cause: unknown }> = [];
     const module = configuredModule({
         PLURNK_HOOKS_COMMAND: "/missing/plurnk-hook",
@@ -161,7 +161,7 @@ test("[{§hooks-failure-isolation}] command failures are reported after the even
     assert.ok(reports[0].cause instanceof Error);
 });
 
-test("[{§hooks-failure-isolation}] nonzero exits and delivery timeouts are reported", async (t) => {
+test("{§hooks-failure-isolation} nonzero exits and delivery timeouts are reported", async (t) => {
     for (const specimen of [
         {
             name: "nonzero exit",
@@ -196,7 +196,7 @@ test("[{§hooks-failure-isolation}] nonzero exits and delivery timeouts are repo
     }
 });
 
-test("an unconfigured hooks module does not subscribe", () => {
+test("{§hooks-module} an unconfigured hooks module does not subscribe", () => {
     const module = configuredModule({});
     const fixture = seamFixture();
     module.start(fixture.seam);

@@ -60,7 +60,7 @@ test("{§model-catalog-projection} catalog projection excludes unsupported SDKs 
     assert.deepEqual(Object.keys(result.providers), ["example"]);
 });
 
-test("catalog projection does not invent missing optional limits, controls, or rates", () => {
+test("{§model-catalog-projection} catalog projection does not invent missing optional limits, controls, or rates", () => {
     const result = projectCatalog(source({
         ...model, reasoning: false, reasoning_options: undefined,
         limit: { context: 1024 }, cost: { input: 1 },
@@ -80,14 +80,14 @@ for (const [change, message] of [
     [{ reasoning_options: [{ type: "effort", values: ["imaginary"] }] }, "has invalid reasoning effort values"],
     [{ reasoning_options: [{ type: "unknown" }] }, "has an unknown reasoning option"],
 ]) {
-    test(`catalog projection rejects invalid upstream facts: ${message}`, () => {
+    test(`{§model-catalog-projection} catalog projection rejects invalid upstream facts: ${message}`, () => {
         assert.throws(() => projectCatalog(source({ ...model, ...change })), {
             message: `Models.dev ${message.includes("capability facts") ? "reasoning model" : "model"} example/example ${message}`,
         });
     });
 }
 
-test("development JSON is exactly the projection of the locked upstream snapshot", async () => {
+test("{§model-catalog-build} development JSON is exactly the projection of the locked upstream snapshot", async () => {
     const expected = projectCatalog(providers);
     for (const name of ["catalog", "providers"]) {
         const actual = JSON.parse(await readFile(new URL(`./${name}.json`, import.meta.url), "utf8"));

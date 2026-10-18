@@ -44,7 +44,7 @@ test("{§provider-cost} an exact zero estimate remains distinguishable from unkn
     assert.equal(providerCostUsd(unknown), null);
 });
 
-test("a distinct cache rate requires the applicable token category", () => {
+test("{§provider-monetary-evidence} a distinct cache rate requires the applicable token category", () => {
     assert.deepEqual(
         estimateProviderCost(usage, { input: 1, output: 1, cacheRead: 0.1 }, "Models.dev"),
         {
@@ -54,7 +54,7 @@ test("a distinct cache rate requires the applicable token category", () => {
     );
 });
 
-test("a distinct reasoning rate prices reasoning as a subset of output", () => {
+test("{§model-fact-resolution} a distinct reasoning rate prices reasoning as a subset of output", () => {
     const withReasoning: ProviderUsage = {
         inputTokens: 100,
         outputTokens: 50,
@@ -75,7 +75,7 @@ test("a distinct reasoning rate prices reasoning as a subset of output", () => {
     );
 });
 
-test("a distinct reasoning rate requires reported reasoning usage", () => {
+test("{§provider-monetary-evidence} a distinct reasoning rate requires reported reasoning usage", () => {
     assert.deepEqual(
         estimateProviderCost(usage, { input: 1, output: 2, reasoning: 5 }, "Models.dev"),
         {
@@ -85,7 +85,7 @@ test("a distinct reasoning rate requires reported reasoning usage", () => {
     );
 });
 
-test("decimal aggregation is exact and becomes unknown if any request is unknown", () => {
+test("{§provider-accounting} decimal aggregation is exact and becomes unknown if any request is unknown", () => {
     assert.equal(addDecimals(["0.1", "0.02", "3"]), "3.12");
     assert.equal(sumProviderCostsUsd([
         {

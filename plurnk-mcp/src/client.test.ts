@@ -58,7 +58,7 @@ test("{§mcp-plugin-configuration} remote plugin headers stay literal and protoc
     } finally { await connection.close(); }
 });
 
-test("client pins the current MCP revision and exercises tools and resources", async () => {
+test("{§mcp-authority} client pins the current MCP revision and exercises tools and resources", async () => {
     const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     try {
         const client = await connection.connect();
@@ -107,7 +107,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
     }
 });
 
-test("active request accounting retires a cancelled request", async () => {
+test("{§mcp-host-composition} active request accounting retires a cancelled request", async () => {
     const connection = new ServerConnection(stdioServer("echo", [fixture], { env: { PLURNK_MCP_TEST_EXTENDED: "1" } }), env);
     const controller = new AbortController();
     try {
@@ -146,7 +146,7 @@ test("{§mcp-launch-directory} an explicit absolute cwd and executable are not c
     assert.throws(() => new ServerConnection(stdioServer("relative", [fixture], { cwd: "./relative" }), env), /requires an absolute working directory/u);
 });
 
-test("concurrent callers share one launch and one connection", async () => {
+test("{§mcp-host-composition} concurrent callers share one launch and one connection", async () => {
     const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     try {
         const [first, second] = await Promise.all([connection.connect(), connection.connect()]);

@@ -104,7 +104,7 @@ const interactionResources = async (): Promise<{
     };
 };
 
-test("resource facet materializes current MCP resources as ordinary entries", async () => {
+test("{§mcp-model-projection} resource facet materializes current MCP resources as ordinary entries", async () => {
     const { connection, resources } = await configured();
     try {
         const { ctx, entries } = context();
@@ -119,7 +119,7 @@ test("resource facet materializes current MCP resources as ordinary entries", as
     }
 });
 
-test("resource catalogs never become a parallel tool discovery surface", async () => {
+test("{§mcp-tool-presentation} resource catalogs never become a parallel tool discovery surface", async () => {
     const { connection, resources } = await configured();
     try {
         const { ctx, entries } = context();
@@ -135,7 +135,7 @@ test("resource catalogs never become a parallel tool discovery surface", async (
     }
 });
 
-test("prompt definitions and retrieval use the server resource authority", async () => {
+test("{§mcp-host-composition} prompt definitions and retrieval use the server resource authority", async () => {
     const { connection, resources } = await configured();
     try {
         const { ctx, entries } = context();
@@ -165,7 +165,7 @@ test("prompt definitions and retrieval use the server resource authority", async
     }
 });
 
-test("resource materialization routes MCP elicitation through SchemeCtx", async () => {
+test("{§mcp-core-matrix} resource materialization routes MCP elicitation through SchemeCtx", async () => {
     const { connection, resources } = await interactionResources();
     try {
         const { ctx, entries } = context();
@@ -188,7 +188,7 @@ test("resource materialization routes MCP elicitation through SchemeCtx", async 
     }
 });
 
-test("prompt content keeps roles and order while exposing typed snapshots and lazy resource links", async () => {
+test("{§mcp-prompt-content} prompt content keeps roles and order while exposing typed snapshots and lazy resource links", async () => {
     const result: GetPromptResult = {
         description: "Inspect these resources.",
         messages: [
@@ -256,7 +256,7 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
     }
 });
 
-test("MCP resource failures bound third-party diagnostics", async () => {
+test("{§error-detail-bound} MCP resource failures bound third-party diagnostics", async () => {
     const prior = process.env[ERROR_DETAIL_LIMIT];
     process.env[ERROR_DETAIL_LIMIT] = "4";
     try {
@@ -288,7 +288,7 @@ test("MCP resource failures bound third-party diagnostics", async () => {
     }
 });
 
-test("resource materialization preserves a failed entry write's original Problem", async () => {
+test("{§mcp-setup} resource materialization preserves a failed entry write's original Problem", async () => {
     const { connection, resources } = await configured();
     try {
         const failedWrite = Results.failure(

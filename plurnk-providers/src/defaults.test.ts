@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { withProviderDefaults } from "./defaults.ts";
 
-test("withProviderDefaults supplies the package-owned operational floor", () => {
+test("{§provider-configuration} withProviderDefaults supplies the package-owned operational floor", () => {
     const env = withProviderDefaults({});
     assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "1");
     assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
@@ -16,7 +16,7 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
     assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
 });
 
-test("withProviderDefaults preserves every explicit operator value", () => {
+test("{§provider-configuration} withProviderDefaults preserves every explicit operator value", () => {
     const env = withProviderDefaults({
         PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
         PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off",

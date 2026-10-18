@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget, flexedResponseMax } from "./capacity.ts";
 
-test("effective output budget is caller-tightenable and physically capped", () => {
+test("{§provider-generation-envelope} effective output budget is caller-tightenable and physically capped", () => {
     assert.equal(effectiveOutputBudget({
         requested: undefined,
         configured: 40_000,
@@ -17,7 +17,7 @@ test("effective output budget is caller-tightenable and physically capped", () =
     }), 8_000);
 });
 
-test("call-specific output tightening also tightens its reasoning subset", () => {
+test("{§provider-generation-envelope} call-specific output tightening also tightens its reasoning subset", () => {
     assert.equal(effectiveReasoningBudget({ configured: 8_000, outputBudget: 4_000 }), 3_999);
     assert.equal(effectiveReasoningBudget({ configured: 2_000, outputBudget: 4_000 }), 2_000);
     assert.equal(effectiveReasoningBudget({ configured: null, outputBudget: 1 }), null);
@@ -47,7 +47,7 @@ test("{§provider-capacity-admission} capacity applies independent input and com
     assert.equal(capacity.decision, "reject");
 });
 
-test("a known combined context must leave positive input capacity", () => {
+test("{§provider-capacity-admission} a known combined context must leave positive input capacity", () => {
     assert.equal(effectiveInputCapacity({
         contextWindow: 2,
         maxInputTokens: null,

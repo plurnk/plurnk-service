@@ -56,7 +56,7 @@ test("isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(500), true);
 });
 
-test("problem mints a stable RFC 9457 type and title", () => {
+test("{§problem-details} problem mints a stable RFC 9457 type and title", () => {
     const problem = Results.problem("scheme:notes", "entry-not-found", 404, "No entry exists at notes:///missing.");
     assert.equal(problem.type, "https://problems.plurnk.xyz/scheme/notes/entry-not-found");
     assert.equal(problem.title, "Entry not found");
@@ -64,7 +64,7 @@ test("problem mints a stable RFC 9457 type and title", () => {
     assert.equal(problem.detail, "No entry exists at notes:///missing.");
 });
 
-test("failure carries extension metadata beside one problem", () => {
+test("{§problem-details} failure carries extension metadata beside one problem", () => {
     const result = Results.failure(
         "scheme:notes",
         "entry-not-found",
@@ -79,7 +79,7 @@ test("failure carries extension metadata beside one problem", () => {
     assert.equal("error" in result, false);
 });
 
-test("assert rejects a bare failure and a mismatched problem status", () => {
+test("{§problem-details} assert rejects a bare failure and a mismatched problem status", () => {
     assert.throws(
         () => Results.assert({ status: 404 }),
         /invalid operation result/,
@@ -93,7 +93,7 @@ test("assert rejects a bare failure and a mismatched problem status", () => {
     );
 });
 
-test("representation preparation distinguishes ready, live, and terminal outcomes", () => {
+test("{§read-preparation} representation preparation distinguishes ready, live, and terminal outcomes", () => {
     for (const result of [
         { status: 200 },
         { status: 102 },
@@ -115,7 +115,7 @@ test("representation preparation distinguishes ready, live, and terminal outcome
     }
 });
 
-test("channel producer results are terminal and cannot preempt core projection", () => {
+test("{§read-preparation} channel producer results are terminal and cannot preempt core projection", () => {
     const result = { status: 203, producer: "specimen" };
     assert.equal(Results.assertChannelProducerResult(result), result);
     assert.throws(
@@ -147,7 +147,7 @@ test("channel producer results are terminal and cannot preempt core projection",
     }
 });
 
-test("assert validates schemes-owned scope normalization evidence", () => {
+test("{§slicer-text-algebra} assert validates schemes-owned scope normalization evidence", () => {
     const result = {
         status: 200,
         scopeNormalizations: [{
@@ -190,18 +190,18 @@ test("{§read-zero-start}: normalization evidence admits only an exact recoverab
     }
 });
 
-test("attachInstance adds the durable operation coordinate", () => {
+test("{§problem-details} attachInstance adds the durable operation coordinate", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");
     assert.equal(result.problem?.instance, "log:///5/2/1/READ");
 });
 
-test("problem identifiers fail hard instead of minting ambiguous types", () => {
+test("{§problem-details} problem identifiers fail hard instead of minting ambiguous types", () => {
     assert.throws(() => Results.problem("Scheme:Notes", "entry-not-found", 404, "Missing."), /problem owner/);
     assert.throws(() => Results.problem("scheme:notes", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });
 
-test("match evidence requires a locator or a complete exact/enclosing TextRegion", () => {
+test("{§matcher-selection-signal} match evidence requires a locator or a complete exact/enclosing TextRegion", () => {
     assert.deepEqual(
         Results.assertMatchEvidence({
             locator: "$.users[0]",
@@ -232,7 +232,7 @@ test("match evidence requires a locator or a complete exact/enclosing TextRegion
     );
 });
 
-test("match evidence lists validate every extension-produced item", () => {
+test("{§matcher-selection-signal} match evidence lists validate every extension-produced item", () => {
     const evidence = [
         { locator: "//item" },
         { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 } },
@@ -248,7 +248,7 @@ test("match evidence lists validate every extension-produced item", () => {
     );
 });
 
-test("read-result validation applies the shared evidence contracts", () => {
+test("{§matcher-selection-signal} read-result validation applies the shared evidence contracts", () => {
     const result = {
         status: 200,
         content: "hello",

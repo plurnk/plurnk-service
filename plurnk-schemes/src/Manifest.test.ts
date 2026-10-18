@@ -14,7 +14,7 @@ const manifest = (name: string): SchemeManifest => ({
     modelVisible: true,
 });
 
-test("Manifest.of resolves static and instance manifests", () => {
+test("{§manifest} Manifest.of resolves static and instance manifests", () => {
     class Static { static manifest = manifest("static"); }
     assert.equal(Manifest.of(new Static(), "static").name, "static");
     assert.equal(Manifest.of({ manifest: manifest("dynamic") }, "dynamic").name, "dynamic");
@@ -25,7 +25,7 @@ test("{§manifest} Manifest.of rejects missing and mismatched identities", () =>
     assert.throws(() => Manifest.of({ manifest: manifest("other") }, "expected"), /identity mismatch/);
 });
 
-test("Manifest.of validates dispatch-critical fields", () => {
+test("{§manifest} Manifest.of validates dispatch-critical fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...manifest("authority"), authority: "guess" } }, "authority"),
         /manifest\.authority must be namespace or resource/,

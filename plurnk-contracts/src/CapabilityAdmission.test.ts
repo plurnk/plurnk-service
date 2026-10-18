@@ -26,7 +26,7 @@ const search: CapabilityDescriptor = {
     traits: ["web"],
 };
 
-test("capability selectors match every declared field and treat omissions as wildcards", () => {
+test("{§capability-policy-matching} capability selectors match every declared field and treat omissions as wildcards", () => {
     assert.equal(CapabilityAdmission.matches({ operation: "READ" }, readFile), true);
     assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "file" }, readFile), true);
     assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "https" }, readFile), false);
@@ -34,7 +34,7 @@ test("capability selectors match every declared field and treat omissions as wil
     assert.equal(CapabilityAdmission.matches({ runtime: "brave", tool: "issue_read" }, search), false);
 });
 
-test("deny wins over only within one policy layer", () => {
+test("{§capability-policy-matching} deny wins over only within one policy layer", () => {
     const policy: CapabilityPolicy = {
         only: [{ access: "observe" }, { runtime: "brave" }],
         deny: [{ tool: "brave_web_search" }],
@@ -44,11 +44,11 @@ test("deny wins over only within one policy layer", () => {
     assert.equal(CapabilityAdmission.allows(policy, search), false);
 });
 
-test("an empty only list denies every capability", () => {
+test("{§capability-policy-matching} an empty only list denies every capability", () => {
     assert.equal(CapabilityAdmission.allows({ only: [] }, readFile), false);
 });
 
-test("layers intersect and no narrower layer can restore an upstream denial", () => {
+test("{§capability-policy-cascade} layers intersect and no narrower layer can restore an upstream denial", () => {
     const service: CapabilityPolicy = { deny: [{ traits: ["web"] }] };
     const worker: CapabilityPolicy = { only: [{ runtime: "brave" }] };
     assert.equal(CapabilityAdmission.allowsAcross([service, worker], search), false);
@@ -56,7 +56,7 @@ test("layers intersect and no narrower layer can restore an upstream denial", ()
     assert.equal(CapabilityAdmission.allowsAcross([{}, {}], readFile), true);
 });
 
-test("policy intersection preserves conjunctive only semantics without a policy stack", () => {
+test("{§capability-policy-projection} policy intersection preserves conjunctive only semantics without a policy stack", () => {
     const normalized = CapabilityAdmission.intersect([
         { only: [{ operation: "READ" }, { runtime: "brave", traits: ["web"] }] },
         { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },

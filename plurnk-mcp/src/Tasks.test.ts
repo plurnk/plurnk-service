@@ -16,7 +16,7 @@ const env = {
 
 const stdioFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.meta.url));
 
-test("current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing", async (t) => {
+test("{§mcp-tasks} current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing", async (t) => {
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
     const connection = new ServerConnection(httpServer("tasks-http", served.url), env);
@@ -168,7 +168,7 @@ test("{§mcp-errors} Task completion preserves tool errors while failed Tasks pr
     }
 });
 
-test("unsupported Task input fails before interaction and cancels the owned Task", async (t) => {
+test("{§mcp-host-composition} unsupported Task input fails before interaction and cancels the owned Task", async (t) => {
     const fixture = taskHandler("unsupported");
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
     const connection = new ServerConnection(httpServer("task-unsupported-input", served.url), env);
@@ -198,7 +198,7 @@ test("unsupported Task input fails before interaction and cancels the owned Task
     }
 });
 
-test("cancelling an owning operation awaits tasks/cancel before it settles", async (t) => {
+test("{§tasks-lifetime} cancelling an owning operation awaits tasks/cancel before it settles", async (t) => {
     const fixture = taskHandler("cancel");
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
     const connection = new ServerConnection(httpServer("task-cancellation", served.url), env);
@@ -386,7 +386,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
     }
 });
 
-test("the same current Task lifecycle composes over a plain stdio endpoint", async () => {
+test("{§mcp-tasks} the same current Task lifecycle composes over a plain stdio endpoint", async () => {
     const connection = new ServerConnection(stdioServer("tasks-stdio", [stdioFixture]), env);
     try {
         const catalog = await connection.catalog();

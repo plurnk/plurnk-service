@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 const grammarRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-test("type generation reproduces committed types in isolation and exits without HTTP timers", async (t) => {
+test("{§contract-representations} type generation reproduces committed types in isolation and exits without HTTP timers", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-contract-generation-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     await cp(join(grammarRoot, "schema"), join(root, "schema"), { recursive: true });

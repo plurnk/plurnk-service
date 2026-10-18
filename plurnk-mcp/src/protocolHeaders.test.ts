@@ -8,7 +8,7 @@ import {
     mcpRoutingHeaderValue,
 } from "./protocolHeaders.ts";
 
-test("MCP routing header values preserve safe ASCII and encode ambiguous values", () => {
+test("{§mcp-transports} MCP routing header values preserve safe ASCII and encode ambiguous values", () => {
     assert.equal(mcpRoutingHeaderValue("task-42"), "task-42");
     assert.equal(
         mcpRoutingHeaderValue(" task-α"),
@@ -20,7 +20,7 @@ test("MCP routing header values preserve safe ASCII and encode ambiguous values"
     );
 });
 
-test("task-aware raw tool calls mirror declared primitive routing parameters", () => {
+test("{§mcp-transports} task-aware raw tool calls mirror declared primitive routing parameters", () => {
     const tool = {
         name: "defer",
         inputSchema: {

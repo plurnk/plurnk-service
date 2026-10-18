@@ -50,7 +50,7 @@ test("parseAliasesFromEnv: tri-level value with multiple slashes preserves model
     assert.equal(alias.model, "anthropic/claude/3.5");
 });
 
-test("parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
+test("{§alias-case-collisions} parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
     const env = {
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus",
         PLURNK_MODEL_OPUS: "anthropic/claude-opus-latest",

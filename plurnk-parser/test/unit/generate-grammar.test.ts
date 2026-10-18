@@ -13,7 +13,7 @@ const workspace = async (t: { after: (fn: () => Promise<void>) => void }) => {
     return dir;
 };
 
-test("#821: a grammar error fails the build and leaves the generated tree untouched", async (t) => {
+test("{§parser-build} a grammar error fails the build and leaves the generated tree untouched", async (t) => {
     const dir = await workspace(t);
     await writeFile(join(dir, "brokenLexer.g4"), "lexer grammar brokenLexer;\nA : 'a' ;\nB : 'b'\nC : 'c' ;\n");
     await assert.rejects(
@@ -25,7 +25,7 @@ test("#821: a grammar error fails the build and leaves the generated tree untouc
     assert.deepEqual((await readdir(dir)).filter((entry) => entry.startsWith(".generated-")), [], "no staging directory survives a failure");
 });
 
-test("#821: a clean grammar replaces the generated tree whole, with source-tree imports", async (t) => {
+test("{§parser-build} a clean grammar replaces the generated tree whole, with source-tree imports", async (t) => {
     const dir = await workspace(t);
     await writeFile(join(dir, "goodLexer.g4"), "lexer grammar goodLexer;\nA : 'a' ;\n");
     await writeFile(join(dir, "goodParser.g4"), "parser grammar goodParser;\noptions { tokenVocab = goodLexer; }\ndocument : A EOF ;\n");

@@ -10,7 +10,7 @@ const operations = (source: string) => {
     return result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
 
-test("#713: lifecycle verbs have literal bodies and retain tolerant disposition placement", () => {
+test("{§disposition-anywhere} lifecycle verbs have literal bodies and retain tolerant disposition placement", () => {
     for (const op of ["WAIT"]) {
         const body = "A conclusion, not a JSON task inventory.";
         const parsed = operations([frame(op, body), frame("NOTE", "Keep this determination."), frame("READ (notes.md)")].join("\n\n"));

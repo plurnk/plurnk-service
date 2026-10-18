@@ -57,7 +57,7 @@ const addressable: SchemeHandler = {
     },
 };
 
-test("SchemeHandler: preparation cannot replace core-owned READ projection", () => {
+test("{§scheme-operation-dispatch} SchemeHandler: preparation cannot replace core-owned READ projection", () => {
     assert.equal(typeof httpLike.prepareRepresentation, "function");
     assert.equal(typeof httpLike.send, "function");
     // Unimplemented ops are simply absent — the engine maps op→method and
@@ -67,7 +67,7 @@ test("SchemeHandler: preparation cannot replace core-owned READ projection", () 
     assert.equal(httpLike.exec, undefined);
 });
 
-test("SchemeHandler: editBatch exposes the typed aggregate receipt contract", () => {
+test("{§scheme-edit-batch-receipt} SchemeHandler: editBatch exposes the typed aggregate receipt contract", () => {
     assert.equal(typeof editable.editBatch, "function");
     assert.equal(editResult.editReceipt?.unit, "codePoints");
     assert.ok(editResult.editReceipt !== null && editResult.editReceipt !== undefined);
@@ -75,6 +75,6 @@ test("SchemeHandler: editBatch exposes the typed aggregate receipt contract", ()
     assert.equal(editResult.editReceipt.effects[0]?.requested, "<1,2,1,2>");
 });
 
-test("SchemeHandler: entry address resolution returns the resource coordinate", () => {
+test("{§entry-address-resolution} SchemeHandler: entry address resolution returns the resource coordinate", () => {
     assert.equal(typeof addressable.resolveEntryAddress, "function");
 });

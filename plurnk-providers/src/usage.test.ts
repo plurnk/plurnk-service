@@ -2,7 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { calculateCostUsdDecimal, normalizeUsage, UsageDetailError } from "./usage.ts";
 
-test("normalizeUsage recovers additive hidden reasoning from an exact total", () => {
+test("{§provider-sdk-boundary} normalizeUsage recovers additive hidden reasoning from an exact total", () => {
     const usage = normalizeUsage({
         prompt_tokens: 19,
         completion_tokens: 285,
@@ -16,7 +16,7 @@ test("normalizeUsage recovers additive hidden reasoning from an exact total", ()
     });
 });
 
-test("normalizeUsage preserves OpenAI output totals while itemizing reasoning", () => {
+test("{§provider-sdk-boundary} normalizeUsage preserves OpenAI output totals while itemizing reasoning", () => {
     const usage = normalizeUsage({
         prompt_tokens: 10,
         completion_tokens: 100,
@@ -31,7 +31,7 @@ test("normalizeUsage preserves OpenAI output totals while itemizing reasoning", 
     });
 });
 
-test("normalizeUsage recognizes xAI reasoning as additive from the total identity", () => {
+test("{§provider-sdk-boundary} normalizeUsage recognizes xAI reasoning as additive from the total identity", () => {
     const usage = normalizeUsage({
         prompt_tokens: 143,
         completion_tokens: 1,
@@ -48,7 +48,7 @@ test("normalizeUsage recognizes xAI reasoning as additive from the total identit
     });
 });
 
-test("normalizeUsage maps cache-read spellings without inventing uncached tokens", () => {
+test("{§provider-usage} normalizeUsage maps cache-read spellings without inventing uncached tokens", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 50,
         completion_tokens: 10,
@@ -63,7 +63,7 @@ test("normalizeUsage maps cache-read spellings without inventing uncached tokens
     })?.inputTokenDetails, { cacheReadTokens: 12 });
 });
 
-test("#157: normalizeUsage maps DeepSeek cache hit and miss counts", () => {
+test("{§provider-usage} normalizeUsage maps DeepSeek cache hit and miss counts", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 50,
         prompt_cache_hit_tokens: 30,
@@ -113,7 +113,7 @@ test("{§provider-usage-refusal} partition derivation never replaces an invalid 
     });
 });
 
-test("normalizeUsage derives only exact totals", () => {
+test("{§provider-usage} normalizeUsage derives only exact totals", () => {
     assert.deepEqual(normalizeUsage({ prompt_tokens: 10, completion_tokens: 20 }), {
         inputTokens: 10,
         outputTokens: 20,
@@ -126,7 +126,7 @@ test("normalizeUsage derives only exact totals", () => {
     });
 });
 
-test("normalizeUsage preserves unknown usage as absence", () => {
+test("{§provider-usage} normalizeUsage preserves unknown usage as absence", () => {
     assert.equal(normalizeUsage(null), undefined);
     assert.equal(normalizeUsage(undefined), undefined);
 });
@@ -147,7 +147,7 @@ test("{§provider-usage-refusal} rejected details preserve independently valid t
     });
 });
 
-test("normalizeUsage never apportions tokens from reasoning or content length", () => {
+test("{§provider-usage} normalizeUsage never apportions tokens from reasoning or content length", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 100,
         completion_tokens: 1000,
@@ -182,7 +182,7 @@ test("{§provider-usage-refusal} invalid optional counts never erase the other v
             && error.message === "provider usage reasoning tokens must be a non-negative safe integer");
 });
 
-test("calculateCostUsdDecimal bills all output, including reasoning, at the output rate", () => {
+test("{§model-fact-resolution} calculateCostUsdDecimal bills all output, including reasoning, at the output rate", () => {
     assert.equal(calculateCostUsdDecimal({
         inputTokens: 100,
         outputTokens: 250,
@@ -191,7 +191,7 @@ test("calculateCostUsdDecimal bills all output, including reasoning, at the outp
     }, { input: 1, output: 10 }), "0.0026");
 });
 
-test("calculateCostUsdDecimal applies distinct cache-read and cache-write rates", () => {
+test("{§model-fact-resolution} calculateCostUsdDecimal applies distinct cache-read and cache-write rates", () => {
     assert.equal(calculateCostUsdDecimal({
         inputTokens: 1000,
         outputTokens: 0,
@@ -204,7 +204,7 @@ test("calculateCostUsdDecimal applies distinct cache-read and cache-write rates"
     }, { input: 5, output: 99, cacheRead: 1, cacheWrite: 8 }), "0.0037");
 });
 
-test("calculateCostUsdDecimal returns unknown when a differently-priced category is absent", () => {
+test("{§provider-monetary-evidence} calculateCostUsdDecimal returns unknown when a differently-priced category is absent", () => {
     assert.equal(calculateCostUsdDecimal({
         inputTokens: 1000,
         outputTokens: 0,
@@ -212,7 +212,7 @@ test("calculateCostUsdDecimal returns unknown when a differently-priced category
     }, { input: 5, output: 99, cacheRead: 1 }), null);
 });
 
-test("calculateCostUsdDecimal preserves Models.dev decimals without floating-point artifacts", () => {
+test("{§provider-cost} calculateCostUsdDecimal preserves Models.dev decimals without floating-point artifacts", () => {
     assert.equal(calculateCostUsdDecimal({
         inputTokens: 1000,
         outputTokens: 150,

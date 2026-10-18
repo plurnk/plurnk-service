@@ -85,7 +85,7 @@ test("{§provider-generation-completion} repeated text and reasoning retain the 
     }
 });
 
-test("an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
+test("{§provider-cache-affinity} an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (requestUrl(input).endsWith("/models")) {
@@ -104,7 +104,7 @@ test("an undifferentiated compatible endpoint receives no guessed prompt-cache f
     assert.equal("prompt_cache_key" in (body ?? {}), false);
 });
 
-test("the server-wide DRY-off floor emits no DRY request fields", async () => {
+test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no DRY request fields", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (requestUrl(input).endsWith("/models")) {
@@ -146,7 +146,7 @@ test("(#483) a detected llama-server rail admits the operator's stated effort", 
     assert.ok(provider.supportedEfforts.includes("low") && provider.supportedEfforts.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
 });
 
-test("detected llama-server measures the complete chat request through input_tokens", async () => {
+test("{§provider-local-capabilities} detected llama-server measures the complete chat request through input_tokens", async () => {
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {

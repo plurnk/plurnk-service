@@ -14,7 +14,7 @@ const attributionContext: ExtensionAttributionContext = {
     attempt: 1,
 };
 
-test("teaching corpus: the meta owner publishes one exact immutable membership", () => {
+test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact immutable membership", () => {
     assert.deepEqual(TEACHING_CORPUS, {
         policy: "POLICY.md",
         recap: "recap.md",
@@ -41,7 +41,7 @@ test("{§operator-config-only-home} isTrusted: gate off ('' / '0') trusts everyt
 // {§operator-config-only-home} — the gate is asked while the floor is still being assembled, so an
 // unset key defers to the panel that owns it, never to a value in code: change the panel and the
 // unset answer changes with it.
-test("isTrusted: an unset key is answered by this package's own panel", () => {
+test("{§extension-trust-boundary} isTrusted: an unset key is answered by this package's own panel", () => {
     const panel = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     const declared = /^PLURNK_EXTENSIONS_TRUSTED_ONLY=(.*)$/mu.exec(panel)?.[1];
     assert.ok(declared !== undefined, "the owner declares the key it is asked about");
@@ -50,7 +50,7 @@ test("isTrusted: an unset key is answered by this package's own panel", () => {
     assert.equal(Meta.isTrusted("@plurnk/plurnk-execs", {}), true, "a first-party package is trusted under either reading");
 });
 
-test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
+test("{§extension-trust-boundary} isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
     const env = { PLURNK_EXTENSIONS_TRUSTED_ONLY: "acme-extension, @firewolf/firepad" };
     assert.equal(Meta.isTrusted("@plurnk/plurnk-schemes-http", env), true);
     assert.equal(Meta.isTrusted("acme-extension", env), true);
@@ -59,13 +59,13 @@ test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else
     assert.equal(Meta.isTrusted("evil-extension", { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
-test("declaresKind: one exact string identifies one kind", () => {
+test("{§extension-kind} declaresKind: one exact string identifies one kind", () => {
     assert.equal(Meta.declaresKind({ kind: "exec" }, "exec"), true);
     assert.equal(Meta.declaresKind({ kind: "scheme" }, "exec"), false);
     assert.equal(Meta.declaresKind(null, "exec"), false);
 });
 
-test("normalizeAttribution: absent, scalar, and array declarations have one tag-list representation", () => {
+test("{§extension-attribution} normalizeAttribution: absent, scalar, and array declarations have one tag-list representation", () => {
     assert.deepEqual(Meta.normalizeAttribution(undefined, "pkg"), []);
     assert.deepEqual(Meta.normalizeAttribution(null, "pkg"), []);
     assert.deepEqual(Meta.normalizeAttribution("npm:jane", "pkg"), ["npm:jane"]);
@@ -76,7 +76,7 @@ test("normalizeAttribution: absent, scalar, and array declarations have one tag-
     assert.deepEqual(Meta.normalizeAttribution([], "pkg"), [], "an authored empty set is the same canonical fact as absence");
 });
 
-test("normalizeAttribution: malformed declarations fail at their shared boundary", () => {
+test("{§extension-attribution} normalizeAttribution: malformed declarations fail at their shared boundary", () => {
     for (const raw of [42, {}, "", ["ok", ""], ["ok", 42]]) {
         assert.throws(
             () => Meta.normalizeAttribution(raw, "pkg"),
@@ -86,7 +86,7 @@ test("normalizeAttribution: malformed declarations fail at their shared boundary
     }
 });
 
-test("normalizeAttribution: only @plurnk packages may claim the reserved @plurnk namespace", () => {
+test("{§extension-attribution} normalizeAttribution: only @plurnk packages may claim the reserved @plurnk namespace", () => {
     assert.throws(
         () => Meta.normalizeAttribution(["npm:jane", "@plurnk/staff"], "evil-pkg"),
         /'evil-pkg'.*'@plurnk\/' is reserved.*'@plurnk\/staff'/,
@@ -98,7 +98,7 @@ test("normalizeAttribution: only @plurnk packages may claim the reserved @plurnk
     assert.deepEqual(Meta.normalizeAttribution("@acme/widgets", "evil-pkg"), ["@acme/widgets"]);
 });
 
-test("runtimeAttribution: an extension authors no, one, or many attempt-time tags", () => {
+test("{§extension-attribution} runtimeAttribution: an extension authors no, one, or many attempt-time tags", () => {
     let received: ExtensionAttributionContext | undefined;
     const source = {
         marker: "source",
@@ -117,7 +117,7 @@ test("runtimeAttribution: an extension authors no, one, or many attempt-time tag
     assert.equal(received, attributionContext, "the exact host-owned attempt context reaches the hook");
 });
 
-test("runtimeAttribution: the reserved lane and structural failures remain package-boundary errors", () => {
+test("{§extension-attribution} runtimeAttribution: the reserved lane and structural failures remain package-boundary errors", () => {
     assert.throws(
         () => Meta.runtimeAttribution(
             { attributions: () => "@plurnk/claimed" },
@@ -137,7 +137,7 @@ test("runtimeAttribution: the reserved lane and structural failures remain packa
     );
 });
 
-test("composeAttributions: composition has one stable deduplicated representation", () => {
+test("{§extension-attribution} composeAttributions: composition has one stable deduplicated representation", () => {
     const tags = Meta.composeAttributions(
         ["topic:search", "creator:ada"],
         ["creator:ada", "runtime:sqlite"],
@@ -146,7 +146,7 @@ test("composeAttributions: composition has one stable deduplicated representatio
     assert.equal(Object.isFrozen(tags), true);
 });
 
-test("packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
+test("{§extension-discovery} packageDirs: enumerates the fixture plus legitimate packages farther up the open ancestor chain", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-scan-"));
     try {
         const outer = join(root, "node_modules");
@@ -174,7 +174,7 @@ test("packageDirs: enumerates the fixture plus legitimate packages farther up th
     }
 });
 
-test("packageDirs: missing node_modules yields []", async () => {
+test("{§extension-discovery} packageDirs: missing node_modules yields []", async () => {
     assert.deepEqual(await Meta.packageDirs("/no/such/dir/node_modules"), []);
 });
 
@@ -202,7 +202,7 @@ test("{§extension-manifest-read} packageDirs: merges npm's nested peer graph wi
 });
 
 // {§extension-manifest-read}
-test("readManifest: the kind claim of one package.json, or null for anything that is not one", async () => {
+test("{§extension-manifest-read} readManifest: the kind claim of one package.json, or null for anything that is not one", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-manifest-"));
     try {
         const pkg = async (name: string, content: string): Promise<string> => {
@@ -233,7 +233,7 @@ test("readManifest: the kind claim of one package.json, or null for anything tha
     }
 });
 
-test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
+test("{§extension-discovery} nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-walk-"));
     try {
         await mkdir(join(root, "node_modules", "@plurnk"), { recursive: true });

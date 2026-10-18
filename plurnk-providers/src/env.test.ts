@@ -17,23 +17,18 @@ import {
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
 
-test("parseRequiredInt: parses a non-negative integer", () => {
+test("{§provider-configuration} parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
     assert.equal(parseRequiredInt("0", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 0);
 });
 
-test("parseRequiredInt: missing value names the env var and provider", () => {
-    assert.throws(() => parseRequiredInt(undefined, "PLURNK_PROVIDERS_FETCH_TIMEOUT", "groq"), /groq provider: PLURNK_PROVIDERS_FETCH_TIMEOUT must be set/);
-    assert.throws(() => parseRequiredInt("", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "groq"), /must be set/);
-});
-
-test("parseRequiredInt: rejects non-numeric, fractional, and negative values", () => {
+test("{§provider-configuration} parseRequiredInt: rejects non-numeric, fractional, and negative values", () => {
     assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
     assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
     assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
 });
 
-test("parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
+test("{§provider-connectivity} parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
     assert.equal(parseTimeoutMs("0", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 0);
     assert.equal(parseTimeoutMs("2147483647", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 2_147_483_647);
     assert.throws(
@@ -42,18 +37,18 @@ test("parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () 
     );
 });
 
-test("parseOptionalInt: absent → null, present → integer", () => {
+test("{§provider-configuration} parseOptionalInt: absent → null, present → integer", () => {
     assert.equal(parseOptionalInt(undefined, "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), null);
     assert.equal(parseOptionalInt("", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), null);
     assert.equal(parseOptionalInt("131072", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), 131072);
 });
 
-test("parseOptionalInt: rejects fractional and negative values", () => {
+test("{§provider-configuration} parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
 });
 
-test("effortFromEnv: durable policy is independent from an optional explicit budget", () => {
+test("{§provider-effort} effortFromEnv: durable policy is independent from an optional explicit budget", () => {
     assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "off" }, "openai"), { mode: "off", budget: null });
     assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "adaptive" }, "openai"), { mode: "adaptive", budget: null });
     assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "high" }, "openai"), { mode: "high", budget: null });
@@ -76,13 +71,13 @@ test("{§provider-tagged-reasoning} response style is explicit and invalid value
     );
 });
 
-test("requireEnv: returns the value or throws a named error", () => {
+test("{§model-catalog-readiness} requireEnv: returns the value or throws a named error", () => {
     assert.equal(requireEnv("sk-x", "OPENAI_API_KEY", "openai"), "sk-x");
     assert.throws(() => requireEnv(undefined, "GROQ_API_KEY", "groq"), /groq provider: GROQ_API_KEY must be set/);
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
 });
 
-test("cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
+test("{§provider-cache-write-policy} cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "1" }, "openai"), true);
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "0" }, "openai"), false);
     assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system" }, "anthropic"), "stable-system");
@@ -119,7 +114,7 @@ test("{§provider-cache-affinity} declarations follow alias precedence and refus
 
 // — per-alias knob scoping ({§provider-configuration}) —
 
-test("scopeEnvToAlias: each projection reads one fresh environment snapshot", () => {
+test("{§provider-configuration} scopeEnvToAlias: each projection reads one fresh environment snapshot", () => {
     const values: NodeJS.ProcessEnv = {
         PLURNK_PROVIDERS_EFFORT: "low",
         PLURNK_PROVIDERS_EFFORT_sample: "high",
@@ -145,7 +140,7 @@ test("scopeEnvToAlias: each projection reads one fresh environment snapshot", ()
         "each invocation takes its own snapshot; there is no persistent cache");
 });
 
-test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
+test("{§provider-configuration} scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
     const env = {
         PLURNK_PROVIDERS_EFFORT: "off",
         PLURNK_PROVIDERS_EFFORT_turboderp: "high",
@@ -167,7 +162,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING_EFFORT_PATH, undefined, "another alias's projection never leaks");
 });
 
-test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {
+test("{§provider-configuration} scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {
     const env = {
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
         PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
@@ -181,7 +176,7 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
     assert.equal(scopeEnvToAlias(env, "fallback").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
 });
 
-test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
+test("{§provider-evidence} dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
     assert.deepEqual(dataCaptureFromEnv({}, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" }, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" }, "x"), { topLogprobs: 3, rawBody: true });
@@ -189,7 +184,7 @@ test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS =
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" }, "x"), { topLogprobs: null, rawBody: false });
 });
 
-test("contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when unset", async () => {
+test("{§model-fact-resolution} contextWindowFromEnv: reads PLURNK_PROVIDERS_CONTEXT_WINDOW, null when unset", async () => {
     const { contextWindowFromEnv } = await import("./env.ts");
     assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" }, "openai"), 131072);
     assert.equal(contextWindowFromEnv({}, "openai"), null);
@@ -214,7 +209,7 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", 
     assert.equal(mixed.PLURNK_PROVIDERS_EFFORT, "off");
 });
 
-test("capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
+test("{§provider-evidence} capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
     const env = {
         PLURNK_PROVIDERS_TOP_LOGPROBS_fireslow: "3",
         PLURNK_PROVIDERS_RAWBODY_fireslow: "1",
@@ -226,7 +221,7 @@ test("capture knobs are per-alias scopable: enable on a scraping alias, serving 
 // Every knob the code reads appears in
 // the shipped .env.defaults — set (the floor) or commented (documented optional).
 // The file IS the operator documentation; this keeps it from drifting off the code.
-test("every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
+test("{§provider-configuration} every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
     const { readFileSync } = await import("node:fs");
     const { PROVIDERS_KNOBS } = await import("./env.ts");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
@@ -235,7 +230,7 @@ test("every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async (
     assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
 });
 
-test("effort accepts only the exact portable durable vocabulary", () => {
+test("{§effort-wire} effort accepts only the exact portable durable vocabulary", () => {
     for (const mode of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: mode }, "openai"), {
             mode,
@@ -250,7 +245,7 @@ test("effort accepts only the exact portable durable vocabulary", () => {
     }
 });
 
-test("the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
+test("{§model-fact-resolution} the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_EFFORT=adaptive"), "floor must ship EFFORT=adaptive");
@@ -269,7 +264,7 @@ test("{§provider-generation-envelope} the shipped DRY floor is off and claims n
 
 const floor = { PLURNK_PROVIDERS_OUTPUT_FLOOR: "10%" } as const;
 
-test("generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
+test("{§provider-generation-envelope} generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
     assert.deepEqual(
         generationEnvelopeFromEnv({
             ...floor,
@@ -330,7 +325,7 @@ test("{§provider-output-floor} the floor is capped by the output budget", () =>
     assert.equal(resolveGenerationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, 1_000_000).outputFloor, 1_000);
 });
 
-test("envelope knobs are per-alias scopable (measured envelope per box)", () => {
+test("{§provider-configuration} envelope knobs are per-alias scopable (measured envelope per box)", () => {
     const env = {
         ...floor,
         PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",

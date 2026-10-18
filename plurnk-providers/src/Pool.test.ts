@@ -111,25 +111,25 @@ const gen = (p: Pool, workerId: string, extra: Record<string, unknown> = {}) =>
 
 // --- construction / homogeneity ---
 
-test("Pool: empty backend list is rejected", () => {
+test("{§provider-capacity-pool} Pool: empty backend list is rejected", () => {
     assert.throws(() => new Pool([]), /at least one backend/);
 });
 
-test("Pool: mixed models are rejected at construction (heterogeneous blend is not a pool)", () => {
+test("{§provider-capacity-pool} Pool: mixed models are rejected at construction (heterogeneous blend is not a pool)", () => {
     assert.throws(() => new Pool([backend({ model: "gemma" }).b, backend({ model: "grok" }).b]), /interchangeable/);
 });
 
 // --- surface aggregation ---
 
-test("Pool: contextWindow is the safe floor (min) across backends", () => {
+test("{§provider-capacity-pool} Pool: contextWindow is the safe floor (min) across backends", () => {
     assert.equal(new Pool([backend({ window: 48000 }).b, backend({ window: 32000 }).b]).contextWindow, 32000);
 });
 
-test("Pool: any unknown (null) window makes the pool null - no improvised cap", () => {
+test("{§provider-interface} Pool: any unknown (null) window makes the pool null - no improvised cap", () => {
     assert.equal(new Pool([backend({ window: 48000 }).b, backend({ window: null }).b]).contextWindow, null);
 });
 
-test("Pool: physical limits and budgets aggregate to independent safe floors", () => {
+test("{§provider-capacity-pool} Pool: physical limits and budgets aggregate to independent safe floors", () => {
     const big = backend({ window: 48000, maxInputTokens: 40_000, maxOutputTokens: 16_000, outputBudget: 12_000, reasoningBudget: 4_800 }).b;
     const small = backend({ window: 32000, maxInputTokens: 24_000, maxOutputTokens: 12_000, outputBudget: 8_000, reasoningBudget: 3_200 }).b;
     const p = new Pool([big, small]);
@@ -140,31 +140,31 @@ test("Pool: physical limits and budgets aggregate to independent safe floors", (
     assert.equal(p.reasoningBudget, 3_200);
 });
 
-test("Pool: capabilities aggregate conservatively (constrainsOutput all-true, requiresOutputBudget any-true)", () => {
+test("{§provider-capacity-pool} Pool: capabilities aggregate conservatively (constrainsOutput all-true, requiresOutputBudget any-true)", () => {
     assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: true }).b]).constrainsOutput, true);
     assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: false }).b]).constrainsOutput, undefined);
     assert.equal(new Pool([backend({ requiresOutputBudget: false }).b, backend({ requiresOutputBudget: true }).b]).requiresOutputBudget, true);
     assert.equal(new Pool([backend({}).b]).requiresOutputBudget, undefined);
 });
 
-test("Pool: servedModel is the common id, undefined when they differ", () => {
+test("{§provider-capacity-pool} Pool: servedModel is the common id, undefined when they differ", () => {
     assert.equal(new Pool([backend({ servedModel: "g.gguf" }).b, backend({ servedModel: "g.gguf" }).b]).servedModel, "g.gguf");
     assert.equal(new Pool([backend({ servedModel: "g.gguf" }).b, backend({ servedModel: "h.gguf" }).b]).servedModel, undefined);
 });
 
-test("Pool: tokenize is exposed iff every backend has it", () => {
+test("{§provider-capacity-pool} Pool: tokenize is exposed iff every backend has it", () => {
     assert.equal(typeof new Pool([backend({ tokenize: true }).b, backend({ tokenize: true }).b]).tokenize, "function");
     assert.equal(new Pool([backend({ tokenize: true }).b, backend({ tokenize: false }).b]).tokenize, undefined);
 });
 
-test("Pool: prompt counting delegates conservatively to its backends", async () => {
+test("{§provider-capacity-pool} Pool: prompt counting delegates conservatively to its backends", async () => {
     const p = new Pool([backend().b]);
     assert.deepEqual(await p.countPromptTokens([{ role: "user", content: "abcd" }]), {
         kind: "exact", tokens: 4, source: "pool:test:exact",
     });
 });
 
-test("Pool: prompt evidence is conservative across every routable backend", async () => {
+test("{§provider-capacity-pool} Pool: prompt evidence is conservative across every routable backend", async () => {
     const exact = backend({ promptMeasurement: { kind: "exact", tokens: 8, source: "test:a" } }).b;
     const larger = backend({ promptMeasurement: { kind: "exact", tokens: 11, source: "test:b" } }).b;
     assert.deepEqual(await new Pool([exact, larger]).countPromptTokens([]), {
@@ -210,7 +210,7 @@ test("{§provider-capacity-admission} Pool: request capacity uses the smallest c
 
 // --- dispatch: round-robin + affinity ---
 
-test("Pool: NEW workers round-robin across backends", async () => {
+test("{§provider-capacity-pool} Pool: NEW workers round-robin across backends", async () => {
     const b0 = backend(), b1 = backend(), b2 = backend();
     const p = new Pool([b0.b, b1.b, b2.b]);
     await gen(p, "w1"); await gen(p, "w2"); await gen(p, "w3"); await gen(p, "w4");
@@ -219,7 +219,7 @@ test("Pool: NEW workers round-robin across backends", async () => {
     assert.deepEqual(b2.served, ["w3"]);
 });
 
-test("Pool: a worker STICKS to its backend across turns (KV-cache affinity)", async () => {
+test("{§provider-capacity-pool} Pool: a worker STICKS to its backend across turns (KV-cache affinity)", async () => {
     const b0 = backend(), b1 = backend();
     const p = new Pool([b0.b, b1.b]);
     await gen(p, "w1"); await gen(p, "w2"); await gen(p, "w1"); await gen(p, "w1");
@@ -229,7 +229,7 @@ test("Pool: a worker STICKS to its backend across turns (KV-cache affinity)", as
 
 // --- dispatch: overflow ---
 
-test("Pool: a backend-availability failure overflows to a healthy sibling and re-sticks", async () => {
+test("{§provider-capacity-pool} Pool: a backend-availability failure overflows to a healthy sibling and re-sticks", async () => {
     const down = backend({ throws: netErr() }), up = backend();
     const p = new Pool([down.b, up.b]);
     await gen(p, "w1");                     // w1 -> backend 0 (down) -> overflow to backend 1 (up)
@@ -240,7 +240,7 @@ test("Pool: a backend-availability failure overflows to a healthy sibling and re
     assert.deepEqual(up.served, ["w1", "w1"]);
 });
 
-test("Pool: a terminal (auth) failure does NOT overflow", async () => {
+test("{§provider-capacity-pool} Pool: a terminal (auth) failure does NOT overflow", async () => {
     const bad = backend({ throws: authErr() }), other = backend();
     const p = new Pool([bad.b, other.b]);
     await assert.rejects(() => gen(p, "w1"), /no key/);
@@ -248,7 +248,7 @@ test("Pool: a terminal (auth) failure does NOT overflow", async () => {
     assert.deepEqual(other.served, []);     // never tried - auth fails the same on a peer
 });
 
-test("#161: Pool does not overflow a resource-interrupted attempt and discard its evidence", async () => {
+test("{§provider-capacity-pool} Pool does not overflow a resource-interrupted attempt and discard its evidence", async () => {
     const interrupted = backend({ throws: interruptedErr() }), other = backend();
     const pool = new Pool([interrupted.b, other.b]);
     await assert.rejects(
@@ -259,7 +259,7 @@ test("#161: Pool does not overflow a resource-interrupted attempt and discard it
     assert.deepEqual(other.served, []);
 });
 
-test("Pool: whole fleet unavailable throws the last error, each backend tried once", async () => {
+test("{§provider-capacity-pool} Pool: whole fleet unavailable throws the last error, each backend tried once", async () => {
     const a = backend({ throws: netErr() }), b = backend({ throws: netErr() });
     const p = new Pool([a.b, b.b]);
     await assert.rejects(() => gen(p, "w1"), (e: unknown) => e instanceof ProviderError && e.kind === "network_failure");
@@ -267,7 +267,7 @@ test("Pool: whole fleet unavailable throws the last error, each backend tried on
     assert.deepEqual(b.served, ["w1"]);
 });
 
-test("Pool: an aborted signal propagates, never overflows", async () => {
+test("{§provider-capacity-pool} Pool: an aborted signal propagates, never overflows", async () => {
     const down = backend({ throws: netErr() }), up = backend();
     const p = new Pool([down.b, up.b]);
     const ac = new AbortController(); ac.abort();
@@ -275,6 +275,6 @@ test("Pool: an aborted signal propagates, never overflows", async () => {
     assert.deepEqual(up.served, []);        // cancellation is not a failover
 });
 
-test("Pool: generate requires a workerId (affinity keys on it)", async () => {
+test("{§provider-cache-identity} Pool: generate requires a workerId (affinity keys on it)", async () => {
     await assert.rejects(() => gen(new Pool([backend().b]), ""), /workerId is required/);
 });

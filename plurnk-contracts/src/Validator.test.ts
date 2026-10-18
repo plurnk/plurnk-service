@@ -304,7 +304,7 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
     }
 });
 
-test("ClientDisplayCapabilities admits only discriminated client display metadata", () => {
+test("{§client-display-capabilities} ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [
         { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
         { kind: "scheme", scheme: "worker", display: {} },
@@ -324,7 +324,7 @@ test("ClientDisplayCapabilities admits only discriminated client display metadat
     }
 });
 
-test("TextRegion requires complete ordered Unicode text coordinates", () => {
+test("{§text-region} TextRegion requires complete ordered Unicode text coordinates", () => {
     const region = {
         startLine: 2,
         startColumn: 3,
@@ -376,7 +376,7 @@ test("{§range-extent}: RangeExtent has one compact, bounded selection shape", (
     }
 });
 
-test("Notice accepts open producer observations and typed positions", () => {
+test("{§notice} Notice accepts open producer observations and typed positions", () => {
     for (const notice of [
         {
             source: "provider:local",
@@ -410,7 +410,7 @@ test("Notice accepts open producer observations and typed positions", () => {
     }
 });
 
-test("Notice rejects missing and malformed contract fields", () => {
+test("{§notice} Notice rejects missing and malformed contract fields", () => {
     for (const notice of [
         { kind: "parse_error", level: "error" },
         { source: "grammar", level: "error" },
@@ -438,7 +438,7 @@ test("Notice rejects missing and malformed contract fields", () => {
     );
 });
 
-test("ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
+test("{§problem-details} ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
     const problem = {
         type: "https://problems.plurnk.xyz/scheme/file/result-range-unavailable",
         title: "Result range unavailable",
@@ -455,7 +455,7 @@ test("ProblemDetails accepts an RFC 9457 occurrence with factual extensions", ()
     assert.equal(Validator.assertProblemDetails(problem), problem);
 });
 
-test("Problems creates canonical typed occurrences", () => {
+test("{§problem-details} Problems creates canonical typed occurrences", () => {
     assert.deepEqual(
         Problems.create("scheme:file", "not-found", 404, "Missing.", { pathname: "missing.txt" }),
         {
@@ -559,7 +559,7 @@ test("{§problem-projection} Problems rejects a status contradiction and leaves 
     });
 });
 
-test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {
+test("{§problem-details} ProblemDetails rejects missing fields and non-absolute type URIs", () => {
     assert.equal(Validator.validateProblemDetails({ status: 404 }).valid, false);
     assert.equal(Validator.validateProblemDetails({
         type: "not-an-absolute-uri",
@@ -611,7 +611,7 @@ test("{§operation-result} OperationResult discriminates successes and RFC 9457 
     }
 });
 
-test("OperationResult rejects mismatched envelope and Problem statuses", () => {
+test("{§operation-result} OperationResult rejects mismatched envelope and Problem statuses", () => {
     const mismatch = {
         status: 404,
         problem: {
@@ -635,7 +635,7 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
     );
 });
 
-test("CapabilityPolicy accepts only its canonical wire shape", () => {
+test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonical wire shape", () => {
     const descriptor = {
         operation: "sh" as const,
         scheme: "exec",
@@ -713,7 +713,7 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
     }
 });
 
-test("EntryReadResult validates one exact client entry projection", () => {
+test("{§entry-read-result} EntryReadResult validates one exact client entry projection", () => {
     const result = {
         status: 200 as const,
         entry: {

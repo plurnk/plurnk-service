@@ -7,38 +7,38 @@ import { PlurnkParser } from "../../src/index.ts";
 // Position
 // -------------------------------------------------------------------------
 
-test("Validator: Position accepts well-formed", () => {
+test("{§parser-position} Validator: Position accepts well-formed", () => {
     const { valid, errors } = Validator.validatePosition({ line: 1, column: 0 });
     assert.equal(valid, true);
     assert.deepEqual(errors, []);
 });
 
-test("Validator: Position accepts only the complete unknown sentinel", () => {
+test("{§parser-position} Validator: Position accepts only the complete unknown sentinel", () => {
     assert.equal(Validator.validatePosition({ line: 0, column: 0 }).valid, true);
     assert.equal(Validator.validatePosition({ line: 0, column: 1 }).valid, false);
 });
 
-test("Validator: Position rejects missing column", () => {
+test("{§parser-position} Validator: Position rejects missing column", () => {
     const { valid } = Validator.validatePosition({ line: 1 });
     assert.equal(valid, false);
 });
 
-test("Validator: Position rejects missing line", () => {
+test("{§parser-position} Validator: Position rejects missing line", () => {
     const { valid } = Validator.validatePosition({ column: 0 });
     assert.equal(valid, false);
 });
 
-test("Validator: Position rejects negative line", () => {
+test("{§parser-position} Validator: Position rejects negative line", () => {
     const { valid } = Validator.validatePosition({ line: -1, column: 0 });
     assert.equal(valid, false);
 });
 
-test("Validator: Position rejects non-integer line", () => {
+test("{§parser-position} Validator: Position rejects non-integer line", () => {
     const { valid } = Validator.validatePosition({ line: 1.5, column: 0 });
     assert.equal(valid, false);
 });
 
-test("Validator: Position rejects extra property", () => {
+test("{§parser-position} Validator: Position rejects extra property", () => {
     const { valid } = Validator.validatePosition({ line: 1, column: 0, foo: "bar" });
     assert.equal(valid, false);
 });
@@ -47,52 +47,52 @@ test("Validator: Position rejects extra property", () => {
 // LineMarker
 // -------------------------------------------------------------------------
 
-test("Validator: LineMarker accepts single-position", () => {
+test("{§scope-slot} Validator: LineMarker accepts single-position", () => {
     const { valid } = Validator.validateLineMarker({ marks: [1] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker accepts range", () => {
+test("{§scope-slot} Validator: LineMarker accepts range", () => {
     const { valid } = Validator.validateLineMarker({ marks: [1, 10] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker accepts negative sentinel (append)", () => {
+test("{§scope-slot} Validator: LineMarker accepts negative sentinel (append)", () => {
     const { valid } = Validator.validateLineMarker({ marks: [-1] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker accepts zero sentinel (prepend)", () => {
+test("{§scope-slot} Validator: LineMarker accepts zero sentinel (prepend)", () => {
     const { valid } = Validator.validateLineMarker({ marks: [0] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker accepts negative range", () => {
+test("{§scope-slot} Validator: LineMarker accepts negative range", () => {
     const { valid } = Validator.validateLineMarker({ marks: [-3, -1] });
     assert.equal(valid, true);
 });
 
-test("Validator: LineMarker rejects empty marks", () => {
+test("{§scope-slot} Validator: LineMarker rejects empty marks", () => {
     const { valid } = Validator.validateLineMarker({ marks: [] });
     assert.equal(valid, false);
 });
 
-test("Validator: LineMarker rejects a non-number mark", () => {
+test("{§scope-slot} Validator: LineMarker rejects a non-number mark", () => {
     const { valid } = Validator.validateLineMarker({ marks: ["1"] });
     assert.equal(valid, false);
 });
 
-test("Validator: TextLineMarker accepts a five-character Base62 anchor", () => {
+test("{§text-line-anchor-syntax} Validator: TextLineMarker accepts a five-character Base62 anchor", () => {
     const { valid, errors } = Validator.validateTextLineMarker({ marks: ["@aZ09b"] });
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: ordinary LineMarker rejects a text-coordinate anchor", () => {
+test("{§text-line-anchor-syntax} Validator: ordinary LineMarker rejects a text-coordinate anchor", () => {
     const { valid } = Validator.validateLineMarker({ marks: ["@aZ09b"] });
     assert.equal(valid, false);
 });
 
-test("Validator: LineMarker rejects extra property", () => {
+test("{§scope-slot} Validator: LineMarker rejects extra property", () => {
     const { valid } = Validator.validateLineMarker({ marks: [1], extra: true });
     assert.equal(valid, false);
 });
@@ -101,7 +101,7 @@ test("Validator: LineMarker rejects extra property", () => {
 // Round-trip: parser output validates against schemas
 // -------------------------------------------------------------------------
 
-test("Round-trip: AST.position from parsed statement validates", () => {
+test("{§parser-position} Round-trip: AST.position from parsed statement validates", () => {
     const result = PlurnkParser.parseStatements("````EDIT (p)\nbody\n````");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
@@ -109,7 +109,7 @@ test("Round-trip: AST.position from parsed statement validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.lineMarker (single) from parsed statement validates", () => {
+test("{§scope-slot} Round-trip: AST.lineMarker (single) from parsed statement validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) <5> [{"pattern": "m"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -118,7 +118,7 @@ test("Round-trip: AST.lineMarker (single) from parsed statement validates", () =
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.lineMarker (range) from parsed statement validates", () => {
+test("{§scope-slot} Round-trip: AST.lineMarker (range) from parsed statement validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) <1-10> [{"pattern": "m"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -127,7 +127,7 @@ test("Round-trip: AST.lineMarker (range) from parsed statement validates", () =>
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.lineMarker (append sentinel) from parsed statement validates", () => {
+test("{§scope-slot} Round-trip: AST.lineMarker (append sentinel) from parsed statement validates", () => {
     const result = PlurnkParser.parseStatements("````EDIT (p) <-1>\nappended\n````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT"); return; }
@@ -136,7 +136,7 @@ test("Round-trip: AST.lineMarker (append sentinel) from parsed statement validat
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: JSON-serialized AST.position round-trips through validator", () => {
+test("{§parser-position} Round-trip: JSON-serialized AST.position round-trips through validator", () => {
     const result = PlurnkParser.parseStatements("````EDIT (p)\nbody\n````");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
@@ -150,12 +150,12 @@ test("Round-trip: JSON-serialized AST.position round-trips through validator", (
 // ParsedPath
 // -------------------------------------------------------------------------
 
-test("Validator: ParsedPath accepts local", () => {
+test("{§path-syntax} Validator: ParsedPath accepts local", () => {
     const { valid } = Validator.validateParsedPath({ kind: "local", raw: "config/foo.xml" });
     assert.equal(valid, true);
 });
 
-test("Validator: ParsedPath accepts url with full decomposition", () => {
+test("{§path-syntax} Validator: ParsedPath accepts url with full decomposition", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
         raw: "https://example.com:8080/path?q=1#frag",
@@ -171,7 +171,7 @@ test("Validator: ParsedPath accepts url with full decomposition", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: ParsedPath accepts url with null authority fields", () => {
+test("{§path-syntax} Validator: ParsedPath accepts url with null authority fields", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
         raw: "worker://philosophy",
@@ -187,12 +187,12 @@ test("Validator: ParsedPath accepts url with null authority fields", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: ParsedPath rejects unknown kind", () => {
+test("{§path-syntax} Validator: ParsedPath rejects unknown kind", () => {
     const { valid } = Validator.validateParsedPath({ kind: "remote", raw: "foo" });
     assert.equal(valid, false);
 });
 
-test("Validator: ParsedPath rejects url missing required field", () => {
+test("{§path-syntax} Validator: ParsedPath rejects url missing required field", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
         raw: "https://example.com/",
@@ -201,7 +201,7 @@ test("Validator: ParsedPath rejects url missing required field", () => {
     assert.equal(valid, false);
 });
 
-test("Validator: ParsedPath accepts an ordered query component", () => {
+test("{§path-query} Validator: ParsedPath accepts an ordered query component", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
         raw: "https://example.com/?q=1&q=2",
@@ -217,7 +217,7 @@ test("Validator: ParsedPath accepts an ordered query component", () => {
     assert.equal(valid, true);
 });
 
-test("Round-trip: AST.target (local) validates", () => {
+test("{§path-syntax} Round-trip: AST.target (local) validates", () => {
     const result = PlurnkParser.parseStatements("````EDIT (config/foo.xml)\nbody\n````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
@@ -226,7 +226,7 @@ test("Round-trip: AST.target (local) validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.target (url) validates after JSON round-trip", () => {
+test("{§path-syntax} Round-trip: AST.target (url) validates after JSON round-trip", () => {
     const result = PlurnkParser.parseStatements("````EDIT (https://example.com:8080/p?q=1&q=2#frag)\nbody\n````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "EDIT") { assert.fail("expected EDIT statement"); return; }
@@ -239,12 +239,12 @@ test("Round-trip: AST.target (url) validates after JSON round-trip", () => {
 // MatcherBody
 // -------------------------------------------------------------------------
 
-test("Validator: MatcherBody accepts xpath", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts xpath", () => {
     const { valid } = Validator.validateMatcherBody({ dialect: "xpath", raw: "//user[@role]" });
     assert.equal(valid, true);
 });
 
-test("Validator: MatcherBody accepts regex with pattern+flags", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts regex with pattern+flags", () => {
     const { valid } = Validator.validateMatcherBody({
         dialect: "regex",
         raw: "/foo|bar/i",
@@ -254,19 +254,19 @@ test("Validator: MatcherBody accepts regex with pattern+flags", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: MatcherBody accepts jsonpath", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts jsonpath", () => {
     const { valid } = Validator.validateMatcherBody({ dialect: "jsonpath", raw: "$.greeting" });
     assert.equal(valid, true);
 });
 
-test("Validator: MatcherBody accepts glob", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts glob", () => {
     for (const raw of ["*.xml", "@literal", "@(xml|json)"] as const) {
         const { valid } = Validator.validateMatcherBody({ dialect: "glob", raw });
         assert.equal(valid, true, raw);
     }
 });
 
-test("Validator: MatcherBody accepts only canonical single-line graph forms", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical single-line graph forms", () => {
     for (const raw of ["&symbol", "&<symbol", "&>symbol"]) {
         assert.equal(Validator.validateMatcherBody({ dialect: "graph", raw }).valid, true, raw);
     }
@@ -275,7 +275,7 @@ test("Validator: MatcherBody accepts only canonical single-line graph forms", ()
     }
 });
 
-test("Validator: every matcher dialect rejects multiline raw input", () => {
+test("{§pattern-body-single-line} Validator: every matcher dialect rejects multiline raw input", () => {
     for (const matcher of [
         { dialect: "xpath", raw: "//one\n//two" },
         { dialect: "regex", raw: "/one/\n/two/", pattern: "one", flags: "" },
@@ -287,17 +287,17 @@ test("Validator: every matcher dialect rejects multiline raw input", () => {
     }
 });
 
-test("Validator: MatcherBody rejects unknown dialect", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody rejects unknown dialect", () => {
     const { valid } = Validator.validateMatcherBody({ dialect: "sql", raw: "SELECT *" });
     assert.equal(valid, false);
 });
 
-test("Validator: MatcherBody rejects regex missing pattern/flags", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody rejects regex missing pattern/flags", () => {
     const { valid } = Validator.validateMatcherBody({ dialect: "regex", raw: "/foo/i" });
     assert.equal(valid, false);
 });
 
-test("Round-trip: AST.matcher (regex MatcherBody) validates", () => {
+test("{§matcher-prefix-claims} Round-trip: AST.matcher (regex MatcherBody) validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "/foo|bar/i"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -306,7 +306,7 @@ test("Round-trip: AST.matcher (regex MatcherBody) validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
+test("{§matcher-prefix-claims} Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "//user[@role]"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -315,7 +315,7 @@ test("Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
+test("{§matcher-prefix-claims} Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "$.field"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -324,7 +324,7 @@ test("Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.matcher (glob MatcherBody) validates", () => {
+test("{§matcher-prefix-claims} Round-trip: AST.matcher (glob MatcherBody) validates", () => {
     const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "*.xml"}]````');
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
@@ -337,12 +337,12 @@ test("Round-trip: AST.matcher (glob MatcherBody) validates", () => {
 // SendBody
 // -------------------------------------------------------------------------
 
-test("Validator: SendBody accepts plain text body", () => {
+test("{§send-body} Validator: SendBody accepts plain text body", () => {
     const { valid } = Validator.validateSendBody({ raw: "Paris", json: null });
     assert.equal(valid, true);
 });
 
-test("Validator: SendBody accepts JSON body with parsed value", () => {
+test("{§send-body} Validator: SendBody accepts JSON body with parsed value", () => {
     const { valid } = Validator.validateSendBody({
         raw: '{"answer":"Paris"}',
         json: { answer: "Paris" },
@@ -350,23 +350,23 @@ test("Validator: SendBody accepts JSON body with parsed value", () => {
     assert.equal(valid, true);
 });
 
-test("Validator: SendBody accepts JSON array", () => {
+test("{§send-body} Validator: SendBody accepts JSON array", () => {
     const { valid } = Validator.validateSendBody({ raw: "[1,2,3]", json: [1, 2, 3] });
     assert.equal(valid, true);
 });
 
-test("Validator: SendBody accepts json field as any primitive", () => {
+test("{§send-body} Validator: SendBody accepts json field as any primitive", () => {
     assert.equal(Validator.validateSendBody({ raw: "42", json: 42 }).valid, true);
     assert.equal(Validator.validateSendBody({ raw: "true", json: true }).valid, true);
     assert.equal(Validator.validateSendBody({ raw: "\"s\"", json: "s" }).valid, true);
 });
 
-test("Validator: SendBody rejects missing raw", () => {
+test("{§send-body} Validator: SendBody rejects missing raw", () => {
     const { valid } = Validator.validateSendBody({ json: null });
     assert.equal(valid, false);
 });
 
-test("Round-trip: AST.body (SendBody with JSON) validates", () => {
+test("{§send-body} Round-trip: AST.body (SendBody with JSON) validates", () => {
     const result = PlurnkParser.parseStatements("````SEND\n{\"answer\":\"Paris\"}\n````\n````WAIT\n````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }
@@ -375,7 +375,7 @@ test("Round-trip: AST.body (SendBody with JSON) validates", () => {
     assert.equal(valid, true, `errors: ${JSON.stringify(errors)}`);
 });
 
-test("Round-trip: AST.body (SendBody plain text) validates", () => {
+test("{§send-body} Round-trip: AST.body (SendBody plain text) validates", () => {
     const result = PlurnkParser.parseStatements("````SEND\nParis\n````\n````WAIT\n````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "SEND") { assert.fail("expected SEND"); return; }

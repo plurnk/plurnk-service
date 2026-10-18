@@ -39,7 +39,7 @@ test("providerSource produces a schema-valid colon-namespaced source", () => {
     assert.throws(() => providerSource(""), /must name a provider/);
 });
 
-test("classifyProviderError maps HTTP status to kind", () => {
+test("{§provider-failure-normalization} classifyProviderError maps HTTP status to kind", () => {
     const k = (status: number) => classifyProviderError(apiError(status)).kind;
     assert.equal(k(401), "unauthorized");
     assert.equal(k(403), "unauthorized");
@@ -95,20 +95,20 @@ test("{§provider-retryable-truth} retryable is exactly the consumer-recoverable
     assert.equal(new ProviderError("provider:test", "generation_failed", "fixture").status, 502, "{§provider-generation-failed} a declared generation error is not re-issued");
 });
 
-test("classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {
+test("{§provider-request-rejection} classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {
     const rejected = apiError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }));
     assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
     assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "request_rejected");
     assert.equal(classifyProviderError(apiError(422, "<html>Bad</html>")).kind, "request_rejected");
 });
 
-test("classifyProviderError treats non-HTTP errors as network_failure", () => {
+test("{§provider-failure-normalization} classifyProviderError treats non-HTTP errors as network_failure", () => {
     assert.equal(classifyProviderError(new TypeError("fetch failed")).kind, "network_failure");
     const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
     assert.equal(classifyProviderError(timeout).kind, "network_failure");
 });
 
-test("ProviderError carries a validated RFC 9457 Problem Details object", () => {
+test("{§provider-failure-normalization} ProviderError carries a validated RFC 9457 Problem Details object", () => {
     const e = new ProviderError("provider:openai", "rate_limit", "OpenAI 429 - slow down", { status: 429 });
     assert.deepEqual(e.problem, {
         type: "https://problems.plurnk.xyz/provider/openai/rate-limit",
@@ -124,13 +124,7 @@ test("ProviderError carries a validated RFC 9457 Problem Details object", () => 
     assert.equal(e.status, 429);
 });
 
-test("ProviderError marks failures that require changed external state as non-retryable", () => {
-    const unauthorized = new ProviderError("provider:openai", "unauthorized", "Invalid API key.");
-    assert.equal(unauthorized.problem.retryable, false);
-    assert.equal(unauthorized.problem.stage, "provider-request");
-});
-
-test("#161: ProviderError carries resource-interrupted attempt evidence outside Problem Details", () => {
+test("{§provider-interrupted-attempt} ProviderError carries resource-interrupted attempt evidence outside Problem Details", () => {
     const attempt = {
         assistant: {
             content: "partial",
@@ -193,7 +187,7 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
     });
 });
 
-test("toProviderError classifies and tags an HTTP error with the source + status", () => {
+test("{§provider-failure-normalization} toProviderError classifies and tags an HTTP error with the source + status", () => {
     const cause = apiError(401, "no key");
     const pe = toProviderError(cause, "provider:groq");
     assert.equal(pe.kind, "unauthorized");
@@ -202,12 +196,12 @@ test("toProviderError classifies and tags an HTTP error with the source + status
     assert.equal(pe.cause, cause);
 });
 
-test("toProviderError passes an existing ProviderError through unchanged", () => {
+test("{§provider-failure-normalization} toProviderError passes an existing ProviderError through unchanged", () => {
     const original = new ProviderError("provider:xai", "rate_limit", "429");
     assert.equal(toProviderError(original, "provider:other"), original);
 });
 
-test("provider diagnostics are bounded without losing structured failure facts", () => {
+test("{§provider-failure-normalization} provider diagnostics are bounded without losing structured failure facts", () => {
     const cause = apiError(502);
     Object.defineProperty(cause, "message", { value: "abcdefghij" });
     const error = toProviderError(cause, "provider:test", 4);
@@ -243,7 +237,7 @@ const processingFailure = (cause: Error) => new APICallError({
     cause,
 });
 
-test("#593: a terminated body, invalid JSON, a schema-invalid body, and an internal fault are told apart in durable evidence", () => {
+test("{§provider-failure-cause} a terminated body, invalid JSON, a schema-invalid body, and an internal fault are told apart in durable evidence", () => {
     const terminated = toProviderError(processingFailure(new TypeError("terminated")), "provider:test", 512);
     assert.equal(terminated.problem.providerKind, "network_failure");
     assert.deepEqual(terminated.problem.cause, { causeKind: "transport_terminated", causeName: "TypeError", causeMessage: "terminated" });

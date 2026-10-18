@@ -143,7 +143,7 @@ test("{§provider-sdk-boundary} the transport performs exactly one physical requ
     assert.equal(calls, 1);
 });
 
-test("stream failure evidence distinguishes semantic output from pre-output failure ({§provider-connectivity})", async (t) => {
+test("{§provider-connectivity} stream failure evidence distinguishes semantic output from pre-output failure", async (t) => {
     const cases = [
         { name: "text", delta: { content: "partial" }, expected: true },
         { name: "reasoning", delta: { reasoning_content: "partial" }, expected: true },
@@ -286,7 +286,7 @@ test("{§provider-cancellation-evidence} cancellation retains evidence received 
     });
 });
 
-test("the adapter preserves PLURNK request extensions and response evidence", async () => {
+test("{§provider-evidence} the adapter preserves PLURNK request extensions and response evidence", async () => {
     let body: Record<string, unknown> | undefined;
     const responseBody = {
         id: "response-1",
@@ -345,7 +345,7 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
     assert.deepEqual(result.rawBody, responseBody);
 });
 
-test("request extensions cannot replace SDK-owned model or message serialization", async () => {
+test("{§provider-request-authority} request extensions cannot replace SDK-owned model or message serialization", async () => {
     await assert.rejects(
         executeOpenAICompatible({
             ...request,
@@ -384,7 +384,7 @@ test("the adapter maps leading system messages to AI SDK instructions", async ()
     ]);
 });
 
-test("the adapter preserves nonstandard reasoning accounting after SDK parsing", async (t) => {
+test("{§provider-sdk-boundary} the adapter preserves nonstandard reasoning accounting after SDK parsing", async (t) => {
     const execute = (responseBody: object) => executeOpenAICompatible({
         ...request,
         fetch: async () => new Response(JSON.stringify(responseBody), {
@@ -503,7 +503,7 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
     });
 });
 
-test("normalizeRetryAttemptError preserves the whole-call deadline ({§provider-connectivity})", () => {
+test("{§provider-connectivity} normalizeRetryAttemptError preserves the whole-call deadline", () => {
     const operation = new ProviderTimeoutError(2700000);
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
@@ -617,7 +617,7 @@ test("{§provider-usage-refusal} the transport record keeps the wire emission: e
 
 // {§provider-usage-refusal} (#580) — the provider's counters disagree with themselves; the
 // exchange is not the casualty.
-test("inconsistent usage counters refuse normalization without failing the response, in both shapes", async (t) => {
+test("{§provider-usage-refusal} inconsistent usage counters refuse normalization without failing the response, in both shapes", async (t) => {
     const usage = { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6, completion_tokens_details: { reasoning_tokens: 7 } };
     await t.test("non-streamed", async () => {
         const result = await executeOpenAICompatible({

@@ -42,7 +42,7 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     assert.ok(predicate(), "condition did not become true");
 };
 
-test("resource reads maintain one overlap-replaced subscription for selected cache entries", async (t) => {
+test("{§mcp-core-matrix} resource reads maintain one overlap-replaced subscription for selected cache entries", async (t) => {
     const documents = new Map([
         ["fixture://alpha", "alpha-1"],
         ["fixture://beta", "beta-1"],
@@ -131,7 +131,7 @@ test("resource reads maintain one overlap-replaced subscription for selected cac
     );
 });
 
-test("a remotely ended unified subscription is re-established with a fresh request", async (t) => {
+test("{§mcp-core-matrix} a remotely ended unified subscription is re-established with a fresh request", async (t) => {
     const handler = createMcpHandler(() => {
         const server = new McpServer({ name: "subscription-recovery-fixture", version: "1.0.0" });
         server.registerTool("status", { description: "Return status." }, async () => ({

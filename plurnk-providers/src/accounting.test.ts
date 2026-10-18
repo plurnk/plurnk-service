@@ -99,7 +99,7 @@ test("{§provider-monetary-evidence} router monetary fields are validated withou
     });
 });
 
-test("DeepInfra's documented response estimate remains estimated", () => {
+test("{§provider-monetary-evidence} DeepInfra's documented response estimate remains estimated", () => {
     const normalize = providerCostNormalizer("@ai-sdk/deepinfra");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ usage: { estimated_cost: 5.04e-5 } })), {
@@ -109,7 +109,7 @@ test("DeepInfra's documented response estimate remains estimated", () => {
     });
 });
 
-test("response cost normalization is an explicit adapter capability", () => {
+test("{§provider-monetary-evidence} response cost normalization is an explicit adapter capability", () => {
     assert.equal(providerCostNormalizer("@ai-sdk/anthropic"), undefined);
     assert.equal(providerCostNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: {} })), undefined);
     assert.throws(
@@ -150,7 +150,7 @@ test("{§provider-accounting} unknown requests retain subtotals without presenti
     assert.equal(accounting.knownCostUsd, "0.25", "received price evidence is retained separately");
 });
 
-test("aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
+test("{§provider-accounting} aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
     const accounting = aggregateProviderAccounting([{
         provider: "provider:a",
         model: "m",
@@ -174,7 +174,7 @@ test("aggregateProviderAccounting omits unknown nested usage fields from its JSO
     });
 });
 
-test("aggregateProviderAccounting does not invent complete detail partitions across heterogeneous requests", () => {
+test("{§provider-accounting} aggregateProviderAccounting does not invent complete detail partitions across heterogeneous requests", () => {
     const accounting = aggregateProviderAccounting([
         {
             provider: "provider:detailed",

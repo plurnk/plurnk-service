@@ -46,8 +46,7 @@ test("{§fence-boundary} framing a large body does not spread its backtick runs 
     assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "```EDIT (large.md)\n" + body + "\n```");
 });
 
-// {§fence-boundary}
-test("quoted programs are exact body content without speculative diagnostics", () => {
+test("{§fence-boundary} quoted programs are exact body content without speculative diagnostics", () => {
     const body = "````sh\necho hello\n````\n## PLAN_\n### READ_ (example.md)";
     const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("NOTE", "Example delivered.");
     const parsed = PlurnkParser.parse(input);
@@ -56,7 +55,7 @@ test("quoted programs are exact body content without speculative diagnostics", (
     assert.equal(send?.kind === "statement" && send.statement.op === "SEND" ? send.statement.body?.raw : null, body);
 });
 
-test("an unfinished wider body ends at the next known heading; the wider fence holds it only while it closes", () => {
+test("{§fence-heading-in-body} an unfinished wider body ends at the next known heading; the wider fence holds it only while it closes", () => {
     const unfinished = PlurnkParser.parseStatements("````READ (before.md)````\n````EDIT (notes.md)\n```sh\necho literal\n```");
     assert.deepEqual(unfinished.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["READ", "EDIT", "sh"]);
     assert.equal(unfinished.unparsedTail, undefined);
