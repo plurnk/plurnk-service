@@ -208,8 +208,8 @@ export default class EditMutations {
             const pasted = filled.map((row) => { const match = /^ *(\d+)<(@[0-9A-Za-z]{5})>/.exec(row)!; return { hash: match[2], line: Number(match[1]) }; });
             const verifies = (anchors: readonly string[], startLine: number): boolean =>
                 pasted.every(({ hash, line }) => anchors[line - startLine] === hash);
-            const current = verifies(lineAnchors, 1);
-            const source = current ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
+            const verified = verifies(lineAnchors, 1);
+            const source = verified ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
             if (source === null) {
                 prefixFact = { rule: "rendered-prefix-unverified", lines: filled.length };
                 return statement;

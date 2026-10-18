@@ -715,12 +715,12 @@ const extractEvidence = (values: unknown[]): {
         const logprobRecord = recordOf(choice.logprobs);
         const entries = logprobRecord?.content;
         if (Array.isArray(entries)) {
-            for (const value of entries) {
-                const entry = recordOf(value);
+            for (const entryValue of entries) {
+                const entry = recordOf(entryValue);
                 if (typeof entry?.token !== "string" || typeof entry.logprob !== "number") continue;
                 const top = Array.isArray(entry.top_logprobs)
-                    ? entry.top_logprobs.flatMap((value) => {
-                        const item = recordOf(value);
+                    ? entry.top_logprobs.flatMap((candidate) => {
+                        const item = recordOf(candidate);
                         return typeof item?.token === "string" && typeof item.logprob === "number"
                             ? [{ token: item.token, logprob: item.logprob }]
                             : [];

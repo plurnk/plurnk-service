@@ -573,10 +573,10 @@ test("{§file-commit-serialization} {§membership-source-projection}: a slow pro
     t.after(() => release.resolve());
     const fx = await fixture(t);
     const pathname = "image.png";
-    const original = Buffer.from([0, 1, 2, 3]);
+    const seedBytes = Buffer.from([0, 1, 2, 3]);
     const replacement = Buffer.from([0, 9, 8, 7]);
     const seed = await fx.file.writeEntry(pathname, {
-        channels: { body: { content: "", bytes: original, mimetype: "image/png" } },
+        channels: { body: { content: "", bytes: seedBytes, mimetype: "image/png" } },
     }, fx.ctx);
     assert.equal((await fx.file.applyResolution({ attrs: seed.attrs as never }, fx.ctx)).status, 200);
     const proposal = await fx.file.writeEntry(pathname, {
@@ -586,7 +586,7 @@ test("{§file-commit-serialization} {§membership-source-projection}: a slow pro
     const projecting = Promise.withResolvers<void>();
     const ctx = makeSchemeCtx({ ...fx.ctx, mimetypes: mimetypesFixture({
         projectReadable: async (input: { content: Uint8Array }) => {
-            assert.deepEqual(input.content, original);
+            assert.deepEqual(input.content, seedBytes);
             projecting.resolve();
             await release.promise;
             return { content: "old derived body", sourceMimetype: "image/png", projectionIdentity: "fixture", facts: null };

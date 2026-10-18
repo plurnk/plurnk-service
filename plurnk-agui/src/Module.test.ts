@@ -1935,7 +1935,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
 });
 
 for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatMap(
-    (stage) => [false, true].map((accepted) => ({ stage, accepted })),
+    (name) => [false, true].map((flag) => ({ stage: name, accepted: flag })),
 )) {
     test(`{§agui-proposal-resolve}: a delayed terminal preserves ${accepted ? "accepted" : "rejected"} resume during ${stage}`, async () => {
         const { seam, emit, loopRuns } = mockSeam();
@@ -3678,8 +3678,8 @@ test("{§agui-thread-binding}: concurrent threads create one workspace, and each
         workers.push(workerRow(++workerId, name!));
         return { workerId, workerName: name! };
     };
-    seam.runLoop = async ({ workspaceId, workerId }) => {
-        finish(workspaceId, workerId);
+    seam.runLoop = async ({ workspaceId, workerId: target }) => {
+        finish(workspaceId, target);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
     const mod = await host(seam);
@@ -3706,8 +3706,8 @@ test("{§agui-thread-binding}: a failed attach-only request cannot deny a queued
     };
     let created = 0;
     seam.createWorkspace = async () => { created += 1; return { workspaceId: 3, workspaceName: "cold", projectRoot: null, projectLabel: null }; };
-    seam.runLoop = async ({ workspaceId, workerId }) => {
-        finish(workspaceId, workerId);
+    seam.runLoop = async ({ workspaceId, workerId: target }) => {
+        finish(workspaceId, target);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
     };
     const mod = await host(seam);

@@ -93,9 +93,9 @@ test("{§log-wire-format}: receipt headings carry only identity, resources, patt
         tx: { lineMarker: { marks: [1, 16] }, matcher: { raw: matcher }, aside: "inspect example" },
         rx: { content: "example", matched: 1, range: { unit: "line", total: 24, requested: [1, 16], returned: [1, 16] } },
     }], tok);
-    const [heading, facts, body] = out.split("\n");
+    const [heading, factsLine, body] = out.split("\n");
     assert.equal(heading, `### log:///1/2/3/READ → example.md ${matcher} · ${tok(out)}`);
-    assert.deepEqual(JSON.parse(facts), { aside: "inspect example", matched: 1, range: "<1,16> of 24 lines" });
+    assert.deepEqual(JSON.parse(factsLine), { aside: "inspect example", matched: 1, range: "<1,16> of 24 lines" });
     assert.equal(body, "1:example");
     assert.doesNotMatch(out, /^READ\b/m, "an observation does not repeat an operation as an instruction");
 });
@@ -108,9 +108,9 @@ test("{§log-wire-format}: operands and patterns stay on the heading while scope
         target: { scheme: null, pathname: "/docs/space (x).md" },
         tx: { lineMarker: { marks: [2, 4] }, metadata: [metadata], matcher: { raw: matcher }, aside: "keep (this) → unchanged" },
     }], tok);
-    const [heading, facts] = out.split("\n");
+    const [heading, factsLine] = out.split("\n");
     assert.equal(heading, `### log:///1/2/4/READ → docs/space %28x%29.md ${matcher} · ${tok(out)}`);
-    assert.deepEqual(JSON.parse(facts), { aside: "keep (this) → unchanged", metadata: [metadata], scope: "<2,4>" });
+    assert.deepEqual(JSON.parse(factsLine), { aside: "keep (this) → unchanged", metadata: [metadata], scope: "<2,4>" });
 
     const pathless = PacketWire.renderLog([{
         coordinate: "1/2/5", op: "FIND", status: 200,
@@ -130,9 +130,9 @@ test("{§log-wire-format}: COPY selections retain their separate patterns, scope
     };
     const before = structuredClone(entry);
     const out = PacketWire.renderLog([entry], tok);
-    const [heading, facts] = out.split("\n");
+    const [heading, factsLine] = out.split("\n");
     assert.equal(heading, `### log:///1/2/6/COPY → worker:///notes /keep/ → worker:///summary · ${tok(out)}`);
-    assert.deepEqual(JSON.parse(facts), {
+    assert.deepEqual(JSON.parse(factsLine), {
         aside: "publish\nfindings",
         metadata: { from: ['{"channel":"text"}'], to: ['{"append":true}'] },
         scope: { from: "<2,4>", to: "<0>" },
@@ -149,9 +149,9 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
         tx: { lineMarker: { marks: [1, 2, 3, 4, 5] }, metadata: ["not JSON"], matcher: { raw: pattern } },
         rx: { problem: { type: "about:blank", status: 400, title: "Invalid scope", detail: "Unsupported scope arity." } },
     }], tok);
-    const [heading, facts] = out.split("\n");
+    const [heading, factsLine] = out.split("\n");
     assert.equal(heading, `### log:///1/2/7/READ → worker:///notes ${JSON.stringify(pattern)} · ${tok(out)}`);
-    const meta = JSON.parse(facts);
+    const meta = JSON.parse(factsLine);
     assert.equal(meta.scope, "<1,2,3,4,5>");
     assert.deepEqual(meta.metadata, ["not JSON"]);
     assert.equal(meta.problem.detail, "Unsupported scope arity.");
@@ -481,14 +481,14 @@ test("{§log-wire-format}: heading addresses precede the facts, and the facts ke
     for (const { name, entry, target } of cases) {
         await t.test(name, () => {
             const out = PacketWire.renderLog([entry], tok);
-            const [heading, facts] = out.split("\n");
+            const [heading, factsLine] = out.split("\n");
             const row = parseLogRecords(out)[0];
             const aside = "tx" in entry ? entry.tx.aside : undefined;
             assert.equal(heading, `### log:///1/5/1/${entry.op} → ${target} · ${tok(out)}`);
             assert.equal(row.path, target);
             assert.equal(row.aside, aside);
-            if (facts !== undefined && facts.startsWith("{")) {
-                const keys = Object.keys(JSON.parse(facts) as object);
+            if (factsLine !== undefined && factsLine.startsWith("{")) {
+                const keys = Object.keys(JSON.parse(factsLine) as object);
                 assert.deepEqual(keys, [...keys].toSorted(), "result facts keep stable alphabetical order");
             }
             assert.equal(row.tokens, tok(out), "the heading's charge prices the complete row");

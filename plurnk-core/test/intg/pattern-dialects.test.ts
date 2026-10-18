@@ -132,10 +132,10 @@ searched
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
             const edits = rows.filter((r) => r.op === "EDIT" && r.origin === "model");
             assert.deepEqual(edits.map((r) => r.status_rx), [201, 201, 201, 201], "the corpus seeded");
-            const finds = rows.filter((r) => r.op === "FIND" && r.origin === "model");
-            assert.equal(finds.length, PROBES.length, "one dispatched row per FIND");
+            const findRows = rows.filter((r) => r.op === "FIND" && r.origin === "model");
+            assert.equal(findRows.length, PROBES.length, "one dispatched row per FIND");
             for (const [index, probe] of PROBES.entries()) {
-                const row = finds[index]!;
+                const row = findRows[index]!;
                 const tx = JSON.parse(row.tx) as { target?: { raw?: string }; matcher?: { raw?: string } };
                 assert.equal(tx.target?.raw, probe.target, `probe ${index + 1} target`);
                 assert.equal(tx.matcher?.raw, probe.pattern, `probe ${index + 1} pattern`);

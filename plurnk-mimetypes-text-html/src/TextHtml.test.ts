@@ -279,18 +279,18 @@ describe("TextHtml — regex/jsonpath inheritance", () => {
 });
 
 describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
-    const h = new TextHtml(metadata);
+    const handler = new TextHtml(metadata);
 
     it("returns a document root with nested element children", async () => {
         const html = "<html><body><h1>Hello</h1></body></html>";
-        const tree = await h.deepJson(html) as { type: string; children: Array<{ type: string }> };
+        const tree = await handler.deepJson(html) as { type: string; children: Array<{ type: string }> };
         assert.equal(tree.type, "document");
         assert.ok(Array.isArray(tree.children));
     });
 
     it("element attributes surface in the attrs field", async () => {
         const html = '<html><body><a href="https://example.com" class="external">click</a></body></html>';
-        const tree = await h.deepJson(html);
+        const tree = await handler.deepJson(html);
         // Walk to find the <a> node.
         const stack: unknown[] = [tree];
         let found: { attrs?: Record<string, string>; text?: string } | null = null;
@@ -309,7 +309,7 @@ describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
         // parse5 is famously permissive — even garbage parses successfully
         // into a document. So we test that the method doesn't throw and
         // returns a document tree even for ill-formed input.
-        const tree = await h.deepJson("<<<not really html>>>");
+        const tree = await handler.deepJson("<<<not really html>>>");
         assert.ok(tree && typeof tree === "object");
         assert.equal((tree as { type: string }).type, "document");
     });

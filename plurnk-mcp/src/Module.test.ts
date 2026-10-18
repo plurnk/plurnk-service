@@ -571,12 +571,12 @@ test("{§mcp-preparation-diagnostics}: remote diagnostics cannot echo referenced
 });
 
 test("{§mcp-preparation-diagnostics}: early stdio exit retains bounded session stderr and timing without inventing an exit code", async (t) => {
-    const fixture = fileURLToPath(new URL("./fixtures/preparation-failure.mjs", import.meta.url));
+    const fixturePath = fileURLToPath(new URL("./fixtures/preparation-failure.mjs", import.meta.url));
     const h = harness({ FIXTURE_SECRET: "fixture-private-value" });
     await h.setup();
     t.mock.method(console, "error");
     try {
-        const prepared = await h.lane(1, new Map([["early", stdio("early", [fixture], {
+        const prepared = await h.lane(1, new Map([["early", stdio("early", [fixturePath], {
             env: { FIXTURE_SECRET: "${FIXTURE_SECRET}" },
         })]]));
         const outcome = prepared.outcomes.get("early");

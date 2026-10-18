@@ -37,8 +37,8 @@ test("{§turn-source-resources}: the initialization program and later content so
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         // Source identity never depends on the reader ({§turn-source-resources}); the analyst's log is listed, curated and forked below.
         const observer = await insertWorker(db, workspaceId, null, "observer");
-        const read = (target: string, scope = "<1,-1>", workerId = observer) =>
-            clientRead(engine, db, { workspaceId, workerId, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
+        const read = (target: string, scope = "<1,-1>", reader = observer) =>
+            clientRead(engine, db, { workspaceId, workerId: reader, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
         assert.deepEqual(records.filter((row: Record<string, unknown>) => String(row.logPath).endsWith("/emission")), [],

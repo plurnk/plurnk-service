@@ -90,11 +90,11 @@ const prune = (providerId, modelId, m) => {
     if (typeof maxInputTokens === "number" && maxInputTokens > 0) info.maxInputTokens = maxInputTokens;
     const maxOutputTokens = m?.limit?.output;
     if (typeof maxOutputTokens === "number" && maxOutputTokens > 0) info.maxOutputTokens = maxOutputTokens;
-    for (const [source, target] of [
+    for (const [from, to] of [
         ["structured_output", "structuredOutput"],
         ["temperature", "temperature"],
     ]) {
-        if (typeof m?.[source] === "boolean") info[target] = m[source];
+        if (typeof m?.[from] === "boolean") info[to] = m[from];
     }
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {

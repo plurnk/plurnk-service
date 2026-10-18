@@ -40,8 +40,8 @@ for (const [name, first, detail] of [
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; status_rx: number }>({ loop_id: loopId });
         if (detail !== null) {
             assert.equal(rows.filter(({ rx }) => {
-                const result = JSON.parse(rx);
-                return (result.problem?.detail ?? result.detail) === detail;
+                const parsed = JSON.parse(rx);
+                return (parsed.problem?.detail ?? parsed.detail) === detail;
             }).length, 1, "one durable correction, not duplicated grammar and runtime errors");
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }

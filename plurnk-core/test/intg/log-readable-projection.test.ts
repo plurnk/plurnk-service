@@ -61,7 +61,7 @@ test("{§log-readable-projection}: READ and COPY omit deliberate trims in origin
     const moved = await dispatch(`\`\`\`\`MOVE (${target}) <2,4> (worker:///moved.txt)\`\`\`\``);
     assert.equal(moved.status, 201, JSON.stringify(moved));
     assert.deepEqual(
-        (moved.effects as Array<{ target: string; action: string }>).map(({ target, action }) => `${action} ${target}`),
+        (moved.effects as Array<{ target: string; action: string }>).map(({ target: effectTarget, action }) => `${action} ${effectTarget}`),
         ["create worker:///moved.txt", `update ${target}`],
     );
     assert.equal((await dispatch("````READ (worker:///moved.txt) <1,-1>````")).content, "two\nfour", "the destination holds exactly the readable region");
@@ -69,7 +69,7 @@ test("{§log-readable-projection}: READ and COPY omit deliberate trims in origin
     const whole = await dispatch(`\`\`\`\`MOVE (${target}) (worker:///rest.txt)\`\`\`\``);
     assert.equal(whole.status, 201, JSON.stringify(whole));
     assert.deepEqual(
-        (whole.effects as Array<{ target: string; action: string }>).map(({ target, action }) => `${action} ${target}`),
+        (whole.effects as Array<{ target: string; action: string }>).map(({ target: effectTarget, action }) => `${action} ${effectTarget}`),
         ["create worker:///rest.txt", `delete ${target}`],
         "an unscoped MOVE retires the row exactly as an unscoped KILL does",
     );

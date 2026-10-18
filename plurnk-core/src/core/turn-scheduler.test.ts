@@ -59,7 +59,7 @@ Message.
 \`\`\`\`KILL (log:///1/2/3/READ)\`\`\`\``);
         const disposition = authored[0];
         const scheduled = scheduleTurnOps(authored);
-        assert.deepEqual(scheduled.map(({ op }) => op), ["SEND", "READ", "KILL", op], op);
+        assert.deepEqual(scheduled.map((item) => item.op), ["SEND", "READ", "KILL", op], op);
         assert.equal(scheduled.at(-1), disposition, op);
         assert.equal(authored[0], disposition, "scheduling never rewrites authored order");
     }

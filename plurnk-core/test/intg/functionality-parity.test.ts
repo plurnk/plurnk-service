@@ -370,8 +370,8 @@ const matrix = async (family: Family): Promise<void> => {
             "the full schema is materialized in the workspace's generated subtree");
         if (family.family === "mcp") {
             type Property = { readonly description?: string; readonly $ref?: string };
-            type Definition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };
-            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as { readonly $defs: Readonly<Record<string, Definition>> } | undefined;
+            type McpDefinition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };
+            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as { readonly $defs: Readonly<Record<string, McpDefinition>> } | undefined;
             assert.ok(schema);
             assert.deepEqual(addSchema.$defs["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"], schema, "both transport branches reach the model unchanged");
             const described = (property: Property): boolean => typeof property.description === "string"

@@ -766,8 +766,8 @@ export default class PacketWire {
                 ? PacketWire.#requestScope(selection?.lineMarker)
                 : selection?.metadata?.length ? selection.metadata : null);
             if (pair) {
-                const paired = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
-                if (Object.keys(paired).length > 0) meta[field] = paired;
+                const pairedValues = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
+                if (Object.keys(pairedValues).length > 0) meta[field] = pairedValues;
             } else if (values[0] !== null) meta[field] = values[0];
         }
         // {§log-wire-format}: describe resources and patterns directly; never serialize an OP.
@@ -782,10 +782,10 @@ export default class PacketWire {
         const request = replay?.statement;
         const requestedSelections = request === undefined ? [] : request.op === "COPY" || request.op === "MOVE"
             ? [request.source, request.destination] : [request];
-        const resolved = paired && paths.some((path, index) => {
+        const resolved = paired && paths.some((candidate, index) => {
             const selection = requestedSelections[index];
             const requested = selection !== undefined && "target" in selection ? selection.target : null;
-            return path !== PacketWire.#operandPath(requested, options.projectRoot ?? null, requested);
+            return candidate !== PacketWire.#operandPath(requested, options.projectRoot ?? null, requested);
         });
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : resolved ? paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ") : null;

@@ -882,7 +882,7 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
     const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}`,
         worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, address: Translator.addressOf(row), signal: row.signal, status: row.status_rx,
         attrs: row.attrs, state: row.state } });
-    const speech = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
+    const speechOf = (row: LogEntryNotification["entry"], aside: string | null) => ({ plurnk: { ...facts(row).plurnk, aside, receipt: row.rx } });
     const rows = [
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),
         wireRow({ id: 2, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", tx: authored("````READ (worker:///notes.md)\n````"), status_rx: 404,
@@ -893,7 +893,7 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
     ];
     const live = rows.flatMap((row) => t().logEntry({ entry: row }));
     const carried = (type: string) => live.filter((event) => event.type === type).map((event) => (event as { metadata?: unknown }).metadata);
-    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]), speech(rows[2], "the answer"), speech(rows[4], "parked")],
+    assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]), speechOf(rows[2], "the answer"), speechOf(rows[4], "parked")],
         "an arrival carries its row's facts, and speech its heading's aside and its receipt too");
     assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]), facts(rows[3])], "a call carries its row's facts, a bodiless WAIT's among them");
     assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]), facts(rows[3])], "and so does its result, its status the failure");
@@ -901,7 +901,7 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(snapshot.messages.map((message) => "toolCalls" in message && message.toolCalls !== undefined
         ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata),
-        [facts(rows[0]), facts(rows[1]), facts(rows[1]), speech(rows[2], "the answer"), facts(rows[3]), facts(rows[3]), speech(rows[4], "parked")],
+        [facts(rows[0]), facts(rows[1]), facts(rows[1]), speechOf(rows[2], "the answer"), facts(rows[3]), facts(rows[3]), speechOf(rows[4], "parked")],
         "the snapshot holds the same metadata on the same parts");
 });
 

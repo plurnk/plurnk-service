@@ -113,7 +113,7 @@
         "typescript/unbound-method": ["warn", { "ignoreStatic": true }],
         // Counted debts, 2026-10-18 (#1162): warnings until their sites are rewritten, batch by batch.
         // node:test's subtest context is `t` inside the parent's `t`; everything else is renamed site by site.
-        "eslint/no-shadow": ["warn", { "allow": ["t"] }],
+        "eslint/no-shadow": ["error", { "allow": ["t"] }],
         // An exhaustive `switch` over a union ends without a `return` and tsc proves it total; a `catch` that ends in a
         // `never` call is the same. The syntactic rule sees neither.
         "typescript/consistent-return": "off",

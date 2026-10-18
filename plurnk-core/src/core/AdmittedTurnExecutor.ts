@@ -256,8 +256,8 @@ export default class AdmittedTurnExecutor {
                 { op: writtenOp(statement) },
                 async (span) => {
                     let dispatchResult: DispatchResult;
-                    let commandsExecuted = 1;
-                    let commandsOmitted = 0;
+                    let executedCount = 1;
+                    let omittedCount = 0;
                     if (statement.op === "BARE") {
                         if (bare === undefined) {
                             throw new Error(`${origin} turnOps cannot execute BARE without provider acquisition context`);
@@ -270,9 +270,9 @@ export default class AdmittedTurnExecutor {
                             }
                             const batch = await this.#bareBatch.runBareBatch({
                                 statements: bareStatements,
-                                preparePrompt: (statement) => this.#dispatcher.prepareBarePrompt({
-                                    statement, workspaceId, workerId, loopId, turnId, origin,
-                                    sequence: rowSequence + bareStatements.indexOf(statement),
+                                preparePrompt: (bareStatement) => this.#dispatcher.prepareBarePrompt({
+                                    statement: bareStatement, workspaceId, workerId, loopId, turnId, origin,
+                                    sequence: rowSequence + bareStatements.indexOf(bareStatement),
                                 }),
                                 provider: bare.provider,
                                 turnId,
@@ -320,11 +320,11 @@ export default class AdmittedTurnExecutor {
                             onDispatch,
                             onSettled,
                         });
-                        ({ result: dispatchResult, commandsExecuted, commandsOmitted } = execution);
+                        ({ result: dispatchResult, commandsExecuted: executedCount, commandsOmitted: omittedCount } = execution);
                     }
                     span.setAttribute("status", dispatchResult.status);
                     recordCounter(OPS_DISPATCHED, { op: writtenOp(statement), status: dispatchResult.status });
-                    return { result: dispatchResult, commandsExecuted, commandsOmitted };
+                    return { result: dispatchResult, commandsExecuted: executedCount, commandsOmitted: omittedCount };
                 },
             );
             outcomes.push({ op: writtenOp(statement), status: result.status, problemType: result.problem?.type ?? null });

@@ -72,8 +72,8 @@ for (const delegated of ["WORK", "BARE"] as const) {
             ProviderInstantiate.registerInstance(provider, spec);
             return spec;
         }));
-        await withDaemon(null, async (db, _daemon, address) => {
-            const client = await connect(address);
+        await withDaemon(null, async (db, _daemon, daemonAddress) => {
+            const client = await connect(daemonAddress);
             try {
                 await rpcCall(client, 1, "workspace.create", { name: `admission-${crypto.randomUUID()}` });
                 const result = await runLoopToTerminal(client, 2, {

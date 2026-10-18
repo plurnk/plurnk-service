@@ -314,10 +314,10 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         assert.equal(reads.length, 3, "authored occurrences are never deduplicated across reasoning and content");
         assert.equal(reads.filter((row) => row.path === "sh:///fact").length, 2, "reasoning receipts retain the source; the content operation supplies its own");
         assert.equal(packetSection(packet, "emission-history"), read);
-        for (const read of reads) {
-            assert.equal(read.terminal, false, "a receipt retains the liveness at observation");
-            assert.match(String(read.body), /second/u);
-            assert.doesNotMatch(String(read.body), /first|third/u);
+        for (const receipt of reads) {
+            assert.equal(receipt.terminal, false, "a receipt retains the liveness at observation");
+            assert.match(String(receipt.body), /second/u);
+            assert.doesNotMatch(String(receipt.body), /first|third/u);
         }
         const done = await engine.runTurn({ ...context, provider, messages: [] });
         const curated = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: done.turnId }))!.packet);

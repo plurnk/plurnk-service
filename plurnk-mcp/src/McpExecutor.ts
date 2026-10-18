@@ -370,8 +370,8 @@ export default class McpExecutor extends BaseExecutor {
             );
             write("json", JSON.stringify(result, null, 2), "application/json");
             setState("json", "closed");
-            const body = await toolResultBody(result, runtime, entry);
-            write(CHANNEL, body.content, body.mimetype);
+            const resultBody = await toolResultBody(result, runtime, entry);
+            write(CHANNEL, resultBody.content, resultBody.mimetype);
             if (result.isError === true) {
                 const diagnostic = (result.content ?? [])
                     .flatMap((part) => part.type === "text" && part.text.trim().length > 0 ? [part.text] : [])
@@ -388,7 +388,7 @@ export default class McpExecutor extends BaseExecutor {
                 );
             }
             setState(CHANNEL, "closed");
-            const page = pageReceipt(args, tool, body);
+            const page = pageReceipt(args, tool, resultBody);
             return { status: 200, ...(page === null ? {} : { page }) };
         } catch (error) {
             if (error instanceof HeaderDeclarationError) {

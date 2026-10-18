@@ -365,7 +365,7 @@ class Search {
 
     #compose(frame: Frame): Summary {
         const { context } = frame;
-        const known = (position: number, at: Context | null, flags: Flags): Summary => this.#memo.get(this.#key(position, at, flags))!;
+        const known = (position: number, within: Context | null, flags: Flags): Summary => this.#memo.get(this.#key(position, within, flags))!;
         // For every place the block could end ({§pairing-objective}): the best complete reading by the complete
         // order, which composes only from complete parts; and the best complete and best repaired readings by the
         // repaired order, from which any repaired reading composes.

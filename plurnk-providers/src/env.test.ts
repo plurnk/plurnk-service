@@ -182,7 +182,6 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
 });
 
 test("dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
-    const { dataCaptureFromEnv } = await import("./env.ts");
     assert.deepEqual(dataCaptureFromEnv({}, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" }, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" }, "x"), { topLogprobs: 3, rawBody: true });

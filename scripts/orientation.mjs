@@ -172,11 +172,11 @@ try {
     daemon.stderr.on("data", (chunk) => appendFileSync(daemonErr, chunk));
 
     const address = await new Promise((accept, reject) => {
-        const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
+        const publishTimer = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
         const inspect = () => {
             const match = startup.match(/agui=(http:\/\/\S+)/);
             if (match === null) return;
-            clearTimeout(timeout);
+            clearTimeout(publishTimer);
             accept(new URL(match[1]));
         };
         daemon.stdout.on("data", inspect);

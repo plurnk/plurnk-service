@@ -776,7 +776,7 @@ for (const defect of ["outcome", "namespace"] as const) {
                 if (!input.enabled.has("candidate")) return prepared;
                 return defect === "outcome"
                     ? { ...prepared, outcomes: new Map([...prepared.outcomes].filter(([alias]) => alias !== "candidate")) }
-                    : { ...prepared, runtimes: (prepared.runtimes ?? []).map((runtime) => ({ ...runtime, namespaceOwner: "wrong owner" })) };
+                    : { ...prepared, runtimes: (prepared.runtimes ?? []).map((registered) => ({ ...registered, namespaceOwner: "wrong owner" })) };
             },
         }); } }, "test-module");
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -792,8 +792,8 @@ for (const defect of ["outcome", "namespace"] as const) {
         const result = await action("list") as { definitions: Array<{ alias: string }> };
         assert.deepEqual(result.definitions.map(({ alias }) => alias), ["svc"]);
         for (const [tag, expected] of [["svc", 200], ["candidate", 400]] as const) {
-            const result = await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame(tag, "fixture")));
-            assert.equal(result.status, expected, `${tag}: ${JSON.stringify(result)}`);
+            const outcome = await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame(tag, "fixture")));
+            assert.equal(outcome.status, expected, `${tag}: ${JSON.stringify(outcome)}`);
         }
     });
 }

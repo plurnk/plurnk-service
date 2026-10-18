@@ -23,8 +23,8 @@ for (const [header, warning] of [
         const childLoopId = await holdChild(db, workspaceId, workerId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
-        const provider = new Mock({ contextWindow: 100_000, responses: [header, "WAIT [0.25]", "WAIT", "SEND [200]"].map((header) => ({
-            assistant: { content: PlurnkParser.frame(header, null), reasoning: null },
+        const provider = new Mock({ contextWindow: 100_000, responses: [header, "WAIT [0.25]", "WAIT", "SEND [200]"].map((line) => ({
+            assistant: { content: PlurnkParser.frame(line, null), reasoning: null },
         })) });
         const run = () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);

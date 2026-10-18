@@ -290,7 +290,7 @@ test("{§module-action-registration} Daemon: module actions register once during
         );
         for (const scope of ["worker", "workspace"]) {
             assert.deepEqual(
-                daemon.listModuleActions().filter(({ name }) => name.startsWith(`${scope}.env.`)).map(({ name, scope }) => ({ name, scope })),
+                daemon.listModuleActions().filter(({ name }) => name.startsWith(`${scope}.env.`)).map((action) => ({ name: action.name, scope: action.scope })),
                 ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => ({ name: `${scope}.env.${verb}`, scope })),
             );
         }

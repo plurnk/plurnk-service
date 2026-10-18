@@ -409,10 +409,10 @@ export default class EntryFind {
         }
         const folders = statement.matcher === null && scope !== null
             ? [...Map.groupBy([...coordinateByKey.entries(), ...ambientKeys.map((key) => [key, { authority, pathname: key }] as const)], ([, coordinate]) => coordinate.authority)]
-                .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname), address.pathBase)
+                .flatMap(([groupAuthority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname), address.pathBase)
                     .map((folder) => ({
-                        selector: multipleAuthorities ? EntryManifest.toPath(scheme, authority, folder.selector) : folder.selector,
-                        pathnames: folder.pathnames.map((pathname) => multipleAuthorities ? EntryManifest.toPath(scheme, authority, pathname) : pathname),
+                        selector: multipleAuthorities ? EntryManifest.toPath(scheme, groupAuthority, folder.selector) : folder.selector,
+                        pathnames: folder.pathnames.map((pathname) => multipleAuthorities ? EntryManifest.toPath(scheme, groupAuthority, pathname) : pathname),
                     })))
             : [];
 

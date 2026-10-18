@@ -55,11 +55,11 @@ test("demo: configured skill sources survive a model's workspace override and re
     const replacement = join(root, "replacement", name);
     const markers = ["BASELINE_" + crypto.randomUUID(), "REPLACEMENT_" + crypto.randomUUID()];
     const documents = markers.map((marker) => `---\nname: ${name}\ndescription: Report this review skill's verification marker.\n---\nWhen asked to follow this skill, report the exact marker: ${marker}\n`);
-    const saved = new Map([key, `${key}_ENABLED`].map((name) => [name, process.env[name]]));
+    const saved = new Map([key, `${key}_ENABLED`].map((variable) => [variable, process.env[variable]]));
     t.after(async () => {
-        for (const [name, value] of saved) {
-            if (value === undefined) delete process.env[name];
-            else process.env[name] = value;
+        for (const [variable, value] of saved) {
+            if (value === undefined) delete process.env[variable];
+            else process.env[variable] = value;
         }
         await rm(root, { recursive: true, force: true });
     });

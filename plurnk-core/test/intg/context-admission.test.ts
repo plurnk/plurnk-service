@@ -36,8 +36,8 @@ class CountingMock extends Mock {
         this.#count = count;
     }
 
-    override async countPromptTokens(messages: readonly ChatMessage[]) {
-        return { kind: "exact" as const, tokens: messages.reduce((sum, message) => sum + this.#count(chatMessageText(message)), 0), source: "test:vocabulary" };
+    override async countPromptTokens(prompt: readonly ChatMessage[]) {
+        return { kind: "exact" as const, tokens: prompt.reduce((sum, message) => sum + this.#count(chatMessageText(message)), 0), source: "test:vocabulary" };
     }
 
     // The usage of the next response is the count of the request it answers.

@@ -292,8 +292,8 @@ export default class ResourceSelector {
                     startLine: window.start ?? 1, startColumn: 1, endLine: window.end ?? 0, endColumn: 3,
                 });
                 if (spans.length === 0) return Results.assert({ status: 204, matched: 0 });
-                bytes = Buffer.concat(spans.map(({ startLine, endLine, endColumn }) => complete!.subarray(startLine - 1, endColumn === 1 ? endLine - 1 : endLine)));
-                matchedScopes = spans.map(({ startLine, endLine, endColumn }) => ({ marks: endColumn === 1 ? [startLine] : [startLine, endLine] }));
+                bytes = Buffer.concat(spans.map((span) => complete!.subarray(span.startLine - 1, span.endColumn === 1 ? span.endLine - 1 : span.endLine)));
+                matchedScopes = spans.map((span) => ({ marks: span.endColumn === 1 ? [span.startLine] : [span.startLine, span.endLine] }));
             } else {
                 if (operation === "MOVE") complete = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
                 bytes = window.start === null || window.end === null ? new Uint8Array()

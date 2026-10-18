@@ -52,7 +52,7 @@ export default class PlurnkSkill implements SkillTree {
     async #contracts(): Promise<ReadonlyMap<string, string>> {
         const members = await EnvDefaults.members(await Meta.packageDirs(this.#nodeModules));
         const contracts = new Map<string, string>();
-        for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter(({ name }) => name !== SERVICE)]) {
+        for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter((member) => member.name !== SERVICE)]) {
             if (!await PlurnkSkill.#isFile(join(dir, "SPEC.md"))) continue;
             contracts.set(`packages/${name}/SPEC.md`, join(dir, "SPEC.md"));
             if (name === SERVICE) continue;

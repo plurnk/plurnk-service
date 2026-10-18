@@ -252,8 +252,8 @@ export default class McpResources {
         for (const message of result.messages) {
             const content = await ContentProjection.project(message.content, {
                 address: (uri) => ctx.entries.address(resourcePath(uri)),
-                publish: async (channel, name) => {
-                    const child = `${request.pathname}/resources/${names.allocate(name, JSON.stringify(message.content))}`;
+                publish: async (channel, resourceName) => {
+                    const child = `${request.pathname}/resources/${names.allocate(resourceName, JSON.stringify(message.content))}`;
                     requireEntrySuccess(await ctx.entries.write(child, {
                         channels: { body: channel },
                         attributes: { kind: RESOURCE_KIND },

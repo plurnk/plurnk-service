@@ -40,7 +40,7 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         assert.ok("content" in program && typeof program.content === "string");
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.ok(operations.some(({ op }) => op === "FIND"));
-        assert.ok(!operations.some((statement) => statement.op === "READ" && statement.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
+        assert.ok(!operations.some((operation) => operation.op === "READ" && operation.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
         assert.equal(provider.received.length, 1, "the survey costs no model inference");

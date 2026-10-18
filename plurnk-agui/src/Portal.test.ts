@@ -1168,7 +1168,7 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
         if (e.name === "plurnk.ambient") return `row:${e.value.worker_id}:${e.value.id}`;
         if (e.name === "plurnk.stream") return `stream:${e.value.workerId}`;
         return e.name;
-    }).filter((label) => !label.startsWith("plurnk."));
+    }).filter((name) => !name.startsWith("plurnk."));
     assert.deepEqual(customs, [
         "descendant:20:1:10:worker-20", "row:20:2",
         "descendant:30:2:20:worker-30", "row:30:3",
@@ -1268,7 +1268,7 @@ test("{§agui-subagents}: a conclusion still on its way when its loop is judged 
     m.fire(3, "log/entry", delegated(2, 20, 100));
     m.fire(3, "loop/terminated", termination({ workerId: 20, loopId: 100 }));
     await nextTask();
-    const order = attributed(seen).filter((label) => label.endsWith(":ops://worker-20/1"));
+    const order = attributed(seen).filter((name) => name.endsWith(":ops://worker-20/1"));
     assert.equal(order[0], "SUBAGENT_STARTED:ops://worker-20/1");
     assert.deepEqual(order.slice(-2), ["STEP_FINISHED:ops://worker-20/1", "SUBAGENT_FINISHED:ops://worker-20/1"],
         "the daemon read the loop concluded, but the Run receives its row first and its conclusion after");

@@ -262,12 +262,12 @@ for (const decision of ["reject", "drift"] as const) {
             statement: editStmt(localPath("*.txt"), "updated\n", fullReplace),
             onDispatch: (id) => publications[index++]!.resolve(id),
         });
-        for (const [index, published] of publications.entries()) {
+        for (const [position, published] of publications.entries()) {
             const id = await published.promise;
             const pending = await engine.pendingProposals(env.workspaceId);
             assert.deepEqual(pending.map(({ logEntryId }) => logEntryId), [id], `only the current concrete target is proposed: ${JSON.stringify(await rows())}`);
-            if (index === 0 && decision === "drift") await writeFile(join(root, "a.txt"), "external\n");
-            await engine.resolveProposal(id, { decision: index === 0 && decision === "reject" ? "reject" : "accept" });
+            if (position === 0 && decision === "drift") await writeFile(join(root, "a.txt"), "external\n");
+            await engine.resolveProposal(id, { decision: position === 0 && decision === "reject" ? "reject" : "accept" });
         }
         const result = await execution;
         assert.equal(result.status, decision === "reject" ? 400 : 409);

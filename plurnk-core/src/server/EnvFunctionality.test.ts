@@ -87,12 +87,12 @@ test("{§env-functionality} discover distinguishes an unknown source from a know
     const source = "@plurnk/plurnk-execs";
     assert.deepEqual((await adapter.discover({ source }, identity)).map(({ alias }) => alias), ["PAGER"]);
     assert.deepEqual(await adapter.discover({ source, query: "not-a-declared-name" }, identity), []);
-    for (const source of [".env", "/tmp/settings.env", "@plurnk/not-installed"]) {
-        await assert.rejects(adapter.discover({ source }, identity), (cause: unknown) => {
+    for (const rejected of [".env", "/tmp/settings.env", "@plurnk/not-installed"]) {
+        await assert.rejects(adapter.discover({ source: rejected }, identity), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/source-unknown");
-            assert.equal(cause.result.problem.source, source);
+            assert.equal(cause.result.problem.source, rejected);
             assert.match(cause.result.problem.detail, /package in the configuration catalog/u);
             assert.match(String(cause.result.problem.recovery), /READ/u);
             return true;

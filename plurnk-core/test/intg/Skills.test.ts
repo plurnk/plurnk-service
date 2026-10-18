@@ -36,8 +36,8 @@ const writeSkill = async (root: string, name: string, description: string, body?
 
 const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
-const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
-    try { await run(); } catch (error) {
+const rejectedProblem = async (attempt: () => Promise<unknown>): Promise<ProblemDetails> => {
+    try { await attempt(); } catch (error) {
         const problem = (error as { problem?: ProblemDetails }).problem ?? (error as OperationFailureError).result?.problem;
         assert.ok(problem !== undefined, `expected a Problem, got ${String(error)}`);
         return problem;

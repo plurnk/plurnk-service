@@ -59,7 +59,7 @@ if (import.meta.main) {
             status: { code: SpanStatusCode[span.status.code].toLowerCase(), message: span.status.message ?? "" },
             attributes: Object.entries(span.attributes).map(([name, value]) => ({ name, value })),
             span_events: span.events.map(({ name, attributes }) => ({
-                name, attributes: Object.entries(attributes ?? {}).map(([name, value]) => ({ name, value })),
+                name, attributes: Object.entries(attributes ?? {}).map(([key, value]) => ({ name: key, value })),
             })),
         },
     }))), null, 2));

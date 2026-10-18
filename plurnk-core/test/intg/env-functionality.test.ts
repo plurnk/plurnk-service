@@ -247,8 +247,8 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         };
         try {
             const before = await outputs();
-            const added = await accepted(bob, `\`\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
-            assert.equal(added.status, 201, "the accepted add settled inside the operation");
+            const bobAdded = await accepted(bob, `\`\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
+            assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "worker");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");

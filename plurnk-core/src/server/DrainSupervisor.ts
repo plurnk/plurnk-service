@@ -717,17 +717,17 @@ export default class DrainSupervisor {
         const owner = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
         if (owner === undefined) throw new Error(`cancellation worker ${workerId} does not exist`);
         const { cancelled, subscriptions } = await this.#withAdmissionLock(owner.workspace_id, async () => {
-            const cancelled = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
-            const subscriptions = (await Promise.all(cancelled.workerIds.map((id) =>
+            const tree = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
+            const open = (await Promise.all(tree.workerIds.map((id) =>
                 ChannelWrite.findOpenSubscriptionsForWorker(this.#db, id)))).flat();
-            for (const targetWorkerId of cancelled.workerIds) {
+            for (const targetWorkerId of tree.workerIds) {
                 for (const [loopId, timer] of this.#loopTimers) {
                     if (timer.workerId === targetWorkerId) this.#clearLoopTimer(loopId);
                 }
                 const scope = this.#workerAborts.get(targetWorkerId);
                 if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
             }
-            return { cancelled, subscriptions };
+            return { cancelled: tree, subscriptions: open };
         });
         await Promise.all(subscriptions.map(({ id }) => this.#cancelSubscription(id)));
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {

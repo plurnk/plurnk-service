@@ -39,7 +39,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertWorker(db, workspaceId, null, "observer");
-        const read = (source: string, workerId = observer) => clientRead(engine, db, { workspaceId, workerId, statement: statement(source) });
+        const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, workerId: reader, statement: statement(source) });
         const firstSource = await read(frame(`READ (${notes[0].resource}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");

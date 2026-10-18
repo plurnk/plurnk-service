@@ -739,7 +739,7 @@ describe("Mimetypes - process: totalLines", () => {
     });
 
     it("returns 0 for binary content (lines not meaningful for binary mimetypes)", async () => {
-        const binaryInfo: HandlerInfo = {
+        const octetInfo: HandlerInfo = {
             mimetype: "application/octet-stream",
             glyph: "📦",
             packageName: "@plurnk/plurnk-mimetypes-application-octet-stream",
@@ -750,7 +750,7 @@ describe("Mimetypes - process: totalLines", () => {
         };
         class BinaryHandler extends BaseHandler {}
         const m = new Mimetypes({
-            discovery: makeDiscovery([binaryInfo]),
+            discovery: makeDiscovery([octetInfo]),
             loader: async () => ({ default: BinaryHandler }),
         });
         const bytes = new Uint8Array([0x00, 0x0a, 0x0a, 0xff, 0x0a]);

@@ -178,15 +178,15 @@ content
 
 test("{§schemes-directory} scheme references follow supported capabilities, not illustrative operations", () => {
     const registry = new SchemeRegistry();
-    const resolver = new CapabilityResolver({} as Db, registry, () => undefined);
+    const scoped = new CapabilityResolver({} as Db, registry, () => undefined);
     for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "SEND", "KILL", "WORK", "FORK"] as const) {
-        assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ operation }] }]), true, operation);
+        assert.equal(scoped.allowsSchemeAcross("worker", 1, [{ only: [{ operation }] }]), true, operation);
     }
     for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "sh", "BARE"] as const) {
-        assert.equal(resolver.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
+        assert.equal(scoped.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
     }
-    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ access: "observe" }] }]), true);
-    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [] }]), false);
-    assert.equal(resolver.allowsSchemeAcross("worker", 1, [{ only: [{ operation: "READ" }] }, { deny: [{ scheme: "worker" }] }]), false);
-    assert.equal(resolver.allowsSchemeAcross("missing", 1, [{}]), false);
+    assert.equal(scoped.allowsSchemeAcross("worker", 1, [{ only: [{ access: "observe" }] }]), true);
+    assert.equal(scoped.allowsSchemeAcross("worker", 1, [{ only: [] }]), false);
+    assert.equal(scoped.allowsSchemeAcross("worker", 1, [{ only: [{ operation: "READ" }] }, { deny: [{ scheme: "worker" }] }]), false);
+    assert.equal(scoped.allowsSchemeAcross("missing", 1, [{}]), false);
 });

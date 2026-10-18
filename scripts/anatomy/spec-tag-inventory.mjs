@@ -19,4 +19,4 @@ const undeclaredCites = [...cites.keys()].filter((t) => !decl.has(t)); console.l
 // per-SPEC orphan listing (declaration line + text)
 const specText = new Map(specs.map((f) => [relative(root, f), readFileSync(f, "utf8").split("\n")]));
 const grouped = new Map(); for (const r of orphan) (grouped.get(r.spec) ?? grouped.set(r.spec, []).get(r.spec)).push(r);
-for (const [spec, rows] of [...grouped.entries()].toSorted((a, b) => b[1].length - a[1].length)) { console.log(`\n## ${spec}\n`); for (const r of rows.toSorted((a, b) => a.line - b.line)) console.log(`- ${r.line}: §${r.tag} — ${specText.get(spec)[r.line - 1].trim().slice(0, 160)}`); }
+for (const [spec, specRows] of [...grouped.entries()].toSorted((a, b) => b[1].length - a[1].length)) { console.log(`\n## ${spec}\n`); for (const r of specRows.toSorted((a, b) => a.line - b.line)) console.log(`- ${r.line}: §${r.tag} — ${specText.get(spec)[r.line - 1].trim().slice(0, 160)}`); }

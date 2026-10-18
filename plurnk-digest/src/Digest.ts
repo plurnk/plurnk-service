@@ -114,9 +114,9 @@ export default class Digest {
         const requestsByWorker = new Map<number, ProviderRequestRow[]>();
         const requestsByWorkspace = new Map<number, ProviderRequestRow[]>();
         const appendRequest = (map: Map<number, ProviderRequestRow[]>, id: number, request: ProviderRequestRow): void => {
-            const rows = map.get(id) ?? [];
-            rows.push(request);
-            map.set(id, rows);
+            const bucket = map.get(id) ?? [];
+            bucket.push(request);
+            map.set(id, bucket);
         };
         for (const request of providerRequests) {
             appendRequest(requestsByInferenceCall, request.inference_call_id, request);

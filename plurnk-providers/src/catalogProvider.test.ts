@@ -1084,8 +1084,8 @@ test("{§openrouter-app-attribution} attribution is the provider's declaration: 
     t.after(() => mock.restoreAll());
     for (const name of ["openrouter", "standardcompute"]) {
         const model = Object.keys(catalogSnapshot()[name] ?? {})[0];
-        const env = withProviderDefaults({ [lookupProvider(name)!.env[0]]: "test-key" });
-        await catalogProviderFromEnv(name, env, model)!.generate({ workerId: "w", messages: [{ role: "user", content: "hi" }] });
+        const providerEnv = withProviderDefaults({ [lookupProvider(name)!.env[0]]: "test-key" });
+        await catalogProviderFromEnv(name, providerEnv, model)!.generate({ workerId: "w", messages: [{ role: "user", content: "hi" }] });
     }
     const [openrouter, other] = [...seen.values()];
     assert.equal(openrouter?.get("http-referer"), "https://github.com/plurnk/plurnk-service");

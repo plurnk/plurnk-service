@@ -75,9 +75,9 @@ export default class MembershipMaterialization {
         const unchanged = known !== undefined && known.synced_sig === sig;
         const sourceProjection = unchanged ? sourceProjectionFrom(known.attributes) : null;
         if (unchanged) {
-            const sourceMaterialization = FileMaterialization.fromAttributes(known.attributes);
-            if (sourceMaterialization !== null) {
-                if (FileMaterialization.matchesCurrent(sourceMaterialization, sourceBytes)) return null;
+            const knownMaterialization = FileMaterialization.fromAttributes(known.attributes);
+            if (knownMaterialization !== null) {
+                if (FileMaterialization.matchesCurrent(knownMaterialization, sourceBytes)) return null;
             } else {
                 if (sourceProjection !== null) {
                     const currentIdentity = await MembershipMaterialization.#projectionIdentity(

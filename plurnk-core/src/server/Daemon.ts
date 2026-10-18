@@ -435,9 +435,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     // resident. Reconcile the worker-private discovery surface
                     // at the same pre-inference boundary used for activation.
                     await this.#residency.reconcile(workspaceId);
-                    const { provider, childProvider } = await this.#providersForLoop(loopId);
+                    const { provider: loopProvider, childProvider } = await this.#providersForLoop(loopId);
                     return await this.#engine.runLoop({
-                        provider,
+                        provider: loopProvider,
                         childProvider,
                         workspaceId,
                         workerId,

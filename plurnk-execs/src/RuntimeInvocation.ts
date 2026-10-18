@@ -185,8 +185,8 @@ export default class RuntimeInvocation {
             ? registry.tools
             : fail("tool registry.tools must be an array");
         const targets = new Set<string>();
-        const tools = toolValues.map((value, index): RuntimeRegisteredTool => {
-            const tool = recordOf(value, `tool registry.tools[${index}]`, fail);
+        const tools = toolValues.map((toolValue, index): RuntimeRegisteredTool => {
+            const tool = recordOf(toolValue, `tool registry.tools[${index}]`, fail);
             assertKnownFields(tool, new Set(["target", "summary", "invocation", "details", "definition"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
             const summary = RuntimeSummary.assertLine(tool.summary, `tool registry.tools[${index}].summary`, fail);

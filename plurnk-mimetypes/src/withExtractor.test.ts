@@ -167,14 +167,14 @@ describe("withExtractor mixin", () => {
 });
 
 describe("withExtractor — addRef (ANTLR refs grind)", () => {
-    function ctx(line: number, column: number, stopLine = line, stopColumn = column, stopText = "x") {
+    function refCtx(line: number, column: number, stopLine = line, stopColumn = column, stopText = "x") {
         return { start: { line, column }, stop: { line: stopLine, column: stopColumn, text: stopText } } as never;
     }
 
     it("addRef stamps 1-indexed positions; top-level refs carry no container", () => {
         const V = withExtractor(StubVisitorBase);
         const v = new V();
-        v.addRef("call", "tokenize", ctx(12, 4, 12, 4, "tokenize"));
+        v.addRef("call", "tokenize", refCtx(12, 4, 12, 4, "tokenize"));
         const [r] = v.refs;
         assert.equal(r.name, "tokenize");
         assert.equal(r.kind, "call");
@@ -187,12 +187,12 @@ describe("withExtractor — addRef (ANTLR refs grind)", () => {
     it("refs collected inside a gateContainer carry the dotted path", () => {
         class V extends withExtractor(StubVisitorBase) {
             override visitChildren(_node: unknown): unknown {
-                this.addRef("use", "accounts", ctx(5, 8, 5, 16, "accounts"));
+                this.addRef("use", "accounts", refCtx(5, 8, 5, 16, "accounts"));
                 return null;
             }
         }
         const v = new V();
-        v.gateContainer("v_report", ctx(1, 0, 9, 0));
+        v.gateContainer("v_report", refCtx(1, 0, 9, 0));
         assert.equal(v.refs[0].container, "v_report");
     });
 

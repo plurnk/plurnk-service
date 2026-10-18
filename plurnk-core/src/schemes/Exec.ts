@@ -781,7 +781,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         });
 
         const controller = new AbortController();
-        let unlink = (): void => {};
+        let detachParent = (): void => {};
         // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
         // only KILL, the worker's total reap, and daemon shutdown end it.
         if (core.signal !== undefined && attrs.detached !== true) {
@@ -797,7 +797,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // doubled fire is harmless. {§exec-lifetime}
             const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
-            unlink = (): void => parent.removeEventListener("abort", onParentAbort);
+            detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
         const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs, attrs.input === "open");
@@ -810,7 +810,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             },
             handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
             release: () => {
-                unlink();
+                detachParent();
                 this.#activeAborts.delete(subscriptionId);
                 this.#activeSpawns.delete(subscriptionId);
             },
@@ -970,15 +970,15 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             return callerSource;
         };
         const publishedNames = new ResourceNames();
-        const entrySink = (requestedPath: string | null, content: string | Uint8Array | null, opts: { mimetype?: string; name?: string }): Promise<string> => {
+        const entrySink = (requestedPath: string | null, content: string | Uint8Array | null, sink: { mimetype?: string; name?: string }): Promise<string> => {
             let path = requestedPath;
             if (path === null) {
                 if (content === null) return Promise.reject(new Error("entry(): an invocation resource requires supplied content"));
-                path = renderAddress({ scheme: runtime, authority: "", pathname: `${pathname}/resources/${publishedNames.allocate(opts.name)}` });
+                path = renderAddress({ scheme: runtime, authority: "", pathname: `${pathname}/resources/${publishedNames.allocate(sink.name)}` });
             }
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url") return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
-            if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
+            if (content !== null && sink.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
             const address = NetworkAddress.supports(parsed.scheme) ? NetworkAddress.from(parsed) : null;
             if (address?.hasCredentials === true) return Promise.reject(new Error("entry(): network URL userinfo is not allowed"));
             const fetchAddress = address !== null && (address.scheme === "http" || address.scheme === "https")
@@ -998,7 +998,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 materialized = Promise.resolve({
                     url: fetchAddress?.url ?? "http://localhost",
                     body: content,
-                    mimetype: opts.mimetype as string,
+                    mimetype: sink.mimetype as string,
                     allowConfiguredMaterializer: false,
                 });
             }
@@ -1011,19 +1011,19 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 if (resolved.address === null) {
                     throw new Error(`entry(): '${path.slice(0, 80)}' did not resolve to an entry address`);
                 }
-                const { authority, pathname, scheme } = resolved.address;
-                const coordinate = { authority, pathname };
+                const { authority, pathname: entryPathname, scheme } = resolved.address;
+                const entryCoordinate = { authority, pathname: entryPathname };
                 let channels: EntryData["channels"];
                 let decisive: string;
                 let source: string;
                 if (materialized === undefined) {
                     if (content === null) throw new Error("entry(): missing supplied content");
-                    const body = typeof content === "string" ? { content, mimetype: opts.mimetype! }
-                        : { content: "", bytes: content, mimetype: opts.mimetype! };
+                    const entryBody = typeof content === "string" ? { content, mimetype: sink.mimetype! }
+                        : { content: "", bytes: content, mimetype: sink.mimetype! };
                     const channel = requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme);
                     if (channel === undefined) throw new Error(`entry(): no default channel for '${scheme}'`);
-                    channels = { [channel]: body };
-                    decisive = typeof content === "string" ? content : `${opts.mimetype}; ${content.byteLength} bytes`;
+                    channels = { [channel]: entryBody };
+                    decisive = typeof content === "string" ? content : `${sink.mimetype}; ${content.byteLength} bytes`;
                     source = decisive;
                 } else {
                     const fetched = await materialized;
@@ -1047,7 +1047,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 }
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(coordinate, { channels }, ctx, scheme, {
+                    await EntryCrud.writeEntry(entryCoordinate, { channels }, ctx, scheme, {
                         defaultChannel: requestedPath === null ? executor.defaultChannel : ctx.defaultChannelFor?.(scheme),
                         output: requestedPath === null,
                     }),
@@ -1073,13 +1073,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 const sequence = narration.seq++;
                 const narrationAttrs = { kind: "entry_materialized" } as const;
                 if (written.problem !== undefined) {
-                    const coordinate = LogEntryProjection.coordinate(
+                    const narrationCoordinate = LogEntryProjection.coordinate(
                         `${narration.loopSeq}/${narration.turnSeq}/${sequence}`,
                         { origin: "_plurnk", op: "EDIT", attrs: narrationAttrs },
                     );
                     Results.attachInstance(
                         written,
-                        `log:///${coordinate}`,
+                        `log:///${narrationCoordinate}`,
                     );
                 }
                 const tx = JSON.stringify({ op: "EDIT", body: source });
@@ -1100,7 +1100,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     scheme, username: null, password: null,
                     hostname: address === null ? null : parsed.hostname,
                     port: address === null ? null : parsed.port,
-                    pathname: address === null ? pathname : PathSyntax.decodeParens(parsed.pathname),
+                    pathname: address === null ? entryPathname : PathSyntax.decodeParens(parsed.pathname),
                     query: address === null ? null : parsed.query,
                     fragment: null, lineMarker: null,
                     tx, mimetype_tx: "application/json",
@@ -1123,7 +1123,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
-                return renderAddress({ scheme, authority, pathname });
+                return renderAddress({ scheme, authority, pathname: entryPathname });
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(

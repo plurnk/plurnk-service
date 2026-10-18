@@ -313,7 +313,7 @@ const withFetch = async (
     }
 };
 
-const flush = () => new Promise<void>((settle) => setImmediate(settle));
+const flush = () => new Promise<void>((done) => setImmediate(done));
 
 // ── manifest ──────────────────────────────────────────────────────────────
 test("{§web-materialization-contract}: Http publishes its WebFetcher as the framework's web materializer", () => {
@@ -1872,7 +1872,7 @@ test("KILL of a live acquisition cancels it in place, and the owner settles 499"
         return pending.fetch;
     }), async () => {
         const acquisition = prepareRepresentation(http, readStmt(target), ctx);
-        await new Promise((settle) => setTimeout(settle, 20));
+        await new Promise((done) => setTimeout(done, 20));
         const killed = await http.kill(killStmt(target), ctx);
         assert.equal(killed.status, 200, "the KILL answers once the acquisition is aborted");
         const settled = await acquisition;
@@ -1900,7 +1900,7 @@ test("{§http-binary-source} KILL cancels a binary GET after headers, before pub
     });
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
-    t.after(() => { server.closeAllConnections(); return new Promise<void>((settle) => server.close(() => settle())); });
+    t.after(() => { server.closeAllConnections(); return new Promise<void>((done) => server.close(() => done())); });
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const target = urlTarget(`http://127.0.0.1:${address.port}/slow.bin`, "/slow.bin");

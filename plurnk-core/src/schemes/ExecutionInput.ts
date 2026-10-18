@@ -102,8 +102,8 @@ export default class ExecutionInput {
                 const outcome = await Promise.race([this.#opened.promise.then(() => null), aborted.promise]);
                 if (outcome !== null) return outcome;
             }
-            const unavailable = this.unavailable();
-            if (unavailable !== null) return unavailable;
+            const unavailableNow = this.unavailable();
+            if (unavailableNow !== null) return unavailableNow;
             started = true;
             try {
                 const result = Results.assert(await this.#receiver!({ body, metadata, signal }));

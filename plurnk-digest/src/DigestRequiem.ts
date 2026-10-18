@@ -93,7 +93,7 @@ export default class DigestRequiem {
 
         const { workers, byWorker, finalPacketsByWorker } = (() => {
             using evidence = opts.openEvidence(dbPath);
-            const { workers, loops, turnAttempts, turns } = evidence.rows();
+            const { workers: workerRows, loops, turnAttempts, turns } = evidence.rows();
             const loopById = new Map(loops.map((l) => [l.id, l]));
             const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
             for (const attempt of turnAttempts) {
@@ -105,7 +105,7 @@ export default class DigestRequiem {
             // Each worker's inference turns that carry a model request, ordered; the
             // last is the worker's final context. A worker without inference evidence
             // is silent.
-            const byWorker = new Map<number, Array<{
+            const groups = new Map<number, Array<{
                 loopSeq: number;
                 turnSeq: number;
                 turnId: number;
@@ -125,7 +125,7 @@ export default class DigestRequiem {
                 const { packet, packetFailure } = evidence.packet(t);
                 if (packetFailure !== null) throw new Error(packetFailure.error.message, { cause: packetFailure.error });
                 if (packet === null) continue;
-                const arr = byWorker.get(loop.worker_id) ?? [];
+                const arr = groups.get(loop.worker_id) ?? [];
                 arr.push({
                     loopSeq: loop.sequence,
                     turnSeq: t.sequence,
@@ -141,16 +141,16 @@ export default class DigestRequiem {
                             attributions: DigestRender.parseJson(attempt.attributions, []),
                         })),
                 });
-                byWorker.set(loop.worker_id, arr);
+                groups.set(loop.worker_id, arr);
             }
             const turnsById = new Map(turns.map((turn) => [turn.id, turn]));
-            const finalPacketsByWorker = new Map<number, ChatMessage[]>();
-            for (const [workerId, entries] of byWorker) {
+            const finalPackets = new Map<number, ChatMessage[]>();
+            for (const [workerId, entries] of groups) {
                 const last = entries.toSorted((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq).at(-1)!;
                 const packet = evidence.packet(turnsById.get(last.turnId)!).packet!;
-                finalPacketsByWorker.set(workerId, packet.messages());
+                finalPackets.set(workerId, packet.messages());
             }
-            return { workers, byWorker, finalPacketsByWorker };
+            return { workers: workerRows, byWorker: groups, finalPacketsByWorker: finalPackets };
         })();
 
         const out: string[] = [

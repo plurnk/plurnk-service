@@ -187,9 +187,9 @@ const resolveDefinition = (
         };
     }
     if (authorization?.type === "bearer") {
-        const field = `MCP server '${definition.name}'.authorization.token`;
-        const token = expandReferences(authorization.token, environ, field);
-        if (token.length === 0) throw new Error(`${field} resolved empty.`);
+        const tokenField = `MCP server '${definition.name}'.authorization.token`;
+        const token = expandReferences(authorization.token, environ, tokenField);
+        if (token.length === 0) throw new Error(`${tokenField} resolved empty.`);
         return {
             type: "streamable-http",
             url,
@@ -804,11 +804,11 @@ export default class ServerConnection {
         interact?: ClientInteractionHandler,
         toolDefinition?: Tool,
     ): Promise<CallToolResult> {
-        return this.#request(async ({ client, subscriptions, extensions }, signal) => {
+        return this.#request(async ({ client, subscriptions, extensions }, requestSignal) => {
             const timeout = requestTimeoutMs(this.#environ);
             // {§mcp-header-declarations} — the definition is scanned before either leg; an invalid declaration
             // refuses the call here and nothing reaches the transport.
-            const listed = async (): Promise<Tool | undefined> => (await this.tools(signal))
+            const listed = async (): Promise<Tool | undefined> => (await this.tools(requestSignal))
                 .find((candidate) => candidate.name === name);
             if (serverSupportsTasks(serverCapabilities(client))) {
                 const tool = toolDefinition ?? await listed();
@@ -821,7 +821,7 @@ export default class ServerConnection {
                     name,
                     args,
                     tool,
-                    signal,
+                    signal: requestSignal,
                     onProgress,
                     interact,
                     timeout,
@@ -832,7 +832,7 @@ export default class ServerConnection {
             // The direct leg never waits on a failed listing ({§mcp-catalog-deadline}): a definition at hand is
             // scanned, and a call with none to scan proceeds as it always has, with no routing headers.
             const tool = toolDefinition ?? await listed().catch(() => {
-                signal.throwIfAborted();
+                requestSignal.throwIfAborted();
                 return undefined;
             });
             if (tool !== undefined) assertHeaderDeclarations(tool);
@@ -857,13 +857,13 @@ export default class ServerConnection {
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
     ): Promise<ReadResourceResult> {
-        return this.#request(async ({ client, subscriptions }, signal) => {
-            await subscriptions.selectResource(uri, signal);
+        return this.#request(async ({ client, subscriptions }, requestSignal) => {
+            await subscriptions.selectResource(uri, requestSignal);
             return runInputRequiredRequest<ReadResourceResult>({
                 server: this.#definition.name,
                 operation: "resources/read",
                 originalParams: { uri },
-                signal,
+                signal: requestSignal,
                 interact,
                 timeout: requestTimeoutMs(this.#environ),
                 requestLeg: (params, options, retry) => client.readResource(
@@ -880,11 +880,11 @@ export default class ServerConnection {
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
     ): Promise<GetPromptResult> {
-        return this.#request(async ({ client }, signal) => runInputRequiredRequest<GetPromptResult>({
+        return this.#request(async ({ client }, requestSignal) => runInputRequiredRequest<GetPromptResult>({
             server: this.#definition.name,
             operation: "prompts/get",
             originalParams: { name, ...(args === undefined ? {} : { arguments: args }) },
-            signal,
+            signal: requestSignal,
             interact,
             timeout: requestTimeoutMs(this.#environ),
             requestLeg: (params, options) => client.getPrompt(
@@ -898,9 +898,9 @@ export default class ServerConnection {
         params: CompleteRequest["params"],
         signal?: AbortSignal,
     ): Promise<CompleteResult> {
-        return this.#request(async ({ client }, signal) => client.complete(
+        return this.#request(async ({ client }, requestSignal) => client.complete(
             params,
-            this.#requestOptions(signal),
+            this.#requestOptions(requestSignal),
         ), signal);
     }
 

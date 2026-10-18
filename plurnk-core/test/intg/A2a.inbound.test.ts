@@ -331,21 +331,21 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Task workers thro
         assert.ok(followUp.includes("choose a branch"), "the follow-up Task sees the caller's earlier request");
         assert.ok(followUp.includes("Which branch should I use?"), "and the question it answers");
         const namedTasks: string[] = [];
-        for (const [contextId, result] of [
+        for (const [contextId, expectedValue] of [
             ["Approach_A", "uppercase context result"],
             ["approach_a", "lowercase context result"],
         ] as const) {
             const named = await runTask(client, "produce a named context result", { contextId });
             assert.equal(named.task.contextId, contextId);
-            const stored = await client.getTask({ tenant: "", id: named.task.id, historyLength: 1 });
-            assert.equal(stored.status?.state, TaskState.TASK_STATE_COMPLETED);
-            assert.equal(stored.artifacts[0]?.parts[0]?.content?.value, result);
+            const storedNamed = await client.getTask({ tenant: "", id: named.task.id, historyLength: 1 });
+            assert.equal(storedNamed.status?.state, TaskState.TASK_STATE_COMPLETED);
+            assert.equal(storedNamed.artifacts[0]?.parts[0]?.content?.value, expectedValue);
             const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: named.task.id } });
             assert.ok(worker?.parentWorkerId);
             const loops = await daemon.listWorkerLoops({ workspaceId: workspace.workspaceId, workerId: worker.id });
             assert.deepEqual(loops.map(({ promptSource }) => taskOf(promptSource)), [named.task.id]);
-            const listed = await client.listTasks(ListTasksRequest.fromJSON({ contextId }));
-            assert.deepEqual(listed.tasks.map(({ id }) => id), [named.task.id], "Context filters are case-sensitive");
+            const listedNamed = await client.listTasks(ListTasksRequest.fromJSON({ contextId }));
+            assert.deepEqual(listedNamed.tasks.map(({ id }) => id), [named.task.id], "Context filters are case-sensitive");
             namedTasks.push(named.task.id);
         }
         assert.notEqual(namedTasks[0], namedTasks[1]);

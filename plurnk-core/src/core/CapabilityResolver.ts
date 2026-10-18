@@ -89,7 +89,7 @@ export default class CapabilityResolver {
             // tool-required/tool-not-enabled failures; policy cannot
             // misrepresent absence as denied authority.
             if (registry !== null && tool === null) return [];
-            const demands: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workspaceId)];
+            const required: CapabilityDescriptor[] = [this.#runtimeDescriptor(runtime, tool, workspaceId)];
             const targetKind = entry.invocation.target?.kind;
             const execTarget = route.target;
             if ((targetKind === "resource" || targetKind === "script") && execTarget === null) {
@@ -97,9 +97,9 @@ export default class CapabilityResolver {
             } else if ((targetKind === "resource" || targetKind === "script") && execTarget !== null) {
                 const targetDemand = describe(statement.runtime, "observe", execTarget);
                 if (targetDemand === null) return [];
-                demands.push(...targetDemand);
+                required.push(...targetDemand);
             }
-            return demands;
+            return required;
         }
         switch (statement.op) {
             case "FIND":
