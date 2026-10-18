@@ -362,7 +362,7 @@ plurnk-service may be starting there, and only `discover` says which.
 | {§worker-lifecycle-wake-requeue-not-terminal} | A wake re-queue is not a terminal. |
 | {§worker-scheme-collect} | Collect |
 | {§worker-loop-result} | `ops://<name>/<sequence>` selects one worker-local positive safe-integer loop sequence ({§loop-answer}; one… |
-| {§child-orientation} | Child orientation. |
+| {§child-orientation} | Child orientation: the packet's Open Work section is the current inventory of what this worker holds open. |
 | {§packet-empty-sections} | Empty sections are stated where the model decides on them. |
 | {§packet-current-turn} | The packet says who, which turn and who attends, below the log. |
 <!-- /map -->
@@ -739,30 +739,16 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   loop remains readable after newer loops, log curation, or a reply to its originating message.
   A failure reports its problem even when the loop answered earlier: the failure is the news.
   READs and completion observations use the same resolution, representation and projector.
-- §child-orientation **Child orientation.** Beyond the conclusion delta, every
-  turn the packet's status clump surfaces the work this worker currently holds
-  open, beside the messages it owes: `## Open Work` is one JSON object, `{"workers": [...], "streams": [...], "messages": [...]}`, its
-  unconcluded child workers, its open streams and the messages it sent that await
-  completion ({§worker-obligations}) as `{status, path}` pointers (the same shape as
-  the errors section); a message pointer carries the recipient loop's status. Body-suppressed child activity is durable
-  history; this section is the current inventory that keeps an active obligation
-  visible even when no new activity arrived. Each open stream pointer carries
-  elapsed runtime, output inactivity, and its channels' sizes and growth since
-  the last packet in `detail`
-  (`{"status":"active","path":"sh:///ab3d5678","detail":"elapsed 300s; output unchanged 120s; stdout 340 lines (+2048 bytes)"}`).
-  Both durations are whole seconds at packet assembly, floored and bounded
-  below by zero. Runtime starts at subscription opening. Output inactivity
-  starts there too, then resets atomically when any published channel's content
-  changes, including replacement or clearing. Identical writes, empty appends,
-  READs, publication acknowledgements, metadata, and channel-state changes do
-  not reset it. The clock is durable; a stream lacking that evidence
-  reports `output timing unknown` until its next content change, never a guessed
-  timestamp. These are observations, not new timeouts or wake conditions
-  ({§exec-stream}). It is orienting state, never advice: the model sees its live
-  subtree (`{"status":102,"path":"worker://worker-x"}`) and reasons for itself —
-  READ, SEND, or KILL via the path.
-  Workspace schedules are not held work: an occurrence arrives as a message
-  ({§schedule-delivery}).
+- §child-orientation **Child orientation: the packet's Open Work section is the current inventory of what this worker holds open.** Beyond the conclusion delta, every turn the packet's status clump surfaces the work this worker currently holds open, beside the messages it owes: `## Open Work` is one JSON object, `{"workers": [...], "streams": [...], "messages": [...]}`, its unconcluded child workers, its open streams and the messages it sent that await completion ({§worker-obligations}) as `{status, path}` pointers (the same shape as the errors section); a message pointer carries the recipient loop's status. Body-suppressed child activity is durable history; this section is the current inventory that keeps an active obligation visible even when no new activity arrived. It is orienting state, never advice: the model sees its live subtree (`{"status":102,"path":"worker://worker-x"}`) and reasons for itself — READ, SEND, or KILL via the path. Workspace schedules are not held work: an occurrence arrives as a message ({§schedule-delivery}).
+
+  | Open stream pointer `detail` | Rule |
+  | --- | --- |
+  | Shape | elapsed runtime, output inactivity, and its channels' sizes and growth since the last packet (`{"status":"active","path":"sh:///ab3d5678","detail":"elapsed 300s; output unchanged 120s; stdout 340 lines (+2048 bytes)"}`); both durations are whole seconds at packet assembly, floored and bounded below by zero |
+  | Runtime | starts at subscription opening |
+  | Output inactivity | starts there too, then resets atomically when any published channel's content changes, including replacement or clearing; identical writes, empty appends, READs, publication acknowledgements, metadata, and channel-state changes do not reset it |
+  | The clock | durable; a stream lacking that evidence reports `output timing unknown` until its next content change, never a guessed timestamp |
+  | Observations only | not new timeouts or wake conditions ({§exec-stream}) |
+
 - §packet-empty-sections **Empty sections are stated where the model decides on them.**
   `## Open Work` renders every turn, each of its lists `[]` when empty: the
   model decides whether to wait or complete on exactly these facts, so their
@@ -1362,7 +1348,18 @@ boundary.
 - §worker-lifecycle-idle-is-concluded **Idle is not completion.** A loop concludes only under {§loop-completion}; an unanswered message remains an obligation even when nothing is running. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
-- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Database-only owner-loss settlement commits atomically before drains or process-local observation resume; a failed settlement leaves no partial transitions. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation requeues on an unseen completion or when no live obligation remains. Otherwise it stays parked on surviving children or unanswered inter-worker messages; the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}). Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
+- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Database-only owner-loss settlement commits atomically before drains or process-local observation resume; a failed settlement leaves no partial transitions. Recovery never fabricates zero evidence, and these operations are idempotent, so an interrupted recovery safely repeats.
+
+  | Durable state at boot | Settlement |
+  | --- | --- |
+  | An accepted `100` loop | preserved, its drain restored |
+  | A `102` loop | belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row — never replayed across an unknown effect boundary |
+  | A pending physical provider request | settles first as an error with absent usage and explicitly unknown cost; then its logical model call closes |
+  | A durable proposed operation | lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}) |
+  | A pending client interaction | lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}) |
+  | A durable-open subscription | belonged to a vanished callable: active channels become errored and its row closes `500` |
+  | A `202` continuation | requeues on an unseen completion or when no live obligation remains; otherwise it stays parked on surviving children or unanswered inter-worker messages, and the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}) |
+  | Child terminalization | wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges |
 
 ---
 
@@ -2354,24 +2351,15 @@ Client-interface target parameters carry fragments inline (`{ target: "sh:///a3b
 
 **Wire rendering: default channel is path-only.** A rendered target omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
-- §readable-channel **A readable projection is a channel, never a hidden matching surface.**
-  When an entry's source channel lands — an EDIT that creates or changes it, a COPY or MOVE
-  landing, a member materialized from disk — and its mimetype handler owns a readable
-  projection that differs from the source ({§mimetype-content}), that projection lands beside
-  it as the `readable` channel, `text/markdown`, in its own line coordinates; a source without
-  a projection keeps no sibling, and a source channel's deletion takes the sibling with it. A
-  scheme that supplies `readable` in its own write owns it — a fetched page's curated Markdown
-  arrives with its producer outcome ({§html-materialization} in the http scheme) — and core
-  derives the sibling only for a write that supplies none.
-  Worker and file entries declare `readable`. Every operation addresses the channel it names
-  and matches in that channel's own text ({§mimetype-content-query}): a regex or glob on
-  `page.html` sees the markup and reports the markup's lines, on `page.html#readable` it sees
-  the Markdown and reports the Markdown's lines; FIND lists both channels per path
-  ({§channel-selection-visibility}) and full-text search indexes each. The projection is
-  derived, so no operation writes it: EDIT of `#readable`, a COPY or MOVE landing on it, and a
-  MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read. Binary sources
-  keep {§membership-source-projection}, where the source is not text and the projection is the
-  body; a fetched web page keeps its scheme's own two channels ({§html-materialization}).
+- §readable-channel **A readable projection is a channel, never a hidden matching surface.** When an entry's source channel lands — an EDIT that creates or changes it, a COPY or MOVE landing, a member materialized from disk — and its mimetype handler owns a readable projection that differs from the source ({§mimetype-content}), that projection lands beside it as the `readable` channel, `text/markdown`, in its own line coordinates; a source without a projection keeps no sibling, and a source channel's deletion takes the sibling with it. Worker and file entries declare `readable`.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Ownership | a scheme that supplies `readable` in its own write owns it — a fetched page's curated Markdown arrives with its producer outcome ({§html-materialization} in the http scheme) — and core derives the sibling only for a write that supplies none |
+  | Matching | every operation addresses the channel it names and matches in that channel's own text ({§mimetype-content-query}): a regex or glob on `page.html` sees the markup and reports the markup's lines, on `page.html#readable` it sees the Markdown and reports the Markdown's lines; FIND lists both channels per path ({§channel-selection-visibility}) and full-text search indexes each |
+  | Writes | the projection is derived, so no operation writes it: EDIT of `#readable`, a COPY or MOVE landing on it, and a MOVE out of it are 400 `channel-derived`; COPY from it is an ordinary read |
+  | Binary sources | keep {§membership-source-projection}, where the source is not text and the projection is the body; a fetched web page keeps its scheme's own two channels ({§html-materialization}) |
+
 - §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, projection `mimetype`, tokens, and lines (default channel first), and a matcher location names the channel its line coordinates address whenever that is not the resource's default channel. A READ of a multi-channel resource names its other channels with their tokens in `channels`, keyed by the fragment the model appends (`{"#readable": 812}`), so first contact — a fetched page, a stream's stdout — carries the same choice without a listing; a single-channel resource names none. When the default channel is a readable projection of a differently typed source, it also names `sourceMimetype` once; this is representation evidence, not a different READ workflow. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with {§context-fit} — this is information, not a second guard.
 
 ### §channel-state Channel state — metadata, not gating
@@ -2522,31 +2510,22 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   coordinates, the shared entry mutation owner rechecks selected endpoint
   neighborhoods against its exact snapshot, and atomic identity/channel claims
   and storage predicates close the remaining races.
-- §edit-pattern **A pattern replaces every selected span with the literal body.**
-  ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under
-  the channel's own mimetype, matches, and expands into one atomic batch
-  ({§edit-batch}) of four-coordinate splices, all relative to the same original
-  content under {§slice-semantics-compose-pattern}: a regex span is its match;
-  a literal is each substring occurrence; a glob selects matching line content;
-  a node dialect's span (`//` xpath, `$` jsonpath) is the selected node's source
-  region, not its enclosing context, across as
-  many lines as the node spans, so ```` ```EDIT (books.xml) [{"pattern":
-  "//book[price > 35]"}] ```` replaces each such element and an empty body
-  removes it. FTS uses its located token/phrase occurrences; graph uses the
-  definitions or references selected under {§graph-relations}. The body is
-  literal replacement text, never a template; an absent body deletes only the
-  spans. Regex anchors apply per line (`^`, `$`); matches may cross line breaks.
-  A numeric scope admits only complete matches inside its resolved source
-  region, including columns; `<0>` and `<-1>` name insertion positions and are refused
-  (400 `pattern-scope-invalid`). Every touched line's anchor guards the batch as a
-  precondition, so a same-turn change to one of them is the ordinary
-  {§edit-collision}. Zero matches change nothing: 204 with `matched: 0`, never a
-  clobber. The result is one operation receipt: `matched` spans, `receipt` for the
-  first splice ({§edit-result-receipt-projection}), and `last` beside it for the
-  final one when there were several. A scheme without textual EDIT scopes refuses the
-  pattern before any read (400 `pattern-unsupported`). Same-turn anchor continuity
-  ({§edit-anchor-continuity}) does not carry through a pattern batch; the next
-  anchored EDIT validates against current state.
+- §edit-pattern **A pattern replaces every selected span with the literal body.** ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under the channel's own mimetype, matches, and expands into one atomic batch ({§edit-batch}) of four-coordinate splices, all relative to the same original content under {§slice-semantics-compose-pattern}. The body is literal replacement text, never a template; an absent body deletes only the spans. A numeric scope admits only complete matches inside its resolved source region, including columns; `<0>` and `<-1>` name insertion positions and are refused (400 `pattern-scope-invalid`). A scheme without textual EDIT scopes refuses the pattern before any read (400 `pattern-unsupported`).
+
+  | Dialect | Span |
+  | --- | --- |
+  | A regex | its match; anchors apply per line (`^`, `$`), and matches may cross line breaks |
+  | A literal | each substring occurrence |
+  | A glob | matching line content |
+  | A node dialect (`//` xpath, `$` jsonpath) | the selected node's source region, not its enclosing context, across as many lines as the node spans, so ```` ```EDIT (books.xml) [{"pattern": "//book[price > 35]"}] ```` replaces each such element and an empty body removes it |
+  | FTS | its located token/phrase occurrences |
+  | Graph | the definitions or references selected under {§graph-relations} |
+
+  | Rule | What |
+  | --- | --- |
+  | Anchors | every touched line's anchor guards the batch as a precondition, so a same-turn change to one of them is the ordinary {§edit-collision}; same-turn anchor continuity ({§edit-anchor-continuity}) does not carry through a pattern batch, and the next anchored EDIT validates against current state |
+  | Zero matches | change nothing: 204 with `matched: 0`, never a clobber |
+  | The result | one operation receipt: `matched` spans, `receipt` for the first splice ({§edit-result-receipt-projection}), and `last` beside it for the final one when there were several |
 
 A `file:///` member EDIT computes against its materialized body and **proposes** (202) conditional file publication under {§membership-edit-write-revision}, {§file-external-race}, and {§proposal}. The marker-required rule applies identically: an existing file is never markerlessly replaced.
 
@@ -2698,7 +2677,7 @@ FIND pages the complete location set ({§find-result-projection}).
 | {§log-address-metadata} | Addresses name their relationship, not the row's producer. |
 | {§packet-extent-metadata} | Extent metadata: one scope notation, distinct coordinate owners. |
 | {§operation-resource-receipt} | A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `path` and… |
-| {§packet-attachment-parts} | Attachment parts: |
+| {§packet-attachment-parts} | Attachment parts: a retained native READ observation rides every compatible-model packet as one file part. |
 | {§packet-token-accounting} | Every row reports one `tokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, facts,… |
 | {§retrieval-packet-metadata} | READ/FIND packet metadata |
 | {§read-past-end} | A line READ whose range starts past the end of nonempty content is answered like an empty FIND page: with no… |
@@ -2708,7 +2687,7 @@ FIND pages the complete location set ({§find-result-projection}).
 | {§reasoning-row} | The reasoning row |
 | {§turn-source-resources} | Immutable turn-source resources |
 | {§rejected-emission-entry} | A rejected provider response is not `turnOps`: it never became an admitted turn program, and no emission row… |
-| {§log-coordinate-hierarchy} | Log coordinates are a hierarchical prefix; the trailing slash is optional |
+| {§log-coordinate-hierarchy} | Log coordinates are a hierarchical prefix; the trailing slash is optional. |
 | {§log-near-miss} | A log miss beside rows that exist names them. |
 | {§log-curation-folder-idiom} | Log curation speaks the folder idiom; a zero-match sweep is a no-op success |
 | {§log-curation-set-selection} | Row selection and body scope are independent |
@@ -2893,36 +2872,24 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
 Authored `metadata` retains its opaque ordered block strings under {§scheme-metadata-modifier}, as stored under {§log-sensitive-request-evidence}; COPY/MOVE pair them as `{from,to}`. Packet rendering does not interpret scheme options or discard malformed input from a failed operation.
 
 - §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `path` and `stream`. It identifies returned material without replacing the addressed operand or injecting that material into context; ordinary READ acquires it.
-- §packet-attachment-parts **Attachment parts:** a successful READ of an attachable resource carries projection facts with its
-  result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
-  `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as
-  `document: { mimetype, pages, bytes }` (`pages` null when the page tree is unreadable; the
-  attachment then weighs by bytes and carries no page count), or audio ({§mimetype-audio-facts}) as
-  `audio: { mimetype, duration, bytes }` (`duration` in seconds, null when unknown). READ snapshots complete source bytes through
-  the scheme's byte supplier or ordinary stored binary channel ({§binary-parity}), checking
-  {§mimetype-binary-input} before loading the native snapshot; the text/hex projection
-  and native observation use those same bytes. Immutable content-addressed `native_contents` stores each
-  byte sequence once; the result's `nativeContentHash`, enforced by the log's foreign key, identifies it.
-  This is retained evidence, not a separate visibility or delivery lifecycle. Source mutation/deletion
-  cannot change a retained observation. Explicit READ of its still-active log source can acquire the same media again.
-  Every compatible-model packet includes one file part per retained, admitted READ observation, directly
-  after the user section ending at that READ record, in observation order. The attachment retains that
-  section's name in request evidence; later log records or emissions never move ahead of it. Packets
-  stored without a section binding retain their recorded whole-log placement. Each file part is
-  preceded by a text part that names the observation's log
-  coordinate, source path and projection facts and states that the bytes are that READ's own, retained
-  until its row is KILLed: an uncaptioned native part on the user turn reads as a fresh arrival (#899).
-  Model-response settlement never consumes an observation. KILL follows
-  {§log-kill-scope}; forks inherit the snapshot and ordinary projection state independently. Output withholding
-  suppresses the complete native part under {§context-fit}. Unsupported routes receive only the
-  text projection and no native charge; switching back to a compatible route exposes still-retained media.
-  Each included part contributes `tokensAttachment` within `tokens`: `ceil(width × height / 750)` for an
-  image, `pages × 1500` for a document, `ceil(duration × 32)` for audio, or `ceil(bytes / 4)` when page count
-  or duration is unknown. Byte ranges select
-  hexadecimal text, never crop the native resource. Retries reuse the frozen request; model-call evidence
-  records the exact READ coordinates sent without controlling retention. Missing immutable bytes are an
-  internal integrity failure, never silently dropped content. No ejection message or permanent teaching is
-  added. These stable curation weights are not provider-token measurements ({§tokenomics-render-weight-budget}).
+- §packet-attachment-parts **Attachment parts: a retained native READ observation rides every compatible-model packet as one file part.** A successful READ of an attachable resource carries projection facts with its result ({§mimetype-projection-facts}) and snapshots complete source bytes through the scheme's byte supplier or ordinary stored binary channel ({§binary-parity}), checking {§mimetype-binary-input} before loading the native snapshot; the text/hex projection and native observation use those same bytes. These stable curation weights are not provider-token measurements ({§tokenomics-render-weight-budget}).
+
+  | Resource | Projection facts | `tokensAttachment` within `tokens` |
+  | --- | --- | --- |
+  | An image ({§mimetype-image}) | `image: { mimetype, width, height, bytes }` | `ceil(width × height / 750)` |
+  | A PDF ({§mimetype-pdf-facts}) | `document: { mimetype, pages, bytes }` (`pages` null when the page tree is unreadable; the attachment then weighs by bytes and carries no page count) | `pages × 1500`, or `ceil(bytes / 4)` when the page count is unknown |
+  | Audio ({§mimetype-audio-facts}) | `audio: { mimetype, duration, bytes }` (`duration` in seconds, null when unknown) | `ceil(duration × 32)`, or `ceil(bytes / 4)` when the duration is unknown |
+
+  | Fact | Rule |
+  | --- | --- |
+  | Retention | immutable content-addressed `native_contents` stores each byte sequence once; the result's `nativeContentHash`, enforced by the log's foreign key, identifies it; this is retained evidence, not a separate visibility or delivery lifecycle; source mutation/deletion cannot change a retained observation, and explicit READ of its still-active log source can acquire the same media again; missing immutable bytes are an internal integrity failure, never silently dropped content |
+  | Placement | every compatible-model packet includes one file part per retained, admitted READ observation, directly after the user section ending at that READ record, in observation order; the attachment retains that section's name in request evidence, later log records or emissions never move ahead of it, and packets stored without a section binding retain their recorded whole-log placement |
+  | Caption | each file part is preceded by a text part that names the observation's log coordinate, source path and projection facts and states that the bytes are that READ's own, retained until its row is KILLed: an uncaptioned native part on the user turn reads as a fresh arrival (#899) |
+  | Lifecycle | model-response settlement never consumes an observation; KILL follows {§log-kill-scope}; forks inherit the snapshot and ordinary projection state independently; output withholding suppresses the complete native part under {§context-fit}; retries reuse the frozen request, and model-call evidence records the exact READ coordinates sent without controlling retention |
+  | Routes | unsupported routes receive only the text projection and no native charge; switching back to a compatible route exposes still-retained media |
+  | Byte ranges | select hexadecimal text, never crop the native resource |
+  | Teaching | no ejection message or permanent teaching is added |
+
 - §packet-token-accounting Every row reports one `tokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, facts, visible body, selected native attachment and any assistant operation owned by that receipt ({§paired-receipt}). Packet accounting measures each actual message once. The completed record is measured to a fixed point, including the accounting field itself. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
@@ -3023,7 +2990,26 @@ reads what the model thought and where its content program can be found
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program, and no emission row announces it ({§emission-row}). The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/attempt` for a rejected emission, `/emission` for an admitted one's announcement ({§emission-row}). An executor leaf is derived from the durable submitted statement (its `runtime`), never an internal dispatch type or the current tool registry. Digits and punctuation in executor names remain part of the leaf. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. READ anchors use the canonical suffixed identity even when addressed by shorthand. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/python3`, `log:///**/attempt`, and `log:///**/emission` deliberately filter canonical leaves. Executor outputs instead use workspace-wide claims such as `sh:///ab3d5678#stdout` ({§execution-output-identity}); their source operation has log coordinates, but resource lifetime and identity are independent of that observation. Error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple. Within a turn, sequence is arrival order. Inbound SEND rows publish before the program runs ({§message-arrival}); a turn receiving messages holds the first at `log:///L/T/1/SEND`, followed by further arrivals oldest first, then its emission's announcement, then the model's operations ({§packet-current-turn} names `L/T`).
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional.** A coordinate is `loop/turn/sequence`; a full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix that selects its descendants, and the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. Within a turn, sequence is arrival order: inbound SEND rows publish before the program runs ({§message-arrival}), so a turn receiving messages holds the first at `log:///L/T/1/SEND`, followed by further arrivals oldest first, then its emission's announcement, then the model's operations ({§packet-current-turn} names `L/T`).
+
+  | Target | Selects |
+  | --- | --- |
+  | `log:///1` | loop 1's rows |
+  | `log:///1/2` | turn 1/2's rows |
+  | `log:///1/2/3` | the one row |
+  | `log:///1/2/*` | the turn's item rows |
+  | A complete `[start-end]` segment in any numeric slot | that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning |
+  | `log:///**/READ`, `log:///**/python3`, `log:///**/attempt`, `log:///**/emission` | rows by canonical leaf |
+
+  | The leaf | Rule |
+  | --- | --- |
+  | What it is | every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/attempt` for a rejected emission, `/emission` for an admitted one's announcement ({§emission-row}); it names identity rather than adding a resource level |
+  | An executor leaf | derived from the durable submitted statement (its `runtime`), never an internal dispatch type or the current tool registry; digits and punctuation in executor names remain part of the leaf |
+  | Shorthand | exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404; READ anchors use the canonical suffixed identity even when addressed by shorthand |
+  | Typed entry materialization | resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}) |
+  | Executor outputs | use workspace-wide claims such as `sh:///ab3d5678#stdout` instead ({§execution-output-identity}); their source operation has log coordinates, but resource lifetime and identity are independent of that observation |
+  | Other consumers | error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple |
+
 - §log-near-miss **A log miss beside rows that exist names them.** A READ, FIND or KILL of an exact coordinate that names no row carries a recovery from the worker's own active rows: the turn's rows carrying the leaf written come first, since the leaf is what the model asked for and the sequence its guess, followed by the row at that coordinate under its own leaf (`` Turn 1/44's reasoning is `log:///1/44/2/reasoning`; the entry at log:///1/44/1 is `log:///1/44/1/READ`. ``); with no row of that leaf, the row at the coordinate alone (`` The entry at log:///1/25/8 is `log:///1/25/8/sh`. ``), else the turn's rows, at most six named, else the loop's latest turn. A coordinate in a loop with no rows carries none. Recorded misses were near misses every time: a READ of `1/25/8/READ` when the row was `sh`, an EDIT one sequence off, and a KILL under the 413 that must curate (#1005).
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies and retires its emission ({§emission-row}). A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`.
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) [{"pattern": "~stale"}] ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. An emission row is curated whole instead: the scope retires it when it covers every line and otherwise leaves it ({§emission-row}). Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
@@ -3568,23 +3554,15 @@ accounting and model-visible failure evidence remain separately owned by
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
   targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
   delivery evidence, never log visibility or the mere existence of a later SEND.
-- §outside-text **Text outside the operations is annotation beside them, and an empty turn without them.**
-  The spans {§response-text} supplies are read with the turn's fenced operations. Beside at least one
-  fenced content operation, each span is one `NOTE` at its position: it joins the admitted program as the
-  model's own NOTE, frozen in the emission ({§emission-row}), lands as a NOTE row, replays with its turn
-  ({§emission-history}) and draws no notice; the card's annotation register is where such text belongs.
-  With no fenced operation in the turn, no operation is minted: the spans are stored verbatim as one
-  immutable `outside` turn source per admitted emission, in source order joined by a blank line
-  ({§turn-source-resources}), a repetitive or length-cut response stays one source, nothing filters what
-  is stored, and the turn is an empty turn ({§empty-turn}) whose error row is the one thing the model
-  hears of it; the text never enters a packet, is never delivered and never concludes. A log-entry heading in
-  outside text still rejects the attempt unless it echoes an emission row ({§fabricated-log-entry}); an unfenced operation line is
-  not response text ({§unfenced-operation}) and so reaches neither home. Clients receive an outside source once through
-  `outside/event` ({§notifications-outside-event}, {§agui-outside-text}); FORK snapshots the
-  source with the turn's others; the digest names its weight. It has no address: there is no
-  `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate
-  authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and
-  {§response-text} alone owns which bytes are operations, quotations or outside text.
+- §outside-text **Text outside the operations is annotation beside them, and an empty turn without them.** The spans {§response-text} supplies are read with the turn's fenced operations. It has no address: there is no `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and {§response-text} alone owns which bytes are operations, quotations or outside text. Clients receive an outside source once through `outside/event` ({§notifications-outside-event}, {§agui-outside-text}); FORK snapshots the source with the turn's others; the digest names its weight.
+
+  | Turn | The spans become |
+  | --- | --- |
+  | Beside at least one fenced content operation | one `NOTE` each, at its position: it joins the admitted program as the model's own NOTE, frozen in the emission ({§emission-row}), lands as a NOTE row, replays with its turn ({§emission-history}) and draws no notice; the card's annotation register is where such text belongs |
+  | With no fenced operation | no operation is minted: the spans are stored verbatim as one immutable `outside` turn source per admitted emission, in source order joined by a blank line ({§turn-source-resources}), a repetitive or length-cut response stays one source, nothing filters what is stored, and the turn is an empty turn ({§empty-turn}) whose error row is the one thing the model hears of it; the text never enters a packet, is never delivered and never concludes |
+  | A log-entry heading in outside text | still rejects the attempt unless it echoes an emission row ({§fabricated-log-entry}) |
+  | An unfenced operation line | not response text ({§unfenced-operation}), so it reaches neither home |
+
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest nonempty reply the loop gave to the message that started it: the body of a SEND
   that answered that message. A failed terminal takes precedence over
@@ -6178,7 +6156,16 @@ flowchart TD
 
 - §context-budget **The context budget is one room for the whole packet.** The budget is the provider's input capacity through the loop's calibration, `floor(inputCapacity / factor)` ({§tokenomics-calibrated-readout}), and it bounds the whole packet — teaching, catalog, log and gauge together. Nothing on the service panel sizes a part of it: no projection share or preview page. When the loop's first response fixes its factor, the budget follows it either way; a room that shrinks under the model is announced by the over-budget row ({§context-over-budget-row}), never hidden by keeping a larger figure.
 - §context-gauge **One gauge.** Every packet carries one `## Context` section holding one JSON object: `tokens`, the packet's weight as rendered, `budget`, the known room, and `percent`, `floor(100 × tokens / budget)` over the gauge's own final figures, so the share never disagrees with the counts beside it; a zero budget states no share. Only when the packet without an inventory strictly exceeds `PLURNK_SERVICE_BUDGET_PRESSURE` of its budget does `largest` name the `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest retained log rows as `{path, tokens}`, ranked by weight then path. Unknown budget omits `budget`, `percent` and `largest`. The final `tokens` includes the inventory; over budget, its full configured count remains available for curation ({§context-over-budget-row}). Each log row heading carries its own `tokens`. The gauge is state: it never presents `budget − tokens` as response allowance and carries no mandate.
-- §context-fit **One rule: whole if it fits, otherwise as much as fits, then its size and address.** A result the model asked for — a READ without a scope, a FIND, an exec result delivered on close — arrives complete when its weight fits within `budget − tokens` as of that turn, less the room the turn still owes — one receipt's measured weight for each result still to land in it and the emission record that answers it, so that the receipts of a batch and the answer always fit. Otherwise the complete result stays where it was read from and the row is a `413` receipt naming the result's size, its weight, the remaining budget, and the two verbs: `READ` a range, or `KILL` first. A READ of lines carries, above its receipt, the longest prefix of those lines whose row fits that room — the lines with their anchors, the returned range closed on the last line delivered, and the receipt naming the lines delivered; a result whose first line does not fit, a FIND, a stream page and a byte view are bodiless receipts. An arrival the model did not ask for — an inbound `SEND`, a child's conclusion — takes the same bodiless receipt as a fact, not an error: its size and its address. Explicit scopes (`<a,b>`, a pattern, `<1,-1>`) are exact and take the same test. Result cuts are named where they happen: the first page of what came back unasked in size ({§markerless-first-page}) and the cut at the room in the receipt. The optional emission history is whole or absent ({§emission-history}), never a cut.
+- §context-fit **One rule: whole if it fits, otherwise as much as fits, then its size and address.** A result the model asked for — a READ without a scope, a FIND, an exec result delivered on close — arrives complete when its weight fits within `budget − tokens` as of that turn, less the room the turn still owes — one receipt's measured weight for each result still to land in it and the emission record that answers it, so that the receipts of a batch and the answer always fit. Otherwise the complete result stays where it was read from and the row is a `413` receipt naming the result's size, its weight, the remaining budget, and the two verbs: `READ` a range, or `KILL` first. Result cuts are named where they happen: the first page of what came back unasked in size ({§markerless-first-page}) and the cut at the room in the receipt.
+
+  | Result | When it does not fit |
+  | --- | --- |
+  | A READ of lines | carries, above its receipt, the longest prefix of those lines whose row fits that room — the lines with their anchors, the returned range closed on the last line delivered, and the receipt naming the lines delivered |
+  | A result whose first line does not fit, a FIND, a stream page, a byte view | a bodiless receipt |
+  | An arrival the model did not ask for — an inbound `SEND`, a child's conclusion | the same bodiless receipt as a fact, not an error: its size and its address |
+  | Explicit scopes (`<a,b>`, a pattern, `<1,-1>`) | exact, and take the same test |
+  | The optional emission history | whole or absent ({§emission-history}), never a cut |
+
 - §context-verbs **The verbs are the curation.** `READ` with a range takes a piece of what did not fit ({§read-selection-projection}); `NOTE` keeps what the model learned; `KILL` retires rows, ranges and bodies ({§log-kill-scope}) and may carry what it keeps of them as its own NOTE ({§log-kill-distillation}). The daemon adds no other mechanism.
 - §context-over-budget-row **Over budget is a row and a request, not an ending.** A packet whose weight exceeds `budget` is still submitted when it fits the window ({§context-wall}), and it carries one `_plurnk` error row at the head of its turn, `engine/context/packet-exceeds-budget` 413: "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn." The row is the mandate and carries no figure: the gauge is the one home for `tokens` and `budget` ({§context-gauge}), and it shows the packet over with the row in it. The row is shown once, in the packet it describes, then retired from the projection as a no-match KILL receipt is ({§log-kill-meta-operation}): it stays durable and readable at its coordinate, and a later packet that is over carries its own row. Nothing is hidden to make the packet smaller; the response grant is the window's remainder above the provider's output floor ({§provider-output-floor}). The limit protects a loop; it never ends one.
 - §context-wall **The context wall is the provider's window, and only it ends a loop.** The wall is the provider's physical input limit: `maxInputTokens`, and the context window less the output floor ({§provider-output-floor}). A request over the wall sheds ({§context-own-rows-fit}) and is measured again ({§context-wall-measure}); a packet that cannot fit even as receipts ends its loop with the exact `engine/context/window-overflow` 413 Problem, and no inference request is made. An unknown window has no wall ({§tokenomics-window-unpollable-deliberate}).
