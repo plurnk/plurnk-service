@@ -786,7 +786,7 @@ export default class DrainSupervisor {
     async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
         const recipients = await this.#db.message_reply_recipients.all<{ worker_id: number }>({ log_entry_id: logEntryId });
         if (recipients.length === 0) return;
-        const systemPrompt = await this.#readSystemPrompt();
+        const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
         for (const { worker_id: workerId } of recipients) {
             // {§worker-optimistic-settlement}: the sender must finish its own
             // program while the recipient coalesces replies and conclusions.
@@ -820,7 +820,7 @@ export default class DrainSupervisor {
             return;
         }
 
-        const systemPrompt = await this.#readSystemPrompt();
+        const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
 
         // {§notifications-stream-concluded}: publish the terminal stream fact
         // before settlement. Rechecked wait identities, not this event, decide

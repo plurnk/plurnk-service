@@ -388,3 +388,23 @@ test("{§worker-causal-admission}: cancellation wins before a queued causal deli
     assert.equal(accepted.action, "injected_next_turn");
     assert.deepEqual(messages, ["new independent message"]);
 });
+
+test("{§card-read-per-wake} every wake reads the card afresh and hands that reading to the settlement", async () => {
+    let reads = 0;
+    const handed: string[] = [];
+    const drains = supervisor(async () => `card ${++reads}`, () => {}, {
+        db: {
+            drain_find_slept_loop: { get: async () => ({ id: 7 }) },
+            message_reply_recipients: { all: async () => [{ worker_id: 2 }] },
+        } as unknown as Db,
+    });
+    const settle = async (_workspaceId: number, _workerId: number, systemPrompt: string): Promise<void> => { handed.push(systemPrompt); };
+    (drains as unknown as { settleCompletionWake: typeof settle }).settleCompletionWake = settle;
+    await drains.operationSettled(1, 9);
+    drains.notifyWakeWorker(payload);
+    await drains.idle();
+    await drains.operationSettled(1, 10);
+    await drains.idle();
+    assert.equal(reads, 3, "three wakes, three readings; none is held");
+    assert.deepEqual(handed, ["card 1", "card 2", "card 3"]);
+});

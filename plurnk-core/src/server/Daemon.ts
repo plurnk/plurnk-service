@@ -306,7 +306,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
                 }
                 const source = await this.#messageSource(workspaceId, sourceLoopId, sender.worker_id, workerId);
-                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
                 let effort: Effort;
@@ -458,7 +458,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             discardLoopNotices: (loopId) => this.#engine.discardLoopNotices(loopId),
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
-            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"),
+            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§card-read-per-wake}
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });
@@ -618,7 +618,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const { providerSpec: selection, effort } = generationPolicy;
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#workerModels.resolveWorkerSpawnModel(workerId, childSelector);
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
         // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
@@ -1924,7 +1924,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             await this.#drains.reconcileOrphanedMessages(source.worker_id, source.loop_id);
         }
 
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
         const queued = await this.#db.recovery_queued_workers.all<{
             worker_id: number;
             workspace_id: number;

@@ -30,8 +30,8 @@ extensions included in the default installation. The terminal client is a separa
 - **Credentials** live in the login shell, never in any `.env` and never in the repository. Check
   readiness by name only; never print, echo or log a credential's value.
 - **A daemon you did not start is a live session**: never stop it to free a port, and read its
-  database only through `npm run share`. A daemon reads `plurnk-contracts/plurnk.md` from disk when
-  it starts or wakes a worker, so a card edit reaches its workers without a restart.
+  database only through `npm run share`. A daemon reads the card at every loop start and wake
+  ({§card-read-per-wake}), so a card edit needs no restart.
 - **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals every process
   using that directory, the daemon included, and `pgrep -f`/`pkill -f` match the calling shell's own
   command line. When a pattern is unavoidable, bracket its first character (`[d]rill\.mjs`).
