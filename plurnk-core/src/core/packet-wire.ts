@@ -818,11 +818,11 @@ export default class PacketWire {
         return { meta, op, tx, coordinate, path, renderedLeaf, target, description };
     }
 
-    // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
-    // matcher, the retrieval extents, and the structured mutation receipts. Returns what the body
-    // projection needs to know about the result.
+    // The row's result facts from its rx, added to the metadata line stage by stage: the attachments and the
+    // returned address, the terminal stream's exit, the Problem or detail, the retrieval extents, and the
+    // structured mutation receipts. Returns what the body projection needs to know about the result.
     static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): RowResultFacts {
-        const { meta, op, tx } = identity;
+        const { meta, op } = identity;
         if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
         }
@@ -831,8 +831,20 @@ export default class PacketWire {
             && rx.resource.length > 0 && rx.resource !== identity.target && rx.resource !== meta.stream) {
             meta.resource = rx.resource;
         }
+        PacketWire.#streamReadFacts(meta, op, rx);
+        PacketWire.#problemFacts(identity, e, rx);
+        const { findItems, range } = PacketWire.#retrievalFacts(identity, e, rx, fullBody);
+        const structuredMutationReceipt = PacketWire.#mutationReceiptFacts(meta, op, rx);
+        return {
+            findItems, range, structuredMutationReceipt,
+            ...(op === "READ" && rx?.matches !== undefined
+                ? { matches: SchemeResults.assertMatchEvidenceList(rx.matches) } : {}),
+        };
+    }
+
         // {§exec-stream}: explicit and automatic READs preserve the same
         // durable liveness facts, including an empty active channel.
+    static #streamReadFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): void {
         if (op === "READ" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "terminal")) {
             if (typeof rx.terminal !== "boolean") {
                 throw new TypeError("A stream READ result carries a malformed terminal flag.");
@@ -853,10 +865,16 @@ export default class PacketWire {
                 meta.page = { size: page.size, returned: page.returned };
             }
         }
+    }
 
         // {§problem-projection} — the exact durable Problem remains the
         // failure authority; the packet carries only facts not already
         // owned by its enclosing row. Errors remains only an index.
+    // The success-side sibling (#342): a sub-problem receipt may carry one
+    // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
+    // only when the situation occurs, never in the hot path.
+    static #problemFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): void {
+        const { meta } = identity;
         if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
             const problem = (rx as { problem?: unknown }).problem;
             Validator.assertProblemDetails(problem as ProblemDetails);
@@ -865,17 +883,17 @@ export default class PacketWire {
                 row: { ...meta, target: identity.target },
             });
         }
-        // The success-side sibling (#342): a sub-problem receipt may carry one
-        // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
-        // only when the situation occurs, never in the hot path.
         if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx === "object"
             && typeof (rx as { detail?: unknown }).detail === "string"
             && (rx as { detail: string }).detail.length > 0) {
             meta.detail = (rx as { detail: string }).detail;
         }
+    }
 
         // {§retrieval-packet-metadata}: one extent/coordinate owner plus
         // only FIND aggregates that add information beyond that extent.
+    static #retrievalFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): { findItems: number | null; range: RangeExtent | null } {
+        const { meta, op, tx } = identity;
         let findItems: number | null = null;
         let range: RangeExtent | null = null;
         const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
@@ -945,10 +963,13 @@ export default class PacketWire {
                 meta.matchLocationCount = rx.matchLocationCount;
             }
         }
+        return { findItems, range };
+    }
 
         // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
         // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
         // optional receipts describe scoped textual materializations.
+    static #mutationReceiptFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): boolean {
         let structuredMutationReceipt = false;
         if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
             Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
@@ -970,11 +991,7 @@ export default class PacketWire {
             }));
             structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
         }
-        return {
-            findItems, range, structuredMutationReceipt,
-            ...(op === "READ" && rx?.matches !== undefined
-                ? { matches: SchemeResults.assertMatchEvidenceList(rx.matches) } : {}),
-        };
+        return structuredMutationReceipt;
     }
 
     // The body the row shows: the canonical full body, shared with log READ, log FIND and search
