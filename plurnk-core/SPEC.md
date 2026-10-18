@@ -159,7 +159,20 @@ package map. The default installed composition is specified in {§bundled-set}.
 
 OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
 
-Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}); offline checking rejects the same input before loading an SDK. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
+Configuration uses the standard `OTEL_*` environment. OTel Logs and direct draft semantic-convention use are excluded. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
+
+| Variable | Effect |
+| --- | --- |
+| `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` | select `otlp` or `console` per signal; a missing or `none` value keeps that signal off, and no SDK default selects an exporter; an unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}), and offline checking rejects the same input before loading an SDK |
+| `OTEL_SERVICE_NAME` | names the service (default `plurnk-service`) |
+| `OTEL_SDK_DISABLED` | case-insensitive `true` turns the boundary off |
+| `OTEL_EXPORTER_OTLP_*` | honored by the OTLP exporters |
+
+| Recorded | Rule |
+| --- | --- |
+| HTTP spans | carry only an AG-UI-owned bounded route class, never an input pathname or query |
+| Spans otherwise | carry high-cardinality identifiers; metric labels stay low-cardinality |
+| Never by default | prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads, as attributes or metric values |
 
 §observability-genai-conventions **GenAI convention projection.** Provider
 request spans follow the [GenAI registry at `c88d504`](https://github.com/open-telemetry/semantic-conventions-genai/tree/c88d504ab3d9879f8e50d3cc87e69775e11db234),
@@ -519,23 +532,17 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
 | Named scratch entries | `worker://<worker>/*` | Markerless; `worker knowledgebase entries` |
 
-Only the three namespace surveys carry asides; the other targets name
-their surface. The word `skills` names Agent Skills and nothing else.
-Catalogs select documents independently of their authored bodies; ordinary READ
-supplies examples and complete instructions on demand. A shallow
-result renders direct entries normally and every deeper first-segment directory
-as an actionable `dir/**` summary with its recursive `items` and `tokens`;
-runtime rows also carry the concise `{§scheme-catalog-aside}` that drives
-on-demand capability discovery. Ordinary surveys use FIND without a scope
-({§markerless-first-page}), whose range metadata reports the returned set against the
-complete result total; only the small capability-reference surfaces
-explicitly select all. The opening survey demonstrates both `*` and `**` without
-normalizing an all-results override. Every survey executes even when empty
-because zero results are useful orientation. A positive `N` explicitly caps
-only the file map's rendered rows, using the map's actual
-direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
-unset / `0` disables previews. `log://` is absent because the current worker's
-log already renders in present mode.
+Only the three namespace surveys carry asides; the other targets name their surface. The word `skills` names Agent Skills and nothing else. `log://` is absent because the current worker's log already renders in present mode.
+
+| Fact | Rule |
+| --- | --- |
+| Catalogs | select documents independently of their authored bodies; ordinary READ supplies examples and complete instructions on demand |
+| A shallow result | renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; runtime rows also carry the concise `{§scheme-catalog-aside}` that drives on-demand capability discovery |
+| Ordinary surveys | FIND without a scope ({§markerless-first-page}), whose range metadata reports the returned set against the complete result total; only the small capability-reference surfaces explicitly select all; the opening survey demonstrates both `*` and `**` without normalizing an all-results override |
+| Every survey | executes even when empty, because zero results are useful orientation |
+| A positive `N` | explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count |
+| `-1` | enables the ordinary markerless page |
+| Unset / `0` | disables previews |
 
 §worker-initialization-entry **Model-worker initialization is a real `_plurnk` operation turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}; every orienting row is structurally classified `_plurnk` and `init`, and the namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
@@ -894,19 +901,14 @@ and never re-fetch a match.
 
 **The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
 
-- §membership-auto-add **Auto-add: the model's reads propose the admission of what they reach.** With
-  `PLURNK_MEMBERS_AUTO_ADD=1` (the shipped default), a model dispatch's READ and FIND see one
-  universe beyond membership: the files inside the root that the governing repository neither
-  tracks nor ignores (`git ls-files --others --exclude-standard`; every file under the root when no
-  repository governs it), minus every exclusion. Nothing in it is a member or is materialized
-  until an admission is accepted. A read of content proposes that admission as a 202 the proposal
-  lifecycle settles ({§proposal-202-pauses}): its review body is the definition, `{"files": [...]}`,
-  and its effect is `host`, so policy accepts it where nobody reviews (`PLURNK_SERVICE_EFFECT_HOST=auto`
-  or `PLURNK_SERVICE_PROPOSALS=accept`) and the reviewer decides otherwise. Acceptance admits the files as
-  the Worker's own `members (add)` of each exact path, under the model's scope, with one `member_added`
-  notice each, and runs the operation again; its result settles the row ({§proposal-accept-applies}).
-  Rejection settles 400 `rejected` and admits nothing ({§proposal-reject-fails}). A path the scope refuses
-  is proposed no further within the operation, which then misses it as a non-member.
+- §membership-auto-add **Auto-add: the model's reads propose the admission of what they reach.** With `PLURNK_MEMBERS_AUTO_ADD=1` (the shipped default), a model dispatch's READ and FIND see one universe beyond membership: the files inside the root that the governing repository neither tracks nor ignores (`git ls-files --others --exclude-standard`; every file under the root when no repository governs it), minus every exclusion. Nothing in it is a member or is materialized until an admission is accepted.
+
+  | The admission | Rule |
+  | --- | --- |
+  | Proposed | a read of content proposes it as a 202 the proposal lifecycle settles ({§proposal-202-pauses}): its review body is the definition, `{"files": [...]}`, and its effect is `host`, so policy accepts it where nobody reviews (`PLURNK_SERVICE_EFFECT_HOST=auto` or `PLURNK_SERVICE_PROPOSALS=accept`) and the reviewer decides otherwise |
+  | Accepted | admits the files as the Worker's own `members (add)` of each exact path, under the model's scope, with one `member_added` notice each, and runs the operation again; its result settles the row ({§proposal-accept-applies}) |
+  | Rejected | settles 400 `rejected` and admits nothing ({§proposal-reject-fails}) |
+  | Refused by the scope | a path the scope refuses is proposed no further within the operation, which then misses it as a non-member |
 
   | Operation | Effect on a universe file |
   |---|---|
@@ -1497,18 +1499,13 @@ independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
 and cycle verdict are absent from model packets; only the concrete occurrences
 in the table are shown. The streak never leaves the daemon.
 
-A crossing terminal names the source that struck the crossing turn — `output_allowance`,
-`repetition`, `no_operation`, then `operation` — in its detail, in that order when a turn matches
-more than one. The three are not interchangeable: a turn that authored no operation did not *fail*
-one, and reporting it as a failed turn misreads a model answering without the fence as a model
-whose operations broke. A cycle of empty turns names repeated responses without operations,
-not repeated operations or results. A turn whose final emission the output allowance cut names
-the allowance and its grant ({§output-allowance-notice}), whatever else it struck on. This is the crossing turn's source, not the streak's composition; the
-rail rules on the crossing and does not retain the kinds behind it. What the crossing turn
-actually said is cited, not discarded ({§terminal-evidence}). Naming the source is not the
-private accounting {§rail-accounting-private} withholds: the streak, the cycle verdict and
-attempt counts stay inside the daemon — this is the terminal telling the truth about its own
-cause, which the reader already sees the shape of.
+A crossing terminal names the source that struck the crossing turn in its detail — `output_allowance`, `repetition`, `no_operation`, then `operation`, in that order when a turn matches more than one. The sources are not interchangeable. This is the crossing turn's source, not the streak's composition; the rail rules on the crossing and does not retain the kinds behind it. What the crossing turn actually said is cited, not discarded ({§terminal-evidence}). Naming the source is not the private accounting {§rail-accounting-private} withholds: the streak, the cycle verdict and attempt counts stay inside the daemon — this is the terminal telling the truth about its own cause, which the reader already sees the shape of.
+
+| Source | Names |
+| --- | --- |
+| `no_operation` | a turn that authored no operation, which did not *fail* one: reporting it as a failed turn misreads a model answering without the fence as a model whose operations broke |
+| `repetition` | a cycle of empty turns names repeated responses without operations, not repeated operations or results |
+| `output_allowance` | a turn whose final emission the output allowance cut names the allowance and its grant ({§output-allowance-notice}), whatever else it struck on |
 
 §loop-rail-continuity Rail state belongs to the durable loop, not its execution
 segment. The strike streak and bounded cycle history survive driver cleanup and
@@ -1617,9 +1614,23 @@ admitted member receives its independent dispatch outcome and log row, in author
 {§op-execution-order}; one member's runtime failure does not suppress later members. The original
 emission in `turn_sources` remains exact and unexpanded.
 
-Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail. Before each `generate`, Core opens one durable logical `inference_calls` row with its `model_calls` specialization and emission-specific `turn_attempts` admission row. A call that ends without response evidence leaves that admission row unclassified (`accepted IS NULL`) and does not consume the emission-attempt ceiling. Beneath the logical call, every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error. Adapter retries and capacity failover append requests in issue order; a response-less failure therefore remains an accounted occurrence rather than disappearing. Normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting. The accepted exchange alone extends `turns.packet` with response evidence; every physical request remains in turn and loop accounting, while the context gauge reads the latest settled emission request on the latest turn. Digest exposes rejected response evidence as `<stem>.attemptNNN.rejected.*` and every physical request in its machine-readable ledger.
+Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail.
 
-When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text. The Notice states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic. Attempt count and rail state never become model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address. Admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues.
+| Fact | Rule |
+| --- | --- |
+| Before each `generate` | Core opens one durable logical `inference_calls` row with its `model_calls` specialization and emission-specific `turn_attempts` admission row; a call that ends without response evidence leaves that admission row unclassified (`accepted IS NULL`) and does not consume the emission-attempt ceiling |
+| Beneath the logical call | every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error; adapter retries and capacity failover append requests in issue order, so a response-less failure remains an accounted occurrence rather than disappearing |
+| Response evidence | normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting; the accepted exchange alone extends `turns.packet` with response evidence, while every physical request remains in turn and loop accounting, and the context gauge reads the latest settled emission request on the latest turn |
+| Digest | exposes rejected response evidence as `<stem>.attemptNNN.rejected.*` and every physical request in its machine-readable ledger |
+
+When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text.
+
+| Fact | Rule |
+| --- | --- |
+| The Notice | states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic; attempt count and rail state never become model-facing |
+| The recovery turn | has its own honestly stored packet and its configured private same-packet attempts |
+| Curation | the packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address |
+| Clearing | admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues |
 
 Outside-block text has no execution, message, or receipt semantics under
 {§whitespace-contract}. The `ops://<worker>/` source retains it verbatim under
@@ -2723,7 +2734,15 @@ AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMar
 
 §log-kill-distillation **A log KILL may say what it keeps.** A body on a `log:///` KILL is the model's distillation of what the KILL retires. Whatever the kill's outcome, the body lands as the model's own NOTE row at the next sequence of the same turn — written after the kill's receipt, so it never falls inside the kill's own selection — carrying `attrs.distilled` with the KILL's target as written, so a distillation is distinguishable from a free NOTE while it renders, weighs and curates exactly as one; the dispatch reports two rows written. A kill that misses keeps its distillation beside its visible receipt: what the model wrote about its environment is recorded for the model to possess and retire, never dropped for where the kill aimed. A whitespace-only body is a plain KILL. The kill's own receipt stays hidden as any successful log KILL's does ({§context-verbs}).
 
-KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. An emission row is curated whole ({§emission-row}): the unscoped KILL retires it; a line scope on its exact coordinate is 422 `emission-curated-whole`, whose recovery names the unscoped KILL; a sweep leaves it intact. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}).
+KILL deletes context from the **log** (`log:///`, {§packet}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}).
+
+| KILL | Effect |
+| --- | --- |
+| Without a scope | retires the selected rows from the active projection ({§log-history-projection}) |
+| With a one-line or inclusive two-line scope | removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active; an anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}), and an anchor absent from the current body selects no line, as with an out-of-bounds numeric line; scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection} |
+| Scoped, on a bodyless row | a friendly 200 no-op with `matched` reported |
+| On an emission row | curated whole ({§emission-row}): the unscoped KILL retires it; a line scope on its exact coordinate is 422 `emission-curated-whole`, whose recovery names the unscoped KILL; a sweep leaves it intact |
+| Addressing no row | 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}) |
 
 §log-target-tolerances **The log target reader accepts four near-misses of the taught form and reads each as the one target it can only have meant.** The card teaches `KILL (log:///1/[1-7]/*/{READ,emission})`; none of the following is taught, and no diagnostic text accompanies any of them.
 
@@ -2887,23 +2906,16 @@ in its H3, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
 {§copy-move-pattern}) carries its `matched` count beside its receipt, so a
 digest can show what a pattern selected and how much it touched.
 
-The packet formats the typed {§range-extent} and {§text-region} facts under
-{§packet-extent-metadata}; the operation result retains its structured facts.
-An empty result
-set satisfies any well-formed page: zero matches is the answer, a 200 with no items,
-never a 416 (#425 F9). Transparent
-coordinates let the model determine whether more material exists and choose
-its own next request, so packet metadata never prescribes `next`, `complete`,
-or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
-`matchingPathCount`; line READ likewise omits the rendered-body `lines` count
-and its internally resolved whole-line region. Exact READ formats its region
-as `range`. A failed retrieval's Problem owns its range extension rather than
-repeating it at top level. `tokens` weighs the complete rendered record
-under {§packet-token-accounting};
-generic body `lines` remains available on READ-shaped materialization notices
-that have no retrieval extent. FIND content weights follow {§log-wire-format};
-ordinary bounded bodies expose their displayed and complete extents as `preview`
-under {§packet-extent-metadata}.
+The packet formats the typed {§range-extent} and {§text-region} facts under {§packet-extent-metadata}; the operation result retains its structured facts. Transparent coordinates let the model determine whether more material exists and choose its own next request, so packet metadata never prescribes `next`, `complete`, or `all`.
+
+| Fact | Rule |
+| --- | --- |
+| An empty result set | satisfies any well-formed page: zero matches is the answer, a 200 with no items, never a 416 (#425 F9) |
+| FIND | range cardinality replaces top-level `items`, `lines`, and `matchingPathCount`; FIND content weights follow {§log-wire-format} |
+| READ | line READ omits the rendered-body `lines` count and its internally resolved whole-line region; exact READ formats its region as `range`; generic body `lines` remains available on READ-shaped materialization notices that have no retrieval extent |
+| A failed retrieval | its Problem owns its range extension rather than repeating it at top level |
+| `tokens` | weighs the complete rendered record under {§packet-token-accounting} |
+| Ordinary bounded bodies | expose their displayed and complete extents as `preview` under {§packet-extent-metadata} |
 
 §read-past-end A line READ whose range starts past the end of nonempty content is
 answered like an empty FIND page: with no lines and its extent (`none of N lines`), not a 416; a
@@ -3406,20 +3418,14 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | `[200]` | Deliver the final answer | Completed |
 | `[499]` | Deliver the cancellation explanation | Cancelled; no worker or execution is cancelled implicitly |
 
-The numeric modifier belongs to SEND's reply metadata, not its text scope. It
-composes with attachment metadata. Completion applies only to replies: an exact
-message address selects that message. Targetless SEND selects the oldest published
-Open Message in its loop at dispatch time. Progress leaves it open; `[200]` or
-`[499]` resolves it, so the next targetless SEND selects the next Open Message.
-With none open, a targetless SEND is speech to the loop's latest published message: it is
-delivered to that message's originating client and recorded in `answers`, and a completion
-code on it changes no outcome. Only a loop with no published message refuses it. It never
-broadcasts; a correction that changes an outcome names the message explicitly. Empty completion replies
-resolve their selected messages without inventing speech or erasing an earlier
-answer. An empty addressed progress reply adds no speech. Failed delivery resolves nothing.
-The latest explicit completion reply determines each message's outcome; ordinary
-progress replies never reopen a completed message. Curation changes neither
-delivery nor completion. Replies and ambient observations do not become requests.
+The numeric modifier belongs to SEND's reply metadata, not its text scope; it composes with attachment metadata. Completion applies only to replies: an exact message address selects that message. Replies and ambient observations do not become requests.
+
+| Fact | Rule |
+| --- | --- |
+| Targetless SEND | selects the oldest published Open Message in its loop at dispatch time; progress leaves it open, `[200]` or `[499]` resolves it, so the next targetless SEND selects the next Open Message |
+| With none open | a targetless SEND is speech to the loop's latest published message: delivered to that message's originating client and recorded in `answers`, and a completion code on it changes no outcome; only a loop with no published message refuses it; it never broadcasts, and a correction that changes an outcome names the message explicitly |
+| Empty replies | empty completion replies resolve their selected messages without inventing speech or erasing an earlier answer; an empty addressed progress reply adds no speech |
+| Outcome | failed delivery resolves nothing; the latest explicit completion reply determines each message's outcome, and ordinary progress replies never reopen a completed message; curation changes neither delivery nor completion |
 
 Completion replies execute in authored order, including alongside mutations and
 other replies. Their bodies are delivered immediately, never held as drafts to
@@ -4893,21 +4899,14 @@ flowchart LR
     events --> interface
 ```
 
-Every registered module's `setup` runs in registration order before any
-module's `start` ({§module-phases}; failures follow {§module-failure}). Core
-then readies process-wide schemes, reconciles durable lifecycle, and starts
-modules in registration order. The daemon's listener is bound before durable admission
-({§startup-listener-admission}) and admitted once every module has started
-({§module-http-mounts}). Persisted workspaces with
-no durable work stay passive until first demand; activation publishes their
-complete capabilities and documentation before the demanding operation
-proceeds. An owner's arrival is such a demand ({§methods-workspace-activate}), so a first prompt
-waits only for what remains of it. `setup` is the readiness boundary for every capability registered
-with Core: recovery may demand a workspace provider before `start`. Requests on
-the listener remain unavailable until it is admitted; a module opens any other exterior
-ingress only after recovery. No
-registered capability may depend on exterior ingress. A module, and any distinct
-lifetime object returned by `start`, may implement the following phases:
+Every registered module's `setup` runs in registration order before any module's `start` ({§module-phases}; failures follow {§module-failure}). Core then readies process-wide schemes, reconciles durable lifecycle, and starts modules in registration order. `setup` is the readiness boundary for every capability registered with Core: recovery may demand a workspace provider before `start`, and no registered capability may depend on exterior ingress.
+
+| Fact | Rule |
+| --- | --- |
+| The listener | bound before durable admission ({§startup-listener-admission}) and admitted once every module has started ({§module-http-mounts}); requests on it remain unavailable until it is admitted, and a module opens any other exterior ingress only after recovery |
+| Persisted workspaces with no durable work | stay passive until first demand; activation publishes their complete capabilities and documentation before the demanding operation proceeds; an owner's arrival is such a demand ({§methods-workspace-activate}), so a first prompt waits only for what remains of it |
+
+A module, and any distinct lifetime object returned by `start`, may implement the following phases:
 
 | Phase | Obligation |
 |---|---|
@@ -5309,19 +5308,13 @@ and `~/.agents` directories in precedence order with their scopes, omitting proj
 when no project is bound ({§module-workspace-paths}). Modules own their file formats;
 core owns discovery roots.
 
-An adapter may expose a `scheme` facet beneath its family's runtime namespace
-({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
-whole live half there: READ and FIND preparation, FIND, EDIT, SEND, WAIT and KILL
-are its own wherever it implements them. A claimed KILL the facet does not implement
-is the ordinary entry KILL ({§stream-control}); an unclaimed coordinate keeps the
-stored-execution behaviour, SEND to a process included. Where its resources are
-not shaped like the executor's output, the facet states their representation —
-resource authority, channels, the default channel, who may write them — and that
-manifest governs every claimed coordinate: its address, its fragmentless READ, the
-channel a subscription publishes, the writer gate ({§scheme-surface}) an EDIT or a
-COPY into it passes. An adapter states the `traits` of its runtime — `web`
-for a family that reaches the network — so {§capability-admission} selects its
-manager and its resources alike.
+An adapter may expose a `scheme` facet beneath its family's runtime namespace ({§runtime-resource-binding}). An adapter states the `traits` of its runtime — `web` for a family that reaches the network — so {§capability-admission} selects its manager and its resources alike.
+
+| The facet | Rule |
+| --- | --- |
+| Claims | a path subtree, and is the scheme's whole live half there: READ and FIND preparation, FIND, EDIT, SEND, WAIT and KILL are its own wherever it implements them |
+| Does not implement | a claimed KILL it does not implement is the ordinary entry KILL ({§stream-control}); an unclaimed coordinate keeps the stored-execution behaviour, SEND to a process included |
+| States | where its resources are not shaped like the executor's output, their representation — resource authority, channels, the default channel, who may write them — and that manifest governs every claimed coordinate: its address, its fragmentless READ, the channel a subscription publishes, the writer gate ({§scheme-surface}) an EDIT or a COPY into it passes |
 
 §env-functionality **Environment is a scoped family.** Ambient names admitted by the
 operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defaults and
