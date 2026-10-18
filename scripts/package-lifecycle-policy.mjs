@@ -12,13 +12,8 @@ Writes: "package lifecycle policy OK" or violations to stdout; exit 1 on any.
 const TEST_TIERS = ["test:lint", "test:unit", "test:intg"];
 const AUXILIARY_TEST_SCRIPTS = new Set([
     "test:live",
-    "test:live:specimen",
-    "test:live:zeropin",
     "test:demo",
-    "test:demo:specimen",
-    "test:demo:zeropin",
     "test:benchlet",
-    "test:providersPing",
     "test:installation",
 ]);
 

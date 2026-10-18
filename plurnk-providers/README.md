@@ -221,7 +221,7 @@ One specimen at a time, deterministically:
 
 ```sh
 cd plurnk-core
-npm run test:live:specimen -- "<test-name-pattern>"
+npm run test:live -- --specimen "<exact specimen name>"
 ```
 
 The selector inserts `--test-name-pattern` before the expanded live file list in
@@ -256,5 +256,5 @@ npm run test:lint -w @plurnk/plurnk-providers
 npm run test:unit -w @plurnk/plurnk-providers
 ```
 
-`npm run test:providersPing` is an explicit paid diagnostic; it calls each
+`npm run probe:providers` is an explicit paid diagnostic; it calls each
 keyed provider once and prints the retained sanitized evidence directory.

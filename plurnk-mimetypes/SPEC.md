@@ -490,7 +490,7 @@ largest single parse (about forty bytes of tree per source byte), every later pa
 grammar reuses it because no handler yields between a parse and its `tree.delete()`, and it
 is never returned to the operating system; `dispose()` releases parser and query objects
 inside it, not the memory. The JS-side cost of a derivation returns to V8's floor within
-about thirty seconds of idle. `npm run memory:probe` measures both (#650). Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
+about thirty seconds of idle. `npm run probe:memory` measures both (#650). Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
 create()`, so concurrent first callers instantiate two runtimes whose pointers cross,
 surfacing as `function signature mismatch`, `Incompatible language version 0`, or
 `memory access out of bounds` at teardown under concurrent derivation workers (#536).

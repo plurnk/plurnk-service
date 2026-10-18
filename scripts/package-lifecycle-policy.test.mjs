@@ -51,9 +51,7 @@ test("external, release, and forensic test commands remain explicitly classified
         "test:unit": "node --test",
         test: "npm run test:lint && npm run test:unit",
         "test:live": "node --test test/live/*.test.js",
-        "test:live:specimen": "node test/live-specimen.js",
         "test:demo": "node --test test/demo/*.test.js",
-        "test:providersPing": "node scripts/providers-ping.js",
         "test:installation": "node scripts/test-installation.js",
     };
     assert.deepEqual(packageLifecycleViolations("classified", { scripts }), []);

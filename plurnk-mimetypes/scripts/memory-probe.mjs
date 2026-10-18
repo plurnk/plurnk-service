@@ -2,7 +2,7 @@
 // sources through the production framework and attributes RSS by /proc/self/smaps mapping,
 // so the WASM linear memory (one anonymous mapping that only grows) is told apart from V8 heap
 // pages the memory reducer returns on idle. Report only, never a gate: absolute RSS is host-bound.
-//   npm run memory:probe            (TARGET_BYTES, DISCOVER_CWD override the defaults)
+//   npm run probe:memory            (TARGET_BYTES, DISCOVER_CWD override the defaults)
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -11,7 +11,7 @@ import Mimetypes from "../src/Mimetypes.ts";
 import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run memory:probe   (from plurnk-mimetypes)
+usage: npm run probe:memory   (from plurnk-mimetypes)
 Resident-memory probe for the tree-sitter path: parses generated sources through the production framework and attributes RSS by mapping, telling WASM linear memory from V8 heap ({§mimetype-lifecycle}). A report, never a gate.
 Reads: TARGET_BYTES, DISCOVER_CWD.
 Writes: one JSON row per measurement to stdout.

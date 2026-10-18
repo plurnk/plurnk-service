@@ -7,7 +7,7 @@ import { runTier, stampTierRun, tierArguments, tierEnvironment } from "./lib/tie
 import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run test:live | npm run test:live:specimen -- "<exact specimen name>"   (from plurnk-core)
+usage: npm run test:live [-- --specimen "<exact specimen name>"]   (from plurnk-core)
 Drives every live specimen of the daemon, the client interface and the providers through a real model, or one specimen by its exact name ({§tier-census}); the names are the test titles under plurnk-core/test/live, plurnk-agui/test/live and plurnk-providers/test/live.
 Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
 Writes: <benchmark home>/tier-live-<stamp>/ with census.md and each worker's evidence.
@@ -47,7 +47,7 @@ export const liveInvocation = async (requested, run) => {
 const main = async () => {
     const [mode, requested, ...extra] = process.argv.slice(2);
     if (mode !== undefined && (mode !== "--specimen" || requested === undefined || extra.length > 0)) {
-        throw new Error("usage: npm run test:live[:specimen] -- [exact test name]");
+        throw new Error('usage: npm run test:live [-- --specimen "<exact specimen name>"]');
     }
     await runTier("live", await liveInvocation(requested, stampTierRun("live")));
 };

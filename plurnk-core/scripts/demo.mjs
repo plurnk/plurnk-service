@@ -16,7 +16,7 @@ import { runTier, stampTierRun, tierArguments, tierEnvironment } from "./lib/tie
 import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run test:demo | npm run test:demo:specimen -- <story-name-pattern>   (from plurnk-core)
+usage: npm run test:demo [-- --specimen <story-name-pattern>]   (from plurnk-core)
 Drives the demo stories through a real model, every story or the ones a pattern selects; the pattern must select at least one ({§tier-census}).
 Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
 Writes: <benchmark home>/tier-demo-<stamp>/ with census.md and each worker's evidence.
@@ -54,7 +54,7 @@ export const demoInvocation = async (pattern, run) => {
 const main = async () => {
     const [mode, requested, ...extra] = process.argv.slice(2);
     if (mode !== undefined && (mode !== "--specimen" || requested === undefined || extra.length > 0)) {
-        throw new Error("usage: npm run test:demo[:specimen] -- [story-name-pattern]");
+        throw new Error("usage: npm run test:demo [-- --specimen <story-name-pattern>]");
     }
     await runTier("demo", await demoInvocation(requested, stampTierRun("demo")));
 };

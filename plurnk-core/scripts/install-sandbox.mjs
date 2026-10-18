@@ -2,7 +2,7 @@
 // Monorepo-aware: EVERY workspace is packed (prepack builds each — the real publish
 // path) and the sandbox resolves @plurnk/* from those tarballs via overrides, so the
 // naive-install e2e runs pre-publish against the exact artifacts that will ship.
-// `npm run build:local:install` / `build:local:uninstall`; also the engine for test:installation.
+// `npm run install:sandbox` / `uninstall:sandbox`; also the engine for test:installation.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run build:local:install | npm run build:local:uninstall   (from plurnk-core)
+usage: npm run install:sandbox | npm run uninstall:sandbox   (from plurnk-core)
 Packs every workspace and installs the service into a sandbox outside the repository as a consumer would; also the engine of test:installation.
 Reads: the built workspaces.
 Writes: the sandbox under the OS temporary directory.

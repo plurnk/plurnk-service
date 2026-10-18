@@ -32,8 +32,8 @@ npm test
 | `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
 | `npm run test:demo` | Long-running real-model outcome assertions. |
 | `npm run test:benchlet -w @plurnk/plurnk-service` | The bench's quick lane from this checkout. `PLURNK_BENCH_ROOT` names the bench checkout (`../plurnk-bench` by default) and `PLURNK_CLIENT_CHECKOUT` the client. |
-| `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
-| `npm run config:list` | Validate and list configuration ownership and source classes without values. |
+| `npm run probe:providers` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
+| `npm run config:defaults` | Validate and list configuration ownership and source classes without values. |
 | `npm run candidate -- …` | Run an explicit client checkout against the source-built daemon. |
 | `npm run audit:direction` | Clean-build the workspaces, then audit emitted runtime imports, unresolved dependencies and cycles. |
 | `npm run audit:unused` | Find unused files, exports, and dependencies. |
@@ -81,7 +81,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 
 | Need | Canonical path |
 |---|---|
-| Configuration/startup | `npm run config:list`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
+| Configuration/startup | `npm run config:defaults`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
 | Deterministic test failure | The reported `~/benchmarks/intg-<lane>-<run>/` directory (`PLURNK_BENCHMARKS` overrides the root). Successful suites remove their own artifacts; failed suites retain them. |
 | Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement; `npm run tier:history -w @plurnk/plurnk-service` ledgers every run ({§tier-census}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
@@ -164,7 +164,7 @@ execution and digest export ({§candidate-pinned-runtime}).
 
 ## Metaproject readiness
 
-`npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]` asks
+`npm run orientation -- --model <selector> [--requiem] [--preserve]` asks
 a model, through the outside client, to inspect an assembled open-project forest
 and deliver an evidence-bearing orientation report. It is expensive and runs only
 after the package, integration, live/demo, candidate and bench layers are healthy;

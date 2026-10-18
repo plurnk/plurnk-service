@@ -19,7 +19,7 @@ import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
 import { usage as explain } from "./lib/usage.mjs";
 
 explain(import.meta, `
-usage: npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]
+usage: npm run orientation -- --model <selector> [--requiem] [--preserve]
 Boots a daemon on a fresh project, sends the orientation prompt through the client and grades the reply: metaproject readiness as an operator would meet it.
 Reads: PLURNK_ACCEPTANCE_TIMEOUT, PLURNK_ACCEPTANCE_PROJECT_ROOT, PLURNK_CLIENT_CHECKOUT; the model and credentials of the operator environment.
 Writes: the transcript under the benchmark home and the verdict to stdout.
@@ -45,7 +45,7 @@ const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
 if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
-const usage = "usage: npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]";
+const usage = "usage: npm run orientation -- --model <selector> [--requiem] [--preserve]";
 const args = process.argv.slice(2);
 const valueAfter = (flag) => {
     const index = args.indexOf(flag);

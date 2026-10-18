@@ -17,7 +17,7 @@ is test tooling, not an installed Plurnk dependency. Use a separate checkout:
 ```sh
 git clone https://github.com/a2aproject/a2a-tck.git ../a2a-tck
 git -C ../a2a-tck checkout --detach 263b9cfaf16a554bdfb166a7ba5b67716e946349
-PLURNK_MODEL=<selector> npm run test:live:specimen -w @plurnk/plurnk-service -- "live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"
+PLURNK_MODEL=<selector> npm run test:live -- --specimen "live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"
 ```
 
 The checker is a live specimen ({§tier-census}): it runs in every live tier whose

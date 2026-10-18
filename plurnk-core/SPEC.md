@@ -6628,8 +6628,8 @@ materialized result, and completion.** Transport-only completions are not
 conformance evidence. Provider-exposed reasoning must survive in the durable
 assistant packet and digest; a provider with no private reasoning is valid when
 the observable operation cycle succeeds. One package-owned runner executes the
-full tier or exactly one registered specimen (`npm run test:live:specimen --
-<exact test name>` in plurnk-core), rejecting absent and duplicate names before
+full tier or exactly one registered specimen (`npm run test:live -- --specimen
+"<exact test name>"` in plurnk-core), rejecting absent and duplicate names before
 execution. The ledger and classification taxonomy live in
 `plurnk-providers/README.md` and report authorization/credential failures
 distinct from model failures and repeated stochastic failures separately from

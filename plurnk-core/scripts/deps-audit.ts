@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run deps:audit [-- --strict]   (from plurnk-core)
+usage: npm run audit:deps [-- --strict]   (from plurnk-core)
 Audits the composed dependency tree and routes each advisory to the @plurnk package that pulls it in ({§install-root-advisory-ownership}).
 Reads: npm audit --json over the installed tree.
 Writes: the routed report to stdout; --strict exits 1 on any advisory.
@@ -111,12 +111,12 @@ const main = (): number => {
     const total = m.total ?? 0;
 
     if (total === 0) {
-        console.log(`deps:audit — 0 advisories (${LEVEL}+) at the install root ✓`);
+        console.log(`audit:deps — 0 advisories (${LEVEL}+) at the install root ✓`);
         return 0;
     }
 
     const advisories = routeAdvisories(audit, readDirectDeps());
-    console.log(`deps:audit — ${total} advisor${total === 1 ? "y" : "ies"} (critical:${m.critical ?? 0} high:${m.high ?? 0} moderate:${m.moderate ?? 0} low:${m.low ?? 0})\n`);
+    console.log(`audit:deps — ${total} advisor${total === 1 ? "y" : "ies"} (critical:${m.critical ?? 0} high:${m.high ?? 0} moderate:${m.moderate ?? 0} low:${m.low ?? 0})\n`);
 
     const upstream = advisories.filter((a) => a.plurnkRoots.length > 0);
     const local = advisories.filter((a) => a.plurnkRoots.length === 0);

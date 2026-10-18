@@ -119,11 +119,12 @@ test("the pre-push gate drills the pushed commit in a throwaway worktree, never 
     assert.doesNotMatch(hook, /git status --porcelain/u, "a dirty working tree does not block a push: it is not what the drill tests");
 });
 
-test("the repository root exposes the service's basic operator lifecycle", () => {
+test("a root alias of a workspace script delegates by workspace name and passes its arguments through", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-    assert.equal(pkg.scripts.start, "npm start -w @plurnk/plurnk-service");
-    assert.equal(pkg.scripts["test:live"], "npm run test:live -w @plurnk/plurnk-service");
-    assert.equal(pkg.scripts["test:demo"], "npm run test:demo -w @plurnk/plurnk-service");
+    assert.match(pkg.scripts.start, /^npm start -w @plurnk\/plurnk-service$/u);
+    for (const name of ["test:live", "test:demo", "share", "probe:providers"]) {
+        assert.match(pkg.scripts[name], /^npm run (?:-s )?[\w:]+ -w @plurnk\/[\w-]+ --$/u, `${name}: delegates and ends with -- so npm run ${name} -- <arguments> reaches the script`);
+    }
 });
 
 test("live/demo operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
@@ -159,31 +160,22 @@ test("live, demo, and benchlet launch through the operator environment", async (
     const live = await liveInvocation();
     // #588: no generated grammar precedes a live or demo run; an operator's own GBNF is a file path.
     assert.equal(pkg.scripts["build:rail"], undefined, "no rail build survives the GBNF discard");
-    for (const name of ["pretest:live", "pretest:live:specimen", "pretest:demo", "pretest:demo:zeropin"]) {
+    for (const name of ["pretest:live", "pretest:demo"]) {
         assert.equal(pkg.scripts[name], undefined, `${name} has nothing to regenerate`);
     }
     assert.ok(live.args.includes(`--env-file-if-exists=${gateProfile()}`), "the live tier layers the committed gate profile");
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md");
-    assert.equal(pkg.scripts["test:live:zeropin"], "PLURNK_ZERO_PIN=1 npm run test:live");
 
     const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
     const demo = await demoInvocation();
     assert.ok(demo.args.includes(`--env-file-if-exists=${gateProfile()}`), "the demo driver loads the shared profile");
     assert.equal(demo.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md", "the demo driver selects the gate policy");
 
-    for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:specimen", "test:benchlet"]) {
+    for (const name of ["test:live", "test:demo", "test:benchlet"]) {
         assert.match(
             pkg.scripts[name],
             /^bash \.\.\/scripts\/operator-environment\.sh /,
             `${name} loads the operator environment before entering the test harness`,
-        );
-    }
-
-    for (const name of ["test:live:zeropin", "test:demo:zeropin"]) {
-        assert.match(
-            pkg.scripts[name],
-            /^PLURNK_ZERO_PIN=1 npm run test:(live|demo)$/,
-            `${name} delegates to the operator-environment entrypoint`,
         );
     }
 });
