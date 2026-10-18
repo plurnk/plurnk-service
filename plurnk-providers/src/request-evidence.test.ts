@@ -6,6 +6,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import AiSdkProvider from "./AiSdkProvider.ts";
 import { createSdkModel } from "./sdkModels.ts";
 import type { ProviderRequestAccounting } from "./types.ts";
+import { requestBody } from "../../scripts/test-fetch.ts";
 
 for (const native of [false, true]) {
     for (const capture of [false, true]) {
@@ -78,7 +79,7 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
             streaming: false, rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             fetch: async (_url, init) => {
-                sent = String(init?.body);
+                sent = requestBody(init);
                 const response = protocol === "google"
                     ? { candidates: [{ content: { role: "model", parts: [{ text: "observed" }] }, finishReason: "STOP" }],
                         usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 } }
@@ -186,7 +187,7 @@ for (const capture of [false, true]) {
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 1,
             fetch: async (_input, init) => {
                 calls++;
-                bodies.push(String(init?.body));
+                bodies.push(requestBody(init));
                 return calls === 1
                     ? new Response('{"error":{"message":"try again"},"witness":991}', {
                         status: 503, headers: { "content-type": "application/json", "x-should-retry": "true", "x-request-id": "failed-http" },

@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 
 const readHttp = (
     http: Http,
@@ -119,7 +120,7 @@ for (const status of [201, 202, 206]) {
         t.after(() => db.close());
         const requests: Headers[] = [];
         t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
-            if (String(url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests.push(new Headers(init?.headers));
             return new Response(`revision ${requests.length}`, {
                 status,
@@ -508,7 +509,7 @@ test("an empty finite GET materializes atomically and remains reusable through 3
         const firstResponse = Promise.withResolvers<Response>();
         let requests = 0;
         globalThis.fetch = async (_url, init) => {
-            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
                 firstStarted.resolve();
@@ -578,7 +579,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const requests: Array<{ authorization: string | null; conditional: boolean }> = [];
         const bodies = ["public v1", "private", "public v2"];
         globalThis.fetch = async (_url, init) => {
-            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             const headers = new Headers(init?.headers);
             requests.push({
                 authorization: headers.get("authorization"),
@@ -643,7 +644,7 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
         const requests: Array<{ conditional: boolean }> = [];
         globalThis.fetch = async (_url, init) => {
-            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             const headers = new Headers(init?.headers);
             requests.push({
                 conditional: headers.has("if-none-match") || headers.has("if-modified-since"),
@@ -689,7 +690,7 @@ test("{§revalidation} a strong response tag after a stored weak tag reacquires 
     try {
         let requests = 0;
         globalThis.fetch = async (_url, init) => {
-            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
                 return new Response("plain body v1", {
@@ -820,7 +821,7 @@ test("{§revalidation} #288: a 304 that cannot identify the stored representatio
     try {
         let requests = 0;
         globalThis.fetch = async (_url, init) => {
-            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
                 return new Response("plain body v1", {

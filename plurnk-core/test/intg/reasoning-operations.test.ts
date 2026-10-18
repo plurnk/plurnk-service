@@ -116,13 +116,13 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             const second = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(second.status, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            const rows = logEntries(packet).filter((row) => String(row.logPath).startsWith("log:///1/2/"));
+            const rows = logEntries(packet).filter((row) => row.logPath.startsWith("log:///1/2/"));
             assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
             assert.deepEqual(provider.received[1].map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"],
                 "{§emission-history}: content operations replay, while reasoning operations remain in their own channel");
             assert.equal(packetSection(packet, "emission-history"), content);
-            if (content !== "") assert.ok(rows.some((row) => String(row.logPath).endsWith("/SEND") && row.body === undefined), "the delivered reply has a receipt without a duplicated answer");
+            if (content !== "") assert.ok(rows.some((row) => row.logPath.endsWith("/SEND") && row.body === undefined), "the delivered reply has a receipt without a duplicated answer");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
             const raw = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
             assert.equal(raw.content, reasoning);
@@ -310,7 +310,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200, exitCode: 0 } });
         const next = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const reads = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath)));
+        const reads = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
         assert.equal(reads.length, 3, "authored occurrences are never deduplicated across reasoning and content");
         assert.equal(reads.filter((row) => row.path === "sh:///fact").length, 2, "reasoning receipts retain the source; the content operation supplies its own");
         assert.equal(packetSection(packet, "emission-history"), read);
@@ -321,7 +321,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         }
         const done = await engine.runTurn({ ...context, provider, messages: [] });
         const curated = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: done.turnId }))!.packet);
-        assert.ok(logEntries(curated).every((row) => !/^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath))));
+        assert.ok(logEntries(curated).every((row) => !/^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath)));
         const source = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (sh:///fact) <1,-1>", null)) });
         assert.equal(source.content, "first\nsecond\nthird");
         assert.equal(source.terminal, true);

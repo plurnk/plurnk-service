@@ -11,6 +11,7 @@ import {
     transportFailureOutputObserved,
     transportFailureEvidence,
 } from "./aiSdkTransport.ts";
+import { requestBody } from "../../scripts/test-fetch.ts";
 
 const request = {
     url: "https://example.test/v1/chat/completions",
@@ -320,7 +321,7 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
             id_slot: 2,
         },
         fetch: async (_input, init) => {
-            body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+            body = JSON.parse(requestBody(init)) as Record<string, unknown>;
             return new Response(JSON.stringify(responseBody), {
                 headers: { "content-type": "application/json" },
             });
@@ -357,7 +358,7 @@ test("request extensions cannot replace SDK-owned model or message serialization
 test("the adapter maps leading system messages to AI SDK instructions", async () => {
     const calls: Record<string, unknown>[] = [];
     const fetch: typeof globalThis.fetch = async (_url, init) => {
-        calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        calls.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         return new Response(JSON.stringify({
             model: "m",
             choices: [{ message: { content: "ok" }, finish_reason: "stop" }],

@@ -9,6 +9,7 @@ import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
+import { requestBody } from "../../scripts/test-fetch.ts";
 
 const KEYS = {
     OPENAI_API_KEY: "k", GROQ_API_KEY: "k", CEREBRAS_API_KEY: "k", MISTRAL_API_KEY: "k",
@@ -29,7 +30,7 @@ const nativeProvider = (provider: string, model: string, extra: Partial<AiSdkPro
 const captureBodies = (respond: (body: Record<string, unknown>) => Response): Array<Record<string, unknown>> => {
     const bodies: Array<Record<string, unknown>> = [];
     mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
-        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         bodies.push(body);
         return respond(body);
     });

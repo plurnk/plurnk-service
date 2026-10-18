@@ -73,25 +73,25 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.match(PacketWire.sectionContent(detached, "log"), /\/emission → ops:\/\/[^\s]+\/1\/2 · \d+/u,
                 "{§emission-history}: removing the runtime registration cannot erase an admitted invocation; its emission row and frozen program stand, parsed with the executors it was admitted with");
             const observed = await observe();
-            const invocation = observed.rows.find((row) => String(row.logPath).endsWith("/receiptfixture"));
+            const invocation = observed.rows.find((row) => row.logPath.endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");
             assert.equal(invocation.path, undefined, "the paired operation names the invoked tool");
             assert.ok(observed.replay.includes(frame("receiptfixture (inspect)", body)));
             assert.match(String(invocation.stream), /^receiptfixture:\/\/\/[a-f0-9]{8}$/u);
             assert.equal(invocation.lines, undefined, "argument bodies appear only in the complete operation, never as output");
-            const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && String(row.logPath).endsWith("/READ"));
+            const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && row.logPath.endsWith("/READ"));
             assert.ok(automatic, "the automatic output observation names the resource actually read");
             assert.equal(automatic.source, undefined);
             assert.equal(automatic.stream, undefined);
             assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
             assert.match(String(automatic.body), /40:result 40\n$/u);
 
-            const mistaken = await turn(frame(`READ (${String(invocation.logPath)}) <17,40>`, null));
+            const mistaken = await turn(frame(`READ (${invocation.logPath}) <17,40>`, null));
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            const failure = diagnosed.rows.find((row) => String(row.logPath).endsWith("/READ") && row.status === 416);
+            const failure = diagnosed.rows.find((row) => row.logPath.endsWith("/READ") && row.status === 416);
             assert.ok(failure, "the model sees the exact failed READ");
-            assert.ok(diagnosed.replay.includes(frame(`READ (${String(invocation.logPath)}) <17,40>`, null)));
+            assert.ok(diagnosed.replay.includes(frame(`READ (${invocation.logPath}) <17,40>`, null)));
             const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
             const stream = body === null ? problem.stream : invocation.stream;
@@ -100,7 +100,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovered = await turn(frame(`READ (${String(stream)}) <17,40>`, null));
             assert.equal(recovered.outcomes[0]?.status, 200);
             const recovery = await observe();
-            const read = recovery.rows.find((row) => String(row.logPath).endsWith("/READ") && row.origin === undefined && row.range === "<17,40> of 40 lines");
+            const read = recovery.rows.find((row) => row.logPath.endsWith("/READ") && row.origin === undefined && row.range === "<17,40> of 40 lines");
             assert.ok(read, "the explicit READ reaches the next model packet");
             assert.ok(recovery.replay.includes(frame(`READ (${String(stream)}) <17,40>`, null)));
             assert.equal(read.range, "<17,40> of 40 lines");
@@ -109,15 +109,15 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.match(String(read.body), /40:result 40\n$/u);
 
             const revisited = await turn([
-                frame(`KILL (${String(automatic.logPath)})`, null),
-                frame(`KILL (${String(read.logPath)})`, null),
+                frame(`KILL (${automatic.logPath})`, null),
+                frame(`KILL (${read.logPath})`, null),
                 frame(`READ (${String(stream)}) <1,-1>`, null),
             ].join("\n\n"));
             assert.deepEqual(revisited.outcomes.map(({ op, status }) => [op, status]),
                 [["KILL", 200], ["KILL", 200], ["READ", 200]]);
             const afterCuration = await observe();
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
-            const reread = afterCuration.rows.find((row) => String(row.logPath).endsWith("/READ") && row.origin === undefined && row.range === "40 lines");
+            const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/READ") && row.origin === undefined && row.range === "40 lines");
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
             assert.ok(afterCuration.replay.includes(frame(`READ (${String(stream)}) <1,-1>`, null)));
             assert.equal(reread.range, "40 lines");

@@ -69,7 +69,7 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
         const found = await engine.dispatch({ ...dispatch, sequence: 1, statement: findStatement() });
         assert.equal(found.status, 200);
         const paths = (found.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? "");
-        return { paths, content: String(found.content ?? "") };
+        return { paths, content: (typeof found.content === "string" ? found.content : "") };
     };
     return { db, schemes, engine, workspaceId, workerId, dispatch, catalog };
 };

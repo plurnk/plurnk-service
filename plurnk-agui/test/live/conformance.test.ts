@@ -43,7 +43,7 @@ test("live: the official AG-UI client accepts the complete model response stream
         assert.ok(seen.has("TEXT_MESSAGE_CONTENT"), "assistant speech flowed through their parser");
         const last = agent.messages.findLast(({ role }) => role === "assistant");
         assert.ok(last, "their message-builder assembled the reply alongside plan activity");
-        assert.match(String(last.content ?? ""), /pong/i, "the reply answers the prompt");
+        assert.match((typeof last.content === "string" ? last.content : ""), /pong/i, "the reply answers the prompt");
     } finally {
         await daemon.stop();
         await http.close();

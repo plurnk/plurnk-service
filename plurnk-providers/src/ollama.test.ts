@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { ollamaProviderFromEnv } from "./ollama.ts";
+import { requestUrl } from "../../scripts/test-fetch.ts";
 
 const env = Object.freeze({
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
@@ -24,7 +25,7 @@ test.afterEach(() => mock.restoreAll());
 test("#126: Ollama always probes model physics and applies an operator context-window ceiling", async () => {
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-        calls.push(String(input));
+        calls.push(requestUrl(input));
         return new Response(JSON.stringify({
             model_info: { "qwen.context_length": 32_768 },
         }));

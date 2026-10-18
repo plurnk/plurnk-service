@@ -51,7 +51,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         assert.equal(next.status, 102);
         assert.equal(next.createdTurnIds.length, 1);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(logPath)))!;
+        const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
         assert.ok(packetSection(packet, "emission-history").includes(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)),
@@ -61,7 +61,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             assert.equal(record.preview, undefined);
         } else {
             assert.equal(record.status, 413, "the receipt rides the next packet");
-            assert.doesNotMatch(String(record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
+            assert.doesNotMatch((record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
             // Source identity never depends on the reader ({§turn-source-resources}); alice's READs and packets are counted below.
             const observer = await insertWorker(db, workspaceId, null, "observer");
             const range = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });

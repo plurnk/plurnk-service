@@ -73,7 +73,7 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
         assert.equal(stored.range.total, 600, "the whole is named beside the page");
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(entry.logPath)))!;
+        const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
         assert.equal(row.range, `<1,${to}> of 600 lines`, "{§packet-extent-metadata}: one fact, one notation");
         assert.equal(String(row.body).trimEnd().split("\n").length, to, "the row shows exactly the page");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
@@ -116,7 +116,7 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.ok(packet.weight <= room, "the receipt and its prefix fit where the page could not");
-        const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(entry.logPath)))!;
+        const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
         assert.ok(row, "the receipt is a row of the next packet");
         assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
         const facts = receipt(row);
@@ -234,7 +234,7 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
         assert.ok(gauge.tokens > gauge.budget, `the gauge shows the packet over: ${gauge.tokens} of ${gauge.budget}`);
-        const rows = logEntries(packet).filter((row) => String(row.logPath).endsWith("/error"));
+        const rows = logEntries(packet).filter((row) => row.logPath.endsWith("/error"));
         assert.equal(rows.length, 1, "one row, at the head of the turn");
         const problem = (rows[0].problem ?? {}) as { detail?: string; excess?: number };
         assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§pinned-wording-core}
@@ -242,7 +242,7 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         assert.equal(rows[0].origin, "_plurnk");
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
-        const nextRows = logEntries(next).filter((row) => String(row.logPath).endsWith("/error"));
+        const nextRows = logEntries(next).filter((row) => row.logPath.endsWith("/error"));
         assert.equal(nextRows.length, 1, "shown once: the earlier mandate has retired from the projection; a packet that is still over carries its own (#1097)");
         assert.notEqual(nextRows[0].logPath, rows[0].logPath, "the row in the next packet is that packet's own");
         const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; active: number }>({ turn_id: second.turnId });
@@ -283,7 +283,7 @@ const overTheWall = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
     const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
     const settledTurn = (await db.test_get_turn.get<{ packet: string; sequence: number }>({ id: third.turnId }))!;
     const settled = JSON.parse(settledTurn.packet) as { weight: number };
-    assert.equal(logEntries(settled).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))), undefined,
+    assert.equal(logEntries(settled).find((row) => row.logPath.endsWith("/NOTE") && /beta beta/u.test(String(row.body))), undefined,
         "{§emission-history}: replayed, the newest large NOTE's text is in the replay and its paired receipt has no duplicate body");
     // {§emission-history}: pin the wall below this request even without its optional replay, so fitting
     // still requires a result body. Without the replay the NOTE stands as a bodied row again.
@@ -291,7 +291,7 @@ const overTheWall = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
         initialMessages: messages, workspaceId, workerId, loopId, provider: wide,
         currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitEmissionHistory: true,
     });
-    const betaRow = logEntries(baseline).find((row) => String(row.logPath).endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
+    const betaRow = logEntries(baseline).find((row) => row.logPath.endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
     assert.ok(betaRow, "not replayed, the newest large NOTE is a bodied row");
     const contextWindow = Math.ceil((baseline.weight - 600) / 0.9);
     process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
@@ -314,12 +314,12 @@ test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiles
     const taken = entries.find((row) => row.logPath === betaRow.logPath)!;
     assert.equal(taken.body, undefined, "the newest bodied row is a receipt");
     assert.deepEqual(taken.size, { lines: 1, tokens: betaRow.tokens }, "its size names the lines and tokens of the body it stood for");
-    assert.ok(Number(taken.tokens) < betaRow.tokens, "the receipt charges less than the body did");
+    assert.ok(taken.tokens < betaRow.tokens, "the receipt charges less than the body did");
     assert.ok(entries.some((row) => /alpha alpha/u.test(String(row.body))), "the older NOTE keeps its body: newest first, and only as many as it takes");
     assert.equal(entries.filter((row) => row.size !== undefined).length, 1, "one row was taken");
     const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
     assert.ok(gauge.tokens > gauge.budget, "the packet that fits the wall is still over budget");
-    assert.equal(entries.filter((row) => String(row.logPath).endsWith("/error")).length, 1, "{§context-over-budget-row}: the row rides the packet that fits");
+    assert.equal(entries.filter((row) => row.logPath.endsWith("/error")).length, 1, "{§context-over-budget-row}: the row rides the packet that fits");
     const stored = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: second.turnId });
     assert.ok(stored.some(({ op, tx, folded }) => op === "NOTE" && JSON.parse(tx).body === beta && folded === "[]"), "the body stays stored, whole and unfolded");
     await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });

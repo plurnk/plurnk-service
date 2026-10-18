@@ -47,7 +47,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
             assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
             assert.equal(retrievals.find((row) => row.op === "FIND")?.status_rx, 200);
-            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.logPath).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
+            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => entry.logPath.endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
                 "full-text search and path-glob selection return the same canonical leaf");
             assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
                 "KILL selects that exact runtime's receipts and retires them from context");
@@ -99,14 +99,14 @@ test("a model's execution result surfaces visibly in the next turn without an ex
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
             assert.ok(
-                entries.some((e) => String(e.stream ?? "").startsWith("sh:///")),
+                entries.some((e) => (e.stream ?? "").startsWith("sh:///")),
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
             // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
             // into the next turn (origin=_plurnk), visible because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => String(e.logPath).endsWith("/READ") && e.origin === "_plurnk" && String(e.path ?? "").includes("stdout")),
+                entries.some((e) => e.logPath.endsWith("/READ") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout")),
                 `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ logPath: e.logPath, path: e.path, origin: e.origin })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
@@ -156,7 +156,7 @@ test("a generated JSON result publishes whole with the extent through the next-t
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                String(candidate.logPath).endsWith("/READ") && String(candidate.path ?? "").startsWith("sqlite:///"));
+                candidate.logPath.endsWith("/READ") && (candidate.path ?? "").startsWith("sqlite:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.preview, undefined, "nothing is previewed on the model's behalf");
             assert.match(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is what the model sees");
@@ -273,12 +273,12 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => String(e.logPath).endsWith("/READ") && e.origin === "_plurnk" && String(e.path ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => e.logPath.endsWith("/READ") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered visibly as the terminal observation");
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row.
-            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.path ?? "").includes("stderr"));
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && (e.path ?? "").includes("stderr"));
             assert.equal(stderrConclusion.length, 0, "an empty sibling channel lands no row of its own");
             assert.deepEqual(deltas[0]?.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
         } finally { ws.close(); }
@@ -301,7 +301,7 @@ test("a command that prints nothing on any channel lands exactly one bodyless co
             assert.equal(finalStatus, 200, "completion was never blocked by an undelivered termination");
             const last = turnIds![turnIds!.length - 1];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: last }))?.packet ?? "{}");
-            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && String(e.path ?? "").startsWith("sh:///"));
+            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && (e.path ?? "").startsWith("sh:///"));
             assert.equal(conclusions.length, 1, "one bodyless conclusion row for a silent stream");
             assert.equal(conclusions[0]?.terminal, true);
             assert.deepEqual(conclusions[0]?.channels, { "#stderr": 0 });

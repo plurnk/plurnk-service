@@ -33,9 +33,9 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         assert.equal(first.status, 102);
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const notes = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(String(row.logPath)));
+        const notes = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(row.logPath));
         assert.equal(notes.length, 2, "reasoning and content NOTEs both retain ordinary receipt addresses");
-        assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${String(row.logPath).replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
+        assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${row.logPath.replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertWorker(db, workspaceId, null, "observer");
@@ -43,14 +43,14 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         const firstSource = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
-        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(String(notes[1].logPath))?.[1];
+        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(notes[1].logPath)?.[1];
         assert.ok(contentNote, "the content NOTE has its own receipt coordinate");
         const secondSource = await read(frame(`READ (note://alice/${contentNote}) <1,-1>`, null));
         assert.equal(secondSource.content, "Inspect the parser next.", "the receipt coordinate reads the content NOTE's durable source");
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
-        assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(String(row.logPath))).length, 0);
+        assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(row.logPath)).length, 0);
         const sourceAgain = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
         assert.equal(sourceAgain.content, "The network is not the cause.", "curating the log does not delete the source note");
         const rawReasoning = await read(frame("READ (reasoning://alice/1/2) <1,-1>", null));

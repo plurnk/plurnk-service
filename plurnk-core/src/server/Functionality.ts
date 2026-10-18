@@ -523,7 +523,7 @@ export default class Functionality {
         finally { this.#admissions.delete(pending); }
     }
 
-    async #activate(adapter: HostFunctionalityAdapter, context: WorkspaceCapabilityIdentity & { retain(): () => void }): Promise<void> {
+    async #activate(adapter: HostFunctionalityAdapter, context: WorkspaceCapabilityIdentity & { readonly retain: () => () => void }): Promise<void> {
         const identity = { workspaceId: context.workspaceId };
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             this.#host.signal.throwIfAborted();

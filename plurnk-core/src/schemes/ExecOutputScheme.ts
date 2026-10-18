@@ -81,9 +81,9 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
-        const find = this.#facet?.find;
-        if (find !== undefined && this.#claimedPath(statement)) {
-            return await find.call(this.#facet, statement, await this.#facetContext(ctx)) as FindResult;
+        const facet = this.#facet;
+        if (facet?.find !== undefined && this.#claimedPath(statement)) {
+            return await facet.find(statement, await this.#facetContext(ctx)) as FindResult;
         }
         if (statement.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
             "Stored execution output does not accept FIND metadata.", {
@@ -100,10 +100,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
 
     // {§runtime-resource-binding} A claimed resource's EDIT is its facet's; stored output has none.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditBatchResult> {
-        const edit = this.#facet?.editBatch;
+        const facet = this.#facet;
         const target = statements[0]?.target ?? null;
-        if (edit !== undefined && target !== null && this.claimsLiveResource(target)) {
-            return edit.call(this.#facet, statements, await this.#facetContext(ctx, target));
+        if (facet?.editBatch !== undefined && target !== null && this.claimsLiveResource(target)) {
+            return facet.editBatch(statements, await this.#facetContext(ctx, target));
         }
         return Results.failure("scheme:exec", "operation-not-implemented", 501,
             `Scheme '${this.#manifest.name}' does not implement EDIT.`, { entryId: null, channel: null },
@@ -112,9 +112,9 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
 
     // {§exec-input} reaches a stored execution's process; a claimed resource is a recipient of its own.
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        const send = this.#facet?.send;
-        if (send !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {
-            return send.call(this.#facet, statement, await this.#facetContext(ctx, statement.target));
+        const facet = this.#facet;
+        if (facet?.send !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {
+            return facet.send(statement, await this.#facetContext(ctx, statement.target));
         }
         return this.#exec.sendInput(statement, ctx, this.#manifest.name);
     }
@@ -123,10 +123,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     // is the same claim that routed `send`, so an executor-input proposal (which has no claimed
     // target) still reaches the executor.
     async applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        const apply = this.#facet?.applyResolution;
+        const facet = this.#facet;
         const target = (request.attrs as { target?: ParsedPath | null }).target;
-        if (apply !== undefined && target != null && this.claimsLiveResource(target)) {
-            return apply.call(this.#facet, request, await this.#facetContext(ctx, target));
+        if (facet?.applyResolution !== undefined && target != null && this.claimsLiveResource(target)) {
+            return facet.applyResolution(request, await this.#facetContext(ctx, target));
         }
         return this.#exec.applyInput(request, ctx, this.#manifest.name);
     }
@@ -146,9 +146,9 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
 
     // {§scheme-operation-dispatch} The authored runtime address survives delegation.
     async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        const kill = this.#facet?.kill;
-        if (kill !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {
-            return kill.call(this.#facet, statement, await this.#facetContext(ctx, statement.target));
+        const facet = this.#facet;
+        if (facet?.kill !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {
+            return facet.kill(statement, await this.#facetContext(ctx, statement.target));
         }
         return this.#exec.kill(statement, ctx);
     }

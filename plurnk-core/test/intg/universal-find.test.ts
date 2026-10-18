@@ -19,6 +19,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 
 class PreparedDataScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -210,7 +211,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
     const url = "https://93.184.216.34/igor-smirnov";
     const deadUrl = "https://93.184.216.34/missing";
     globalThis.fetch = (async (input: string | URL | Request) => {
-        const requested = String(input);
+        const requested = requestUrl(input);
         if (requested.endsWith("/llms.txt")) return new Response(null, { status: 404 });
         requests.push(requested);
         if (requested === deadUrl) return new Response("missing", { status: 404 });
@@ -310,7 +311,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
     const readUrl = "https://93.184.216.34/mutation-read";
     const findUrl = "https://93.184.216.34/mutation-find";
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/llms.txt")) return new Response(null, { status: 404 });
         const method = init?.method ?? "GET";
         requests.push({ url, method });

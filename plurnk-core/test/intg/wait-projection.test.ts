@@ -50,7 +50,7 @@ for (const [header, warning] of [
         const notices = packetSection(resumedPacket, "notices");
         assert.ok(notices.includes(`> YOU SHOULD write the canonical form. ${warning}`), notices); // {§notice-callout}
         assert.equal(notices.match(/\[parse_advisory\]/gu)?.length, 1);
-        const wait = logEntries(resumedPacket).find(({ logPath }) => String(logPath).endsWith("/WAIT"));
+        const wait = logEntries(resumedPacket).find(({ logPath }) => logPath.endsWith("/WAIT"));
         assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
         if (header === "WAIT 15") assert.ok(packetSection(resumedPacket, "emission-history").includes(PlurnkParser.frame("WAIT", "15")), "the authored prose is retained in its operation");
 
@@ -87,7 +87,7 @@ for (const headers of [["WAIT [0]"], ["WAIT [600]", "WAIT [0]"], ["WAIT [0]", "W
         assert.equal(next.status, 202, "the zero bound does not leak into a later WAIT");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         assert.equal(packetSection(packet, "notices"), "", "zero earns no correction");
-        const zero = logEntries(packet).find((entry) => String(entry.logPath).endsWith("/WAIT") && entry.waitSeconds === 0);
+        const zero = logEntries(packet).find((entry) => entry.logPath.endsWith("/WAIT") && entry.waitSeconds === 0);
         assert.ok(zero, "the no-wait receipt records the accepted zero");
         assert.equal(zero.status, 102);
     });

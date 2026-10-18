@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
+import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
 
 const env = {
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
@@ -53,7 +54,7 @@ test("{§provider-generation-completion} repeated text and reasoning retain the 
                 let settled = 0;
                 const observed: string[] = [];
                 mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-                    if (String(input).endsWith("/models")) {
+                    if (requestUrl(input).endsWith("/models")) {
                         return Response.json({ data: [{ id: "local", n_ctx: 100_000 }] });
                     }
                     requests++;
@@ -87,10 +88,10 @@ test("{§provider-generation-completion} repeated text and reasoning retain the 
 test("an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
-        if (String(input).endsWith("/models")) {
+        if (requestUrl(input).endsWith("/models")) {
             return new Response(JSON.stringify({ data: [{ id: "local", n_ctx: 8192 }] }));
         }
-        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         return streamedChatResponse("ok");
     });
 
@@ -106,12 +107,12 @@ test("an undifferentiated compatible endpoint receives no guessed prompt-cache f
 test("the server-wide DRY-off floor emits no DRY request fields", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
-        if (String(input).endsWith("/models")) {
+        if (requestUrl(input).endsWith("/models")) {
             return new Response(JSON.stringify({
                 data: [{ id: "local", meta: { n_ctx: 8192 } }],
             }));
         }
-        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         return streamedChatResponse("ok");
     });
 
@@ -135,7 +136,7 @@ test("the server-wide DRY-off floor emits no DRY request fields", async () => {
 
 test("(#483) a detected llama-server rail admits the operator's stated effort", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));
         if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
         throw new Error(`unexpected request ${url}`);
@@ -149,7 +150,7 @@ test("detected llama-server measures the complete chat request through input_tok
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/models")) {
             return new Response(JSON.stringify({
                 data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }],
@@ -160,7 +161,7 @@ test("detected llama-server measures the complete chat request through input_tok
         }
         if (url.endsWith("/chat/completions/input_tokens")) {
             countUrl = url;
-            countBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+            countBody = JSON.parse(requestBody(init)) as Record<string, unknown>;
             return new Response(JSON.stringify({ input_tokens: 37 }), {
                 headers: { "content-type": "application/json" },
             });
@@ -186,7 +187,7 @@ test("detected llama-server measures the complete chat request through input_tok
 
 test("{§provider-prompt-measurement} a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/models")) {
             return new Response(JSON.stringify({
                 data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }],

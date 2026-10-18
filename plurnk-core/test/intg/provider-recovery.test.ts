@@ -9,6 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { requestBody } from "../../../scripts/test-fetch.ts";
 
 // A provider whose next `failures` calls drop with a transient network failure.
 class Flaky extends Mock {
@@ -111,7 +112,7 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
             contextWindow: 100_000, fetchTimeoutMs: 50, operationTimeoutMs: 500,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 3,
             fetch: async (_url, init) => {
-                requests.push(String(init?.body));
+                requests.push(requestBody(init));
                 if (requests.length === 1) return new Promise<Response>((_resolve, reject) => {
                     init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
                 });

@@ -962,7 +962,7 @@ for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.
 
             const next = await engine.runTurn({ ...context, provider, messages: [] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const observations = logEntries(packet).filter(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(logPath)));
+            const observations = logEntries(packet).filter(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(logPath));
             assert.equal(observations.length, 1, "the following turn receives the recovered READ's result");
             assert.match(String(observations[0].body), /^1<@[0-9A-Za-z]{5}>two\n2<@[0-9A-Za-z]{5}>three\n$/);
         } finally { await db.close(); }

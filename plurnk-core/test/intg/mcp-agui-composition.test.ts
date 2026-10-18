@@ -291,7 +291,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         );
         const observedSpeech = observed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => String(event.delta ?? ""))
+            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
             .join("");
         assert.match(observedSpeech, /echo returned hello from MCP/);
 
@@ -352,7 +352,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.equal(toolResult.problem.diagnostic, "fixture failure");
         const recoveredSpeech = resumed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => String(event.delta ?? ""))
+            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
             .join("");
         assert.match(recoveredSpeech, /reported its expected tool error; recovery is complete/);
 

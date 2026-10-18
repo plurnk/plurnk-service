@@ -143,7 +143,7 @@ test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in 
             const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", workerId: modelWorkerId });
             assert.equal(next.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
-            const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && String(row.logPath).endsWith("/SEND"));
+            const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && row.logPath.endsWith("/SEND"));
             assert.ok(reply, "the next model request contains the ordinary sent-message receipt");
             assert.equal(reply.preview, undefined, JSON.stringify(reply));
             assert.equal(reply.lines, 40, "the receipt states its full extent");

@@ -16,7 +16,7 @@ import type { AgentRootScope } from "./AgentRoots.ts";
 export type HostFunctionalityAdapter = FunctionalityAdapter<RuntimeRegistration, RuntimeSchemeFacet>;
 
 interface WorkspaceCapabilityContext extends WorkspaceCapabilityIdentity {
-    retain(): () => void;
+    readonly retain: () => () => void;
 }
 
 // {§module-workspace-provider}

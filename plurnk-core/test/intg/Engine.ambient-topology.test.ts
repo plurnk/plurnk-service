@@ -318,7 +318,7 @@ test("{§env-delta-no-coalescing} {§env-delta-commons-mutation} commons mutatio
         const storedPacket = await db.test_get_packet.get<{ packet: string }>({ id: parentTurn.turnId });
         const activity = logEntries(JSON.parse(storedPacket!.packet)).filter(({ source }) => source === "worker://child");
         for (const [op, from, to] of [["COPY", "source", "copy"], ["MOVE", "copy", "moved"]]) {
-            const receipt = activity.find(({ logPath }) => String(logPath).endsWith(`/${op}`));
+            const receipt = activity.find(({ logPath }) => logPath.endsWith(`/${op}`));
             assert.ok(receipt, `the parent sees the child's ${op}`);
             assert.equal(receipt.source, "worker://child");
             assert.equal(receipt.from, `worker:///${from}`);

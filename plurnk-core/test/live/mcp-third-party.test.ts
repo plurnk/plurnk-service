@@ -127,7 +127,7 @@ test("live mcp: current third-party stdio and HTTP servers compose through the a
         assert.ok(anyPacket(/Melbourne-based full-service digital agency/), "GOJI's about resource reached the model");
         const speech = gojiRun
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => String(event.delta ?? ""))
+            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
             .join("");
         assert.match(speech, /GOJI defines AEO as Answer Engine Optimisation/);
     } finally {

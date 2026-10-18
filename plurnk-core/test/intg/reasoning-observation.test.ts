@@ -77,7 +77,7 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-        const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(String(row.logPath)));
+        const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
         assert.ok(receipt);
         assert.equal(receipt.aside, undefined);
         assert.ok(packetSection(packet, "emission-history").includes(read), "the paired operation retains the source, scope and aside");

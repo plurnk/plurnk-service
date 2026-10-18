@@ -25,6 +25,7 @@ const catalogRatesOf = (provider: string, model: string) => {
     };
 };
 import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
+import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), grammarStyles: new Map() });
@@ -239,7 +240,7 @@ test("public construction applies the package floor to a sparse consumer environ
 test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
-        calls.push({ url: String(url), init });
+        calls.push({ url: requestUrl(url), init });
         const chunks = [
             {
                 id: "deepseek-test",
@@ -287,7 +288,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "https://api.deepseek.com/chat/completions");
     assert.equal(new Headers(calls[0].init?.headers).get("Authorization"), "Bearer test-key");
-    const request = JSON.parse(String(calls[0].init?.body)) as Record<string, unknown>;
+    const request = JSON.parse(requestBody(calls[0].init)) as Record<string, unknown>;
     assert.equal(request.model, "deepseek-v4-flash");
     assert.deepEqual(request.thinking, { type: "disabled" });
     assert.equal(provider.contextWindow, 1_000_000);
@@ -377,7 +378,7 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
 test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explicit response style through the public registry", async () => {
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-        calls.push(String(input));
+        calls.push(requestUrl(input));
         const chunks = [
             {
                 id: "cloudflare-reasoning",
@@ -428,7 +429,7 @@ test("two Fireworks aliases independently select default and priority service ti
     const bodies: Record<string, unknown>[] = [];
     const headers: Headers[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         headers.push(new Headers(init?.headers));
         const chunk = {
             id: "fireworks-test",

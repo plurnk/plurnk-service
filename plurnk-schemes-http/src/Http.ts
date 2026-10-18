@@ -346,7 +346,7 @@ export default class Http implements SchemeHandler {
             throw new Error(`An outbound HTTP proposal named a method this scheme never proposes: ${String(method)}.`);
         }
         // The resolver may replace an authored body before it is sent; a bodyless verb keeps none.
-        const body = attrs.body === undefined ? undefined : request.body ?? String(attrs.body);
+        const body = attrs.body === undefined ? undefined : request.body ?? (typeof attrs.body === "string" ? attrs.body : JSON.stringify(attrs.body));
         // DELETE spells its intent with `remote`, which selects the verb and is never a header.
         let metadata = request.metadata;
         if (method === "DELETE") {

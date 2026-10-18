@@ -219,7 +219,7 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
         const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const read = logEntries(packet).find(({ logPath, body }) => String(logPath).endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
+        const read = logEntries(packet).find(({ logPath, body }) => logPath.endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
         assert.equal(packetSection(packet, "notices"),
             `${scope("0,120", "1,120")}\n\n${CONTINUED}`);

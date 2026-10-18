@@ -4,7 +4,7 @@ import test from "node:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { namedModelWorker } from "./_workers.ts";
 
@@ -12,7 +12,7 @@ class PacketCapturingMock extends Mock {
     readonly requests: string[] = [];
 
     override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
-        this.requests.push(args[0].messages.map(({ content }) => content).join("\n\n"));
+        this.requests.push(args[0].messages.map((message) => chatMessageText(message)).join("\n\n"));
         return super.generate(...args);
     }
 }

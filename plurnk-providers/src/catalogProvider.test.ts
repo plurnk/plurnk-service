@@ -38,6 +38,7 @@ import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
+import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
 
 const env = withProviderDefaults({
     ...OPERATOR_MODEL_OPTIONS,
@@ -66,7 +67,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     const bodies: Record<string, unknown>[] = [];
     const headers: Headers[] = [];
     mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)));
+        bodies.push(JSON.parse(requestBody(init)));
         headers.push(new Headers(init?.headers));
         return new Response(`data: ${JSON.stringify({
             id: "wire-test", model: "served", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
@@ -255,7 +256,7 @@ test("{§provider-effort}: discovery never offers a fixed effort the installed t
 test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         return new Response([
             `data: ${JSON.stringify({
                 id: "cloudflare-effort",
@@ -316,7 +317,7 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
 test("an operator-declared effort vocabulary extends Models.dev's for a provider's reasoning routes (#439)", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         return new Response([
             `data: ${JSON.stringify({
                 id: "cloudflare-declared",
@@ -379,8 +380,8 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
-            url: String(input),
-            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            url: requestUrl(input),
+            body: JSON.parse(requestBody(init)) as Record<string, unknown>,
         });
         const chunks = [
             `data: ${JSON.stringify({
@@ -433,7 +434,7 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
 test("Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         return new Response([
             `data: ${JSON.stringify({
                 id: "chatcmpl-cerebras",
@@ -487,7 +488,7 @@ test("Cerebras explicit and adaptive reasoning do not invent a token budget", as
 test("Meta Muse adaptive reasoning is requested even when the endpoint returns no readable trace", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         return new Response([
             `data: ${JSON.stringify({
                 id: "chatcmpl-meta",
@@ -533,7 +534,7 @@ test("{§provider-effort} native graded requests use only the supported configur
     const sdk = createOpenAI({
         apiKey: "test-key",
         fetch: async (_input, init) => {
-            body = JSON.parse(String(init?.body));
+            body = JSON.parse(requestBody(init));
             return new Response(`data: ${JSON.stringify({
                 id: "fallback", object: "chat.completion.chunk", created: 1, model: "o3",
                 choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
@@ -572,7 +573,7 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
         generationConfig?: { thinkingConfig?: { includeThoughts?: boolean; thinkingLevel?: string; thinkingBudget?: number } };
     }> = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)) as typeof bodies[number]);
+        bodies.push(JSON.parse(requestBody(init)) as typeof bodies[number]);
         return new Response(`data: ${JSON.stringify({
             responseId: "response-gemini",
             candidates: [{
@@ -704,9 +705,9 @@ test("native provider routes project their documented cache controls through the
     const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
-            url: String(input),
+            url: requestUrl(input),
             headers: new Headers(init?.headers),
-            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            body: JSON.parse(requestBody(init)) as Record<string, unknown>,
         });
         return new Response([
             `data: ${JSON.stringify({
@@ -1047,7 +1048,7 @@ for (const name of ["deepinfra", "togetherai"]) {
         const effort = EFFORT_ORDER.findLast((value) => efforts.includes(value))!;
         const bodies: Record<string, unknown>[] = [];
         mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
-            const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+            const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
             bodies.push(body);
             const chunk = { id: "x", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } };
             return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -1101,7 +1102,7 @@ test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, 
     const effort = EFFORT_ORDER.findLast((value) => catalogEffortsOf("alibaba", route).includes(value))!;
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
-        bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         return new Response(JSON.stringify({ error: "captured" }), { status: 400 });
     });
     t.after(() => mock.restoreAll());

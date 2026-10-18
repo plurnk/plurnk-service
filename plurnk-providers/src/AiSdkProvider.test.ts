@@ -11,6 +11,7 @@ import RequestFields from "./RequestFields.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import InferenceAdmission from "./InferenceAdmission.ts";
+import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
 
 const wireConfig = (env: NodeJS.ProcessEnv) => {
     const requestFields = new RequestFields("test", withProviderDefaults(env));
@@ -87,7 +88,7 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
         const sdk = createOpenRouter({
             apiKey: "test-key",
             fetch: async (_url, init) => {
-                const body = JSON.parse(String(init?.body));
+                const body = JSON.parse(requestBody(init));
                 bodies.push(body);
                 return body.stream
                     ? new Response(sseStream([{ choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] }]), { headers: { "content-type": "text/event-stream" } })
@@ -254,11 +255,11 @@ test("per-instance fetch owns streaming and buffered requests", async () => {
     assert.ok(streamed.rawBody !== undefined);
     assert.equal(buffered.assistant.content, "buffered");
     assert.equal(calls.length, 2);
-    assert.equal(String(calls[0].input), injectedBase.url);
+    assert.equal(requestUrl(calls[0].input), injectedBase.url);
     assert.equal(calls[0].init?.method, "POST");
     assert.ok(calls[0].init?.signal instanceof AbortSignal);
-    assert.equal(JSON.parse(String(calls[0].init?.body)).stream, true);
-    assert.equal(JSON.parse(String(calls[1].init?.body)).stream, undefined);
+    assert.equal(JSON.parse(requestBody(calls[0].init)).stream, true);
+    assert.equal(JSON.parse(requestBody(calls[1].init)).stream, undefined);
 });
 
 test("caller cancellation and provider timeout reach an injected fetch", async () => {
@@ -368,8 +369,8 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
     const calls: string[] = [];
     let generationAttempts = 0;
     const providerFetch: typeof globalThis.fetch = async (input) => {
-        calls.push(String(input));
-        if (String(input).endsWith("/tokenize")) {
+        calls.push(requestUrl(input));
+        if (requestUrl(input).endsWith("/tokenize")) {
             return new Response(JSON.stringify({ tokens: [10, 20] }), { status: 200 });
         }
         generationAttempts++;
@@ -399,10 +400,10 @@ test("{§provider-flexed-allowance} an exact-counting transport flexes the wire 
     const seen: Array<Record<string, unknown>> = [];
     let promptTokens = 100;
     const providerFetch: typeof globalThis.fetch = async (input, init) => {
-        if (String(input).endsWith("/input-tokens")) {
+        if (requestUrl(input).endsWith("/input-tokens")) {
             return new Response(JSON.stringify({ input_tokens: promptTokens }), { status: 200 });
         }
-        seen.push(JSON.parse(String(init?.body)));
+        seen.push(JSON.parse(requestBody(init)));
         return new Response(sseStream([
             { model: "m", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
         ]), { status: 200 });
@@ -426,7 +427,7 @@ test("{§provider-flexed-allowance} an exact-counting transport flexes the wire 
 test("(#482) conformance judges the grant: tolerated overflow is accepted, past-the-grant is refused", async () => {
     let reportOutput = 9_648;
     const providerFetch: typeof globalThis.fetch = async (input) => {
-        if (String(input).endsWith("/input-tokens")) {
+        if (requestUrl(input).endsWith("/input-tokens")) {
             return new Response(JSON.stringify({ input_tokens: 100 }), { status: 200 });
         }
         return new Response(sseStream([
@@ -1720,8 +1721,8 @@ test("{§diagnostic-observation} billed output tokens vastly beyond the visible 
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
     ];
     const fetch: typeof globalThis.fetch = async (input, init) => {
-        if (String(input).endsWith("/tokenize")) {
-            const body = JSON.parse(String(init?.body)) as { content: string };
+        if (requestUrl(input).endsWith("/tokenize")) {
+            const body = JSON.parse(requestBody(init)) as { content: string };
             return new Response(JSON.stringify({
                 tokens: body.content.length === 0 ? [] : [1],
             }), { headers: { "content-type": "application/json" } });
@@ -1902,7 +1903,7 @@ test("an operator grammar reaches the request body verbatim under llama style an
         const calls = installFetchJson({ ...jsonChoice, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
         const res = await p.generate({ workerId: "r", messages: [], grammar });
-        const body = JSON.parse(String(calls[0].init.body)) as { grammar?: unknown };
+        const body = JSON.parse(requestBody(calls[0].init)) as { grammar?: unknown };
         if (grammarStyle === "llamacpp") {
             assert.equal(body.grammar, grammar, "the file's text, byte for byte");
             assert.deepEqual(res.grammarEvidence, { input: "ok", contentStart: 0, transported: true });
@@ -2077,7 +2078,7 @@ test("{§provider-input-modalities} compatible transports serialize image files 
         }],
     });
 
-    const body = JSON.parse(String(calls[0]?.init.body)) as { messages: unknown[] };
+    const body = JSON.parse(requestBody(calls[0]?.init)) as { messages: unknown[] };
     assert.deepEqual(body.messages, [{
         role: "user",
         content: [
@@ -2098,7 +2099,7 @@ for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]])
         await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
             { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: mediaType },
         ] }] });
-        assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).messages, [{ role: "user", content: [
+        assert.deepEqual(JSON.parse(requestBody(calls[0]?.init)).messages, [{ role: "user", content: [
             { type: "text", text: "listen" },
             { type: "input_audio", input_audio: { data: Buffer.from(bytes).toString("base64"), format } },
         ] }]);
@@ -2118,7 +2119,7 @@ test("{§provider-input-modalities} Google serializes native audio through its o
     await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
         { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: "audio/wav" },
     ] }] });
-    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).contents, [{ role: "user", parts: [
+    assert.deepEqual(JSON.parse(requestBody(calls[0]?.init)).contents, [{ role: "user", parts: [
         { text: "listen" }, { inlineData: { mimeType: "audio/wav", data: Buffer.from(bytes).toString("base64") } },
     ] }]);
 });
@@ -2428,7 +2429,7 @@ test("{§provider-wire-declaration} maps nested budgets and adaptive/disabled bo
 test("streaming:false posts without stream and parses the single JSON response", async () => {
     const calls: { body: string }[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
-        calls.push({ body: String(init.body) });
+        calls.push({ body: requestBody(init) });
         return new Response(JSON.stringify({
             model: "wire-model",
             choices: [{ message: { content: "hello", reasoning_content: "because" }, finish_reason: "stop" }],

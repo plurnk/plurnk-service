@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, type AddressInfo } from "node:net";
 import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 
 // A loopback port the kernel just handed out and this process released: closed, by evidence.
 const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {
@@ -36,7 +37,7 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
     const hit: string[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = ((u: string | URL | Request, ...rest: unknown[]) => {
-        hit.push(String(u));
+        hit.push(requestUrl(u));
         return (realFetch as (...a: unknown[]) => Promise<Response>)(u, ...rest);
     });
     // Both endpoints are ports this process bound and released a moment ago, so each is closed by
@@ -70,7 +71,7 @@ test("an alias-scoped provider knob binds at construction — the per-alias CONT
 test("{§provider-surface-identity} a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | Request) => {
-        if (String(input).endsWith("/models")) {
+        if (requestUrl(input).endsWith("/models")) {
             return new Response(JSON.stringify({
                 data: [{
                     id: "served.gguf",
@@ -78,10 +79,10 @@ test("{§provider-surface-identity} a pollable provider exposes the lower operat
                 }],
             }), { status: 200 });
         }
-        if (String(input).endsWith("/props")) {
+        if (requestUrl(input).endsWith("/props")) {
             return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         }
-        throw new Error(`unexpected request: ${String(input)}`);
+        throw new Error(`unexpected request: ${requestUrl(input)}`);
     });
     try {
         const provider = await ProviderInstantiate.instantiateProvider(
@@ -110,11 +111,11 @@ test("the process cache separates aliases and provider tuning for the same wire 
     const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_cachecap";
     const previous = process.env[key];
     globalThis.fetch = (async (input: string | URL | Request) => {
-        if (String(input).endsWith("/models")) {
+        if (requestUrl(input).endsWith("/models")) {
             return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 49_152 } }] }), { status: 200 });
         }
-        if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
-        throw new Error(`unexpected request: ${String(input)}`);
+        if (requestUrl(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        throw new Error(`unexpected request: ${requestUrl(input)}`);
     });
     const spec = { alias: "cachecap", provider: "openai", model: "local", baseUrl: "http://cache.test/v1" };
     try {
@@ -137,11 +138,11 @@ test("a registered handle cannot shadow changed provider tuning", async () => {
     const previous = process.env[key];
     const spec = { alias: "registeredcap", provider: "openai", model: "local", baseUrl: "http://registered.test/v1" };
     globalThis.fetch = (async (input: string | URL | Request) => {
-        if (String(input).endsWith("/models")) {
+        if (requestUrl(input).endsWith("/models")) {
             return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 49_152 } }] }), { status: 200 });
         }
-        if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
-        throw new Error(`unexpected request: ${String(input)}`);
+        if (requestUrl(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        throw new Error(`unexpected request: ${requestUrl(input)}`);
     });
     try {
         process.env[key] = "32000";

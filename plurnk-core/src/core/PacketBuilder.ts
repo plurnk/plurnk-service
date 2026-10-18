@@ -25,7 +25,7 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import type { PacketAttachment, RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { ChatMessage, Provider, ProviderRequestCapacity } from "@plurnk/plurnk-providers";
+import { chatMessageText, type ChatMessage, type Provider, type ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import ToolResources from "./ToolResources.ts";
@@ -202,7 +202,7 @@ export default class PacketBuilder {
     }): Promise<RequestPacket> {
         await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
-            initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
+            initialMessages.filter((m) => m.role === role).map((m) => chatMessageText(m)).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });

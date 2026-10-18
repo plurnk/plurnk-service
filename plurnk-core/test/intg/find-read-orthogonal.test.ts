@@ -91,7 +91,7 @@ test("exact READ returns target content", async () => {
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 200);
-        assert.match(String(r.content ?? ""), /france one/);
+        assert.match((typeof r.content === "string" ? r.content : ""), /france one/);
     } finally { await db.close(); }
 });
 

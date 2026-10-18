@@ -116,12 +116,12 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, a pac
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         assert.equal(packetSection(packet, "emission-history"), "", "the previous program went whole, first");
         const rows = logEntries(packet);
-        const notes = rows.filter(({ logPath }) => String(logPath).endsWith("/NOTE"));
+        const notes = rows.filter(({ logPath }) => logPath.endsWith("/NOTE"));
         const code = notes.at(-1)!;
         assert.equal(code.body, undefined, "the newest bodied row, the code, is a receipt");
         assert.ok(code.size !== undefined, "naming the size of the body it stood for");
         assert.ok(notes.slice(0, -1).every(({ body }) => String(body).includes("Prose runs")), "the older rows keep their bodies: only as many as it takes");
-        assert.equal(rows.filter(({ logPath }) => String(logPath).endsWith("/error")).length, 1, "{§context-over-budget-row}: the over-budget row rides the request that fits");
+        assert.equal(rows.filter(({ logPath }) => logPath.endsWith("/error")).length, 1, "{§context-over-budget-row}: the over-budget row rides the request that fits");
         const calls = await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ capacity }) => JSON.parse(capacity ?? "null")?.decision), ["admit"], "no refused request reached the provider's generate");
     } finally { await db.close(); }

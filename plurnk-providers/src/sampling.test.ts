@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { loadActiveProvider } from "./ProviderRegistry.ts";
+import { requestBody, requestUrl } from "../../scripts/test-fetch.ts";
 
 const baseEnv = {
     PLURNK_MODEL: "sample_box",
@@ -16,11 +17,11 @@ const baseEnv = {
 const installWire = () => {
     const calls: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/models")) return Response.json({ data: [{ id: "local", meta: { n_ctx: 8192 } }] });
         if (url.endsWith("/props")) return Response.json({ total_slots: 1 });
         if (url.endsWith("/input_tokens")) return Response.json({ input_tokens: 2 });
-        calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        calls.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
         return new Response([
             `data: ${JSON.stringify({
                 id: "sampling-test",
@@ -128,7 +129,7 @@ test("{§provider-sampling-passthrough}: numeric boundaries remain values, not a
 test("{§provider-sampling-passthrough}: native Google SDK maps every sampling control the current model takes", async () => {
     let config: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
-        config = (JSON.parse(String(init?.body)) as { generationConfig: Record<string, unknown> }).generationConfig;
+        config = (JSON.parse(requestBody(init)) as { generationConfig: Record<string, unknown> }).generationConfig;
         return new Response(`data: ${JSON.stringify({
             responseId: "sampling-gemini",
             candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],

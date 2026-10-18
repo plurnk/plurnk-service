@@ -97,7 +97,7 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const state = budgetOf(packet);
     const rows = logEntries(packet);
     const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
-    assert.ok(Number(read.tokens) < state.tokens, "a visible READ cannot outweigh its complete packet");
+    assert.ok(read.tokens < state.tokens, "a visible READ cannot outweigh its complete packet");
     assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
     // {§packet-wire-envelope}: each complete message is measured once.
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
@@ -122,7 +122,7 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
     });
     const persisted = (await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet;
     const before = await f.build(provider);
-    const arrival = logEntries(before).find(({ logPath: path }) => String(path).endsWith("/SEND"));
+    const arrival = logEntries(before).find(({ logPath: path }) => path.endsWith("/SEND"));
     assert.ok(arrival, "the arrival row is in the packet");
     assert.equal(arrival.body, undefined, "the message did not fit the budget: it landed folded, its row its size and address");
     assert.deepEqual(Object.keys(arrival.size as object).toSorted(), ["lines", "tokens"], "the folded arrival states its size, never a preview");
@@ -246,9 +246,9 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const trimmedRead = logEntries(trimmed).find(({ logPath: path }) => path === read.logPath)!;
     assert.equal(trimmedRead.body, undefined);
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
-        .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)} `))!;
+        .split("\n\n").find((row) => row.startsWith(`### ${read.logPath} `))!;
     assert.equal(read.tokens, contentWeight(renderedRead(before)));
-    assert.equal(read.tokens - Number(trimmedRead.tokens),
+    assert.equal(read.tokens - trimmedRead.tokens,
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");

@@ -6,6 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
+import { requestBody } from "../../../scripts/test-fetch.ts";
 
 test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI before the reasoning copy exists", async () => {
     const db = await openMigrated();
@@ -85,7 +86,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             reasoningResponseStyle: style === "think-tags" ? "think-tags" : "verbatim",
             supportsSlotPinning: true, slotCount: 2,
             fetch: async (_url, init) => {
-                const body = JSON.parse(String(init?.body));
+                const body = JSON.parse(requestBody(init));
                 const input = JSON.stringify(body.messages);
                 const owners = workers.filter(({ name }) => input.includes(`ONLY_${name}`));
                 assert.equal(owners.length, 1, "each request carries exactly its own prompt");

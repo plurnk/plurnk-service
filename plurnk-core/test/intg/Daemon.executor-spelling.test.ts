@@ -64,7 +64,7 @@ for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"]
                 const packet = JSON.parse(packetRow!.packet);
                 if (admission === "accept") {
                     assert.equal(await readFile(witness, "utf8"), "executed");
-                    const execution = logEntries(packet).find((entry) => String(entry.stream ?? "").startsWith("node:///"));
+                    const execution = logEntries(packet).find((entry) => (entry.stream ?? "").startsWith("node:///"));
                     assert.ok(execution,
                         "execution publishes through Node's existing output scheme");
                     const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({

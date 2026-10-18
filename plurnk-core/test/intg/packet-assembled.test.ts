@@ -13,7 +13,7 @@ import Engine from "../../src/core/Engine.ts";
 import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { InvalidCapabilityPolicyError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
@@ -61,7 +61,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(WORK|FORK)$/.test(String(path)));
+        const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(WORK|FORK)$/.test(path));
         assert.equal(receipts.length, 2);
         const names = await Promise.all(children.map(async (id) => (await db.worker_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
@@ -223,11 +223,11 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.ok(logEntries(packet).some(({ logPath: path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
+        assert.ok(logEntries(packet).some(({ logPath: path }) => path.endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
-            .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
+            .filter(({ logPath: path }) => path.startsWith("log:///1/1/"));
         assert.deepEqual(
-            [...new Set(initialization.map(({ logPath: path }) => String(path).split("/").at(-1) ?? ""))].toSorted(),
+            [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
             ["FIND", "NOTE", "READ"],
             "{§worker-initialization-entry}: turn 0 exposes its NOTE, the READ of its own program and its surveys, and nothing else",
         );
@@ -339,7 +339,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
-        const copies = logEntries(packet).filter(({ logPath: path }) => String(path).endsWith("/COPY") && !String(path).startsWith("log:///1/1/"));
+        const copies = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/COPY") && !path.startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
         assert.equal(copies[0]?.from, "worker:///src.md");
@@ -500,7 +500,7 @@ test("{§operator-config-real-model-profile}: the provider packet excludes perso
     const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "fixture language" }, { role: "user", content: "go" }] });
     const packet = await getPacket(db, result.turnId);
     assert.ok(provider.received.length > 0, "the real packet reaches the provider");
-    const system = provider.received.flat().filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
+    const system = provider.received.flat().filter(({ role }) => role === "system").map((message) => chatMessageText(message)).join("\n");
     assert.match(system, /fixture language/);
     assert.doesNotMatch(system, /DOGFOOD_ONLY_SENTINEL/);
     assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.content, "", "the policy slot contributes no content");
@@ -531,7 +531,7 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
         assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "the authored policy content is preserved");
         assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.header, null, "the policy owns its heading");
-        const systemMessage = provider.received[0].filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
+        const systemMessage = provider.received[0].filter(({ role }) => role === "system").map((message) => chatMessageText(message)).join("\n");
         assert.match(systemMessage, /# House rules\nNEVER guess a file path\./, "the authored heading reaches the provider");
         assert.doesNotMatch(systemMessage, /^## Policy$/m, "the engine adds no enclosing policy heading");
     } finally {

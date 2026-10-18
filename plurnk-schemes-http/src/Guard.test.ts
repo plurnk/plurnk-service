@@ -5,6 +5,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Guard, { GuardBlockedError } from "./Guard.ts";
+import { requestUrl } from "../../scripts/test-fetch.ts";
 
 test("isPublicAddress: blocks RFC-reserved v4 ranges", () => {
     for (const ip of ["0.0.0.0", "10.0.0.1", "127.0.0.1", "169.254.169.254", "172.16.0.1", "172.31.255.255", "192.168.1.1", "100.64.0.1", "100.127.0.1"]) {
@@ -58,7 +59,7 @@ test("Guard.fetch: a private target is refused before any fetch", async () => {
 test("Guard.fetch: a redirect INTO private space is re-guarded and refused", async () => {
     const orig = globalThis.fetch;
     globalThis.fetch = (async (u: string | URL | Request) =>
-        String(u).includes("8.8.8.8")
+        requestUrl(u).includes("8.8.8.8")
             ? new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } })
             : new Response("private-body"));
     try {

@@ -38,7 +38,7 @@ test("{§matcher-refusal}: a fumbled pattern is the operation's own 400 with the
         assert.equal(await new StrikeRail(db).streak(loopId), 0, "nor does repeating it");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/FIND"/u, "the refusal is the FIND row in the Errors index");
-        const row = logEntries(packet).find((entry) => entry.status === 400 && String(entry.logPath).endsWith("/FIND"))!;
+        const row = logEntries(packet).find((entry) => entry.status === 400 && entry.logPath.endsWith("/FIND"))!;
         assert.match(String((row.problem as { detail?: string }).detail), /not a valid/u, "the next packet carries the diagnostic on the row");
         assert.match(String((row.problem as { recovery?: string }).recovery), /A pattern is a regex/u);
     } finally { await db.close(); }

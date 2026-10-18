@@ -70,7 +70,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const entries = logEntries(packet);
             const survey = entries.find((e) => e.path === "worker:///_plurnk/tools/fixture.md");
             assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.logPath, e.path]))}`);
-            assert.match(String(survey.logPath), /\/FIND$/, "the survey is a FIND, not a document READ");
+            assert.match(survey.logPath, /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
             assert.match(log, /"matched":"```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n```"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");

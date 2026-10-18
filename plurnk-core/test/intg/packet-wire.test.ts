@@ -243,7 +243,7 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
     assert.equal(automatic.source, undefined);
     assert.equal(automatic.stream, undefined);
     assert.equal(origin, "_plurnk");
-    assert.ok(Number(automaticTokens) > Number(explicitTokens), "the extra producer fact is included in the row charge");
+    assert.ok(automaticTokens > explicitTokens, "the extra producer fact is included in the row charge");
 });
 
 test("{§log-address-metadata}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
@@ -284,7 +284,7 @@ test("{§log-readable-projection}: suppressed rows charge only their materialize
     const gone = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[1, -1]] }], tok))[0];
     for (const row of [whole, partial, gone]) {
         assert.deepEqual(facts(row), ["logPath", "tokens"], "hidden content carries its address and one charge");
-        assert.ok(Number(row.tokens) > 0);
+        assert.ok(row.tokens > 0);
     }
     assert.equal(whole.tokens, tok(PacketWire.renderLog([entry], tok)), "metadata charge is exact");
     assert.equal(whole.body, undefined);
@@ -1618,7 +1618,7 @@ test("{§body-projection}: a program READ renders whole; deliberate curation and
         const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0];
         assert.equal(suppressed.body, undefined);
         assert.equal(suppressed.preview, undefined);
-        assert.ok(Number(suppressed.tokens) < complete.tokens, "suppression does not charge the absent program body");
+        assert.ok(suppressed.tokens < complete.tokens, "suppression does not charge the absent program body");
     }
 });
 

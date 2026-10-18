@@ -53,7 +53,7 @@ export default class DigestRender {
 
     static #summarize(text: unknown, n = 80): string {
         if (text === null || text === undefined) return "";
-        const flat = String(text).replace(/\s+/g, " ").trim();
+        const flat = (typeof text === "string" ? text : JSON.stringify(text) ?? "").replace(/\s+/g, " ").trim();
         if (flat.length <= n) return flat;
         return `${flat.slice(0, n)}…`;
     }
@@ -64,7 +64,9 @@ export default class DigestRender {
 
     static parseJson(s: unknown, fallback: unknown = null): unknown {
         if (s === null || s === undefined) return fallback;
-        try { return JSON.parse(String(s)); } catch { return fallback; }
+        const text = typeof s === "string" ? s : Buffer.isBuffer(s) ? s.toString("utf8") : null;
+        if (text === null) return fallback;
+        try { return JSON.parse(text); } catch { return fallback; }
     }
 
     static #requestAccounting(row: ProviderRequestRow): ProviderRequestAccounting {

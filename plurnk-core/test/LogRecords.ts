@@ -22,7 +22,22 @@ const operands = (description: string, op: string): Record<string, unknown> => {
     };
 };
 
-export const parseLogRecords = (source: string): Array<Record<string, unknown>> => {
+// One projected log record: the heading's address, charge and operands, the JSON facts, the body.
+export interface LogRecord {
+    readonly logPath: string;
+    readonly tokens: number;
+    readonly modifiers?: string;
+    readonly path?: string;
+    readonly from?: string;
+    readonly to?: string;
+    readonly matcher?: unknown;
+    readonly body?: string;
+    readonly stream?: string;
+    readonly content?: string;
+    readonly [fact: string]: unknown;
+}
+
+export const parseLogRecords = (source: string): LogRecord[] => {
     if (source === "") return [];
     return source.split(/\n\n(?=### log:\/\/\/)/).map((record) => {
         const lines = record.split(/\r\n|\r|\n/);
@@ -46,6 +61,6 @@ export const parseLogRecords = (source: string): Array<Record<string, unknown>> 
             ...(modifiers === undefined ? {} : { modifiers, ...operands(modifiers, op) }),
             ...metadata,
             ...(lines.length === 0 ? {} : { body: `${lines.join("\n")}\n` }),
-        };
+        } as LogRecord;
     });
 };

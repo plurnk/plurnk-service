@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { Db } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { parseLogRecords } from "../LogRecords.ts";
+import { parseLogRecords, type LogRecord } from "../LogRecords.ts";
 
 // {§loop-response-messages}: evaluate delivered text independently of execution outcome.
 export const lastReply = async (db: Db, loopId: number): Promise<string> =>
@@ -18,7 +18,7 @@ export const packetSection = (packet: unknown, name: string): string =>
 // Parse the model's actual Markdown-framed log view for field-precise assertions.
 // The H3 supplies the test reader's `logPath`; the next line is metadata, and any remaining
 // coordinate-prefixed lines are the visible body ({§log-wire-format}).
-export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
+export const logEntries = (packet: unknown): LogRecord[] => {
     return parseLogRecords(packetSection(packet, "log"));
 };
 

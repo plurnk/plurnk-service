@@ -60,7 +60,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const log = packetSection(packet, "log");
             assert.match(log, /\s1:1\n/, "line 1 is delivered");
             assert.match(log, /\n40:40(?:\n|$)/, "and so is line 40: the first page holds them all");
-            const terminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stdout"));
+            const terminal = logEntries(packet).find((e) => e.logPath.endsWith("/READ") && (e.path ?? "").includes("stdout"));
             assert.ok(terminal, "the terminal observation names the read resource under path");
             assert.equal(terminal.target, undefined);
             assert.equal(terminal.stream, undefined);
@@ -69,7 +69,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(terminal.exitCode, 0);
             assert.equal(terminal.range, "40 lines");
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row of its own.
-            const emptyTerminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stderr"));
+            const emptyTerminal = logEntries(packet).find((e) => e.logPath.endsWith("/READ") && (e.path ?? "").includes("stderr"));
             assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
             assert.deepEqual(terminal.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
             assert.equal(finalStatus, 200, "the scoped READ turn concluded");
@@ -78,14 +78,14 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
             const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3] }))!.packet);
-            const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(String(row.logPath)) && row.origin === undefined);
+            const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(row.logPath) && row.origin === undefined);
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
             assert.equal(explicit.range, "<38,40> of 40 lines");
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
-            const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${String(terminal.logPath)}`));
+            const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
             const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`READ (${String(terminal.path)}) <38,40>`));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);

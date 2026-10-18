@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     this to deep-xml.
 export async function deepJson(content: string): Promise<unknown> {
     const { parse, YAMLParseError } = await import("yaml") as {
-        parse(text: string): unknown;
+        parse: (text: string) => unknown;
         YAMLParseError: new (...args: never[]) => Error;
     };
     try {

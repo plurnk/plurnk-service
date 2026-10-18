@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { writtenOp, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
@@ -115,7 +115,7 @@ test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defa
     class CapturingMock extends Mock {
         readonly requests: string[] = [];
         override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
-            this.requests.push(args[0].messages.map(({ content }) => content).join("\n\n"));
+            this.requests.push(args[0].messages.map((message) => chatMessageText(message)).join("\n\n"));
             return super.generate(...args);
         }
     }

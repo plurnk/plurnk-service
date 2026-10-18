@@ -18,6 +18,7 @@ import { copyStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 type DataSchemeManifest = Extract<SchemeManifest, { category: "data" }>;
@@ -569,7 +570,7 @@ test("cold finite HTTP READ acquires before applying the exact text scope", asyn
     const lines = Array.from({ length: 20 }, (_, index) => `remote ${index + 1}`);
     const requests: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request) => {
-        const requested = String(input);
+        const requested = requestUrl(input);
         if (requested.endsWith("/llms.txt")) return new Response(null, { status: 404 });
         requests.push(requested);
         return new Response(lines.join("\n"), {

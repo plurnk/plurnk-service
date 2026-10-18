@@ -153,7 +153,8 @@ export default class GitMembership {
         } catch (cause) {
             // {§membership-git-hermetic} — a repository git refuses as another account's is not "no repository":
             // the daemon was pointed at it and cannot read it, which the operator must hear.
-            const stderr = String((cause as { stderr?: unknown }).stderr ?? "");
+            const raw = (cause as { stderr?: unknown }).stderr;
+            const stderr = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : "";
             if (/dubious ownership/u.test(stderr)) {
                 throw new Error(`Git refuses the repository at '${dir}' as owned by another account; point the workspace at the repository root or own it. ${stderr.split("\n")[0]}`, { cause });
             }

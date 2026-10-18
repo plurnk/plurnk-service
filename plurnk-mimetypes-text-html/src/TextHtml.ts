@@ -104,6 +104,7 @@ export default class TextHtml extends BaseHandler {
         let result: xpath.SelectReturnType;
         try { result = xpath.select(pattern, source.document as unknown as Node); }
         catch (cause) { throw new InvalidExpressionError({ dialect, expression: pattern, cause }); }
+        // oxlint-disable-next-line typescript/no-base-to-string -- a scalar XPath value is a string, number or boolean; a node renders by its own toString
         if (!Array.isArray(result)) return result === null || result === undefined ? [] : [{ matched: String(result), matching: pattern }];
         return result.map((node, index) => {
             const region = source.region(node as unknown as XmlNode);

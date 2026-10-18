@@ -211,6 +211,7 @@ function shapeXpathResult(
     // from many nodes (or none) has no source node. Report the value and retain
     // the expression as its locator without fabricating a text region.
     return [{
+        // oxlint-disable-next-line typescript/no-base-to-string -- a scalar JSONPath value is a number, boolean or null here
         matched: typeof result === "string" ? result : String(result),
         matching: pattern,
     }];

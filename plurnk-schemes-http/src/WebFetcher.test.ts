@@ -15,6 +15,7 @@ import WebFetcher, {
     WebMaterializationError,
 } from "./WebFetcher.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
+import { requestUrl } from "../../scripts/test-fetch.ts";
 
 const PUB = "https://93.184.216.34/x";
 const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
@@ -126,7 +127,7 @@ test("GitHub blob acquisition uses one source target for byte fetch", async (t) 
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
     const raw = "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h";
     await withFetch((async (url) => {
-        seen.push(String(url));
+        seen.push(requestUrl(url));
         return resp("/* content */", 200, { "content-type": "text/plain" });
     }), async () => {
         await new WebFetcher().fetch(blob);
@@ -380,7 +381,7 @@ test("origin Markdown is the source itself: one request, no variant, never the m
     const calls: Array<{ url: string; accept: string }> = [];
     await withFetch((async (input, init) => {
         const accept = new Headers(init?.headers).get("accept") ?? "";
-        calls.push({ url: String(input), accept });
+        calls.push({ url: requestUrl(input), accept });
         return resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
     }), async () => {
         const fetched = await new WebFetcher().fetch(PUB);

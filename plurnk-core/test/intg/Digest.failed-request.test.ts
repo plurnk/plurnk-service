@@ -9,6 +9,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { requestBody } from "../../../scripts/test-fetch.ts";
 
 for (const capture of [false, true]) {
     test(`{§provider-request-evidence} recovery and digest retain failed output without executing or merging it; capture=${capture}`, async () => {
@@ -26,7 +27,7 @@ for (const capture of [false, true]) {
                 : { kind: "estimated", amount: { amount: "0.25", currency: "USD" }, source: "fixture rates" },
             fetch: async (_input, init) => {
                 calls++;
-                bodies.push(String(init?.body));
+                bodies.push(requestBody(init));
                 return new Response(`data: ${JSON.stringify({
                     id: `request-${calls}`, model: "evidence",
                     choices: [{ index: 0, delta: {

@@ -47,6 +47,7 @@ import WebFetcher, {
     MATERIALIZER_ENV,
     MATERIALIZER_ID_HEADER,
 } from "./WebFetcher.ts";
+import { requestUrl } from "../../scripts/test-fetch.ts";
 
 const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
 
@@ -303,7 +304,7 @@ const withFetch = async (
     const wrapped = answerLlmsText
         ? impl
         : async (input: string | URL | Request, init?: RequestInit) =>
-            String(input).endsWith("/llms.txt")
+            requestUrl(input).endsWith("/llms.txt")
                 ? new Response(null, { status: 404 })
                 : (impl)(input, init);
     globalThis.fetch = wrapped;
@@ -620,7 +621,7 @@ test("exact FIND preparation rewrites acquisition but stores the addressed GitHu
     let seenUrl = "";
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
     await withFetch(async (url) => {
-        seenUrl = String(url);
+        seenUrl = requestUrl(url);
         return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
         const prepared = await prepareExactFind(new Http(),
@@ -800,7 +801,7 @@ test("READ uses canonical authority/query identity while metadata and fragment s
         "body",
     );
     await withFetch(async (url, init) => {
-        seenUrl = String(url);
+        seenUrl = requestUrl(url);
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
@@ -833,7 +834,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
     const requests: Array<{ url: string; method: string; redirect: RequestRedirect | undefined }> = [];
     await withFetch((async (input, init) => {
         requests.push({
-            url: String(input),
+            url: requestUrl(input),
             method: init?.method ?? "GET",
             redirect: init?.redirect,
         });
@@ -1761,7 +1762,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
     let seenAuth = "";
     const seenUrls: string[] = [];
     await withFetch((async (url, init) => {
-        seenUrls.push(String(url));
+        seenUrls.push(requestUrl(url));
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     }), async () => {
@@ -1925,7 +1926,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => {
-        seenUrl = String(url);
+        seenUrl = requestUrl(url);
         return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
     };
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
@@ -1939,7 +1940,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
 test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
     const { ctx } = makeCtx();
     let seenUrl = "";
-    const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("x", { status: 200 }); };
+    const probe = async (url: string | URL | Request) => { seenUrl = requestUrl(url); return new Response("x", { status: 200 }); };
     const blob = "https://github.com/o/r/blob/feature/foo/src/x.js";
     await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/o/r/blob/feature/foo/src/x.js")), ctx);
@@ -1950,7 +1951,7 @@ test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
 test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
     const { ctx } = makeCtx();
     let seenUrl = "";
-    const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("ok", { status: 200 }); };
+    const probe = async (url: string | URL | Request) => { seenUrl = requestUrl(url); return new Response("ok", { status: 200 }); };
     await withFetch(probe, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
@@ -1962,7 +1963,7 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     const markers: string[] = [];
     const blob = "https://github.com/o/r/blob/main/src/x.js";
     await withFetch(async (url, init) => {
-        seen.push({ url: String(url), method: init?.method ?? "GET" });
+        seen.push({ url: requestUrl(url), method: init?.method ?? "GET" });
         return new Response(null, { status: 204 });
     }, async () => {
         const target = urlTarget(blob, "/o/r/blob/main/src/x.js");
@@ -3296,7 +3297,7 @@ test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactl
     const target = urlTarget("https://example.com/guide/page", "/guide/page");
     let llmsRequests = 0;
     await withFetch(async (input) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/llms.txt")) {
             llmsRequests += 1;
             return new Response("# llms\n\nUseful page summaries.", { status: 200, headers: { "content-type": "text/plain" } });
@@ -3321,7 +3322,7 @@ test("{§http-llms-txt} the companion is the operator's to allow: switched off, 
     try {
         process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT = "0";
         await withFetch(async (input) => {
-            requested.push(String(input));
+            requested.push(requestUrl(input));
             return new Response("## Page body", { status: 200, headers: { "content-type": "text/markdown" } });
         }, async () => {
             assert.equal((await prepareRepresentation(new Http(), readStmt(urlTarget("https://quiet.example/page", "/page")), ctx)).status, 200);
@@ -3352,7 +3353,7 @@ test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fa
     const target = urlTarget("https://example.com/plain", "/plain");
     let llmsRequests = 0;
     await withFetch(async (input) => {
-        const url = String(input);
+        const url = requestUrl(input);
         if (url.endsWith("/llms.txt")) {
             llmsRequests += 1;
             return new Response(null, { status: 404 });

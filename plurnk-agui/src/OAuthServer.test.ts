@@ -11,6 +11,7 @@ import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AguiPort, type AguiSetupSeam, type ModuleOptions } from "./Module.ts";
 import type { AguiEvent } from "./types.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import { requestBody } from "../../scripts/test-fetch.ts";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 type Authority = ApplicationPort["credentials"];
@@ -151,7 +152,7 @@ test("{§agui-oauth-clients} the operator's secret is a client secret: client_cr
             const body = JSON.parse(text) as { access_token: string; token_type: string; expires_in: number; scope: string; refresh_token?: string };
             assert.equal(body.token_type, "Bearer");
             assert.equal(body.expires_in, 3600);
-            assert.equal(body.scope, String(init.body).includes("scope=agui") ? "agui" : "agui a2a", "the operator holds every scope; a request may narrow");
+            assert.equal(body.scope, requestBody(init).includes("scope=agui") ? "agui" : "agui a2a", "the operator holds every scope; a request may narrow");
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
             await pinged(mod.base, { authorization: `Bearer ${body.access_token}` });
         }

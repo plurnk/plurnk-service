@@ -6,6 +6,7 @@ import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts"
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { withProviderDefaults } from "./defaults.ts";
+import { requestBody } from "../../scripts/test-fetch.ts";
 
 type Protocol = "chat" | "responses" | "messages" | "generate-content";
 
@@ -89,7 +90,7 @@ test("{§provider-native-tools-disabled} compatible wire explicitly disables nat
                 ...request, streaming, url: "https://fixture.test/v1/chat/completions", model: "fixture",
                 body: { reasoning_effort: "high" },
                 fetch: async (_url, init) => {
-                    requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+                    requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
                     return response("chat", streaming);
                 },
             });
@@ -169,7 +170,7 @@ test("{§provider-native-tools-disabled} opaque SDK extensions receive portable 
 test("{§provider-native-tools-disabled} Bedrock uses its valid no-tool configuration", async (t) => {
     let body: Record<string, unknown> | undefined;
     t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         return Response.json({
             output: { message: { role: "assistant", content: [{ text: "answer" }] } },
             stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
@@ -192,7 +193,7 @@ test("{§provider-native-tools-disabled} Bedrock uses its valid no-tool configur
 test("{§provider-native-tools-disabled} Ollama keeps its probe unmodified and disables native calls for emission and BARE", async (t) => {
     const bodies: Record<string, unknown>[] = [];
     t.mock.method(globalThis, "fetch", async (url: unknown, init?: RequestInit) => {
-        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
         bodies.push(body);
         if (String(url).endsWith("/api/show")) return Response.json({ model_info: { "fixture.context_length": 32768 } });
         assert.ok(String(url).endsWith("/v1/chat/completions"));
@@ -230,7 +231,7 @@ test("{§provider-native-tools-disabled} configured SDK families preserve the op
             await t.test(`${npm}, ${streaming ? "stream" : "buffered"}`, async (t) => {
                 const requests: Record<string, unknown>[] = [];
                 t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-                    requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+                    requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
                     assert.equal(new Headers(init?.headers).get("x-fixture"), "preserved");
                     return response(protocol, streaming);
                 });

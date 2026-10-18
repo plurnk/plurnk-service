@@ -82,7 +82,7 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     // listed, with the time it began, until a later report omits it. A family that prepares one alias at
     // a time reports one. This never publishes a capability or changes its outcome.
     progress(aliases: readonly string[]): void;
-    retain(): () => void;
+    readonly retain: () => () => void;
 }
 
 // A two-phase preparation. The coordinator publishes the runtimes and state

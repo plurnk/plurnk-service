@@ -64,7 +64,7 @@ Continue the task.
                     assert.equal(rx.receipt.effect.removedText, "line 10\nline 11");
                     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
                     const log = packetSection(packet, "log");
-                    const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
+                    const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
                     assert.ok(receipt, "the packet retains the KILL identity");
                     assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
                     assert.equal(receipt.extent, "lines 20->18");
@@ -74,11 +74,11 @@ Continue the task.
                     assert.equal(receipt.body, `${rx.receipt.effect.context}\n`);
                     assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
                     assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
-                    assert.ok(Number(receipt.tokens) > 0, "packet accounting includes the complete visible receipt");
+                    assert.ok(receipt.tokens > 0, "packet accounting includes the complete visible receipt");
                     // A person's READ of the model's log, acting for the model worker ({§actor-boundary-client-operations}).
                     const [recalled] = await daemon.dispatchClientAction({
                         workspaceId, actor: TEST_OWNER, contextWorkerId: run.modelWorkerId!,
-                        statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
+                        statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
                     assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
@@ -103,7 +103,7 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
             assert.equal(run.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
             const log = packetSection(packet, "log");
-            const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
+            const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
             assert.ok(receipt);
             assert.equal(Object.hasOwn(receipt, "status"), false, "routine success is implicit for whole-entry deletion too");
             assert.equal(receipt.path, "worker:///doomed");

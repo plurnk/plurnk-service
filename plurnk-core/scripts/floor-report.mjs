@@ -59,9 +59,9 @@ try {
     if (logSection === null) throw new Error("first request has no Log section");
     const logContent = logSection[1].trim();
     const rows = parseLogRecords(logContent).map((row) => {
-        const active = Number(row.tokens ?? 0);
+        const active = row.tokens ?? 0;
         const body = typeof row.body === "string" ? contentWeight(row.body.trimEnd()) : 0;
-        return { logPath: String(row.logPath), active, metadata: active - body };
+        return { logPath: row.logPath, active, metadata: active - body };
     });
     const byOp = new Map();
     for (const row of rows) {

@@ -11,7 +11,7 @@ import type {
     Provider,
     ProviderResponse,InputModality
 } from "@plurnk/plurnk-providers";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { testProviderCapacity } from "./_provider.ts";
@@ -196,7 +196,7 @@ test("near-simultaneous child conclusions share one parent provider turn", async
                 assert.equal(parent?.result.status, 200);
                 assert.equal(provider.childCalls, 2);
                 assert.equal(provider.parentCalls, 2, "both child returns cost one resumed parent turn");
-                const resumedPacket = provider.parentMessages(2).map(({ content }) => content).join("\n");
+                const resumedPacket = provider.parentMessages(2).map((message) => chatMessageText(message)).join("\n");
                 assert.match(resumedPacket, /child 1 done/);
                 assert.match(resumedPacket, /child 2 done/);
             } finally {
@@ -336,7 +336,7 @@ test("a child and stream conclusion share the same settlement window", async (ap
                     { timeoutMs: 5_000 },
                 );
                 assert.equal(provider.parentCalls, 2, "mixed asynchronous returns cost one resumed parent turn");
-                const resumedPacket = provider.parentMessages(2).map(({ content }) => content).join("\n");
+                const resumedPacket = provider.parentMessages(2).map((message) => chatMessageText(message)).join("\n");
                 assert.match(resumedPacket, /child 1 done/);
                 assert.match(resumedPacket, /stream-done/);
             } finally {
@@ -417,7 +417,7 @@ test("the settlement deadline is bounded and does not slide on later conclusions
                 assert.equal(window?.attributes.release, "deadline");
                 assert.equal(window?.attributes.conclusions, 2,
                     "the second arrival shares the first deadline, rather than starting a new opportunity");
-                const resumedPacket = provider.parentMessages(2).map(({ content }) => content).join("\n");
+                const resumedPacket = provider.parentMessages(2).map((message) => chatMessageText(message)).join("\n");
                 assert.match(resumedPacket, /child 1 done/);
                 assert.match(resumedPacket, /child 2 done/);
                 assert.doesNotMatch(resumedPacket, /child 3 done/);

@@ -7,6 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 
 test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();
@@ -20,7 +21,7 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
     const source = JSON.stringify(value);
     const formatted = JSON.stringify(value, null, 2);
     const target = "https://93.184.216.34/data.json";
-    t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => String(input).endsWith("/llms.txt")
+    t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => requestUrl(input).endsWith("/llms.txt")
         ? new Response(null, { status: 404 })
         : new Response(source, { headers: { "content-type": "application/json", "cache-control": "max-age=600" } }));
     let sequence = 0;

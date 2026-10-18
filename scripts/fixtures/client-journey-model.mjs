@@ -80,7 +80,7 @@ const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     if (message.role !== "assistant") return [];
     const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
     return [...textOf(message).matchAll(/^`{3,}([A-Za-z]\w*)(?: (.*))?$/gmu)].map(([, op, request = ""]) => {
-        const at = receipts.findIndex((row) => String(row.logPath).endsWith(`/${op}`));
+        const at = receipts.findIndex((row) => row.logPath.endsWith(`/${op}`));
         assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
         return { ...receipts.splice(at, 1)[0], op, request, path: /^\((\S+)\)/u.exec(request)?.[1] };
     });

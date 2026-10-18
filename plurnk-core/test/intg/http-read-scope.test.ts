@@ -10,6 +10,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { requestUrl } from "../../../scripts/test-fetch.ts";
 
 const HOST = "93.184.216.34";
 
@@ -73,8 +74,8 @@ for (const pretty of [false, true]) {
             ];
             const requests: string[] = [];
             t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
-                if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
-                requests.push(String(input));
+                if (requestUrl(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+                requests.push(requestUrl(input));
                 return new Response(JSON.stringify(releases, null, pretty ? 2 : undefined), {
                     headers: { "content-type": "application/json", "cache-control": "max-age=120" },
                 });
@@ -116,7 +117,7 @@ test("#283: a scoped READ of a materialized https page's source returns exactly 
     try {
         const page = htmlPage();
         globalThis.fetch = (async (input: string | URL | Request) => {
-            if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/html" },
             });
@@ -152,7 +153,7 @@ test("#283: a scoped READ of a materialized https entry's body channel returns e
     try {
         const page = htmlPage();
         globalThis.fetch = (async (input: string | URL | Request) => {
-            if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/plain" },
             });
@@ -227,7 +228,7 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
             "",
         ].join("\n");
         globalThis.fetch = (async (input: string | URL | Request) => {
-            if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            if (requestUrl(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             return new Response(page, {
                 status: 200, statusText: "OK", headers: { "content-type": "text/html" },
             });

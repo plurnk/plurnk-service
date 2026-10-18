@@ -138,7 +138,7 @@ test("{§reasoning-row}: reasoning longer than the page lands as its last page, 
             const statement = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,200>", null)).items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0];
             const head = await clientRead(engine, db, { ...ids, statement });
             assert.ok("content" in head && typeof head.content === "string" && head.content.startsWith("thought 1:") && head.content.endsWith("thought 200: an exploratory step"), "the rest is one READ away");
-            assert.ok(envelope.some((m) => m.role === "user" && /DECISION: patch the resolver/u.test(String(m.content))), "the page reaches the wire");
+            assert.ok(envelope.some((m) => m.role === "user" && /DECISION: patch the resolver/u.test(chatMessageText(m))), "the page reaches the wire");
         } finally { await db.close(); }
     });
 });

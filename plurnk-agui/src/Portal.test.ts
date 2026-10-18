@@ -29,7 +29,7 @@ const capture = (events: AguiEvent[]) => {
     const interrupts: Interrupt[] = [];
     return {
         interrupts,
-        emit(batch: AguiEvent[], presented: Interrupt[] = []): void {
+        emit: (batch: AguiEvent[], presented: Interrupt[] = []): void => {
             events.push(...batch);
             interrupts.push(...presented);
         },

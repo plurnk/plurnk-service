@@ -110,24 +110,23 @@
         // `promise/catch-or-return` holds; a `.then` handler that returns nothing is a settled side effect, not a dropped value.
         "promise/always-return": "off",
         // Static members of a namespace class carry no `this`; destructuring them is this codebase's import style.
-        "typescript/unbound-method": ["warn", { "ignoreStatic": true }],
-        // Counted debts, 2026-10-18 (#1162): warnings until their sites are rewritten, batch by batch.
+        "typescript/unbound-method": ["error", { "ignoreStatic": true }],
+        // Named after their own sweeps (#1162).
         // node:test's subtest context is `t` inside the parent's `t`; everything else is renamed site by site.
         "eslint/no-shadow": ["error", { "allow": ["t"] }],
         // An exhaustive `switch` over a union ends without a `return` and tsc proves it total; a `catch` that ends in a
         // `never` call is the same. The syntactic rule sees neither.
         "typescript/consistent-return": "off",
         "typescript/explicit-module-boundary-types": "error",
-        // Type-aware strictness, counted after batch 4: unsafe assertions 2,999, unbound methods 71, enum comparisons 159,
-        // base-to-string 134, misused spreads 41, template expressions 26 — each a batch of its own. 33 assertions tsgolint
-        // reads as unnecessary are ones tsc still needs (from `unknown` or `object`), so that rule stays a warning until
-        // the two checkers agree (#1162).
+        // The two counted debts after batch 8 (#1162): 795 unsafe assertions in sources, to be retired boundary by boundary
+        // (tests are excused below: a witness's assertion is its claim); 34 assertions tsgolint reads as unnecessary that
+        // tsc still needs (from `unknown` or `object`), a warning until the two checkers agree.
         "typescript/no-unsafe-type-assertion": "warn",
         "typescript/no-unnecessary-type-assertion": "warn",
         // A string enum compared with one of its own literals is checked by tsc (TS2367 on any other literal); the literal
         // is the wire name the protocol documents.
         "typescript/no-unsafe-enum-comparison": "off",
-        "typescript/no-base-to-string": "warn",
+        "typescript/no-base-to-string": "error",
         "typescript/no-misused-spread": "error",
         "typescript/restrict-template-expressions": "error"
     },
@@ -148,7 +147,11 @@
                 "**/test/**"
             ],
             "rules": {
-                "typescript/no-floating-promises": "off"
+                "typescript/no-floating-promises": "off",
+                // A seam captures an original method to restore it; `assert.equal(x.method, undefined)` reads a slot.
+                "typescript/unbound-method": "off",
+                // A witness's assertion is its claim about the shape it reads; a wrong claim fails the witness.
+                "typescript/no-unsafe-type-assertion": "off"
             }
         },
         {
@@ -159,7 +162,8 @@
             ],
             "rules": {
                 "typescript/require-array-sort-compare": "off",
-                "typescript/restrict-template-expressions": "off"
+                "typescript/restrict-template-expressions": "off",
+                "typescript/no-base-to-string": "off"
             }
         },
         {
