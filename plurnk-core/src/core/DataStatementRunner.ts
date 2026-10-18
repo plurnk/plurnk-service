@@ -297,17 +297,11 @@ export default class DataStatementRunner {
                 : (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
         ));
         if (projected.status !== 404 || statement.target === null) return projected;
-        // {§membership-auto-add} — a READ admits the untracked file it reached for, then reads it.
-        if (resolved !== null && storageScheme === "file" && ctx.ambientMembers !== undefined
-            && (await ctx.ambientMembers.admit([resolved.pathname])).length > 0) {
-            return Results.assertReadResult(await EntryOps.readWorkspaceEntry(
-                statement,
-                ctx,
-                { ...manifest, name: storageScheme, storedScheme: storageScheme },
-                { authority: resolved.authority, pathname: resolved.pathname },
-                publishesLineAnchors,
-                (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
-            ));
+        // {§membership-auto-add} — a READ that reached an untracked file proposes its admission; the accepted
+        // proposal admits it and runs this READ again.
+        if (resolved !== null && storageScheme === "file" && ctx.ambientMembers !== undefined) {
+            const proposal = await ctx.ambientMembers.propose([resolved.pathname]);
+            if (proposal !== null) return proposal as DispatchResult;
         }
         return await this.#missRefusal(handler, resolved, ctx) ?? projected;
     }

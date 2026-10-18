@@ -27,9 +27,19 @@ export type {
 // Core-owned adapters receive their daemon dependencies separately; this type
 // must not escape as an extension API.
 // {§membership-auto-add} — the model's universe beyond membership, and the admission a read earns.
+// {§membership-auto-add} — a READ or text FIND that reached untracked files proposes their admission: a 202
+// the proposal lifecycle settles, whose acceptance admits the files and re-runs the operation.
+export type AdmissionProposal = {
+    readonly status: 202;
+    readonly body: string;
+    readonly attrs: { readonly effect: "host"; readonly admission: { readonly files: readonly string[] } };
+};
+
 export interface AmbientMembers {
     // Untracked, unignored, unexcluded files under a literal root-relative prefix; none is a member yet.
     candidates(prefix: string | null): Promise<string[]>;
+    // The admission proposal for the candidates among these keys, or null when none is a candidate.
+    propose(keys: readonly string[]): Promise<AdmissionProposal | null>;
     // Admit these as the Worker's own member definitions; the keys admitted come back, with a notice each.
     admit(keys: readonly string[]): Promise<string[]>;
     // A candidate's text for matching and listing only, never stored; `content` is null when it is

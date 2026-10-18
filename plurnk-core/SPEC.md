@@ -803,8 +803,8 @@ and never re-fetch a match.
   `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}), projected with source
   `model`, and never admitted past the repository's ignore rules or an exclusion. (5) Under
   `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND
-  pattern matches, admitted as that same model definition of the exact path
-  ({§membership-auto-add}). Nothing else.
+  pattern matches, admitted as that same model definition of the exact path once the read's
+  admission proposal is accepted ({§membership-auto-add}). Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
   `project_root`. Its tracked files (`git ls-files` semantics) are members with
   no explicit overlay; when the root is a package inside a monorepo, the
@@ -836,18 +836,25 @@ and never re-fetch a match.
 
 **The overlay — `include | exclude`.** `workspace_constraints` holds the `members` family's projected definitions and the engine's creation records ({§members-projection}). Resolved membership is `(project repository files ∪ include) − exclude`.
 
-- §membership-auto-add **Auto-add: the model's reads admit what they reach.** With
+- §membership-auto-add **Auto-add: the model's reads propose the admission of what they reach.** With
   `PLURNK_MEMBERS_AUTO_ADD=1` (the shipped default), a model dispatch's READ and FIND see one
   universe beyond membership: the files inside the root that the governing repository neither
   tracks nor ignores (`git ls-files --others --exclude-standard`; every file under the root when no
   repository governs it), minus every exclusion. Nothing in it is a member or is materialized
-  until a read admits it.
+  until an admission is accepted. A read of content proposes that admission as a 202 the proposal
+  lifecycle settles ({§proposal-202-pauses}): its review body is the definition, `{"files": [...]}`,
+  and its effect is `host`, so policy accepts it where nobody reviews (`PLURNK_SERVICE_EFFECT_HOST=auto`
+  or `PLURNK_SERVICE_PROPOSALS=accept`) and the reviewer decides otherwise. Acceptance admits the files as
+  the Worker's own `members (add)` of each exact path, under the model's scope, with one `member_added`
+  notice each, and runs the operation again; its result settles the row ({§proposal-accept-applies}).
+  Rejection settles 400 `rejected` and admits nothing ({§proposal-reject-fails}). A path the scope refuses
+  is proposed no further within the operation, which then misses it as a non-member.
 
   | Operation | Effect on a universe file |
   |---|---|
-  | READ of its exact path, or a READ glob that selects it | Admitted, then read in the same operation |
+  | READ of its exact path, or a READ glob that selects it | Proposes its admission; accepted, it is admitted and read in the same operation |
   | FIND listing it, by exact path or glob | Listed with the catalog row read from disk, marked `untracked`; not admitted |
-  | FIND whose text pattern matches inside it | Admitted; the selection runs again over members, so only an admitted match shows its evidence |
+  | FIND whose text pattern matches inside it | Proposes the admission of every candidate matched; accepted, the selection runs again over members, so only an admitted match shows its evidence |
   | FIND by an indexed dialect (`~`, `&`) | Members only: nothing unadmitted is indexed |
   | A binary or oversized candidate | Listed; matched from disk by no dialect; admitted by READ |
 
@@ -855,12 +862,11 @@ and never re-fetch a match.
   membership only by this admission, with `constraint` origin and `model` source. An accepted creation is incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}).
   Admission is the Worker's own `members (add)` of the exact path — provenance `model-proposal`,
   under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so
-  scope `none` admits nothing and the read is refused as it is with the knob off — settled before
-  the operation continues ({§functionality-model-mutation}), and announced by one `member_added`
-  notice per file ({§notice-directive}). An admission a read earns settles without a person, so it
-  exists only where the Worker's own `members (add)`, a host effect, would: `PLURNK_SERVICE_EFFECT_HOST=auto`
-  or `PLURNK_SERVICE_PROPOSALS=accept`. Under `review` or `reject` no read admits; the refusal's
-  recovery names `members (add)`, and that proposal is the reviewed path ({§proposal-disposition}). A path the repository ignores, a path an exclusion matches, a
+  scope `none` admits nothing and the read is refused as it is with the knob off — published before
+  the operation runs again ({§functionality-model-mutation}), and announced by one `member_added`
+  notice per file ({§notice-directive}). The admission proposal is settled as every host effect is
+  ({§proposal-disposition}): by policy where nobody reviews, by the reviewer under `review`; `reject`
+  refuses every admission. A path the repository ignores, a path an exclusion matches, a
   directory and anything beyond the root are not in the universe: their refusals are unchanged
   ({§membership-read-refusal}, {§file-directory-target}). A person's client operation reads
   members only. `PLURNK_MEMBERS_AUTO_ADD=0` restores the baseline exactly.

@@ -7,11 +7,12 @@ definition, or **invisible**. What you can `EDIT` is `(tracked ∪ include ∪ c
 `FIND` reach one step further when the operator leaves `PLURNK_MEMBERS_AUTO_ADD=1`
 (the default): an untracked file the repository does not ignore, inside the
 project root and not excluded, is listed by `FIND` as `untracked`, and the
-moment you `READ` it, or a `FIND` pattern matches inside it, it is admitted as
-your own definition of that exact path and a `member_added` notice says so.
-Listing admits nothing; `~` full-text and `&` graph patterns search members only.
-Where your `members (add)` would be reviewed by a person, a read admits nothing
-either: the refusal names the `add`, and that proposal is the reviewed path.
+moment you `READ` it, or a `FIND` pattern matches inside it, its admission as
+your own definition of that exact path is proposed — accepted by policy where
+nobody reviews, by the person otherwise — a `member_added` notice says so when it
+is admitted, and the read or find then runs. A rejected admission settles the
+operation as `rejected` and admits nothing. Listing admits nothing; `~` full-text
+and `&` graph patterns search members only.
 
 ## What makes a file visible
 
@@ -53,9 +54,9 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 | `ignored` | `` not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot `` |
 | `absent` | `` absent — no such file under the project root `` |
 
-- **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on it is
-  admitted and read in one operation. With auto-add off, an accepted `add` makes
-  it a member before the next operation.
+- **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on the read
+  proposes its admission and, accepted, admits and reads it in one operation. With
+  auto-add off, an accepted `add` makes it a member before the next operation.
 
   ```members (add) <!-- include the generated reports; each glob is one definition -->
   {"files": ["build/*.json"]}

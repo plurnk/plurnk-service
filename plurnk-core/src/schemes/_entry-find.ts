@@ -17,7 +17,7 @@ import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import BodyPreview from "../content/body-preview.ts";
 import ScopeFormat from "../content/scope-format.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
-import type { AmbientMembers, PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
+import type { AdmissionProposal, AmbientMembers, PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import { entryCoordinateOf, missDetail, missExtensions } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
@@ -266,6 +266,8 @@ export default class EntryFind {
         folders?: PathFolderSummary[];
         // {§membership-auto-add} — listed candidates that are not members: no catalog row, no admission.
         ambient?: ReadonlySet<string>;
+        // {§membership-auto-add} — the text pattern matched inside candidates: their admission is proposed.
+        proposal?: AdmissionProposal;
         code?: string;
         error?: string;
         problem?: ProblemDetails;
@@ -591,8 +593,9 @@ export default class EntryFind {
                 problem: r.problem,
             };
             const ambientMatched = r.matches.filter((match) => ambientSet.has(match.key)).map((match) => match.key);
-            if (ambientMatched.length > 0 && (await address.ambient!.admit(ambientMatched)).length > 0) {
-                return EntryFind.#matchPathnames(statement, ctx, manifest, { ...address, ambient: undefined });
+            if (ambientMatched.length > 0) {
+                const proposal = await address.ambient!.propose(ambientMatched);
+                if (proposal !== null) return { status: 202, matches: [], proposal };
             }
             r.matches = r.matches.filter((match) => !ambientSet.has(match.key));
             const bytesMatched = byteCandidates.length === 0
@@ -678,6 +681,8 @@ export default class EntryFind {
             match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
         }
         const empty = emptyFindFields();
+        // {§membership-auto-add} — the FIND proposes the admission of the candidates its pattern matched.
+        if (match.status === 202 && match.proposal !== undefined) return { ...empty, ...match.proposal } as unknown as FindResult;
         if (match.status !== 200) {
             if (match.problem !== undefined) {
                 return Results.assert({

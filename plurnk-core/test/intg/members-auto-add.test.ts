@@ -1,7 +1,8 @@
 // {§membership-auto-add}: the matrix — READ and FIND, an exact path and a glob, each row of the universe
-// table, with the knob on and off and the model's scope open and closed. Admission follows a read of
-// content; a listing admits nothing; nothing unadmitted shows its content; the client's reads never admit.
-import { serverProposals, TEST_OWNER } from "./_approval.ts";
+// table, with the knob on and off, the model's scope open and closed, and the proposal settled by policy or
+// by a reviewer. A read of content proposes the admission; acceptance admits and reads; rejection admits
+// nothing; a listing admits nothing; nothing unadmitted shows its content; the client's reads never admit.
+import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -57,11 +58,25 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const notices: string[] = [];
+    type Proposal = { logEntryId: number; op: string; body?: string };
+    const proposals: Proposal[] = [];
+    const waiting: Array<(proposal: Proposal) => void> = [];
     daemon.subscribeToEvents((_workspaceId, method, params) => {
+        if (method === "loop/proposal") {
+            const proposal = params as Proposal;
+            const waiter = waiting.shift();
+            if (waiter === undefined) proposals.push(proposal); else waiter(proposal);
+            return;
+        }
         if (method !== "notice/event") return;
         const text = JSON.stringify(params);
         if (text.includes("member_added")) notices.push(text);
     });
+    // {§proposal-202-pauses} — under review the dispatch pauses on the proposal until a decision arrives.
+    const nextProposal = (): Promise<Proposal> => {
+        const queued = proposals.shift();
+        return queued !== undefined ? Promise.resolve(queued) : new Promise((resolve) => { waiting.push(resolve); });
+    };
     const workspaceId = await insertWorkspace(db, `auto-add-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
     const workerId = await insertWorker(db, workspaceId, null, "model", "model");
@@ -82,7 +97,15 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
         (await daemon.invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId }) as { definitions: Definition[] }).definitions;
     const member = (pathname: string) => memberOf(db, workspaceId, pathname);
     const paths = (result: { results?: unknown }): string => JSON.stringify(result.results ?? []);
-    return { db, daemon, workspaceId, workerId, notices, model, client, definitions, member, paths };
+    const review = async (program: string, decision: "accept" | "reject"): Promise<{ result: unknown; proposal: Proposal }> => {
+        const pending = model(program);
+        const proposal = await nextProposal();
+        await daemon.engine.resolveProposal(proposal.logEntryId, { decision }, TEST_OWNER);
+        return { result: await pending, proposal };
+    };
+    // A person reviews: the worker is owned by an interactive client, and the server disposition is review.
+    const attend = async (): Promise<void> => { await ownWorker(db, workspaceId, workerId); serverProposals(t, "review"); };
+    return { db, daemon, workspaceId, workerId, notices, model, client, definitions, member, paths, review, attend };
 };
 
 test("{§membership-auto-add} READ: an untracked file is admitted as the Worker's own definition and read; ignored, excluded, beyond-root and directory targets are not", { timeout: 60_000 }, async (t) => {
@@ -188,17 +211,46 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
     assert.equal(h.notices.length, 0);
 });
 
-test("{§membership-auto-add} under review, a read admits nothing; the add remains the reviewed path", { timeout: 60_000 }, async (t) => {
+test("{§membership-auto-add} {§proposal-202-pauses} under review, a READ proposes the admission: accepted, it admits and reads; rejected, it admits nothing", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
-    serverProposals(t, "review");
-    const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
-    assert.equal(read.status, 404);
-    assert.match(read.problem?.type ?? "", /entry-not-member$/u);
-    assert.equal(read.problem?.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.");
-    assert.equal(await h.member("loose.md"), false);
+    await h.attend();
     const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
-    assert.doesNotMatch(h.paths(listed), /loose\.md/u, "the universe is not reachable where nothing could be admitted");
-    assert.equal(h.notices.length, 0);
+    assert.match(h.paths(listed), /loose\.md/u, "the universe is listed under review; listing proposes nothing");
+    assert.equal(await h.member("loose.md"), false);
+
+    const accepted = await h.review("````READ (loose.md)````", "accept");
+    assert.equal(accepted.proposal.op, "READ");
+    assert.equal(accepted.proposal.body, JSON.stringify({ files: ["loose.md"] }), "the review material is the definition the acceptance admits");
+    const read = accepted.result as { status: number; content?: string | null };
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.match(String(read.content), /# loose/u, "the accepted admission reads the file in the same operation");
+    assert.equal(await h.member("loose.md"), true);
+    assert.equal((await h.definitions()).find(({ alias }) => alias === "loose.md")?.definition?.provenance?.kind, "model-proposal");
+    assert.equal(h.notices.length, 1, "one member_added notice");
+
+    const rejected = await h.review("````READ (docs/guide.md)````", "reject");
+    const refused = rejected.result as { status: number; outcome?: string; problem?: { detail?: string } };
+    assert.equal(refused.status, 400, JSON.stringify(refused));
+    assert.equal(refused.outcome, "rejected", "{§proposal-reject-fails}");
+    assert.match(String(refused.problem?.detail), /rejected/u, "{§proposal-outcome-terse-error}: the detail names the outcome");
+    assert.equal(await h.member("docs/guide.md"), false, "a rejected admission admits nothing");
+    assert.equal(h.notices.length, 1, "and announces nothing");
+    const again = await h.review("````READ (docs/guide.md) <1,1>````", "reject");
+    assert.equal(again.proposal.op, "READ", "a rejection does not retire the file from the universe: the next read proposes again");
+    assert.equal((again.result as { status: number }).status, 400);
+});
+
+test("{§membership-auto-add} under review, a text FIND proposes the admission of what it matched; accepted, the selection runs over the members", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    await h.attend();
+    const { result, proposal } = await h.review("````FIND (docs/*.md) beta````", "accept");
+    assert.equal(proposal.op, "FIND");
+    assert.equal(proposal.body, JSON.stringify({ files: ["docs/guide.md"] }));
+    const found = result as { status: number; results?: unknown };
+    assert.equal(found.status, 200, JSON.stringify(found));
+    assert.match(h.paths(found), /docs\/guide\.md/u, "the admitted file's match shows its evidence");
+    assert.equal(await h.member("docs/guide.md"), true);
+    assert.equal(h.notices.length, 1);
 });
 
 test("{§membership-auto-add} a client's READ never admits on the Worker's behalf", { timeout: 60_000 }, async (t) => {

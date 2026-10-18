@@ -108,10 +108,17 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-execut
                 assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "nothing publishes before approval");
                 assert.deepEqual(results, [], "the next READ waits for the decision");
                 await daemon.resolveProposal(proposals[0]!.logEntryId, { decision }, { workspaceId, address: TEST_OWNER });
+                if (decision === "reject") {
+                    // {§membership-auto-add} — the READ of the file still unadmitted proposes its admission in its turn,
+                    // after the rejection settled; refused as well, the READ settles rejected.
+                    const again = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1 && items[0]!.op === "READ");
+                    assert.deepEqual(results, [], "the READ waits for its own decision");
+                    await daemon.resolveProposal(again[0]!.logEntryId, { decision: "reject" }, { workspaceId, address: TEST_OWNER });
+                }
             }
             const lifecycle = new LoopLifecycle(db);
             await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
-            assert.deepEqual(results.map(({ status }) => status), [decision === "reject" ? 404 : 200], "the read observes the settled decision, not a merely started manager stream");
+            assert.deepEqual(results.map(({ status }) => status), [decision === "reject" ? 400 : 200], "the read observes the settled decision, not a merely started manager stream");
             assert.equal(await memberOf(db, workspaceId, "loose.md"), decision !== "reject");
         } finally { await daemon.stop(); await db.close(); }
     }).finally(() => rm(root, { recursive: true, force: true }));

@@ -11,7 +11,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
-import type { AppliedProposalResolution } from "./ProposalLifecycle.ts";
+import type { AppliedProposalResolution, ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryAddress, foldAuthorityIntoPath, renderAddress, renderAuthoredTarget, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import WorkerName from "./WorkerName.ts";
@@ -784,12 +784,7 @@ export default class Dispatcher {
         if (Dispatcher.#isProposal(statement, result)) {
             if (autoAccept) {
                 await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
-                const initialSettlement = await this.#proposals.workerApply(
-                    statement,
-                    result,
-                    { decision: "accept" },
-                    { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources },
-                );
+                const initialSettlement = await this.#applyProposal(context, schemeCtx, result, { decision: "accept" }, logEntryId);
                 const effective = await this.#resourceMutations.settleProposal({
                     statement,
                     result,
@@ -828,12 +823,7 @@ export default class Dispatcher {
             // file, spawns the process, etc.). Its operation result is
             // preserved: an apply failure keeps its original status and
             // Problem Details instead of masquerading as a client rejection.
-            const initialSettlement = await this.#proposals.workerApply(
-                statement,
-                result,
-                resolution,
-                { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources },
-            );
+            const initialSettlement = await this.#applyProposal(context, schemeCtx, result, resolution, logEntryId);
             const effective = await this.#resourceMutations.settleProposal({
                 statement,
                 result,
@@ -1121,7 +1111,7 @@ export default class Dispatcher {
             settleDerivations: () => this.#settleDerivations(context),
             pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             // {§membership-auto-add} — the model's reads reach the untracked universe and admit what they read.
-            ...(origin === "model" && this.#notify.admitMembers !== undefined && AmbientMembers.enabled() && AmbientMembers.unattended() ? {
+            ...(origin === "model" && this.#notify.admitMembers !== undefined && AmbientMembers.enabled() ? {
                 ambientMembers: AmbientMembers.seam({
                     db: this.#db, workspaceId, signal: this.#loopSignal(loopId), mimetypes: this.#mimetypes,
                     admit: (files) => this.#notify.admitMembers!({ workspaceId, workerId }, files),
@@ -1634,6 +1624,27 @@ export default class Dispatcher {
     }
 
     // {§proposal}/{§send} — native dispositions park; other 202 results propose.
+    // {§proposal-accept-applies} — an accepted proposal runs its scheme's effect; an accepted admission
+    // ({§membership-auto-add}) admits the files the read reached and runs that read or find again, and the
+    // operation's own result is what the row records.
+    async #applyProposal(
+        context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, resolution: AppliedProposalResolution, logEntryId: number,
+    ): Promise<ProposalSettlement> {
+        const { statement, workspaceId, workerId, loopId, turnId } = context;
+        const admission = AmbientMembers.admissionOf(result);
+        if (admission === null || (statement.op !== "READ" && statement.op !== "FIND")) {
+            return this.#proposals.workerApply(statement, result, resolution, { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources });
+        }
+        if (resolution.decision !== "accept") return { resolution };
+        // What the members scope refuses stays unadmitted, and the operation run again misses it as a non-member.
+        if (schemeCtx.ambientMembers !== undefined) await schemeCtx.ambientMembers.admit(admission);
+        const rerun = await this.#fitResult(context, statement, await this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx));
+        // {§proposal-projection} — the accepted row is composed from `resolution.result`: the operation's own
+        // payload rides there, and a failed run again is the applied result as it stands.
+        const { status: _status, problem: _problem, error: _error, ...payload } = rerun as Record<string, unknown>;
+        return { resolution: { ...resolution, result: payload }, applied: rerun };
+    }
+
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
         if (result.status !== 202) return false;
         return !TurnDisposition.is(statement);
