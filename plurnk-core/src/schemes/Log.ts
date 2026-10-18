@@ -226,6 +226,21 @@ const nearMissRecovery = async (
     return `Turn ${turn} has no entries; loop ${coord.loopSeq}'s latest turn is ${coord.loopSeq}/${latest}.`;
 };
 
+// A row selected for curation, as the turn reads it: its body, its visibility and whether it is natively active.
+type CurationTargetRow = {
+id: number;
+coordinate: string;
+origin: string;
+op: string | null;
+tx: string;
+mimetype_tx: string;
+rx: string;
+mimetype_rx: string;
+attrs: string;
+folded: string;
+native_active: number;
+};
+
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {
         name: "log",
@@ -809,118 +824,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
-        const planned = async (ids: number[], exact: boolean): Promise<LogCurationOutcome> => {
-            const rows = await ctx.db.log_curation_targets.all<{
-                id: number;
-                coordinate: string;
-                origin: string;
-                op: string | null;
-                tx: string;
-                mimetype_tx: string;
-                rx: string;
-                mimetype_rx: string;
-                attrs: string;
-                folded: string;
-                native_active: number;
-            }>({ ids: JSON.stringify(ids), turn_id: ctx.turnId });
-            if (rows.length !== ids.length) {
-                throw new Error("Log curation selection changed before its visibility plan was resolved.");
-            }
-            const targets: Array<LogCurationPlan["targets"][number]> = [];
-            for (const row of rows) {
-                if (row.native_active === 1) {
-                    const folded = LogVisibility.parse(row.folded);
-                    targets.push({ id: row.id, activeBefore: 1, activeAfter: 0, foldedBefore: folded, foldedAfter: folded });
-                    continue;
-                }
-                const body = LogBody.resolve({
-                    op: row.op,
-                    attrs: row.attrs,
-                    tx: row.tx,
-                    rx: row.rx,
-                    mimetypeTx: row.mimetype_tx,
-                    mimetypeRx: row.mimetype_rx,
-                });
-                const identity = `log:///${LogEntryProjection.coordinate(row.coordinate, row)}`;
-                const result = row.mimetype_rx === "application/json"
-                    ? JSON.parse(row.rx) as unknown
-                    : null;
-                const rawAnchors = LogEntryProjection.op(row) === "READ"
-                    && result !== null
-                    && typeof result === "object"
-                    && Object.hasOwn(result, "lineAnchors")
-                    ? (result as { lineAnchors: unknown }).lineAnchors
-                    : [];
-                if (!Array.isArray(rawAnchors)) {
-                    throw new TypeError("A READ log body carries malformed published line anchors.");
-                }
-                const scope = LogVisibility.resolveScope(
-                    statement.lineMarker,
-                    identity,
-                    body.content,
-                    rawAnchors as readonly string[],
-                );
-                if (!scope.ok) {
-                    return {
-                        result: Results.failure(
-                            "scheme:log",
-                            scope.code,
-                            scope.status,
-                            scope.detail,
-                            {},
-                            {
-                                target: identity,
-                                recovery: scope.recovery,
-                                retryable: false,
-                            },
-                        ),
-                        plan: null,
-                    };
-                }
-                const before = LogVisibility.parse(row.folded);
-                // {§emission-row}: source announcements are curated whole; ordinary rows own their bodies.
-                if (LogEntryProjection.isEmission(row)) {
-                    if (exact) {
-                        return {
-                            result: Results.failure(
-                                "scheme:log",
-                                "emission-curated-whole",
-                                422,
-                                `${identity} is an emission; curate it without a line scope.`,
-                                {},
-                                {
-                                    target: identity,
-                                    recovery: `KILL (${identity}) retires it.`,
-                                    retryable: false,
-                                },
-                            ),
-                            plan: null,
-                        };
-                    }
-                    targets.push({ id: row.id, activeBefore: 1, activeAfter: 1, foldedBefore: before, foldedAfter: before });
-                    continue;
-                }
-                targets.push({
-                    id: row.id,
-                    activeBefore: 1,
-                    activeAfter: 1,
-                    foldedBefore: before,
-                    foldedAfter: LogVisibility.apply(
-                        before,
-                        scope.range,
-                        TextCoordinates.lineCount(body.content),
-                    ),
-                });
-            }
-            return {
-                result: { status: 200, matched: ids.length },
-                plan: {
-                    targets,
-                    add: [],
-                    remove: [],
-                },
-            };
-        };
         if (statement.matcher !== null) {
             const matched = await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
             if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
@@ -941,7 +844,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     plan: null,
                 };
             }
-            return planned(matched.ids, false);
+            return Log.#scopedPlan(statement, ctx, matched.ids, false);
         }
 
         if (statement.target === null) {
@@ -963,31 +866,150 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
-        if (selected.status !== 200) {
-            const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
-            const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
+        if (selected.status !== 200) return Log.#selectionFailure(selected, pathname, ctx, maxLogEntryId, "curation-failed");
+        return Log.#scopedPlan(statement, ctx, selected.ids, parseCoordinate(pathname) !== null);
+    }
+
+    // {§log-kill-scope} The visibility plan for the selected rows: each row's own target, or the first row's refusal.
+    static async #scopedPlan(statement: KillStatement, ctx: PlurnkSchemeContext, ids: number[], exact: boolean): Promise<LogCurationOutcome> {
+        const rows = await ctx.db.log_curation_targets.all<CurationTargetRow>({ ids: JSON.stringify(ids), turn_id: ctx.turnId });
+        if (rows.length !== ids.length) {
+            throw new Error("Log curation selection changed before its visibility plan was resolved.");
+        }
+        const targets: Array<LogCurationPlan["targets"][number]> = [];
+        for (const row of rows) {
+            const target = Log.#scopedRowTarget(statement, row, exact);
+            if ("plan" in target) return target;
+            targets.push(target);
+        }
+        return {
+            result: { status: 200, matched: ids.length },
+            plan: {
+                targets,
+                add: [],
+                remove: [],
+            },
+        };
+    }
+
+    // One row under a scoped KILL: a natively active row retires whole; an emission is curated whole
+    // ({§emission-row}) and refused under an exact scope; any other row folds the resolved line range out of its
+    // visibility, or refuses with the scope's own Problem.
+    static #scopedRowTarget(statement: KillStatement, row: CurationTargetRow, exact: boolean): LogCurationPlan["targets"][number] | LogCurationOutcome {
+        if (row.native_active === 1) {
+            const folded = LogVisibility.parse(row.folded);
+            return { id: row.id, activeBefore: 1, activeAfter: 0, foldedBefore: folded, foldedAfter: folded };
+        }
+        const body = LogBody.resolve({
+            op: row.op,
+            attrs: row.attrs,
+            tx: row.tx,
+            rx: row.rx,
+            mimetypeTx: row.mimetype_tx,
+            mimetypeRx: row.mimetype_rx,
+        });
+        const identity = `log:///${LogEntryProjection.coordinate(row.coordinate, row)}`;
+        const result = row.mimetype_rx === "application/json"
+            ? JSON.parse(row.rx) as unknown
+            : null;
+        const rawAnchors = LogEntryProjection.op(row) === "READ"
+            && result !== null
+            && typeof result === "object"
+            && Object.hasOwn(result, "lineAnchors")
+            ? (result as { lineAnchors: unknown }).lineAnchors
+            : [];
+        if (!Array.isArray(rawAnchors)) {
+            throw new TypeError("A READ log body carries malformed published line anchors.");
+        }
+        const scope = LogVisibility.resolveScope(
+            statement.lineMarker,
+            identity,
+            body.content,
+            rawAnchors as readonly string[],
+        );
+        if (!scope.ok) {
             return {
                 result: Results.failure(
                     "scheme:log",
-                    selected.status === 404 ? "entry-not-found" : "curation-failed",
-                    selected.status,
-                    selected.error ?? `No log entry matches '${pathname}'.`,
+                    scope.code,
+                    scope.status,
+                    scope.detail,
                     {},
                     {
-                        target: pathname,
-                        ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
-                        ...(selected.status === 400
-                            ? {
-                                recovery: LOG_TARGET_SHAPE,
-                                retryable: false,
-                            }
-                            : {}),
+                        target: identity,
+                        recovery: scope.recovery,
+                        retryable: false,
                     },
                 ),
                 plan: null,
             };
         }
-        return planned(selected.ids, parseCoordinate(pathname) !== null);
+        const before = LogVisibility.parse(row.folded);
+        // {§emission-row}: source announcements are curated whole; ordinary rows own their bodies.
+        if (LogEntryProjection.isEmission(row)) {
+            if (exact) {
+                return {
+                    result: Results.failure(
+                        "scheme:log",
+                        "emission-curated-whole",
+                        422,
+                        `${identity} is an emission; curate it without a line scope.`,
+                        {},
+                        {
+                            target: identity,
+                            recovery: `KILL (${identity}) retires it.`,
+                            retryable: false,
+                        },
+                    ),
+                    plan: null,
+                };
+            }
+            return { id: row.id, activeBefore: 1, activeAfter: 1, foldedBefore: before, foldedAfter: before };
+        }
+        return {
+            id: row.id,
+            activeBefore: 1,
+            activeAfter: 1,
+            foldedBefore: before,
+            foldedAfter: LogVisibility.apply(
+                before,
+                scope.range,
+                TextCoordinates.lineCount(body.content),
+            ),
+        };
+    }
+
+    // {§log-target-tolerances} A selection that found nothing or could not be read, named as what it was: an exact
+    // coordinate's miss carries its near miss, a malformed target the working form.
+    static async #selectionFailure(
+        selected: { status: number; error?: string },
+        pathname: string,
+        ctx: PlurnkSchemeContext,
+        maxLogEntryId: number | null,
+        code: "curation-failed" | "kill-failed",
+    ): Promise<LogCurationOutcome> {
+        const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
+        const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
+        return {
+            result: Results.failure(
+                "scheme:log",
+                selected.status === 404 ? "entry-not-found" : code,
+                selected.status,
+                selected.error ?? `No log entry matches '${pathname}'.`,
+                {},
+                {
+                    target: pathname,
+                    ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
+                    ...(selected.status === 400
+                        ? {
+                            recovery: LOG_TARGET_SHAPE,
+                            retryable: false,
+                        }
+                        : {}),
+                },
+            ),
+            plan: null,
+        };
     }
 
     // {§log-curation-set-selection} — the target and an optional pattern select the rows by
@@ -1005,30 +1027,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (selected.problem !== undefined) {
             return { result: Results.assert({ status: selected.status, problem: selected.problem }), plan: null };
         }
-        if (selected.status !== 200) {
-            const exact = selected.status === 404 ? parseCoordinate(pathname) : null;
-            const nearMiss = exact === null ? undefined : await nearMissRecovery(exact, ctx, maxLogEntryId);
-            return {
-                result: Results.failure(
-                    "scheme:log",
-                    selected.status === 404 ? "entry-not-found" : "kill-failed",
-                    selected.status,
-                    selected.error ?? `No log entry matches '${pathname}'.`,
-                    {},
-                    {
-                        target: pathname,
-                        ...(nearMiss === undefined ? {} : { recovery: nearMiss }),
-                        ...(selected.status === 400
-                            ? {
-                                recovery: LOG_TARGET_SHAPE,
-                                retryable: false,
-                            }
-                            : {}),
-                    },
-                ),
-                plan: null,
-            };
-        }
+        if (selected.status !== 200) return Log.#selectionFailure(selected, pathname, ctx, maxLogEntryId, "kill-failed");
         const rows = await ctx.db.log_curation_targets.all<{ id: number; folded: string }>({
             ids: JSON.stringify(selected.ids),
             turn_id: ctx.turnId,
