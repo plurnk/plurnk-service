@@ -1,8 +1,8 @@
 import { PathSyntax, type ParsedPath, type SendStatement, type FindStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeHandler, RepresentationPreparationRequest } from "./handler.ts";
-import type { SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
+import type { EntryAddress, SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
 import type { SchemeManifest } from "./types.ts";
-import Results from "./Results.ts";
+import Results, { type SchemeResult } from "./Results.ts";
 
 /** {§message-source-scheme}: protocol modules name resources; Core retains and accounts for messages. */
 export default class MessageScheme implements SchemeHandler {
@@ -16,7 +16,7 @@ export default class MessageScheme implements SchemeHandler {
         };
     }
 
-    async resolveEntryAddress(target: ParsedPath, _ctx: SchemeAddressCtx, access: "read" | "write" = "read") {
+    async resolveEntryAddress(target: ParsedPath, _ctx: SchemeAddressCtx, access: "read" | "write" = "read"): Promise<EntryAddress | SchemeResult | null> {
         // {§message-immutable} — immutable evidence is neither a reply nor a lifecycle control.
         if (access === "write") return Results.failure(
             `scheme:${this.manifest.name}`, "message-immutable", 405,
@@ -31,15 +31,15 @@ export default class MessageScheme implements SchemeHandler {
         };
     }
 
-    async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx) {
+    async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<SchemeResult> {
         return ctx.messages.prepare(request.target.raw);
     }
 
-    async prepareFind(_statement: FindStatement, ctx: SchemeCtx) {
+    async prepareFind(_statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         return ctx.messages.prepare();
     }
 
-    async send(statement: SendStatement, ctx: SchemeCtx) {
+    async send(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         return ctx.messages.reply(statement);
     }
 }

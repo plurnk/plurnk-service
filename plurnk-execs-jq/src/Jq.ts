@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { BaseExecutor, ErrorDetail, InvocationMetadata, Results, SpawnAccounts, SubprocessInput } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // jq executor — shells the system `jq` binary (no third-party JSON-filter lib).
 // Invocation model:
@@ -48,7 +48,7 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    override prepare(input: ExecInput) { return InvocationMetadata.prepare(input, { stdin: true }); }
+    override prepare(input: ExecInput): Promise<ExecPreparation> { return InvocationMetadata.prepare(input, { stdin: true }); }
 
     async run({ runtime, body, metadata, cwd, target, env, signal, write, setState, registerInput }: ExecArgs): Promise<ExecResult> {
         const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { stdin: true });

@@ -1,5 +1,5 @@
 import { PathSyntax, type SendStatement } from "@plurnk/plurnk-contracts";
-import type { MessageCaps } from "@plurnk/plurnk-schemes";
+import type { MessageCaps, SchemeResult } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import EntryCrud from "../../schemes/_entry-crud.ts";
 import Results from "../results.ts";
@@ -13,7 +13,7 @@ export default class DbMessageCaps implements MessageCaps {
         this.#scheme = scheme;
     }
 
-    async prepare(target?: string) {
+    async prepare(target?: string): Promise<SchemeResult> {
         const rows = await this.#ctx.db.message_source_resources.all<{ path: string; body: string }>({
             workspace_id: this.#ctx.workspaceId, scheme: this.#scheme, target: target ?? null,
         });
@@ -35,7 +35,7 @@ export default class DbMessageCaps implements MessageCaps {
         return { status: 200 };
     }
 
-    async reply(statement: SendStatement) {
+    async reply(statement: SendStatement): Promise<SchemeResult> {
         if (this.#ctx.replyToMessage === undefined) throw new Error("Message replies require a dispatcher context.");
         return this.#ctx.replyToMessage(statement);
     }

@@ -8,7 +8,7 @@
 import { chatMessageText } from "./types.ts";
 import type { InputModality, ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
-import { EFFORTS } from "@plurnk/plurnk-contracts";
+import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
@@ -79,7 +79,7 @@ export default class Mock implements Provider {
     get outputBudget(): number | null { return this.#outputBudget; }
     get outputFloor(): number | null { return this.#outputFloor; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
-    get supportedEfforts() { return EFFORTS; }
+    get supportedEfforts(): readonly Effort[] { return EFFORTS; }
     get inputCapacity(): number | null {
         return effectiveInputCapacity({
             contextWindow: this.#contextWindow,

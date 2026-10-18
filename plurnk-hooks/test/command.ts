@@ -2,7 +2,7 @@ import { createServer, type Socket } from "node:net";
 import { once } from "node:events";
 import type { TestContext } from "node:test";
 
-interface ObservedEvent {
+export interface ObservedEvent {
     readonly hook_event_name: string;
     readonly plurnk: {
         readonly workspaceId: number | null;
@@ -11,7 +11,14 @@ interface ObservedEvent {
     };
 }
 
-export const commandFixture = async (t: TestContext) => {
+export interface CommandFixture {
+    readonly env: { PLURNK_HOOKS_COMMAND: string; PLURNK_HOOKS_ARGS: string; PLURNK_HOOKS_EVENTS: string };
+    readonly events: ObservedEvent[];
+    readonly waitFor: (count: number) => Promise<void>;
+    readonly release: (id: number) => void;
+}
+
+export const commandFixture = async (t: TestContext): Promise<CommandFixture> => {
     const events: ObservedEvent[] = [];
     const clients = new Map<number, Socket>();
     const sockets = new Set<Socket>();

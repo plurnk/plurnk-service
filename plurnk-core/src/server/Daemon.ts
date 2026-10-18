@@ -10,7 +10,7 @@ import ChannelWrite, { type StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
 import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
-import Engine from "../core/Engine.ts";
+import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import Exec from "../schemes/Exec.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
@@ -28,11 +28,11 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, ty
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type MessageResource, type MessageEvidence, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type MessageResource, type MessageEvidence, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
-import Envelope, { projectWorkerRow, type WorkspaceEnvelope } from "./envelope.ts";
+import Envelope, { projectWorkerRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
 import WorkerReferences from "./WorkerReferences.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
@@ -1210,7 +1210,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
-    async listWorkspaces() {
+    async listWorkspaces(): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
         return (await Envelope.listWorkspaces(this.#db)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
     }
 
@@ -1336,7 +1336,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 
-    listPrompts(workspaceId: number, limit?: number, workerId?: number) {
+    listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
         const checkedWorkerId = workerId === undefined ? null : ClientInput.assertId("workspace.prompts", "workerId", workerId);
@@ -1350,13 +1350,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         release();
     }
 
-    workspacePreparationStatus(workspaceId: number) {
+    workspacePreparationStatus(workspaceId: number): readonly FunctionalityPreparationActivity[] {
         return this.#functionality.preparationStatus(
             ClientInput.assertId("workspace preparation", "workspaceId", workspaceId),
         );
     }
 
-    workspaceDerivationStatus(workspaceId: number) {
+    workspaceDerivationStatus(workspaceId: number): WorkspaceDerivationStatus | null {
         return this.#engine.workspaceDerivationStatus(
             ClientInput.assertId("workspace.derivation", "workspaceId", workspaceId),
         );

@@ -59,7 +59,16 @@ const parseOptionalSafeInt = (raw: string | undefined, name: string, label: stri
 };
 
 // {§provider-sampling-passthrough} Both provider factories read the same tuning surface.
-export const samplingFromEnv = (env: NodeJS.ProcessEnv, label: string) => ({
+export interface SamplingFromEnv {
+    readonly temperature: number | null;
+    readonly topP: number | undefined;
+    readonly topK: number | undefined;
+    readonly presencePenalty: number | undefined;
+    readonly frequencyPenalty: number;
+    readonly seed: number | undefined;
+}
+
+export const samplingFromEnv = (env: NodeJS.ProcessEnv, label: string): SamplingFromEnv => ({
     temperature: parseOptionalFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", label, 0),
     topP: parseOptionalFloat(env.PLURNK_PROVIDERS_TOP_P, "PLURNK_PROVIDERS_TOP_P", label, 0, 1) ?? undefined,
     topK: parseOptionalSafeInt(env.PLURNK_PROVIDERS_TOP_K, "PLURNK_PROVIDERS_TOP_K", label, 0),

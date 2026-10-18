@@ -10,9 +10,18 @@ export interface PluginContext {
 
 type StdioDefinition = Extract<McpServerDefinition, { type: "stdio" }>;
 
+// The stdio launch a plugin's definition resolves to: placeholders expanded, paths anchored at the plugin root.
+export interface ResolvedStdioPlugin {
+    readonly type: "stdio";
+    readonly command: string;
+    readonly args: string[];
+    readonly cwd: string;
+    readonly env: Readonly<Record<string, string>>;
+}
+
 // {§mcp-plugin-configuration} Interpretation belongs to the complete source definition, not provenance.
 export default class PluginConfiguration {
-    static resolve(source: StdioDefinition, context: PluginContext) {
+    static resolve(source: StdioDefinition, context: PluginContext): ResolvedStdioPlugin {
         const expand = (value: string): string => expandPlaceholders(value, context);
         return {
             type: "stdio" as const,

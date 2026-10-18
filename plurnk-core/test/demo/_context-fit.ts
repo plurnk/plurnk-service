@@ -13,7 +13,17 @@ import { logEntries, packetSection } from "../intg/_packet.ts";
 import { TEST_OWNER } from "../intg/_approval.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
-export const seedAttachmentFixture = async () => {
+export interface AttachmentFixture {
+    readonly workspace: string;
+    readonly answer: string;
+    readonly content: string;
+    readonly telemetry: string;
+    readonly prompt: string;
+    readonly openPaths: string[];
+    readonly cleanup: () => Promise<void>;
+}
+
+export const seedAttachmentFixture = async (): Promise<AttachmentFixture> => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-context-fit-"));
     const answer = "CEDAR-HARBOR-27";
     const telemetry = `Telemetry: ${"sample nominal; ".repeat(150)}\n`;
@@ -34,7 +44,7 @@ export const seedAttachmentFixture = async () => {
         telemetry,
         prompt: "Which recovery site is recorded in the attached incident report?",
         openPaths: [...otherPaths, "incident.txt"],
-        cleanup: () => rm(workspace, { recursive: true, force: true }),
+        cleanup: (): Promise<void> => rm(workspace, { recursive: true, force: true }),
     };
 };
 
@@ -44,8 +54,8 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     workspaceId: number;
     workerId: number;
     turnIds: number[];
-    fixture: Awaited<ReturnType<typeof seedAttachmentFixture>>;
-}) => {
+    fixture: AttachmentFixture;
+}): Promise<{ landed: number; receipts: number; modelTurns: number; receiptActive: boolean }> => {
     const turns = await Promise.all(turnIds.map(async (id) => {
         const row = await db.test_get_turn.get<{
             id: number; loop_id: number; sequence: number; producer: string;

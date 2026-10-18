@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { SUBSCRIPTION_ID_META_KEY } from "@modelcontextprotocol/client";
-import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
+import { McpServer, createMcpHandler, fromJsonSchema, type McpHttpHandler } from "@modelcontextprotocol/server";
 import type { ReceivedRequest } from "./http-fixture.ts";
 import { MCP_TASKS_EXTENSION_ID } from "../src/protocol.ts";
 
@@ -59,7 +59,15 @@ const sseMessage = (value: unknown): Uint8Array => new TextEncoder().encode(
 
 type TaskFixtureMode = "interaction" | "tool-error" | "protocol-failure" | "unsupported" | "cancel";
 
-export const taskHandler = (mode: TaskFixtureMode = "interaction") => {
+export interface TaskFixture {
+    readonly handler: McpHttpHandler;
+    readonly route: (request: Request) => Promise<Response | null>;
+    readonly updates: Record<string, unknown>[];
+    readonly cancellations: Record<string, unknown>[];
+    readonly toolName: string;
+}
+
+export const taskHandler = (mode: TaskFixtureMode = "interaction"): TaskFixture => {
     const toolName = mode === "interaction" ? "deferred-review" : mode;
     const handler = createMcpHandler(() => {
         const server = new McpServer(
