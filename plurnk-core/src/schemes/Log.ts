@@ -23,7 +23,7 @@ import LineSelection from "../content/line-selection.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import EntryFts from "./_entry-fts.ts";
 import EntryGraph from "./_entry-graph.ts";
-import { resolveSearchCandidates } from "./_search-candidate.ts";
+import { resolveSearchCandidates, type SearchCandidateSet } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 import type { CatalogChannel, CatalogDefaultChannel } from "./_entry-manifest.ts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
@@ -226,6 +226,24 @@ const nearMissRecovery = async (
     return `Turn ${turn} has no entries; loop ${coord.loopSeq}'s latest turn is ${coord.loopSeq}/${latest}.`;
 };
 
+// A row a log FIND selects: its coordinate and the facts its readable projection is built from.
+type Candidate = {
+    coordinate: string;
+    origin: string;
+    op: string | null;
+    tx: string;
+    mimetype_tx: string;
+    rx: string;
+    mimetype_rx: string;
+    weight: number;
+    deep_hash: string | null;
+    attrs: string;
+    folded: string;
+};
+
+// A candidate's readable projection, keyed by its coordinate.
+type LogProjection = { key: string } & ReturnType<typeof LogBody.readable>;
+
 // A row selected for curation, as the turn reads it: its body, its visibility and whether it is natively active.
 type CurationTargetRow = {
 id: number;
@@ -410,29 +428,79 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         allowTargetless = false,
         maxLogEntryId: number | null = null,
     ): Promise<FindResult> {
-        const { db, workerId, mimetypes } = core;
-        const empty = (
-            status: number,
-            detail?: string,
-            extensions: Readonly<Record<string, unknown>> = {},
-        ): FindResult => {
-            const fields = emptyFindFields();
-            if (status >= 400 && detail === undefined) {
-                throw new Error(`Log.find: selection returned status ${status} without Problem Details or a diagnostic`);
-            }
-            return status >= 400
-                ? Results.failure(
-                    "scheme:log",
-                    status === 404 ? "entry-not-found" : status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
-                    status,
-                    detail!,
-                    fields,
-                    extensions,
-                ) as FindResult
-                : { status, ...fields };
-        };
+        const { db, workerId } = core;
+        const found = await this.#findScope(statement, core, allowTargetless, maxLogEntryId);
+        if ("status" in found) return found;
+        const { scope, glob } = found;
+        const selected = await Log.#selectLogCandidates(db, workerId, scope, glob, maxLogEntryId);
+        if ("status" in selected) return selected;
+        const { candidateRows, rows } = selected;
+        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
+        const projectedByCoordinate = new Map(candidateRows.map((r) => [r.coordinate, {
+            key: r.coordinate,
+            ...LogBody.readable({
+                op: r.op,
+                attrs: r.attrs,
+                tx: r.tx,
+                rx: r.rx,
+                mimetypeTx: r.mimetype_tx,
+                mimetypeRx: r.mimetype_rx,
+            }, LogVisibility.parse(r.folded)),
+        }] as const));
+        const projected = rows.map((row) => projectedByCoordinate.get(row.coordinate)!);
+        const weigh = core.weigh ?? contentWeight;
+        const settled = await Log.#settleIndexedCandidates(statement, core, rows, scope, maxLogEntryId);
+        const matches = await Log.#selectLogMatches(statement, core, settled, projected, maxLogEntryId);
+        if ("status" in matches) return matches;
+        return Log.#projectLogFind(statement, scope, matches, { candidateRows, projectedByCoordinate, candidateByCanonicalCoord }, weigh);
+    }
+
+    // A FIND result with no items: the status alone, or the failure a status of 400 and above must explain.
+    static #emptyFind(
+        status: number,
+        detail?: string,
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): FindResult {
+        const fields = emptyFindFields();
+        if (status >= 400 && detail === undefined) {
+            throw new Error(`Log.find: selection returned status ${status} without Problem Details or a diagnostic`);
+        }
+        return status >= 400
+            ? Results.failure(
+                "scheme:log",
+                status === 404 ? "entry-not-found" : status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
+                status,
+                detail!,
+                fields,
+                extensions,
+            ) as FindResult
+            : { status, ...fields };
+    }
+
+    // {§relation-indexed-dialects} An indexed dialect over rows the index does not yet cover.
+    static #incompleteIndex(search: Extract<SearchCandidateSet, { state: "incomplete" }>, what: string): FindResult {
+        return Log.#emptyFind(
+            503,
+            `The persistent search index covers ${search.indexed} of ${search.total} ${what}.`,
+            {
+                search,
+                stage: "search-index",
+                recovery: "Wait for search indexing to complete before repeating the search.",
+                retryable: false,
+            },
+        );
+    }
+
+    // {§log-coordinate-hierarchy} The scope the target names: a coordinate, a prefix or a glob, refused when
+    // malformed; an exact coordinate that names no row is the miss with its near miss.
+    async #findScope(
+        statement: FindStatement,
+        core: PlurnkSchemeContext,
+        allowTargetless: boolean,
+        maxLogEntryId: number | null,
+    ): Promise<{ scope: ReturnType<typeof pathScope>; glob: string } | FindResult> {
         if (statement.target === null && !allowTargetless) {
-            return empty(
+            return Log.#emptyFind(
                 400,
                 "FIND requires a log target.",
                 {
@@ -447,7 +515,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(normalizeLogTarget(pathname));
         if (glob === null) {
-            return empty(
+            return Log.#emptyFind(
                 400,
                 `The log target '${pathname}' is malformed.`,
                 {
@@ -463,26 +531,25 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
             if (await this.#resolveExactId(coordinate, core, maxLogEntryId) === null) {
                 const recovery = await nearMissRecovery(coordinate, core, maxLogEntryId);
-                return empty(
+                return Log.#emptyFind(
                     404,
                     `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
                     { target: statement.target?.raw ?? `log:///${scope.pathname}`, ...(recovery === undefined ? {} : { recovery }) },
                 );
             }
         }
-        type Candidate = {
-            coordinate: string;
-            origin: string;
-            op: string | null;
-            tx: string;
-            mimetype_tx: string;
-            rx: string;
-            mimetype_rx: string;
-            weight: number;
-            deep_hash: string | null;
-            attrs: string;
-            folded: string;
-        };
+        return { scope, glob };
+    }
+
+    // The candidate rows under the scope: the coordinate-scoped superset, then the shell-glob truth over it,
+    // which refuses a malformed glob by name.
+    static async #selectLogCandidates(
+        db: PlurnkSchemeContext["db"],
+        workerId: number,
+        scope: ReturnType<typeof pathScope>,
+        glob: string,
+        maxLogEntryId: number | null,
+    ): Promise<{ candidateRows: Candidate[]; rows: Candidate[] } | FindResult> {
         const storedCandidateRows = await db.log_find_candidates.all<Candidate>({
             worker_id: workerId,
             scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
@@ -492,7 +559,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch {
-            return empty(
+            return Log.#emptyFind(
                 400,
                 `The log glob '${glob}' is malformed.`,
                 {
@@ -502,21 +569,19 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             );
         }
-        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
-        const projectedByCoordinate = new Map(candidateRows.map((r) => [r.coordinate, {
-            key: r.coordinate,
-            ...LogBody.readable({
-                op: r.op,
-                attrs: r.attrs,
-                tx: r.tx,
-                rx: r.rx,
-                mimetypeTx: r.mimetype_tx,
-                mimetypeRx: r.mimetype_rx,
-            }, LogVisibility.parse(r.folded)),
-        }] as const));
-        const projected = rows.map((row) => projectedByCoordinate.get(row.coordinate)!);
-        const weigh = core.weigh ?? contentWeight;
+        return { candidateRows, rows };
+    }
 
+    // {§relation-indexed-dialects} The rows an indexed dialect reads, their derivation settled once when the
+    // pass has not covered them yet.
+    static async #settleIndexedCandidates(
+        statement: FindStatement,
+        core: PlurnkSchemeContext,
+        rows: Candidate[],
+        scope: ReturnType<typeof pathScope>,
+        maxLogEntryId: number | null,
+    ): Promise<Candidate[]> {
+        const { db, workerId } = core;
         // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
         // below remain the truth when coverage is still incomplete afterwards.
@@ -530,24 +595,28 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     max_id: maxLogEntryId,
                 }));
                 const hashes = new Map(refreshed.map((row) => [row.coordinate, row.deep_hash] as const));
-                rows = rows.map((row) => ({ ...row, deep_hash: hashes.get(row.coordinate) ?? row.deep_hash }));
+                return rows.map((row) => ({ ...row, deep_hash: hashes.get(row.coordinate) ?? row.deep_hash }));
             }
         }
+        return rows;
+    }
+
+    // Every dialect resolves to one selection per row: rank for ~full-text, the relation index for &graph, every
+    // row for a bare listing, and the content matcher otherwise ({§find-source-agnostic}).
+    static async #selectLogMatches(
+        statement: FindStatement,
+        core: PlurnkSchemeContext,
+        rows: Candidate[],
+        projected: LogProjection[],
+        maxLogEntryId: number | null,
+    ): Promise<Match[] | FindResult> {
+        const { db, workerId, mimetypes } = core;
         let matches: Match[];
         if (statement.matcher?.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
-            if (candidateSet.state === "incomplete") return empty(
-                503,
-                `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
-                {
-                    search: candidateSet,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
-                },
-            );
+            if (candidateSet.state === "incomplete") return Log.#incompleteIndex(candidateSet, "selected log results");
             const ranked = await EntryFts.rankCandidates(
                 db, candidateSet.candidates, statement.matcher.raw.slice(1), core.signal,
             );
@@ -559,16 +628,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const candidateSet = resolveSearchCandidates(
                 rows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
-            if (candidateSet.state === "incomplete") return empty(
-                503,
-                `The persistent search index covers ${candidateSet.indexed} of ${candidateSet.total} selected log results.`,
-                {
-                    search: candidateSet,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
-                },
-            );
+            if (candidateSet.state === "incomplete") return Log.#incompleteIndex(candidateSet, "selected log results");
             const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({
                 worker_id: workerId,
                 scope_prefix: null,
@@ -577,16 +637,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const universe = resolveSearchCandidates(
                 universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
-            if (universe.state === "incomplete") return empty(
-                503,
-                `The persistent search index covers ${universe.indexed} of ${universe.total} log results in the relationship universe.`,
-                {
-                    search: universe,
-                    stage: "search-index",
-                    recovery: "Wait for search indexing to complete before repeating the search.",
-                    retryable: false,
-                },
-            );
+            if (universe.state === "incomplete") return Log.#incompleteIndex(universe, "log results in the relationship universe");
             const graph = await EntryGraph.matchCandidates(
                 db,
                 universe.candidates,
@@ -599,7 +650,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));
         } else {
             if (mimetypes === undefined) {
-                return empty(
+                return Log.#emptyFind(
                     501,
                     "Content matching requires the mimetypes capability.",
                     {
@@ -622,6 +673,23 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             }
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
+        return matches;
+    }
+
+    // {§find-result-projection} The matches as catalog resources and the listing's folder scopes, weighed as the
+    // packet would weigh them.
+    static #projectLogFind(
+        statement: FindStatement,
+        scope: ReturnType<typeof pathScope>,
+        matches: Match[],
+        selection: {
+            candidateRows: Candidate[];
+            projectedByCoordinate: ReadonlyMap<string, LogProjection>;
+            candidateByCanonicalCoord: ReadonlyMap<string, Candidate>;
+        },
+        weigh: typeof contentWeight,
+    ): FindResult {
+        const { candidateRows, projectedByCoordinate, candidateByCanonicalCoord } = selection;
         const folderSummaries = statement.matcher === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => LogEntryProjection.base(row.coordinate)))
             : [];
