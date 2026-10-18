@@ -24,7 +24,7 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     return outcome;
 };
 
-test("two threads, one workspace: each thread's operations under its own address, one shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
+test("{§agui-op-parse} two threads, one workspace: each thread's operations under its own address, one shared filesystem (the environment door)", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 

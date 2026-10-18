@@ -22,7 +22,7 @@ const env = Object.freeze({
 test.afterEach(() => mock.restoreAll());
 
 // {§model-fact-resolution}
-test("#126: Ollama always probes model physics and applies an operator context-window ceiling", async () => {
+test("{§model-fact-resolution} #126: Ollama always probes model physics and applies an operator context-window ceiling", async () => {
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
         calls.push(requestUrl(input));
@@ -44,7 +44,7 @@ test("#126: Ollama always probes model physics and applies an operator context-w
     assert.deepEqual(calls, Array.from({ length: 3 }, () => "http://ollama.test:11434/api/show"));
 });
 
-test("#126: an operator ceiling does not hide an Ollama probe HTTP failure", async () => {
+test("{§model-fact-resolution} #126: an operator ceiling does not hide an Ollama probe HTTP failure", async () => {
     mock.method(globalThis, "fetch", async () => new Response(null, { status: 503 }));
     await assert.rejects(
         () => ollamaProviderFromEnv({
@@ -55,7 +55,7 @@ test("#126: an operator ceiling does not hide an Ollama probe HTTP failure", asy
     );
 });
 
-test("#126: an operator ceiling does not hide a missing Ollama model fact", async () => {
+test("{§model-fact-resolution} #126: an operator ceiling does not hide a missing Ollama model fact", async () => {
     mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ model_info: {} })));
     await assert.rejects(
         () => ollamaProviderFromEnv({

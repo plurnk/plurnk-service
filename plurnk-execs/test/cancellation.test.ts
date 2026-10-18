@@ -16,14 +16,14 @@ const run = async (command: string, signal: AbortSignal): Promise<ExecResult> =>
     return new SubprocessExecutor({ runtime: "sh", glyph: "🐚" }).run(args);
 };
 
-test("C1: aborting a running command settles with status 499", async () => {
+test("{§executor-cancellation} C1: aborting a running command settles with status 499", async () => {
     const c = new AbortController();
     const p = run("sleep 5", c.signal);
     c.abort();
     assert.equal((await p).status, 499);
 });
 
-test("C2: abort terminates the whole process group — no shell grandchild survives", async () => {
+test("{§executor-cancellation} C2: abort terminates the whole process group — no shell grandchild survives", async () => {
     const dur = `9999.${process.hrtime.bigint().toString().slice(-9)}`;
     const c = new AbortController();
     const p = run(`sleep ${dur}`, c.signal);
@@ -36,7 +36,7 @@ test("C2: abort terminates the whole process group — no shell grandchild survi
     assert.equal(survivors, "", `leaked process(es): ${survivors}`);
 });
 
-test("C3: a command aborted before launch never spawns and settles 499", async () => {
+test("{§executor-cancellation} C3: a command aborted before launch never spawns and settles 499", async () => {
     const c = new AbortController();
     c.abort();
     assert.equal((await run("echo should-not-run", c.signal)).status, 499);

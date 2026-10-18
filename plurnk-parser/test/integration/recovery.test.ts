@@ -48,7 +48,7 @@ for (const [name, header, body] of [
     }
 }
 
-test("an internal builder failure propagates without leaking its advisories", (t) => {
+test("{§fence-boundary} an internal builder failure propagates without leaking its advisories", (t) => {
     const build = AstBuilder.build;
     const failure = new Error("internal builder failure");
     const mocked = t.mock.method(AstBuilder, "build", (...args: Parameters<typeof build>) => {
@@ -87,7 +87,7 @@ test("{§scope-slot-tolerance} a scope inside a target is applied with one factu
     assert.ok(errors(stray).some((e) => e.severity === "error" && /unrecognized character '<'/.test(e.message)));
 });
 
-test("conflicting scopes on one resource selection are rejected without affecting the next block", () => {
+test("{§fence-boundary} conflicting scopes on one resource selection are rejected without affecting the next block", () => {
     for (const header of ["READ (a.ts<1,2>) <3,4>", "COPY (a.ts<1>) <2> (b.ts)", "sh (script.js<5>) <10>"]) {
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.equal(r.unparsedTail, undefined, header);
@@ -108,7 +108,7 @@ test("{§heading-boundary-recovery} unclosed metadata does not consume the follo
 });
 
 // {§bracket-metadata-slot}
-test("bracket metadata belongs to a target, executor, or targetless SEND", () => {
+test("{§target-group} bracket metadata belongs to a target, executor, or targetless SEND", () => {
     for (const [header, op, target, metadata] of [
         ["READ (a.ts) [+diff] <1,-1>", "READ", "a.ts", "+diff"],
         ["READ [+diff] (a.ts) <1,-1>", "READ", "a.ts", "+diff"],
@@ -175,7 +175,7 @@ for (const header of [
     });
 }
 
-test("a plus-prefixed path is still a path, alone or as an extglob", () => {
+test("{§fence-boundary} a plus-prefixed path is still a path, alone or as an extglob", () => {
     for (const [header, target] of [["READ (+page.svelte) <1,-1>", "+page.svelte"], ["READ (+diff) <1,-1>", "+diff"], ["FIND (src/+(a|b).ts) <1,-1>", "src/+(a|b).ts"]]) {
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.deepEqual(errors(r), [], header);

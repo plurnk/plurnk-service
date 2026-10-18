@@ -76,7 +76,7 @@ test("{§agui-replay} a SEND without a delivered recipient is an operation in li
     assert.ok(snapshot.messages.some((replayed) => replayed.role === "tool" && replayed.toolCallId === "1/1/3"), "its receipt replays as the call's result");
 });
 
-test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
+test("{§agui-plurnk-metadata} a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "WAIT", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "worker", pathname: "/notes.md", tx: authored("````READ (worker:///notes.md)\n````"), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
@@ -318,7 +318,7 @@ test("{§agui-replay} an arrival retains the AG-UI message id across reconnects"
         "a thread client's message replays as that client sent it");
 });
 
-test("readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
+test("{§agui-plurnk-metadata} readable provider reasoning precedes SEND speech on the standard AG-UI channel", () => {
     const tr = t();
     const events = tr.logEntry(entry({
         op: "SEND",
@@ -352,7 +352,7 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
     assert.doesNotThrow(() => ReasoningEndEventSchema.parse(reasoning[4]));
 });
 
-test("live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
+test("{§agui-projection} live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
     const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked " });
@@ -433,7 +433,7 @@ for (const streamed of [false, true]) {
     });
 }
 
-test("a retried physical request receives a separate reasoning message instead of splicing attempts", () => {
+test("{§agui-plurnk-metadata} a retried physical request receives a separate reasoning message instead of splicing attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
     const emit = (requestSequence: number, phase: "start" | "end" | "content", delta?: string) => tr.reasoning({
         workerId: 2,
@@ -472,7 +472,7 @@ test("a retried physical request receives a separate reasoning message instead o
     assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the accepted request's durable reasoning is not replayed");
 });
 
-test("a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
+test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 2 });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
@@ -509,7 +509,7 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
     );
 });
 
-test("reasoning lifecycle violations fail at the projection boundary", () => {
+test("{§agui-plurnk-metadata} reasoning lifecycle violations fail at the projection boundary", () => {
     const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     assert.throws(
@@ -518,7 +518,7 @@ test("reasoning lifecycle violations fail at the projection boundary", () => {
     );
 });
 
-test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
+test("{§agui-plurnk-metadata} readable reasoning identity is turn-specific and absent evidence invents nothing", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "SEND", turn_id: 1, loop_seq: 1, turn_seq: 1, sequence: 8, reasoning: "first" }));
     const second = tr.logEntry(entry({ op: "SEND", turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 4, reasoning: "second" }));
@@ -542,7 +542,7 @@ test("{§agui-ambient} ambient (origin _plurnk) rows and rejected attempts ride 
     assert.deepEqual(rejected.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"], "a rejected emission builds no part: it rides whole, forensic, never speech");
 });
 
-test("an actionless model row without an artifact discriminator is rejected", () => {
+test("{§agui-plurnk-metadata} an actionless model row without an artifact discriminator is rejected", () => {
     assert.throws(
         () => t().logEntry(entry({ op: null, attrs: {} })),
         /attrs\.kind=emissionAttempt/,
@@ -553,7 +553,7 @@ test("an actionless model row without an artifact discriminator is rejected", ()
     );
 });
 
-test("reasoning READs remain operation receipts without duplicating standard reasoning or speech", () => {
+test("{§agui-plurnk-metadata} reasoning READs remain operation receipts without duplicating standard reasoning or speech", () => {
     const tr = t();
     const reasoning = entry({ op: "READ", origin: "_plurnk", scheme: "reasoning", pathname: "/1/1/1", rx: { content: "Working reasoning text." } });
     const live = tr.logEntry(reasoning);
@@ -587,7 +587,7 @@ test("{§agui-encrypted-reasoning} the encrypted-reasoning interface is not impl
     );
 });
 
-test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
+test("{§agui-plurnk-metadata} turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "WAIT", turn_id: 1, tx: { body: "first" } }));
     assert.equal(first[0]?.type, "STEP_STARTED");
@@ -669,7 +669,7 @@ test("{§agui-run-outcome} {§agui-plurnk-metadata} a loop's end is the Run's st
         "requests that reported no tokens report no usage, never zero");
 });
 
-test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
+test("{§agui-plurnk-metadata} the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ curationWeight: 7654, curationBudget: 40000, inputTokens: 4321, outputTokens: 99, contextCapacity: 35840 }) };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
@@ -685,7 +685,7 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     ], "AG-UI keeps curation and physical occupancy as separate pairs");
 });
 
-test("a failed termination preserves its Problem and maps it to RUN_ERROR", () => {
+test("{§agui-plurnk-metadata} a failed termination preserves its Problem and maps it to RUN_ERROR", () => {
     const tr = t();
     const problem = {
         type: "https://problems.plurnk.xyz/provider/openai/invalid-response",
@@ -714,7 +714,7 @@ test("a failed termination preserves its Problem and maps it to RUN_ERROR", () =
     assert.equal(error?.message, problem.detail);
 });
 
-test("a failed termination without a Problem is rejected instead of synthesized from status", () => {
+test("{§agui-plurnk-metadata} a failed termination without a Problem is rejected instead of synthesized from status", () => {
     const tr = t();
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
@@ -741,7 +741,7 @@ test("{§agui-ambient} a FOREIGN worker's rows never enter the core stream — p
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's messages");
 });
 
-test("a rejected emission attempt remains forensic even if an invalid producer supplies readable text", () => {
+test("{§agui-ambient} a rejected emission attempt remains forensic even if an invalid producer supplies readable text", () => {
     const events = t().logEntry(entry({
         op: null,
         attrs: { kind: "emissionAttempt" },
@@ -751,7 +751,7 @@ test("a rejected emission attempt remains forensic even if an invalid producer s
     assert.ok(!events.some((event) => event.type.startsWith("REASONING_") || event.type.startsWith("TEXT_MESSAGE_")));
 });
 
-test("the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
+test("{§agui-plurnk-metadata} the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
@@ -777,7 +777,7 @@ test("the newest-first workspace log replays user prompts, WAIT and SEND speech 
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
 });
 
-test("an interrupt closes the current AG-UI step and its resume Run reopens the continued Plurnk turn", () => {
+test("{§agui-plurnk-metadata} an interrupt closes the current AG-UI step and its resume Run reopens the continued Plurnk turn", () => {
     const interrupted = t();
     interrupted.logEntry(entry({ op: "WAIT", turn_id: 7, tx: { body: "wait for approval" } }));
 
@@ -792,7 +792,7 @@ test("an interrupt closes the current AG-UI step and its resume Run reopens the 
     ]);
 });
 
-test("runtime protocol and family dependencies are declared explicitly", async () => {
+test("{§agui-plurnk-metadata} runtime protocol and family dependencies are declared explicitly", async () => {
     const { readFile } = await import("node:fs/promises");
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
     const deps = Object.keys(pkg.dependencies ?? {});

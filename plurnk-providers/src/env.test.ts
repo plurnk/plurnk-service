@@ -257,7 +257,7 @@ test("the shipped floor defers reasoning posture to the provider by default (ada
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — provider-adaptive depth remains unpinned");
 });
 
-test("the shipped DRY floor is off and claims no universally safe shape", async () => {
+test("{§provider-generation-envelope} the shipped DRY floor is off and claims no universally safe shape", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.match(defaults, /^PLURNK_PROVIDERS_DRY_MULTIPLIER=0$/m, "a fidelity-corrupting sampler cannot be a portable floor");

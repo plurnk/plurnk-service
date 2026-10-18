@@ -168,7 +168,7 @@ test("configured tool policy fails setup when the server lacks an exact name", a
     }
 });
 
-test("MCP executor calls a current tool and writes its result", async () => {
+test("{§mcp-result-content} MCP executor calls a current tool and writes its result", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -581,7 +581,7 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
 
 // The invalid-arguments failure names the form that works, whatever the body was
 // (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
-test("invalid tool arguments carry the one-object recovery", async () => {
+test("{§problems-mcp} invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();

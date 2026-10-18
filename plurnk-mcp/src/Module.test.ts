@@ -216,7 +216,7 @@ const interactiveOAuthFixture = (
     t: TestContext,
 ): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
 
-test("OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
+test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const token = (body: string) => fetch(`${origin}/token`, {
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body,

@@ -59,7 +59,7 @@ const interruptedBy = (events: readonly AguiEvent[], op: string): string => {
     return id;
 };
 
-test("a child proposal traverses its owning thread without losing either identity", {
+test("{§agui-proposal-resolve} a child proposal traverses its owning thread without losing either identity", {
     timeout: 60_000,
 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));

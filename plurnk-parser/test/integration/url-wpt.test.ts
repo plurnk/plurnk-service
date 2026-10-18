@@ -22,7 +22,7 @@ const category = ({ input }: UrlCase) => !/^[a-z][a-z0-9+.-]*:\/\//iu.test(input
     ? "local"
     : /[\r\n<]/u.test(input) ? "outside-heading" : "uri";
 
-test("the pinned WPT corpus accounts for every target category", () => {
+test("{§path-syntax} the pinned WPT corpus accounts for every target category", () => {
     assert.equal(cases.length, 893);
     assert.equal(cases.filter((item) => category(item) === "local").length, 344);
     assert.equal(cases.filter((item) => category(item) === "outside-heading").length, 21);

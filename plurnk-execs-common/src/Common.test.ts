@@ -27,7 +27,7 @@ const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs,
     return { result, out };
 };
 
-test("the runtimes module declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
+test("{§executor-dynamic-runtimes} the runtimes module declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.equal(pkg.plurnk.runtimesModule, "./runtimes", "{§executor-dynamic-runtimes} the declarations are resolved on the host");
@@ -175,7 +175,7 @@ test("effect: every common interpreter is host (subprocess, proposal-gated)", ()
     assert.equal(make("bc").effect(null), "host");
 });
 
-test("probe: reflects PATH presence per tag", async () => {
+test("{§executor-policy} probe: reflects PATH presence per tag", async () => {
     for (const tag of ["perl", "ruby", "bc", "awk"]) {
         const bin = tag === "tcl" ? "tclsh" : tag;
         const r = await make(tag).probe();

@@ -58,7 +58,7 @@ test("parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
     assert.throws(() => parseAliasesFromEnv(env), /Duplicate provider alias "opus"/);
 });
 
-test("parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint override (case-folded)", () => {
+test("{§alias-case-collisions} parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint override (case-folded)", () => {
     const env = {
         PLURNK_MODEL_HAZEL1: "openai/qwen2.5-coder",
         PLURNK_BASEURL_HAZEL1: "http://hazel1:8080/v1",

@@ -325,7 +325,7 @@ test("{§web-materialization-contract}: Http publishes its WebFetcher as the fra
     }
 });
 
-test("manifest: name https (plain http folds in, #340), default channel body, web trait, network-volatile", () => {
+test("{§http-lifecycle} manifest: name https (plain http folds in, #340), default channel body, web trait, network-volatile", () => {
     assert.equal(Http.manifest.name, "https");
     assert.equal(Http.manifest.authority, "resource");
     assert.equal(Http.manifest.glyph, "🌐");
@@ -336,7 +336,7 @@ test("manifest: name https (plain http folds in, #340), default channel body, we
     assert.deepEqual(Object.keys(Http.manifest.channels).toSorted(), ["body", "header", "readable"]);
 });
 
-test("manifest: documentation is loaded verbatim from docs/https.md", async () => {
+test("{§http-lifecycle} manifest: documentation is loaded verbatim from docs/https.md", async () => {
     const { readFile } = await import("node:fs/promises");
     const fromFile = await readFile(new URL("../docs/https.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
@@ -363,7 +363,7 @@ test("{§http-config} ready validates the fetch ceiling without making a provide
     }
 });
 
-test("exact FIND preparation materializes an exact URL through the checked readable path", async () => {
+test("{§http-lifecycle} exact FIND preparation materializes an exact URL through the checked readable path", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http();
     const target = urlTarget("https://example.com/dist/index.json", "/dist/index.json");
@@ -379,7 +379,7 @@ test("exact FIND preparation materializes an exact URL through the checked reada
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
+test("{§readable-channel} exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -415,7 +415,7 @@ test("exact FIND preparation preserves a provider-only page's unavailable source
     );
 });
 
-test("exact FIND preparation persists a readable binary projection with source and projection evidence", async () => {
+test("{§http-lifecycle} exact FIND preparation persists a readable binary projection with source and projection evidence", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "application/pdf"; },
         async binary(chunks, mimetype) {
@@ -460,7 +460,7 @@ test("exact FIND preparation persists a readable binary projection with source a
     );
 });
 
-test("exact FIND preparation reports the binary input ceiling as a typed 413 without persisting bytes", async (t) => {
+test("{§http-lifecycle} exact FIND preparation reports the binary input ceiling as a typed 413 without persisting bytes", async (t) => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); },
@@ -501,7 +501,7 @@ test("exact FIND preparation reports the binary input ceiling as a typed 413 wit
     assert.equal(diagnostics.length, 0, "an enforced input ceiling is not an internal defect");
 });
 
-test("exact FIND preparation treats XHTML and a present empty projection as successful materialization", async () => {
+test("{§http-lifecycle} exact FIND preparation treats XHTML and a present empty projection as successful materialization", async () => {
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -530,7 +530,7 @@ test("exact FIND preparation treats XHTML and a present empty projection as succ
     });
 });
 
-test("exact FIND preparation persists an absent final HTML projection as the readable channel's exact 422", async () => {
+test("{§http-lifecycle} exact FIND preparation persists an absent final HTML projection as the readable channel's exact 422", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     await withFetch(
@@ -554,7 +554,7 @@ test("exact FIND preparation persists an absent final HTML projection as the rea
     );
 });
 
-test("exact FIND preparation reports a projection exception as 500 and logs its cause", async (t) => {
+test("{§http-lifecycle} exact FIND preparation reports a projection exception as 500 and logs its cause", async (t) => {
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({ async readable() { throw cause; } });
     const { ctx, inspect } = makeCtx(null, { projection });
@@ -578,7 +578,7 @@ test("exact FIND preparation reports a projection exception as 500 and logs its 
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("exact FIND preparation reports caller cancellation during origin acquisition as 499", async () => {
+test("{§http-lifecycle} exact FIND preparation reports caller cancellation during origin acquisition as 499", async () => {
     const controller = new AbortController();
     const reason = new Error("operator cancelled");
     const { ctx, inspect } = makeCtx(null, { signal: controller.signal });
@@ -599,7 +599,7 @@ test("exact FIND preparation reports caller cancellation during origin acquisiti
     assert.equal(inspect().wrote, null);
 });
 
-test("exact FIND preparation does not relabel an unrelated failure after a later caller abort", async (t) => {
+test("{§http-lifecycle} exact FIND preparation does not relabel an unrelated failure after a later caller abort", async (t) => {
     const controller = new AbortController();
     const failure = new Error("unrelated acquisition defect");
     const { ctx } = makeCtx(null, { signal: controller.signal });
@@ -616,7 +616,7 @@ test("exact FIND preparation does not relabel an unrelated failure after a later
     );
 });
 
-test("exact FIND preparation rewrites acquisition but stores the addressed GitHub identity", async () => {
+test("{§http-lifecycle} exact FIND preparation rewrites acquisition but stores the addressed GitHub identity", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
@@ -634,7 +634,7 @@ test("exact FIND preparation rewrites acquisition but stores the addressed GitHu
     assert.equal(inspect().wrote?.pathname, "/nodejs/node/blob/main/src/node_version.h");
 });
 
-test("exact FIND preparation preserves an exact storage-read failure without fetching", async () => {
+test("{§http-lifecycle} exact FIND preparation preserves an exact storage-read failure without fetching", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-unavailable",
@@ -656,7 +656,7 @@ test("exact FIND preparation preserves an exact storage-read failure without fet
     assert.equal(inspect().wrote, null);
 });
 
-test("exact FIND preparation preserves an exact storage-write failure", async () => {
+test("{§http-lifecycle} exact FIND preparation preserves an exact storage-write failure", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-read-only",
@@ -678,7 +678,7 @@ test("exact FIND preparation preserves an exact storage-write failure", async ()
     );
 });
 
-test("exact FIND preparation preserves an unmarked authored entry without network acquisition", async () => {
+test("{§http-lifecycle} exact FIND preparation preserves an unmarked authored entry without network acquisition", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("authored representation", "text/plain", "", undefined, "static"));
     let fetched = false;
     await withFetch(async () => {
@@ -696,7 +696,7 @@ test("exact FIND preparation preserves an unmarked authored entry without networ
 });
 
 // ── acquisition lifecycle {§http-lifecycle} ───────────────────────────────
-test("finite GET materializes complete channels without opening a subscription", async () => {
+test("{§readable-channel} finite GET materializes complete channels without opening a subscription", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/robots.txt", "/robots.txt")), ctx);
@@ -710,7 +710,7 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.match(wrote.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
-test("SEND: also materializes the entry before subscribing (shares #fetchStream)", async () => {
+test("{§http-lifecycle} SEND: also materializes the entry before subscribing (shares #fetchStream)", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
         await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
@@ -720,7 +720,7 @@ test("SEND: also materializes the entry before subscribing (shares #fetchStream)
     assert.equal(wrote?.pathname, "/p");
 });
 
-test("JSON mutation responses publish formatted documents without changing the request", async () => {
+test("{§http-lifecycle} JSON mutation responses publish formatted documents without changing the request", async () => {
     const { ctx, inspect } = makeCtx();
     const request = '{"indent":    "is source"}';
     let submitted: BodyInit | null | undefined;
@@ -740,7 +740,7 @@ test("JSON mutation responses publish formatted documents without changing the r
     assert.equal(inspect().closed?.result.status, 200);
 });
 
-test("interrupted JSON mutation responses preserve received text and the acquisition error", async () => {
+test("{§http-lifecycle} interrupted JSON mutation responses preserve received text and the acquisition error", async () => {
     const { ctx, inspect } = makeCtx();
     let pulls = 0;
     const stream = new ReadableStream<Uint8Array>({
@@ -759,7 +759,7 @@ test("interrupted JSON mutation responses preserve received text and the acquisi
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
-test("finite GET stores its complete body and returns ready", async () => {
+test("{§http-lifecycle} finite GET stores its complete body and returns ready", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["hello ", "world"], { "content-type": "text/plain" }), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
@@ -791,7 +791,7 @@ test("{§http-status} finite HTTP errors preserve their body and exact default-c
     );
 });
 
-test("READ uses canonical authority/query identity while metadata and fragment stay out of transport", async () => {
+test("{§http-lifecycle} READ uses canonical authority/query identity while metadata and fragment stay out of transport", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     let seenHeaders: HeadersInit | undefined;
@@ -813,7 +813,7 @@ test("READ uses canonical authority/query identity while metadata and fragment s
     assert.equal(inspect().wrote?.pathname, "/x?b=2&a=1&a=3");
     assert.equal(inspect().opened, null);
 });
-test("HTTP userinfo is rejected without transport or secret-bearing diagnostics", async () => {
+test("{§http-lifecycle} HTTP userinfo is rejected without transport or secret-bearing diagnostics", async () => {
     const { ctx } = makeCtx();
     let fetched = false;
     const target = urlTarget("https://alice:secret@example.com/x", "/x");
@@ -830,7 +830,7 @@ test("HTTP userinfo is rejected without transport or secret-bearing diagnostics"
     assert.equal(fetched, false);
 });
 
-test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport", async () => {
+test("{§http-lifecycle} READ/POST/PUT/DELETE: explicit loopback targets use the native transport", async () => {
     const requests: Array<{ url: string; method: string; redirect: RequestRedirect | undefined }> = [];
     await withFetch((async (input, init) => {
         requests.push({
@@ -865,7 +865,7 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
     assert.ok(requests.every(({ redirect }) => redirect === "follow"));
 });
 
-test("preparation is line-scope-blind and leaves selection to core", async () => {
+test("{§http-lifecycle} preparation is line-scope-blind and leaves selection to core", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
@@ -879,7 +879,7 @@ test("preparation is line-scope-blind and leaves selection to core", async () =>
     assert.equal(inspect().opened, null, "no subscription is opened for a stored range");
 });
 
-test("preparation is channel-blind even when an auxiliary channel was authored", async () => {
+test("{§http-lifecycle} preparation is channel-blind even when an auxiliary channel was authored", async () => {
     const statement = readStmt(
         urlTarget("https://example.com/x#header", "/x", "header"),
         { marks: [2] },
@@ -896,7 +896,7 @@ test("preparation is channel-blind even when an auxiliary channel was authored",
     assert.equal(fetched, false, "a scoped auxiliary-channel observation never enters the network path");
 });
 
-test("preparation leaves out-of-range selection to core", async () => {
+test("{§http-lifecycle} preparation leaves out-of-range selection to core", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
     const result = await prepareRepresentation(new Http(),
         readStmt(urlTarget("https://example.com/x", "/x"), { marks: [30, 100] }),
@@ -907,7 +907,7 @@ test("preparation leaves out-of-range selection to core", async () => {
     assert.equal(inspect().wrote, null);
 });
 
-test("channel selection cannot suppress representation acquisition", async () => {
+test("{§http-lifecycle} channel selection cannot suppress representation acquisition", async () => {
     const { ctx, inspect } = makeCtx();
     let fetched = false;
     await withFetch(async () => {
@@ -926,7 +926,7 @@ test("channel selection cannot suppress representation acquisition", async () =>
     assert.equal(inspect().opened, null);
 });
 
-test("an unknown channel is withheld from the producer and rejected later by core", async () => {
+test("{§http-lifecycle} an unknown channel is withheld from the producer and rejected later by core", async () => {
     const { ctx, inspect } = makeCtx();
     let fetched = false;
     await withFetch(async () => {
@@ -940,7 +940,7 @@ test("an unknown channel is withheld from the producer and rejected later by cor
     assert.equal(inspect().opened, null);
 });
 
-test("READ: non-HTML body is labelled with its real content-type", async () => {
+test("{§http-lifecycle} READ: non-HTML body is labelled with its real content-type", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ['{"a":1}'], { "content-type": "Application/JSON; charset=utf-8" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/d.json", "/d.json")), ctx);
@@ -948,7 +948,7 @@ test("READ: non-HTML body is labelled with its real content-type", async () => {
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset metadata", async () => {
+test("{§http-lifecycle} READ: textual bytes follow Fetch UTF-8 decoding regardless of charset metadata", async () => {
     const { ctx, inspect } = makeCtx();
     const windows1252 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9]);
     await withFetch(mockFetch(200, "OK", [windows1252], {
@@ -970,7 +970,7 @@ test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset meta
     );
 });
 
-test("READ: an unparseable Content-Type is an unknown binary representation", async () => {
+test("{§http-lifecycle} READ: an unparseable Content-Type is an unknown binary representation", async () => {
     const { ctx, inspect } = makeCtx();
     let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(mockFetch(200, "OK", ["not trustworthy"], {
@@ -985,7 +985,7 @@ test("READ: an unparseable Content-Type is an unknown binary representation", as
     assert.equal(inspect().wrote?.entry.channels.readable, undefined);
 });
 
-test("SEND: a binary response retains the complete bytes and response headers without requiring a reader", async () => {
+test("{§http-lifecycle} SEND: a binary response retains the complete bytes and response headers without requiring a reader", async () => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -1016,7 +1016,7 @@ test("SEND: a binary response retains the complete bytes and response headers wi
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
 });
 
-test("READ: a readable binary response publishes its source bytes, readable projection and evidence", async () => {
+test("{§http-lifecycle} READ: a readable binary response publishes its source bytes, readable projection and evidence", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "application/pdf"; },
         async binary(chunks, mimetype) {
@@ -1058,7 +1058,7 @@ test("READ: a readable binary response publishes its source bytes, readable proj
     assert.equal(inspect().closed, null);
 });
 
-test("READ: a binary projection input ceiling leaves a typed marker and closes with 413", async (t) => {
+test("{§http-lifecycle} READ: a binary projection input ceiling leaves a typed marker and closes with 413", async (t) => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); },
@@ -1098,7 +1098,7 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     assert.equal(diagnostics.length, 0);
 });
 
-test("READ: an undeclared body retains application/octet-stream bytes, not guessed text", async () => {
+test("{§sse} READ: an undeclared body retains application/octet-stream bytes, not guessed text", async () => {
     const { ctx, inspect } = makeCtx();
     let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(async () => new Response(new Uint8Array([0x68, 0x69]), {
@@ -1118,7 +1118,7 @@ test("READ: an undeclared body retains application/octet-stream bytes, not guess
 const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
     chunks.filter((c) => c.channel === "body").map((c) => c.chunk);
 
-test("READ SSE: each event's data becomes one body chunk, framing stripped", async () => {
+test("{§http-lifecycle} READ SSE: each event's data becomes one body chunk, framing stripped", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: hello\n\n", "data: world\n\n"], { "content-type": "text/event-stream" }), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
@@ -1132,7 +1132,7 @@ test("READ SSE: each event's data becomes one body chunk, framing stripped", asy
     assert.equal(closed?.summary, "SSE stream; 2 events");
 });
 
-test("READ SSE: returns 102 after acquisition while the origin stream remains open", async () => {
+test("{§http-lifecycle} READ SSE: returns 102 after acquisition while the origin stream remains open", async () => {
     const encoder = new TextEncoder();
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({
@@ -1162,7 +1162,7 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
     assert.equal(inspect().closed?.result.status, 200);
 });
 
-test("READ SSE: multi-line data joins with \\n into a single event", async () => {
+test("{§http-lifecycle} READ SSE: multi-line data joins with \\n into a single event", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: a\ndata: b\n\n"], { "content-type": "text/event-stream; charset=utf-8" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
@@ -1171,7 +1171,7 @@ test("READ SSE: multi-line data joins with \\n into a single event", async () =>
     assert.deepEqual(sseBody(inspect().chunks), ["a\nb\n"]);
 });
 
-test("READ SSE: comment and metadata-only frames drop; only data dispatches", async () => {
+test("{§http-lifecycle} READ SSE: comment and metadata-only frames drop; only data dispatches", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", [": keep-alive\n\n", "event: greet\nid: 7\ndata: payload\n\n"], { "content-type": "text/event-stream" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
@@ -1182,7 +1182,7 @@ test("READ SSE: comment and metadata-only frames drop; only data dispatches", as
     assert.equal(closed?.summary, "SSE stream; 1 events");
 });
 
-test("READ SSE: an event split across network chunks reassembles", async () => {
+test("{§http-lifecycle} READ SSE: an event split across network chunks reassembles", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: par", "tial\n", "\n"], { "content-type": "text/event-stream" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
@@ -1191,7 +1191,7 @@ test("READ SSE: an event split across network chunks reassembles", async () => {
     assert.deepEqual(sseBody(inspect().chunks), ["partial\n"]);
 });
 
-test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
+test("{§http-lifecycle} READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: crlf\r", "\n\r", "\n"], { "content-type": "text/event-stream" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
@@ -1200,7 +1200,7 @@ test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
 });
 
-test("READ SSE: an oversized incomplete event fails the remote stream", async () => {
+test("{§http-lifecycle} READ SSE: an oversized incomplete event fails the remote stream", async () => {
     const previous = process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
     process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = "8";
     try {
@@ -1221,7 +1221,7 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
     }
 });
 
-test("READ SSE: cancellation after acquisition settles the retained stream at 499", async () => {
+test("{§http-lifecycle} READ SSE: cancellation after acquisition settles the retained stream at 499", async () => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({
         start(value) { controller = value; },
@@ -1258,7 +1258,7 @@ test("{§materialization-lifecycle} HTML preparation keeps the server source as 
     });
 });
 
-test("READ: a present empty HTML projection succeeds and retains its HTML evidence", async () => {
+test("{§http-lifecycle} READ: a present empty HTML projection succeeds and retains its HTML evidence", async () => {
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -1334,7 +1334,7 @@ test("READ: public HTML uses the materializer Markdown and retains origin, reque
     assert.match(header, /^x-plurnk-stub-credits: 0\.2$/m);
 });
 
-test("READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
+test("{§readable-channel} READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { ctx, inspect } = makeCtx();
     const accepts: string[] = [];
@@ -1400,7 +1400,7 @@ for (const selected of ["body", "readable", "header"] as const) {
     });
 }
 
-test("READ: recoverable materializer outcome uses the local floor with explicit terminal 203", async () => {
+test("{§http-lifecycle} READ: recoverable materializer outcome uses the local floor with explicit terminal 203", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -1474,7 +1474,7 @@ for (const selected of ["body", "readable"] as const) {
     });
 }
 
-test("READ: an absent HTML projection returns 422 and retains its HTML evidence", async () => {
+test("{§http-lifecycle} READ: an absent HTML projection returns 422 and retains its HTML evidence", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><div></div></body></html>";
@@ -1494,7 +1494,7 @@ test("READ: an absent HTML projection returns 422 and retains its HTML evidence"
     assert.match(inspect().wrote?.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
-test("READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
+test("{§http-lifecycle} READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({ async readable() { throw cause; } });
     const { ctx, inspect } = makeCtx(null, { projection });
@@ -1518,7 +1518,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("SEND: an HTML response streams body text as text/html", async () => {
+test("{§http-lifecycle} SEND: an HTML response streams body text as text/html", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
         await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
@@ -1527,14 +1527,14 @@ test("SEND: an HTML response streams body text as text/html", async () => {
     assert.equal(body, "<html>body</html>");
 });
 
-test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
+test("{§http-lifecycle} READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
     const { ctx } = makeCtx();
     const r = await prepareRepresentation(new Http(), readStmt(null), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/bad-target");
 });
 
-test("READ: empty response body closes done without body chunks", async () => {
+test("{§http-lifecycle} READ: empty response body closes done without body chunks", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(204, "No Content", []), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
@@ -1544,7 +1544,7 @@ test("READ: empty response body closes done without body chunks", async () => {
     assert.equal(inspect().closed, null);
 });
 
-test("READ preserves an exact storage-read failure before acquisition", async () => {
+test("{§http-lifecycle} READ preserves an exact storage-read failure before acquisition", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-unavailable",
@@ -1566,7 +1566,7 @@ test("READ preserves an exact storage-read failure before acquisition", async ()
     assert.equal(inspect().opened, null);
 });
 
-test("GET preserves an exact materialization-write failure", async () => {
+test("{§http-lifecycle} GET preserves an exact materialization-write failure", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-read-only",
@@ -1588,7 +1588,7 @@ test("GET preserves an exact materialization-write failure", async () => {
     assert.equal(inspect().opened, null);
 });
 
-test("origin failure becomes durable body-channel producer evidence", async () => {
+test("{§http-lifecycle} origin failure becomes durable body-channel producer evidence", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
@@ -1602,7 +1602,7 @@ test("origin failure becomes durable body-channel producer evidence", async () =
     assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.problem?.retryable, true, "GET acquisition is replay-safe");
 });
 
-test("READ: network failure bounds caught diagnostics in the exact Problem", async () => {
+test("{§http-lifecycle} READ: network failure bounds caught diagnostics in the exact Problem", async () => {
     const prior = process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT;
     process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT = "4";
     try {
@@ -1622,7 +1622,7 @@ test("READ: network failure bounds caught diagnostics in the exact Problem", asy
 });
 
 // ── SEND verbs ────────────────────────────────────────────────────────────
-test("SEND: POSTs the body and streams the response", async () => {
+test("{§http-lifecycle} SEND: POSTs the body and streams the response", async () => {
     const { ctx, inspect } = makeCtx();
     let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1726,7 +1726,7 @@ test("{§http-replay} SEND: an uncertain POST failure never recommends automatic
 });
 
 // ── request headers and method operations {§op-surface} ───────────────────
-test("READ: [metadata] headers are threaded into the fetch", async () => {
+test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1742,7 +1742,7 @@ test("READ: [metadata] headers are threaded into the fetch", async () => {
     assert.match((seenHeaders)[0][1], /^PlurnkBot\//u);
 });
 
-test("HTTP rejects malformed metadata without reflecting its contents", async () => {
+test("{§pinned-wording-schemes} HTTP rejects malformed metadata without reflecting its contents", async () => {
     const { ctx } = makeCtx();
     const secret = "Bearer do-not-reflect";
     const result = await prepareRepresentation(
@@ -1756,7 +1756,7 @@ test("HTTP rejects malformed metadata without reflecting its contents", async ()
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 
-test("READ: headers reach direct fetch on an HTML GET (authed page requests authed)", async () => {
+test("{§http-lifecycle} READ: headers reach direct fetch on an HTML GET (authed page requests authed)", async () => {
     const { ctx, inspect } = makeCtx();
     const target = urlTarget("https://app.x/dash", "/dash");
     let seenAuth = "";
@@ -1774,7 +1774,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
     assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
 });
 
-test("EDIT → PUT with the body (method mapping)", async () => {
+test("{§http-lifecycle} EDIT → PUT with the body (method mapping)", async () => {
     const { ctx, inspect } = makeCtx();
     let seenMethod = "", seenBody: unknown = null, seenType = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1797,7 +1797,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "updated");
 });
 
-test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
+test("{§pinned-wording-http} EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
     const r = await httpEdit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
@@ -1823,7 +1823,7 @@ test("{§channel-selection-missing} an absent HTTP response channel is a 404 wit
     assert.equal(inspect().opened, null);
 });
 
-test("KILL {remote} sends DELETE with the authored precondition", async () => {
+test("{§http-kill} KILL {remote} sends DELETE with the authored precondition", async () => {
     const { ctx } = makeCtx();
     let seenMethod = "", seenVersion = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1844,7 +1844,7 @@ test("KILL {remote} sends DELETE with the authored precondition", async () => {
 });
 
 // {§http-kill} — a KILL follows the entry rule; only `{remote}` reaches the remote.
-test("KILL without {remote} forgets the stored response and never contacts the remote", async () => {
+test("{§http-lifecycle} KILL without {remote} forgets the stored response and never contacts the remote", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("stored page", "text/markdown", ""));
     let calls = 0;
     await withFetch((async () => {
@@ -1858,7 +1858,7 @@ test("KILL without {remote} forgets the stored response and never contacts the r
     assert.equal(calls, 0, "no request reaches the remote");
 });
 
-test("KILL of a live acquisition cancels it in place, and the owner settles 499", async () => {
+test("{§http-lifecycle} KILL of a live acquisition cancels it in place, and the owner settles 499", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http();
     const target = urlTarget("https://api.x/slow", "/slow");
@@ -1922,7 +1922,7 @@ test("{§http-binary-source} KILL cancels a binary GET after headers, before pub
 });
 
 // ── acquisition target rewrite {§host-rewrite} ────────────────────────────
-test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
+test("{§http-lifecycle} GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => {
@@ -1937,7 +1937,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
     assert.equal(inspect().wrote?.pathname, "/nodejs/node/blob/main/src/node_version.h");
 });
 
-test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
+test("{§http-lifecycle} GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
     const { ctx } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => { seenUrl = requestUrl(url); return new Response("x", { status: 200 }); };
@@ -1948,7 +1948,7 @@ test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
     assert.equal(seenUrl, "https://raw.githubusercontent.com/o/r/feature/foo/src/x.js");
 });
 
-test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
+test("{§http-lifecycle} non-GitHub URL is fetched verbatim (no rewrite)", async () => {
     const { ctx } = makeCtx();
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => { seenUrl = requestUrl(url); return new Response("ok", { status: 200 }); };
@@ -1958,7 +1958,7 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
     assert.equal(seenUrl, "https://example.com/x");
 });
 
-test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
+test("{§revalidation} POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     const seen: Array<{ url: string; method: string }> = [];
     const markers: string[] = [];
     const blob = "https://github.com/o/r/blob/main/src/x.js";
@@ -2014,7 +2014,7 @@ const stampedHeader = (
     `${CACHE_VARIANT_HEADER}: ${variant}`,
 ].join("\n");
 
-test("revalidation: a mutation response cannot satisfy a later GET", async () => {
+test("{§http-lifecycle} revalidation: a mutation response cannot satisfy a later GET", async () => {
     const header = [
         "HTTP 200 OK",
         "etag: \"mutation\"",
@@ -2034,7 +2034,7 @@ test("revalidation: a mutation response cannot satisfy a later GET", async () =>
     assert.equal(inspect().storedEntry?.channels.body?.content, "get response");
 });
 
-test("exact FIND preparation reacquires an exact URL whose stored response came from a mutation", async () => {
+test("{§http-lifecycle} exact FIND preparation reacquires an exact URL whose stored response came from a mutation", async () => {
     const header = [
         "HTTP 200 OK",
         "x-plurnk-request-method: DELETE",
@@ -2056,7 +2056,7 @@ test("exact FIND preparation reacquires an exact URL whose stored response came 
     assert.equal(inspect().wrote?.entry.channels.body?.content, "current representation");
 });
 
-test("exact FIND preparation reuses only a derived representation produced by the installed projection", async () => {
+test("{§http-lifecycle} exact FIND preparation reuses only a derived representation produced by the installed projection", async () => {
     for (const [storedIdentity, expectedFetch] of [["pdf-reader-v2", false], ["pdf-reader-v1", true]] as const) {
         const header = [
             "HTTP 200 OK",
@@ -2106,7 +2106,7 @@ test("exact FIND preparation reuses only a derived representation produced by th
     }
 });
 
-test("stale materializer HTML-page materialization performs full reacquisition without origin validators", async () => {
+test("{§http-lifecycle} stale materializer HTML-page materialization performs full reacquisition without origin validators", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -2145,7 +2145,7 @@ test("stale materializer HTML-page materialization performs full reacquisition w
     assert.match(header, /^x-plurnk-stub-request-id: req-fresh$/m);
 });
 
-test("TTL: enabling a materializer invalidates a locally materialized HTML body and its validators", async () => {
+test("{§revalidation} TTL: enabling a materializer invalidates a locally materialized HTML body and its validators", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -2358,7 +2358,7 @@ for (const {
     });
 }
 
-test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
+test("{§http-lifecycle} READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(500_000, '\netag: "v1"')));
     await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
@@ -2367,7 +2367,7 @@ test("READ revalidation: 200 (changed) re-fetches + streams normally despite a p
     assert.equal(inspect().opened, null, "a finite replacement does not create a stream");
 });
 
-test("READ revalidation: no prior entry → no conditional headers, full fetch", async () => {
+test("{§revalidation} READ revalidation: no prior entry → no conditional headers, full fetch", async () => {
     const { ctx } = makeCtx(); // 404 on read
     let hadConditional = false;
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -2432,7 +2432,7 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
     });
 }
 
-test("cache variant: explicit request metadata bypasses a TTL-fresh default representation", async () => {
+test("{§http-lifecycle} cache variant: explicit request metadata bypasses a TTL-fresh default representation", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "public representation",
         "text/plain",
@@ -2460,7 +2460,7 @@ test("cache variant: explicit request metadata bypasses a TTL-fresh default repr
     assert.equal(inspect().storedEntry?.channels.body?.content, "private representation");
 });
 
-test("cache variant: explicit request metadata also bypasses stale validators", async () => {
+test("{§http-lifecycle} cache variant: explicit request metadata also bypasses stale validators", async () => {
     const { ctx } = makeCtx(priorEntry(
         "public representation",
         "text/plain",
@@ -2483,7 +2483,7 @@ test("cache variant: explicit request metadata also bypasses stale validators", 
     assert.equal(conditional, false);
 });
 
-test("cache variant: a bypass marker cannot supply TTL content or validators", async () => {
+test("{§http-lifecycle} cache variant: a bypass marker cannot supply TTL content or validators", async () => {
     const header = stampedHeader(1000, "\nvary: Accept-Language\netag: \"variant\"", "bypass");
     const { ctx, inspect } = makeCtx(priorEntry("wrong representation", "text/plain", header));
     let fetched = false;
@@ -2503,7 +2503,7 @@ test("cache variant: a bypass marker cannot supply TTL content or validators", a
     assert.equal(inspect().storedEntry?.channels.body?.content, "current representation");
 });
 
-test("cache variant: a 304 that introduces Vary retires default reuse", async () => {
+test("{§http-lifecycle} cache variant: a 304 that introduces Vary retires default reuse", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "cached",
         "text/plain",
@@ -2524,7 +2524,7 @@ test("cache variant: a 304 that introduces Vary retires default reuse", async ()
     );
 });
 
-test("exact FIND preparation reacquires request metadata through WebFetcher instead of reusing another variant", async () => {
+test("{§http-lifecycle} exact FIND preparation reacquires request metadata through WebFetcher instead of reusing another variant", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "public",
         "text/plain",
@@ -2571,7 +2571,7 @@ for (const state of ["active", "errored"] as const) {
     });
 }
 
-test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () => {
+test("{§http-lifecycle} TTL: fresh stamp serves the stored copy with ZERO round-trips", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", stampedHeader(1000)));
     let fetched = false;
     await withTtl("60000", async () => {
@@ -2586,7 +2586,7 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     assert.equal(inspect().storedEntry?.channels.body?.content, "cached page");
 });
 
-test("cache policy: no-store evidence supplies neither TTL content nor validators", async () => {
+test("{§revalidation} cache policy: no-store evidence supplies neither TTL content nor validators", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "historical response",
         "text/plain",
@@ -2795,7 +2795,7 @@ for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
     });
 }
 
-test("cache policy: an expired Expires field bounds the operator heuristic", async () => {
+test("{§http-lifecycle} cache policy: an expired Expires field bounds the operator heuristic", async () => {
     const generatedAt = new Date(Date.now() - 10_000);
     const expiredAt = new Date(generatedAt.getTime() + 5000);
     const { ctx } = makeCtx(priorEntry(
@@ -2860,7 +2860,7 @@ for (const { name, cacheHeaders, expectedFetch } of [
     });
 }
 
-test("exact FIND preparation cache policy: an unset operator ceiling fails at configuration", async () => {
+test("{§http-lifecycle} exact FIND preparation cache policy: an unset operator ceiling fails at configuration", async () => {
     const { ctx } = makeCtx(priorEntry(
         "stored",
         "text/plain",
@@ -2879,7 +2879,7 @@ test("exact FIND preparation cache policy: an unset operator ceiling fails at co
     });
 });
 
-test("304 merges freshness metadata without relabeling a processed representation", async () => {
+test("{§http-lifecycle} 304 merges freshness metadata without relabeling a processed representation", async () => {
     const source = Buffer.from("%PDF-cache");
     const projection = projectionCaps({
         async identity(mimetype) {
@@ -2996,7 +2996,7 @@ for (const policy of ["no-store", "private", 'private="set-cookie"']) {
     });
 }
 
-test("TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
+test("{§http-lifecycle} TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
     const header = `${stampedHeader(
         1000,
         '\ncontent-type: application/pdf\netag: "pdf-v1"',
@@ -3047,7 +3047,7 @@ test("TTL: a changed projection identity invalidates derived content and its ori
     assert.deepEqual(inspect().wrote?.entry.channels.body?.bytes, Buffer.from([1]));
 });
 
-test("TTL: an exact static WebFetcher materialization is reusable", async () => {
+test("{§http-lifecycle} TTL: an exact static WebFetcher materialization is reusable", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "materialized",
         "text/plain",
@@ -3066,7 +3066,7 @@ test("TTL: an exact static WebFetcher materialization is reusable", async () => 
     assert.equal(inspect().storedEntry?.channels.body?.content, "materialized");
 });
 
-test("TTL: a completed empty GET is a reusable representation", async () => {
+test("{§http-lifecycle} TTL: a completed empty GET is a reusable representation", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("", "text/plain", stampedHeader(1000)));
     let fetched = false;
     await withTtl("60000", async () => {
@@ -3100,7 +3100,7 @@ for (const state of ["active", "errored"] as const) {
     });
 }
 
-test("TTL: stale stamp falls through to the conditional GET (revalidates)", async () => {
+test("{§http-lifecycle} TTL: stale stamp falls through to the conditional GET (revalidates)", async () => {
     const { ctx } = makeCtx(priorEntry("old", "text/plain", stampedHeader(120_000, "\netag: \"v1\"")));
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -3115,7 +3115,7 @@ test("TTL: stale stamp falls through to the conditional GET (revalidates)", asyn
     assert.equal(seenINM, "\"v1\""); // past the window → the 304 phase owns freshness
 });
 
-test("READ revalidation: 304 restores a completed empty representation", async () => {
+test("{§http-lifecycle} READ revalidation: 304 restores a completed empty representation", async () => {
     const header = stampedHeader(120_000, '\netag: "empty"');
     const { ctx, inspect } = makeCtx(priorEntry("", "text/plain", header));
     let seenINM = "";
@@ -3136,7 +3136,7 @@ test("READ revalidation: 304 restores a completed empty representation", async (
     assert.equal(inspect().opened, null);
 });
 
-test("TTL: package-appended metadata wins over a same-named origin header", async () => {
+test("{§http-lifecycle} TTL: package-appended metadata wins over a same-named origin header", async () => {
     const future = new Date(Date.now() + 3_600_000).toISOString();
     const stale = new Date(Date.now() - 120_000).toISOString();
     const header = [
@@ -3159,7 +3159,7 @@ test("TTL: package-appended metadata wins over a same-named origin header", asyn
     assert.equal(fetched, true);
 });
 
-test("TTL: an unmarked authored entry remains outside HTTP acquisition", async () => {
+test("{§http-lifecycle} TTL: an unmarked authored entry remains outside HTTP acquisition", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "materialized",
         "text/html",
@@ -3185,7 +3185,7 @@ test("TTL: an unmarked authored entry remains outside HTTP acquisition", async (
     assert.equal(inspect().storedEntry?.channels.body?.content, "materialized");
 });
 
-test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
+test("{§http-lifecycle} TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000, "\netag: \"v1\"")));
     let fetched = false;
     const probe = async () => {
@@ -3210,7 +3210,7 @@ test("{§http-config} TTL: unset crashes naming the var (floor-set knob, no sile
     });
 });
 
-test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refreshes it", async () => {
+test("{§http-lifecycle} stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refreshes it", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/s", "/s")), ctx);
@@ -3234,7 +3234,7 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     assert.ok(newMs > oldMs, "origin vouched (304) → stamp refreshed");
 });
 
-test("GET appends authoritative request-method metadata after origin headers", async () => {
+test("{§http-lifecycle} GET appends authoritative request-method metadata after origin headers", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(async () => new Response("x", {
         status: 200,
@@ -3267,7 +3267,7 @@ test("{§http-config} byte path sends Plurnk's own identity, never a browser's",
     assert.doesNotMatch(ua, /Mozilla|Chrome|Safari/u, "and never claims to be a browser");
 });
 
-test("a model-supplied User-Agent metadata block overrides the default identity", async () => {
+test("{§http-llms-txt} a model-supplied User-Agent metadata block overrides the default identity", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {

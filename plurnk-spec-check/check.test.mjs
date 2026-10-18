@@ -13,7 +13,7 @@ const cite = (tag) => `{§${tag}}`;
 const declare = (tag) => `§${tag}`;
 const issueShorthand = (repository, number) => `${repository}#${number}`;
 
-test("a repository issue shorthand is distinct from the valid citation forms", () => {
+test("{§spec-check-tags} a repository issue shorthand is distinct from the valid citation forms", () => {
     const serviceReference = issueShorthand("plurnk-service", 240);
     const packageReference = issueShorthand("plurnk-mimetypes", 41);
     const files = [
@@ -41,7 +41,7 @@ test("a repository issue shorthand is distinct from the valid citation forms", (
     ]);
 });
 
-test("a qualified cross-repo citation is the correct form, not an ambiguous shorthand", () => {
+test("{§spec-check-tags} a qualified cross-repo citation is the correct form, not an ambiguous shorthand", () => {
     const bare = issueShorthand("plurnk-bench", 38);
     const files = [
         { name: "CHANGELOG.md", text: `- http: an operator host policy (plurnk/${bare})` },
@@ -52,7 +52,7 @@ test("a qualified cross-repo citation is the correct form, not an ambiguous shor
     ], "owner/repo#N resolves; the bare shorthand does not");
 });
 
-test("the first semantic token of a SPEC heading, paragraph, list item, or table row declares a tag", () => {
+test("{§spec-check-tags} the first semantic token of a SPEC heading, paragraph, list item, or table row declares a tag", () => {
     const files = [
         {
             name: "alpha/SPEC.md",
@@ -85,7 +85,7 @@ test("the first semantic token of a SPEC heading, paragraph, list item, or table
     });
 });
 
-test("duplicate declarations and every ambiguous citation report all locations", () => {
+test("{§spec-check-tags} duplicate declarations and every ambiguous citation report all locations", () => {
     const files = [
         { name: "alpha/SPEC.md", text: `### ${declare("one-owner")} First` },
         { name: "beta/SPEC.md", text: `## ${declare("one-owner")} Second` },
@@ -107,7 +107,7 @@ test("duplicate declarations and every ambiguous citation report all locations",
     });
 });
 
-test("unresolved citations are checked inside and outside specifications", () => {
+test("{§spec-check-tags} unresolved citations are checked inside and outside specifications", () => {
     const files = [
         {
             name: "alpha/SPEC.md",
@@ -137,7 +137,7 @@ test("unresolved citations are checked inside and outside specifications", () =>
     });
 });
 
-test("an unbraced named tag outside a declaration position is invalid", () => {
+test("{§spec-check-tags} an unbraced named tag outside a declaration position is invalid", () => {
     const files = [
         {
             name: "alpha/SPEC.md",
@@ -177,7 +177,7 @@ test("an unbraced named tag outside a declaration position is invalid", () => {
     });
 });
 
-test("malformed named tags report the complete token instead of a valid prefix", () => {
+test("{§spec-check-tags} malformed named tags report the complete token instead of a valid prefix", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
@@ -202,7 +202,7 @@ test("malformed named tags report the complete token instead of a valid prefix",
     });
 });
 
-test("a heading-looking line in a fenced block does not declare a tag", () => {
+test("{§spec-check-tags} a heading-looking line in a fenced block does not declare a tag", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
@@ -222,7 +222,7 @@ test("a heading-looking line in a fenced block does not declare a tag", () => {
     });
 });
 
-test("a backtick code span at column zero does not hide subsequent declarations", () => {
+test("{§spec-check-tags} a backtick code span at column zero does not hide subsequent declarations", () => {
     const files = [{ name: "alpha/SPEC.md", text: [
         "```READ (notes.md)```",
         "",
@@ -236,7 +236,7 @@ test("a backtick code span at column zero does not hide subsequent declarations"
     });
 });
 
-test("inline and indented code neither declare nor cite tags", () => {
+test("{§spec-check-tags} inline and indented code neither declare nor cite tags", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
@@ -266,7 +266,7 @@ test("inline and indented code neither declare nor cite tags", () => {
     });
 });
 
-test("a declaration owns contract text in the same Markdown block", () => {
+test("{§spec-check-tags} a declaration owns contract text in the same Markdown block", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
@@ -294,7 +294,7 @@ test("a declaration owns contract text in the same Markdown block", () => {
     });
 });
 
-test("an anchor is witnessed by the implementation, a panel or a test — prose citing prose is not a witness", () => {
+test("{§spec-check-tags} an anchor is witnessed by the implementation, a panel or a test — prose citing prose is not a witness", () => {
     const files = [
         { name: "alpha/SPEC.md", text: [
             `${declare("held")} **A contract a test holds.**`,
@@ -312,7 +312,7 @@ test("an anchor is witnessed by the implementation, a panel or a test — prose 
     assert.deepEqual(unwitnessedAnchors(files), { "alpha/SPEC.md": ["forgotten", "lectured"] });
 });
 
-test("the witness allowance only shrinks", () => {
+test("{§spec-check-tags} the witness allowance only shrinks", () => {
     const files = [
         { name: "alpha/SPEC.md", text: `${declare("old-debt")} **Known debt.**\n\n${declare("new-debt")} **Born unwitnessed.**\n\n${declare("paid")} **Now held.**` },
         { name: "alpha/src/paid.test.ts", text: `// ${cite("paid")}` },

@@ -141,7 +141,7 @@ test("multi-statement script → sqlite_multi_statement, 400, nothing truncated 
     assert.equal(states.at(-1), "errored");
 });
 
-test("the configured error preview bounds rejected SQL facts", async () => {
+test("{§error-detail-bound} the configured error preview bounds rejected SQL facts", async () => {
     process.env[ERROR_DETAIL_LIMIT] = "6";
     const { result } = await run("SELECT 1; SECOND LONG STATEMENT");
 
@@ -155,7 +155,7 @@ test("an invalid error preview bound crashes by name", async () => {
     await assert.rejects(run("SELECT 1; SECOND"), /PLURNK_EXECS_ERROR_DETAIL_LIMIT must be a safe integer of at least 0/);
 });
 
-test("a trailing semicolon and trailing comments are NOT a second statement", async () => {
+test("{§executor-cancellation} a trailing semicolon and trailing comments are NOT a second statement", async () => {
     const semi = await run("SELECT 1 AS one;");
     assert.equal(semi.result.status, 200);
     const comment = await run("SELECT 1 AS one; -- done\n/* trailing block */");

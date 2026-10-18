@@ -10,7 +10,7 @@ const corpus = JSON.parse(await readFile(new URL("../fixtures/jsonpath-cts/cts.j
 };
 const engine = new JSONPathEnvironment();
 
-test("the pinned JSONPath corpus covers every admission and framing category", () => {
+test("{§matcher-refusal} the pinned JSONPath corpus covers every admission and framing category", () => {
     const cases = corpus.tests;
     assert.equal(cases.length, 706);
     assert.equal(cases.filter((item) => !item.invalid_selector).length, 459);

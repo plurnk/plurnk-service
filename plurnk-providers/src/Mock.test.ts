@@ -18,7 +18,7 @@ const withoutOutputBudget = <T>(body: () => T): T => {
 
 // — Identity ({§provider-interface}) —
 
-test("Mock: contextWindow and model are stable across reads", () => {
+test("{§provider-interface} Mock: contextWindow and model are stable across reads", () => {
     const m = withoutOutputBudget(() => build());
     assert.equal(m.contextWindow, 100000);
     assert.equal(m.inputCapacity, null);
@@ -27,14 +27,14 @@ test("Mock: contextWindow and model are stable across reads", () => {
     assert.equal(m.model, "mock");
 });
 
-test("Mock: contextWindow passes null through", () => {
+test("{§provider-interface} Mock: contextWindow passes null through", () => {
     const m = new Mock({ contextWindow: null, responses: [] });
     assert.equal(m.contextWindow, null);
 });
 
 // — Tokenomics ({§provider-interface}) —
 
-test("Mock: prompt counting is exact for its declared mock vocabulary", async () => {
+test("{§provider-interface} Mock: prompt counting is exact for its declared mock vocabulary", async () => {
     const m = build();
     assert.deepEqual(await m.countPromptTokens([]), {
         kind: "exact", tokens: 0, source: "mock:chars2",
@@ -46,7 +46,7 @@ test("Mock: prompt counting is exact for its declared mock vocabulary", async ()
 
 // — Transport ({§provider-interface}) —
 
-test("Mock: generate resolves a valid ProviderResponse shape", async () => {
+test("{§provider-interface} Mock: generate resolves a valid ProviderResponse shape", async () => {
     const m = build([{ assistant: { content: "hello", reasoning: "cot" } }]);
     const reasoning: string[] = [];
     const { assistant, assistantRaw, accounting } = await m.generate({
@@ -71,7 +71,7 @@ test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     assert.deepEqual(reasoning, ["cot"]);
 });
 
-test("Mock: generate applies caller-supplied overrides", async () => {
+test("{§provider-interface} Mock: generate applies caller-supplied overrides", async () => {
     const m = build([{
         assistant: {
             content: "x",
@@ -93,7 +93,7 @@ test("Mock: generate applies caller-supplied overrides", async () => {
     assert.deepEqual(assistantRaw, { wire: true });
 });
 
-test("Mock: a supplied grammar produces unsplit evidence unless the fixture supplies exact evidence", async () => {
+test("{§provider-interface} Mock: a supplied grammar produces unsplit evidence unless the fixture supplies exact evidence", async () => {
     const explicit = { input: "prefixx", contentStart: 6, transported: false } as const;
     const m = build([
         { assistant: { content: "x", reasoning: null } },
@@ -105,14 +105,14 @@ test("Mock: a supplied grammar produces unsplit evidence unless the fixture supp
     assert.deepEqual(supplied.grammarEvidence, explicit);
 });
 
-test("Mock: ops escape hatch passes through when provided", async () => {
+test("{§provider-interface} Mock: ops escape hatch passes through when provided", async () => {
     const ops = [{ kind: "send" }] as never;
     const m = build([{ assistant: { content: "x", reasoning: null, ops } }]);
     const { assistant } = await m.generate({ messages: [] });
     assert.deepEqual(assistant.ops, ops);
 });
 
-test("Mock: ops absent when not provided", async () => {
+test("{§provider-failure-normalization} Mock: ops absent when not provided", async () => {
     const m = build();
     const { assistant } = await m.generate({ messages: [] });
     assert.equal("ops" in assistant, false);
@@ -120,7 +120,7 @@ test("Mock: ops absent when not provided", async () => {
 
 // — Abort ({§provider-failure-normalization}) —
 
-test("Mock: generate with a pre-aborted signal rejects and consumes no response", async () => {
+test("{§provider-interface} Mock: generate with a pre-aborted signal rejects and consumes no response", async () => {
     const m = build([{ assistant: { content: "untouched", reasoning: null } }]);
     const signal = AbortSignal.abort(new Error("boom"));
     await assert.rejects(() => m.generate({ messages: [], signal }), /boom/);
@@ -129,7 +129,7 @@ test("Mock: generate with a pre-aborted signal rejects and consumes no response"
 
 // — Lifecycle —
 
-test("Mock: remaining decrements as responses are consumed", async () => {
+test("{§provider-interface} Mock: remaining decrements as responses are consumed", async () => {
     const m = build([
         { assistant: { content: "a", reasoning: null } },
         { assistant: { content: "b", reasoning: null } },
@@ -139,7 +139,7 @@ test("Mock: remaining decrements as responses are consumed", async () => {
     assert.equal(m.remaining, 1);
 });
 
-test("Mock: exhausted queue throws a ProviderError carrying its settled accounting", async () => {
+test("{§provider-generation-envelope} Mock: exhausted queue throws a ProviderError carrying its settled accounting", async () => {
     const m = build([]);
     await assert.rejects(
         () => m.generate({ messages: [] }),
@@ -162,7 +162,7 @@ test("Mock: exhausted queue throws a ProviderError carrying its settled accounti
 
 // -- {§provider-generation-envelope} --
 
-test("the generation-envelope getters are on the Provider interface", () => {
+test("{§provider-output-floor} the generation-envelope getters are on the Provider interface", () => {
     const previous = {
         output: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET,
         floor: process.env.PLURNK_PROVIDERS_OUTPUT_FLOOR,
@@ -201,7 +201,7 @@ test("{§provider-output-floor} an empty output floor leaves a Mock without a wa
     }
 });
 
-test("Mock resolves percentage and absolute generation budgets against its window", () => {
+test("{§provider-interface} Mock resolves percentage and absolute generation budgets against its window", () => {
     const previous = {
         output: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET,
         reasoning: process.env.PLURNK_PROVIDERS_REASONING_BUDGET,
@@ -220,7 +220,7 @@ test("Mock resolves percentage and absolute generation budgets against its windo
     }
 });
 
-test("an empty generation budget leaves a bare Mock unbounded", () => {
+test("{§provider-interface} an empty generation budget leaves a bare Mock unbounded", () => {
     const m = withoutOutputBudget(() => new Mock({ contextWindow: 49152, responses: [] }));
     assert.equal(m.outputBudget, null);
     assert.equal(m.reasoningBudget, null);

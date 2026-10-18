@@ -59,7 +59,7 @@ const withFetch = async (impl: typeof fetch, fn: () => Promise<void>) => {
 const resp = (body: string | Uint8Array<ArrayBuffer> | null, status: number, headers: Record<string, string> = {}) =>
     new Response(body, { status, headers });
 
-test("live public textual URL → { body, mimetype }", async () => {
+test("{§prefetch} live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
@@ -71,7 +71,7 @@ test("live public textual URL → { body, mimetype }", async () => {
     });
 });
 
-test("finite JSON presentation preserves literal values and non-JSON source layout", async () => {
+test("{§prefetch} finite JSON presentation preserves literal values and non-JSON source layout", async () => {
     const input = '{"id":9007199254740993,"nested":{"ok":true}}';
     for (const mimetype of ["application/json", "application/problem+json"]) {
         const materialized = await WebFetcher.materialize({ url: PUB, body: input, mimetype }, PROJECTION);
@@ -88,7 +88,7 @@ test("finite JSON presentation preserves literal values and non-JSON source layo
     }
 });
 
-test("the shared textual taxonomy accepts application/yaml", async () => {
+test("{§prefetch} the shared textual taxonomy accepts application/yaml", async () => {
     await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
@@ -97,7 +97,7 @@ test("the shared textual taxonomy accepts application/yaml", async () => {
     });
 });
 
-test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata", async () => {
+test("{§prefetch} text acquisition uses Fetch UTF-8 decoding and retains charset as metadata", async () => {
     const windows1252 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9]);
     await withFetch((async () => resp(windows1252, 200, {
         "content-type": "text/plain; charset=windows-1252",
@@ -110,7 +110,7 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
     });
 });
 
-test("an unsupported charset does not invent a non-Fetch decoder", async () => {
+test("{§prefetch} an unsupported charset does not invent a non-Fetch decoder", async () => {
     await withFetch((async () => resp("Unicode stays Unicode", 200, {
         "content-type": "text/plain; charset=not-a-real-encoding",
     })), async () => {
@@ -121,7 +121,7 @@ test("an unsupported charset does not invent a non-Fetch decoder", async () => {
     });
 });
 
-test("GitHub blob acquisition uses one source target for byte fetch", async (t) => {
+test("{§prefetch} GitHub blob acquisition uses one source target for byte fetch", async (t) => {
     t.mock.method(Guard, "isPublicUrl", async () => true);
     const seen: string[] = [];
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
@@ -135,7 +135,7 @@ test("GitHub blob acquisition uses one source target for byte fetch", async (t) 
     assert.deepEqual(seen, [raw]);
 });
 
-test("HTML → byte response materializes local floor projection when no materializer is selected", async () => {
+test("{§prefetch} HTML → byte response materializes local floor projection when no materializer is selected", async () => {
     const projection = projectionCaps({
         async readable(content, mimetype) {
             return {
@@ -195,7 +195,7 @@ test("HTML → materializes the configured materializer's Markdown ({§http-mate
     });
 });
 
-test("supplied HTML never consults the materializer", async () => {
+test("{§prefetch} supplied HTML never consults the materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
     __stub.set({
@@ -233,7 +233,7 @@ test("supplied HTML never consults the materializer", async () => {
     assert.equal(__stub.calls.length, 0, "the materializer was never consulted");
 });
 
-test("a recoverable materializer outcome uses an identified local floor", async () => {
+test("{§prefetch} a recoverable materializer outcome uses an identified local floor", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -280,7 +280,7 @@ test("a recoverable materializer outcome uses an identified local floor", async 
     });
 });
 
-test("a hard materializer failure preserves HTML but does not bless a local body", async () => {
+test("{§prefetch} a hard materializer failure preserves HTML but does not bless a local body", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -323,7 +323,7 @@ test("a hard materializer failure preserves HTML but does not bless a local body
     assert.equal(projectionCalls, 0);
 });
 
-test("a materializer extraction throw surfaces as the scheme failure, not a silent fallback", async () => {
+test("{§prefetch} a materializer extraction throw surfaces as the scheme failure, not a silent fallback", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -343,7 +343,7 @@ test("a materializer extraction throw surfaces as the scheme failure, not a sile
     });
 });
 
-test("the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
+test("{§readable-channel} the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -371,7 +371,7 @@ test("the materializer may produce the readable text after admitted origin trans
     });
 });
 
-test("origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
+test("{§readable-channel} origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
     __stub.set({
@@ -398,7 +398,7 @@ test("origin Markdown is the source itself: one request, no variant, never the m
     assert.equal(__stub.calls.length, 0, "origin Markdown never consults the materializer");
 });
 
-test("an authored Accept value is honored exactly", async () => {
+test("{§prefetch} an authored Accept value is honored exactly", async () => {
     let observed = "";
     await withFetch((async (_input, init) => {
         observed = new Headers(init?.headers).get("accept") ?? "";
@@ -412,7 +412,7 @@ test("an authored Accept value is honored exactly", async () => {
     assert.equal(observed, "application/json");
 });
 
-test("an authored Markdown Accept is honored and yields the Markdown as the body", async () => {
+test("{§prefetch} an authored Markdown Accept is honored and yields the Markdown as the body", async () => {
     const observed: string[] = [];
     await withFetch((async (_input, init) => {
         observed.push(new Headers(init?.headers).get("accept") ?? "");
@@ -430,7 +430,7 @@ test("an authored Markdown Accept is honored and yields the Markdown as the body
     assert.deepEqual(observed, ["text/markdown"]);
 });
 
-test("materialization preserves a projection exception and identifies its stage", async () => {
+test("{§prefetch} materialization preserves a projection exception and identifies its stage", async () => {
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({
         async readable() {
@@ -448,7 +448,7 @@ test("materialization preserves a projection exception and identifies its stage"
     );
 });
 
-test("caller cancellation during origin acquisition rejects with the exact caller reason", async (t) => {
+test("{§prefetch} caller cancellation during origin acquisition rejects with the exact caller reason", async (t) => {
     const caller = new AbortController();
     const reason = new Error("operator cancelled");
     t.mock.method(Guard, "fetch", async (
@@ -466,7 +466,7 @@ test("caller cancellation during origin acquisition rejects with the exact calle
     );
 });
 
-test("a pre-aborted caller rejects before the automatic URL check", async (t) => {
+test("{§prefetch} a pre-aborted caller rejects before the automatic URL check", async (t) => {
     const caller = new AbortController();
     const reason = new Error("already cancelled");
     caller.abort(reason);
@@ -478,7 +478,7 @@ test("a pre-aborted caller rejects before the automatic URL check", async (t) =>
     assert.equal(guarded.mock.callCount(), 0);
 });
 
-test("automatic URL check refusal → null, and never fetches", async () => {
+test("{§prefetch} automatic URL check refusal → null, and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }), async () => {
         assert.equal(await new WebFetcher().fetch("http://169.254.169.254/latest/meta-data/"), null);
@@ -486,13 +486,13 @@ test("automatic URL check refusal → null, and never fetches", async () => {
     assert.equal(called, false);
 });
 
-test("non-2xx → null", async () => {
+test("{§prefetch} non-2xx → null", async () => {
     await withFetch((async () => resp("nope", 404, { "content-type": "text/html" })), async () => {
         assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });
 
-test("handler-declared binary bytes retain their source beside the readable projection", async () => {
+test("{§prefetch} handler-declared binary bytes retain their source beside the readable projection", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "text/x-binary"; },
         async binary(chunks, mimetype) {
@@ -528,7 +528,7 @@ test("handler-declared binary bytes retain their source beside the readable proj
     });
 });
 
-test("binary materialization cancels unread response bytes after a projection returns", async () => {
+test("{§prefetch} binary materialization cancels unread response bytes after a projection returns", async () => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3)); },
@@ -556,7 +556,7 @@ test("binary materialization cancels unread response bytes after a projection re
     assert.equal(cancelled, true);
 });
 
-test("registry classification failure cancels the owned response body and preserves its cause", async () => {
+test("{§prefetch} registry classification failure cancels the owned response body and preserves its cause", async () => {
     const cause = new Error("registry unavailable");
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
@@ -578,7 +578,7 @@ test("registry classification failure cancels the owned response body and preser
     assert.equal(cancelled, true);
 });
 
-test("empty textual body remains a present representation", async () => {
+test("{§prefetch} empty textual body remains a present representation", async () => {
     await withFetch((async () => resp("", 200, { "content-type": "text/plain" })), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
@@ -590,7 +590,7 @@ test("empty textual body remains a present representation", async () => {
     });
 });
 
-test("network error → null (unreachable is dead, not a throw)", async () => {
+test("{§prefetch} network error → null (unreachable is dead, not a throw)", async () => {
     await withFetch((async () => { throw new Error("ECONNREFUSED"); }), async () => {
         assert.equal(await new WebFetcher().fetch(PUB), null);
     });

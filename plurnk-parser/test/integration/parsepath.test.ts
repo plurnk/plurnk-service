@@ -6,11 +6,11 @@ import { PathSyntax, PlurnkParseError, WORKER_NAME } from "@plurnk/plurnk-contra
 
 // {§path-syntax} Detailed target admission behind the public parsePath helper.
 
-test("parsePath: empty string returns null", () => {
+test("{§path-syntax} parsePath: empty string returns null", () => {
     assert.equal(AstBuilder.parsePath(""), null);
 });
 
-test("parsePath: bare path returns kind=local", () => {
+test("{§path-syntax} parsePath: bare path returns kind=local", () => {
     const p = AstBuilder.parsePath("config/foo.xml");
     assert.ok(p);
     assert.equal(p?.kind, "local");
@@ -18,12 +18,12 @@ test("parsePath: bare path returns kind=local", () => {
     assert.equal(p.raw, "config/foo.xml");
 });
 
-test("parsePath: glob bare path stays local", () => {
+test("{§path-syntax} parsePath: glob bare path stays local", () => {
     const p = AstBuilder.parsePath("**/*.json");
     assert.equal(p?.kind, "local");
 });
 
-test("parsePath: HTTPS retains full authority decomposition", () => {
+test("{§path-syntax} parsePath: HTTPS retains full authority decomposition", () => {
     const p = AstBuilder.parsePath("https://user:pw@example.com:8080/api?q=1#frag");
     assert.ok(p);
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
@@ -37,7 +37,7 @@ test("parsePath: HTTPS retains full authority decomposition", () => {
     assert.equal(p.fragment, "frag");
 });
 
-test("parsePath: authority-less scheme uses three slashes — empty authority, leading-slash path", () => {
+test("{§path-syntax} parsePath: authority-less scheme uses three slashes — empty authority, leading-slash path", () => {
     const p = AstBuilder.parsePath("worker:///philosophy/existentialism/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "worker");
@@ -48,14 +48,14 @@ test("parsePath: authority-less scheme uses three slashes — empty authority, l
     assert.equal(p.password, null);
 });
 
-test("parsePath: two-slash URL parses the first segment as its host", () => {
+test("{§path-syntax} parsePath: two-slash URL parses the first segment as its host", () => {
     const p = AstBuilder.parsePath("worker://philosophy/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.hostname, "philosophy");
     assert.equal(p.pathname, "/meaning");
 });
 
-test("parsePath: empty-authority scheme preserves query and fragment", () => {
+test("{§path-syntax} parsePath: empty-authority scheme preserves query and fragment", () => {
     const p = AstBuilder.parsePath("wiki:///Paris?lang=fr#History");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "wiki");
@@ -65,7 +65,7 @@ test("parsePath: empty-authority scheme preserves query and fragment", () => {
     assert.equal(p.fragment, "History");
 });
 
-test("parsePath: nested addressing stays whole in pathname", () => {
+test("{§path-syntax} parsePath: nested addressing stays whole in pathname", () => {
     const p = AstBuilder.parsePath("log:///1/turn/2/action/3/get");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "log");
@@ -73,7 +73,7 @@ test("parsePath: nested addressing stays whole in pathname", () => {
     assert.equal(p.pathname, "/1/turn/2/action/3/get");
 });
 
-test("parsePath: file:// stays authority-bearing", () => {
+test("{§path-syntax} parsePath: file:// stays authority-bearing", () => {
     const p = AstBuilder.parsePath("file:///tmp/foo.txt");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.scheme, "file");
@@ -81,14 +81,14 @@ test("parsePath: file:// stays authority-bearing", () => {
     assert.equal(p.pathname, "/tmp/foo.txt");
 });
 
-test("parsePath: throws PlurnkParseError on malformed URI", () => {
+test("{§path-syntax} parsePath: throws PlurnkParseError on malformed URI", () => {
     assert.throws(
         () => AstBuilder.parsePath("http://[bad"),
         (err) => err instanceof PlurnkParseError && err.source === "visitor",
     );
 });
 
-test("parsePath: default position has line/column = 0", () => {
+test("{§path-syntax} parsePath: default position has line/column = 0", () => {
     // Verifying the optional-position contract.
     try {
         AstBuilder.parsePath("http://[bad");
@@ -100,7 +100,7 @@ test("parsePath: default position has line/column = 0", () => {
     }
 });
 
-test("parsePath: explicit position propagates to error", () => {
+test("{§path-syntax} parsePath: explicit position propagates to error", () => {
     try {
         AstBuilder.parsePath("http://[bad", { line: 7, column: 11 });
         assert.fail("expected throw");
@@ -111,13 +111,13 @@ test("parsePath: explicit position propagates to error", () => {
     }
 });
 
-test("parsePath: query preserves ordering and duplicate names", () => {
+test("{§path-syntax} parsePath: query preserves ordering and duplicate names", () => {
     const p = AstBuilder.parsePath("https://example.com/?q=1&lang=en&q=2");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.query, "q=1&lang=en&q=2");
 });
 
-test("parsePath: absent and explicitly empty queries remain distinct", () => {
+test("{§path-syntax} parsePath: absent and explicitly empty queries remain distinct", () => {
     const absent = AstBuilder.parsePath("https://example.com/");
     const empty = AstBuilder.parsePath("https://example.com/?");
     if (absent?.kind !== "url" || empty?.kind !== "url") { assert.fail("expected urls"); return; }
@@ -125,7 +125,7 @@ test("parsePath: absent and explicitly empty queries remain distinct", () => {
     assert.equal(empty.query, "");
 });
 
-test("parsePath: a question mark in a fragment does not create a query", () => {
+test("{§path-syntax} parsePath: a question mark in a fragment does not create a query", () => {
     for (const raw of ["https://host/path#fragment?text", "worker:///path#fragment?text"]) {
         const parsed = AstBuilder.parsePath(raw);
         assert.equal(parsed?.kind, "url");
@@ -135,7 +135,7 @@ test("parsePath: a question mark in a fragment does not create a query", () => {
     }
 });
 
-test("parsePath: brace glob protection never rewrites query or fragment slashes", () => {
+test("{§path-syntax} parsePath: brace glob protection never rewrites query or fragment slashes", () => {
     for (const raw of ["https://host?x=/{a,b}", "https://host#/{a,b}", "worker://host?x=/{a,b}#/{c,d}", "https://host/{path}?x=/{a,b}#/{c,d}"]) {
         const expected = new URL(raw);
         const parsed = AstBuilder.parsePath(raw);
@@ -147,7 +147,7 @@ test("parsePath: brace glob protection never rewrites query or fragment slashes"
     }
 });
 
-test("parsePath: hash-leading spellings are ordinary local paths", () => {
+test("{§path-syntax} parsePath: hash-leading spellings are ordinary local paths", () => {
     for (const raw of ["#stdout", "#draft.*#i", "#issue\\#42#"]) {
         const p = AstBuilder.parsePath(raw);
         assert.equal(p?.kind, "local");
@@ -155,14 +155,14 @@ test("parsePath: hash-leading spellings are ordinary local paths", () => {
     }
 });
 
-test("parsePath: a bare local path with literal braces is left untouched (no split)", () => {
+test("{§path-syntax} parsePath: a bare local path with literal braces is left untouched (no split)", () => {
     const p = AstBuilder.parsePath("config/a{b}.txt");
     assert.equal(p?.kind, "local");
     if (p?.kind !== "local") return;
     assert.equal(p.raw, "config/a{b}.txt");
 });
 
-test("parsePath: schemed brace globs remain path syntax and encoded braces remain literal", () => {
+test("{§path-syntax} parsePath: schemed brace globs remain path syntax and encoded braces remain literal", () => {
     const glob = AstBuilder.parsePath("log:///1/[1-7]/*/{NOTE,READ}");
     assert.equal(glob?.kind, "url");
     if (glob?.kind !== "url") return;
@@ -176,7 +176,7 @@ test("parsePath: schemed brace globs remain path syntax and encoded braces remai
     assert.equal(PathSyntax.hasGlob(literal.pathname), false);
 });
 
-test("malformed URL diagnostics do not relay native parser text", () => {
+test("{§path-syntax} malformed URL diagnostics do not relay native parser text", () => {
     assert.throws(
         () => AstBuilder.parsePath("https://uri-user:uri-password@[bad"),
         (error) => error instanceof PlurnkParseError
@@ -186,7 +186,7 @@ test("malformed URL diagnostics do not relay native parser text", () => {
 });
 
 // {§path-syntax} Scheme-generic decomposition keeps the WebSocket surface reachable.
-test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, query)", () => {
+test("{§path-syntax} parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, query)", () => {
     const ws = AstBuilder.parsePath("ws://api.example.com/feed");
     assert.equal(ws?.kind, "url");
     if (ws?.kind !== "url") return;
@@ -202,7 +202,7 @@ test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, quer
     assert.equal(wss.query, "room=x");
 });
 
-test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets", () => {
+test("{§path-syntax} parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets", () => {
     const src = [
         "````READ (ws://api.example.com/feed)````",
         "````SEND (wss://api.example.com/feed)",

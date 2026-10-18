@@ -67,7 +67,7 @@ test("{§a2a-scheme-face} {§a2a-resource-projection} the face keeps resource au
     }
 });
 
-test("READ of an agent root materializes its discovered Agent Card", async (t) => {
+test("{§http-outbound-proposes} READ of an agent root materializes its discovered Agent Card", async (t) => {
     const agent = await startDemoAgent();
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -88,7 +88,7 @@ test("READ of an agent root materializes its discovered Agent Card", async (t) =
     assert.equal(JSON.parse(entry.channels.json.content).name, agent.card.name);
 });
 
-test("a direct Message becomes one static addressable resource without a Task", async (t) => {
+test("{§http-outbound-proposes} a direct Message becomes one static addressable resource without a Task", async (t) => {
     const agent = await startDemoAgent("direct-message");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -155,7 +155,7 @@ test("{§a2a-outbound-turn-rhythm} a streamed Task returns 102 then closes on on
     assert.match(memory.entry(artifactPath).channels.body.content, /received: task witness/);
 });
 
-test("an input-required Task resumes through its exact Task resource", async (t) => {
+test("{§http-outbound-proposes} an input-required Task resumes through its exact Task resource", async (t) => {
     const agent = await startDemoAgent("input-required");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -181,7 +181,7 @@ test("an input-required Task resumes through its exact Task resource", async (t)
     assert.equal(agent.executor.received[0].contextId, agent.executor.received[1].contextId);
 });
 
-test("multiple Artifacts remain distinct lazily addressable resources", async (t) => {
+test("{§http-outbound-proposes} multiple Artifacts remain distinct lazily addressable resources", async (t) => {
     const agent = await startDemoAgent("multiple-artifacts");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);
@@ -207,7 +207,7 @@ test("multiple Artifacts remain distinct lazily addressable resources", async (t
     }
 });
 
-test("subscription cancellation requests remote Task cancellation and closes 499", async (t) => {
+test("{§http-outbound-proposes} subscription cancellation requests remote Task cancellation and closes 499", async (t) => {
     const agent = await startDemoAgent("wait-for-cancel");
     t.after(() => agent.close());
     const client = await connectHttpJsonAgent(agent.baseUrl);

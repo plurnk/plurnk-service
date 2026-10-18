@@ -18,22 +18,22 @@ class Bin extends SubprocessExecutor {
     protected override get binary(): string { return this.#bin; }
 }
 
-test("C1: default probe is available (pure/in-process runtimes)", async () => {
+test("{§executor-probe} C1: default probe is available (pure/in-process runtimes)", async () => {
     assert.deepEqual(await new Bare({ runtime: "x", glyph: "•" }).probe(), { available: true });
 });
 
-test("C2: an external binary present → available with version detail", async () => {
+test("{§executor-probe} C2: an external binary present → available with version detail", async () => {
     const r = await new Bin("node").probe();
     assert.equal(r.available, true);
     assert.match(String(r.detail), /^v?\d+\./);
 });
 
-test("C3: a missing binary → unavailable with actionable, model-facing detail", async () => {
+test("{§executor-probe} C3: a missing binary → unavailable with actionable, model-facing detail", async () => {
     const r = await new Bin("definitely-not-a-real-binary-xyz").probe();
     assert.equal(r.available, false);
     assert.match(String(r.detail), /not found on PATH/);
 });
 
-test("C4: probe returns a settled result for the expected miss (no throw needed)", async () => {
+test("{§executor-probe} C4: probe returns a settled result for the expected miss (no throw needed)", async () => {
     await assert.doesNotReject(() => new Bin("definitely-not-a-real-binary-xyz").probe());
 });

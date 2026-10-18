@@ -94,7 +94,7 @@ test("PlurnkStatement: SEND with plain text body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: an execution with a runtime target and code body", () => {
+test("{§bare-statement} PlurnkStatement: an execution with a runtime target and code body", () => {
     const r = validateRoundTrip("````sh (node/./)\nconsole.log(1)\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
@@ -146,7 +146,7 @@ test("PlurnkStatement: resource KILL's body warning does not prohibit log distil
     assert.equal(empty.items.length, 1, "an empty targeted body remains valid without an advisory");
 });
 
-test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
+test("{§matcher-option} PlurnkStatement: WORK and FORK require prompt bodies", () => {
     for (const op of ["WORK", "FORK"]) {
         const missing = baseFields(op);
         assert.equal(Validator.validatePlurnkStatement(missing).valid, false);

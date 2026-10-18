@@ -36,7 +36,7 @@ test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     assert.ok(types.has(EventType.TEXT_MESSAGE_START) && types.has(EventType.TEXT_MESSAGE_CONTENT) && types.has(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });
 
-test("reasoning/event validates and projects the standard live lifecycle", () => {
+test("{§agui-gate-deferral} reasoning/event validates and projects the standard live lifecycle", () => {
     const r = router();
     assert.deepEqual(
         r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "start" }).map(({ type }) => type),

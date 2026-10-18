@@ -604,7 +604,7 @@ test("{§agui-stream-producer} workspace stream notifications route to their pro
     } finally { await mod.close(); }
 });
 
-test("a read-only management Run does not duplicate the message Run's model settlement", async () => {
+test("{§credential-authority} a read-only management Run does not duplicate the message Run's model settlement", async () => {
     const { seam, emit } = mockSeam();
     const loopStarted = Promise.withResolvers<void>();
     const readStarted = Promise.withResolvers<void>();
@@ -879,7 +879,7 @@ test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as
     } finally { await mod.close(); }
 });
 
-test("entry.read defaults to the thread actor, honors an explicit actor, and preserves the contracts-owned wire", async () => {
+test("{§credential-authority} entry.read defaults to the thread actor, honors an explicit actor, and preserves the contracts-owned wire", async () => {
     const { seam } = mockSeam();
     existingWorkspace(seam, "agui-t");
     const calls: Array<Parameters<ApplicationPort["readEntry"]>[0]> = [];
@@ -951,7 +951,7 @@ test("entry.read defaults to the thread actor, honors an explicit actor, and pre
     }
 });
 
-test("#131: structured op.exec dispatches one valid statement with unknown source position", async () => {
+test("{§credential-authority} #131: structured op.exec dispatches one valid statement with unknown source position", async () => {
     const { seam } = mockSeam();
     const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
     seam.dispatchClientAction = async ({ statements }) => {
@@ -977,7 +977,7 @@ test("#131: structured op.exec dispatches one valid statement with unknown sourc
     } finally { await mod.close(); }
 });
 
-test("#58: op.parse projects the parser-owned diagnostic and structured position", async () => {
+test("{§credential-authority} #58: op.parse projects the parser-owned diagnostic and structured position", async () => {
     const { seam } = mockSeam();
     const mod = await host(seam);
     try {
@@ -1076,7 +1076,7 @@ test("{§agui-op-parse} {§executor-heading}: raw client programs retain invocat
 });
 
 // {§agui-op-parse} {§unparsed-tail-boundary}
-test("#127: op.parse dispatches only the trusted prefix and appends one parser-owned tail failure", async () => {
+test("{§credential-authority} #127: op.parse dispatches only the trusted prefix and appends one parser-owned tail failure", async () => {
     const { seam } = mockSeam();
     const dispatched: Parameters<ApplicationPort["dispatchClientAction"]>[0]["statements"][] = [];
     seam.dispatchClientAction = async ({ statements }) => {
@@ -1141,7 +1141,7 @@ test("{§agui-module-actions} a module action colliding with an AG-UI built-in f
     );
 });
 
-test("module actions are advertised and invoked without AG-UI importing their owner", async () => {
+test("{§credential-authority} module actions are advertised and invoked without AG-UI importing their owner", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         name: string;
@@ -1234,7 +1234,7 @@ test("{§agui-action-schema-enforcement} human-readable input failures retain th
 });
 
 // {§agui-action-schema-enforcement}
-test("advertised action schemas admit inputs and reject undeclared parameters before dispatch", async () => {
+test("{§agui-action-schema-enforcement} advertised action schemas admit inputs and reject undeclared parameters before dispatch", async () => {
     const { seam } = mockSeam();
     let calls = 0;
     seam.listModuleActions = () => [{
@@ -1281,7 +1281,7 @@ test("advertised action schemas admit inputs and reject undeclared parameters be
 });
 
 // {§agui-action-schema-enforcement}
-test("an owner output violating its advertised schema fails at the AG-UI boundary", async () => {
+test("{§credential-authority} an owner output violating its advertised schema fails at the AG-UI boundary", async () => {
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "example.inspect",
@@ -1390,7 +1390,7 @@ test("{§agui-module-action-scope} worker module actions receive authority from 
     } finally { await mod.close(); }
 });
 
-test("a module action preserves its owner-defined validation Problem", async () => {
+test("{§credential-authority} a module action preserves its owner-defined validation Problem", async () => {
     const { seam } = mockSeam();
     const problem = Problems.create(
         "example:inspect",
@@ -1445,7 +1445,7 @@ test("{§agui-module-actions} a throwing module action becomes one generic actio
     } finally { await mod.close(); }
 });
 
-test("an action failure preserves its originating Problem instead of rebuilding it at the client boundary", async () => {
+test("{§credential-authority} an action failure preserves its originating Problem instead of rebuilding it at the client boundary", async () => {
     const { seam } = mockSeam();
     existingWorkspace(seam, "action-problem");
     const problem = Problems.create(
@@ -1479,7 +1479,7 @@ test("an action failure preserves its originating Problem instead of rebuilding 
     } finally { await mod.close(); }
 });
 
-test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run", async () => {
+test("{§credential-authority} a loop-owned proposal cannot terminate a concurrent loop.inject action Run", async () => {
     const { seam, emit } = mockSeam();
     const messageStarted = Promise.withResolvers<void>();
     const injectionStarted = Promise.withResolvers<void>();
@@ -1583,7 +1583,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
     }
 });
 
-test("an unexpected action exception becomes one generic Problem without leaking its message", async () => {
+test("{§pinned-wording-agui} an unexpected action exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
     existingWorkspace(seam, "action-failure");
     seam.readEntry = async () => { throw new Error("private adapter detail"); };
@@ -1897,7 +1897,7 @@ test("{§agui-run-disconnect}: disconnect during resume validation cancels contr
     } finally { release.resolve(); controller.abort(); await mod.close(); }
 });
 
-test("a standard resume resolves the paused proposal without driving a new loop", async () => {
+test("{§agui-proposal-resolve} a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
     existingWorkspace(seam, "t2");
     let pending: ProposalProjection[] = [{
@@ -1995,7 +1995,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
     });
 }
 
-test("a descendant client interaction round-trips through its owning AG-UI thread", async () => {
+test("{§agui-message-before-gate} a descendant client interaction round-trips through its owning AG-UI thread", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{
         interactionId: 88,
@@ -2096,7 +2096,7 @@ test("a descendant client interaction round-trips through its owning AG-UI threa
     }
 });
 
-test("the official AG-UI client reattaches to and resumes a durable proposal interrupt", async () => {
+test("{§message-idempotency} the official AG-UI client reattaches to and resumes a durable proposal interrupt", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     const proposal: ProposalProjection = {
         logEntryId: 41,
@@ -2251,7 +2251,7 @@ test("{§agui-thread-binding} explicit names select literally; workspace.attach 
     } finally { await mod.close(); }
 });
 
-test("reattach replays SEND as speech without inventing an activity from NOTE", async () => {
+test("{§credential-authority} reattach replays SEND as speech without inventing an activity from NOTE", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, projectLabel: null });
@@ -2752,7 +2752,7 @@ for (const [lastName, last] of Object.entries(lastMessages)) {
     }
 }
 
-test("the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
+test("{§credential-authority} the official AG-UI client keeps the accepted current user message after authoritative reattach replay", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, projectLabel: null });
@@ -2798,7 +2798,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     }
 });
 
-test("a client carrying a durable assistant identity is already oriented and receives no repeated replay", async () => {
+test("{§credential-authority} a client carrying a durable assistant identity is already oriented and receives no repeated replay", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, projectLabel: null });
@@ -2943,7 +2943,7 @@ test("{§agui-replay} a failed history read reports its cause and does not submi
 });
 
 // {§agui-thread-binding} — only a message Run brings a workspace into being.
-test("an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
+test("{§credential-authority} an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
@@ -2986,7 +2986,7 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
     assert.deepEqual(await cors(""), { origin: null, headers: null, preflight: 204 }, "no page reads a reply");
 });
 
-test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
+test("{§credential-authority} PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
     const { seam } = mockSeam("expected");
     const mod = await host(seam, {
         env: {
@@ -3053,7 +3053,7 @@ test("{§workspace-label} the workspace list and the snapshot carry each folder'
     } finally { await mod.close(); }
 });
 
-test("CONTROL PLANE: a daemon action needs NO workspace and FORGES none", async () => {
+test("{§credential-authority} CONTROL PLANE: a daemon action needs NO workspace and FORGES none", async () => {
     let created = 0, bound = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(1, "a"), workspaceRow(2, "b")];
@@ -3073,7 +3073,7 @@ test("CONTROL PLANE: a daemon action needs NO workspace and FORGES none", async 
     } finally { await mod.close(); }
 });
 
-test("run.fork admits the contract's anonymous-fork form", async () => {
+test("{§credential-authority} run.fork admits the contract's anonymous-fork form", async () => {
     const { seam } = mockSeam();
     existingWorkspace(seam, "anonymous-fork");
     const calls: Parameters<ApplicationPort["forkWorker"]>[0][] = [];
@@ -3169,7 +3169,7 @@ test("{§discovery} discover returns the exact public action and notification me
     } finally { await mod.close(); }
 });
 
-test("workspace.create WITH a name is daemon and does NOT demand a pre-bound workspace", async () => {
+test("{§agui-thread-address} workspace.create WITH a name is daemon and does NOT demand a pre-bound workspace", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, projectLabel: null });
@@ -3246,7 +3246,7 @@ test("{§methods-workspace-attach} workspace.attach forwards one selector litera
     } finally { await mod.close(); }
 });
 
-test("loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
+test("{§agui-thread-binding} loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
     const cancelled: Array<{ workerId: number; reason?: string }> = [];
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
@@ -3601,7 +3601,7 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
     });
 }
 
-test("a thread naming no worker MINTS one named for it, and the loop drives there", async () => {
+test("{§credential-authority} a thread naming no worker MINTS one named for it, and the loop drives there", async () => {
     const created: Array<{ workspaceId: number; name?: string }> = [];
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -3763,7 +3763,7 @@ for (const stage of ["envelope", "worker"] as const) {
     });
 }
 
-test("a threadId naming an existing worker (a fork or an earlier worker) binds it — no mint", async () => {
+test("{§credential-authority} a threadId naming an existing worker (a fork or an earlier worker) binds it — no mint", async () => {
     let created = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -3854,7 +3854,7 @@ test("{§agui-thread-binding} a thread named after its workspace binds the worke
     } finally { await mod.close(); }
 });
 
-test("loop.inject folds into the worker its thread names, as that thread's message", async () => {
+test("{§credential-authority} loop.inject folds into the worker its thread names, as that thread's message", async () => {
     const driven: number[] = [];
     const messages: Array<Parameters<ApplicationPort["runLoop"]>[0]> = [];
     const { seam, finish } = mockSeam();
@@ -4001,7 +4001,7 @@ test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model sel
     } finally { await mod.close(); }
 });
 
-test("a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
+test("{§agui-plurnk-metadata} a post-headers runLoop failure preserves its exact Problem in the terminal SSE frames", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null });
@@ -4057,7 +4057,7 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
     } finally { await mod.close(); }
 });
 
-test("an unexpected post-headers runLoop exception becomes one generic Problem without leaking its message", async () => {
+test("{§problems-agui} an unexpected post-headers runLoop exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, projectLabel: null });

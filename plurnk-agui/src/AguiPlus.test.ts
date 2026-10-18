@@ -81,7 +81,7 @@ test("{§agui-proposal-resolve} a gate's interrupt is a tool approval of no call
         "a gate that times out names when");
 });
 
-test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {
+test("{§agui-proposal-resolve} the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {
     // AG-UI Run N: two concurrent stopped worlds, each known by its proposal's key.
     const idA = proposalKey(42);
     const idB = proposalKey(99);
@@ -94,7 +94,7 @@ test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps ba
     assert.deepEqual(resB, { logEntryId: 99, decision: "reject" }, "the other id → the other proposal, rejected");
 });
 
-test("an edited-body approval carries the frontend's body through to resolveProposal", () => {
+test("{§agui-proposal-resolve} an edited-body approval carries the frontend's body through to resolveProposal", () => {
     const res = resolutionFromResume({ interruptId: proposalKey(7), status: "resolved", payload: { decision: "accept", body: "the human's edit" } });
     assert.deepEqual(res, { logEntryId: 7, decision: "accept", body: "the human's edit" });
 });
@@ -117,13 +117,13 @@ test("{§agui-proposal-resolve} proposal resumes preserve the resolver's outcome
     }
 });
 
-test("resolutionFromResume: standard cancellation and strict payload validation", () => {
+test("{§agui-proposal-resolve} resolutionFromResume: standard cancellation and strict payload validation", () => {
     assert.deepEqual(resolutionFromResume({ interruptId: proposalKey(5), status: "cancelled" }), { logEntryId: 5, decision: "cancel" });
     assert.equal(resolutionFromResume({ interruptId: "call_openai_xyz", status: "resolved", payload: { decision: "accept" } }), null, "a non-plurnk interrupt isn't a proposal resolution");
     assert.equal(resolutionFromResume({ interruptId: proposalKey(5), status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
 });
 
-test("client interaction projects its exact tool call, interrupt guidance, and response schema", () => {
+test("{§agui-proposal-resolve} client interaction projects its exact tool call, interrupt guidance, and response schema", () => {
     const value = interaction();
     assert.deepEqual(interactionToolCall(value), [
         { type: "TOOL_CALL_START", toolCallId: "int:8", toolCallName: "select_repository" },
@@ -138,7 +138,7 @@ test("client interaction projects its exact tool call, interrupt guidance, and r
     });
 });
 
-test("client interaction resume preserves an arbitrary resolved payload or standard cancellation", () => {
+test("{§agui-proposal-resolve} client interaction resume preserves an arbitrary resolved payload or standard cancellation", () => {
     assert.deepEqual(
         interactionResolutionFromResume({
             interruptId: "int:8",
@@ -162,7 +162,7 @@ test("client interaction resume preserves an arbitrary resolved payload or stand
 
 const WORKSPACE = { id: 1, name: "agui-tui", projectRoot: "/w", projectLabel: "w", preparation: [], activity: null };
 
-test("reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
+test("{§agui-proposal-resolve} reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
     const snap = stateSnapshot({
         providers: [{ alias: "opus", provider: "anthropic", model: "claude-opus", effort: "adaptive", effortSource: "default", active: true, inputCapacity: 200000 }],
         workspace: WORKSPACE,
@@ -267,7 +267,7 @@ test("{§agui-workspace-state} derivation activity carries live work into the wo
     }), null);
 });
 
-test("actions: parse a forwardedProps request, project the outcome", () => {
+test("{§agui-plurnk-metadata} actions: parse a forwardedProps request, project the outcome", () => {
     assert.deepEqual(parseAction({ plurnk: { action: { kind: "workspace.rename", name: "new-name" } } }), { kind: "workspace.rename", params: { name: "new-name" } });
     assert.equal(parseAction({ plurnk: {} }), null, "no action → null");
     assert.equal(parseAction({ plurnk: { action: { name: "x" } } }), null, "an action without a kind → null");

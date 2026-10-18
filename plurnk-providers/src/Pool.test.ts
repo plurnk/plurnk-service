@@ -191,7 +191,7 @@ test("Pool: prompt evidence is conservative across every routable backend", asyn
     });
 });
 
-test("Pool: request capacity uses the smallest complete backend envelope", async () => {
+test("{§provider-capacity-admission} Pool: request capacity uses the smallest complete backend envelope", async () => {
     const prompt = { kind: "exact", tokens: 21, source: "test:exact" } as const;
     const narrowInput = backend({ window: 100, outputBudget: 90, outputFloor: 80, promptMeasurement: prompt }).b;
     const narrowContext = backend({ window: 50, outputBudget: 10, outputFloor: 5, promptMeasurement: prompt }).b;

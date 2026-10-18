@@ -267,7 +267,7 @@ test("{§agui-worker-owner} {§agui-proposal-resolve}: an idle owner receives a 
     portal.stop();
 });
 
-test("a worker without pending interrupts drives the loop, then live events fan as AG-UI", async () => {
+test("{§agui-proposal-resolve} a worker without pending interrupts drives the loop, then live events fan as AG-UI", async () => {
     const m = mockSeam();
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
@@ -372,7 +372,7 @@ test("{§agui-sync}: synchronization observes an already-active loop without tak
     portal.stop();
 });
 
-test("live stopped-worlds select their exact loop Run before the worker fallback", async () => {
+test("{§agui-proposal-resolve} live stopped-worlds select their exact loop Run before the worker fallback", async () => {
     const m = mockSeam();
     const owningSeen: AguiEvent[] = [];
     const owningView = capture(owningSeen);
@@ -412,7 +412,7 @@ test("live stopped-worlds select their exact loop Run before the worker fallback
     portal.stop();
 });
 
-test("a terminal arriving before the loop acknowledgement settles only its matching AG-UI Run", async () => {
+test("{§agui-proposal-resolve} a terminal arriving before the loop acknowledgement settles only its matching AG-UI Run", async () => {
     const m = mockSeam();
     const entered = Promise.withResolvers<void>();
     let acknowledge!: (value: { status: number; action: "enqueued_new_loop"; loopId: number }) => void;
@@ -542,7 +542,7 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
     portal.stop();
 });
 
-test("a durable client interaction re-surfaces with its exact standard Interrupt and resumes through core", async () => {
+test("{§agui-message-before-gate} a durable client interaction re-surfaces with its exact standard Interrupt and resumes through core", async () => {
     const m = mockSeam([], [interaction({ interactionId: 30, loopId: 7 })]);
     const seen: AguiEvent[] = [];
     const view = capture(seen);
@@ -609,7 +609,7 @@ test("{§agui-proposal-resolve} a live proposal is the operation's call and an i
     portal.stop();
 });
 
-test("a descendant proposal interrupts its owning thread and resumes the exact child", async () => {
+test("{§agui-proposal-resolve} a descendant proposal interrupts its owning thread and resumes the exact child", async () => {
     const pending = proposal({ logEntryId: 42, workerId: 20, loopId: 88 });
     const m = mockSeam([pending], [], {
         workers: [worker(10), worker(20, 10)],
@@ -672,7 +672,7 @@ test("a descendant proposal interrupts its owning thread and resumes the exact c
     portal.stop();
 });
 
-test("a queued descendant gate precedes a later controlling terminal", async () => {
+test("{§agui-proposal-resolve} a queued descendant gate precedes a later controlling terminal", async () => {
     const workers = Promise.withResolvers<ApplicationWorkerProjection[]>();
     const m = mockSeam([], [], {
         workers: [worker(10), worker(20, 10)],
@@ -743,7 +743,7 @@ test("a queued descendant gate precedes a later controlling terminal", async () 
     portal.stop();
 });
 
-test("an owning thread re-surfaces a durable descendant interaction after reconnect", async () => {
+test("{§agui-message-before-gate} an owning thread re-surfaces a durable descendant interaction after reconnect", async () => {
     const pendingInteraction = interaction({ interactionId: 30, workerId: 20, loopId: 88 });
     const m = mockSeam([], [pendingInteraction], {
         workers: [worker(10), worker(20, 10)],
@@ -798,7 +798,7 @@ test("an owning thread re-surfaces a durable descendant interaction after reconn
     portal.stop();
 });
 
-test("multiple descendant gates serialize through one owning thread", async () => {
+test("{§agui-proposal-resolve} multiple descendant gates serialize through one owning thread", async () => {
     const firstPending = proposal({ logEntryId: 42, workerId: 20, loopId: 88 });
     const secondPending = proposal({ logEntryId: 43, workerId: 30, loopId: 99 });
     const m = mockSeam([firstPending, secondPending], [], {
@@ -855,7 +855,7 @@ test("multiple descendant gates serialize through one owning thread", async () =
     portal.stop();
 });
 
-test("a descendant gate never leaks to an unrelated thread", async () => {
+test("{§agui-proposal-resolve} a descendant gate never leaks to an unrelated thread", async () => {
     const m = mockSeam([], [], {
         workers: [worker(10), worker(30), worker(40, 30)],
     });

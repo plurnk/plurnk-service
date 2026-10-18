@@ -170,7 +170,7 @@ for (const code of [-32602, -32603]) {
     });
 }
 
-test("a method disappearing after the first page fails instead of publishing a partial catalog", async (t) => {
+test("{§mcp-catalog-deadline} a method disappearing after the first page fails instead of publishing a partial catalog", async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         if (body.method !== "resources/templates/list") return null;
@@ -193,7 +193,7 @@ test("a method disappearing after the first page fails instead of publishing a p
     }
 });
 
-test("method-not-found on a tool call remains an operation error", async (t) => {
+test("{§mcp-catalog-deadline} method-not-found on a tool call remains an operation error", async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         return body.method === "tools/call"

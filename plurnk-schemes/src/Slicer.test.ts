@@ -214,7 +214,7 @@ test("lines rejects unaddressable exact regions", () => {
     assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 5, 1, 6]);
 });
 
-test("harmless exact end-bound overshoots clamp to available content", () => {
+test("{§slicer-text-algebra} harmless exact end-bound overshoots clamp to available content", () => {
     // {§slicer-text-algebra} — <4,1,4,50> on a 30-char line serves the whole line.
     const clamped = Slicer.lines("one\ntwo\nthree\nfour", { marks: [4, 1, 4, 50] });
     assert.equal(clamped.status, 200);
@@ -358,7 +358,7 @@ test("page rejects fractional result positions instead of rounding", () => {
     assert.equal(result.range?.requested[0], 0.5);
 });
 
-test("page rejects text-shaped coordinate lists", () => {
+test("{§pinned-wording-schemes} page rejects text-shaped coordinate lists", () => {
     const marks: [number, ...number[]] = [1, 1, 1, 1];
     const result = Slicer.page(["a", "b"], { marks });
     assert.equal(result.status, 416);
@@ -400,7 +400,7 @@ test("lineMarkerEditBatch composes disjoint line and exact regions", () => {
     assert.equal(result.result, "aBcde\nsecond\nTHIRD\n");
 });
 
-test("lineMarkerEditBatch rejects every kind of overlap atomically", () => {
+test("{§problems-schemes} lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     const rangeOverlap = Slicer.lineMarkerEditBatch(TEXT, [
         { marker: { marks: [2, 3] }, body: "middle" },
         { marker: { marks: [3, 4] }, body: "tail" },
@@ -442,7 +442,7 @@ test("an empty result set satisfies any well-formed page — zero matches is a 2
     assert.equal(inverted.status, 416, "an inverted range is the one unsatisfiable page");
 });
 
-test("an overlap receipt carries the whole conflict graph, the clean regions, and the applied count (#428)", () => {
+test("{§problems-schemes} an overlap receipt carries the whole conflict graph, the clean regions, and the applied count (#428)", () => {
     const six = "a\nb\nc\nd\ne\nf\n";
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [1, 4] }, body: "outer" },

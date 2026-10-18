@@ -32,7 +32,7 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
     assert.ok(Object.values(TEACHING_CORPUS.docs).every(Object.isFrozen));
 });
 
-test("isTrusted: gate off ('' / '0') trusts everything", () => {
+test("{§operator-config-only-home} isTrusted: gate off ('' / '0') trusts everything", () => {
     for (const v of ["", "0"]) {
         assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_EXTENSIONS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
     }
@@ -178,7 +178,7 @@ test("packageDirs: missing node_modules yields []", async () => {
     assert.deepEqual(await Meta.packageDirs("/no/such/dir/node_modules"), []);
 });
 
-test("packageDirs: merges npm's nested peer graph with ancestor packages, nearest name wins", async () => {
+test("{§extension-manifest-read} packageDirs: merges npm's nested peer graph with ancestor packages, nearest name wins", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-chain-"));
     try {
         const outer = join(root, "node_modules");

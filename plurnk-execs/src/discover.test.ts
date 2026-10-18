@@ -64,7 +64,7 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
     );
 });
 
-test("discover: registers each runtime tag of an exec package", async () => {
+test("{§executor-trust} discover: registers each runtime tag of an exec package", async () => {
     const dir = await makePkg({
         name: "@acme/acme-execs-reference",
         plurnk: {
@@ -89,7 +89,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
     });
 });
 
-test("discover: details are sourced from docs/<tag>.md with the inline field as fallback", async () => {
+test("{§executor-trust} discover: details are sourced from docs/<tag>.md with the inline field as fallback", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [
@@ -107,7 +107,7 @@ test("discover: details are sourced from docs/<tag>.md with the inline field as 
     assert.equal(registry.get("bc")?.details, "", "neither file nor inline → empty");
 });
 
-test("discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {
+test("{§executor-trust} discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {
     const strDir = await makePkg({
         name: "@acme/acme-execs-multi",
         plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [runtime("alpha"), runtime("beta")] },
@@ -134,7 +134,7 @@ test("discover: normalizes attribution once per package; runtime descriptors car
     );
 });
 
-test("discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
+test("{§executor-dynamic-runtimes} discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
     const invalid = await makePkg({
         name: "@acme/acme-execs-invalid",
         plurnk: { kind: "exec", attribution: ["valid", 42], runtimes: [{ name: "invalid" }] },
@@ -174,7 +174,7 @@ const makeDynamicPkg = async (name: string, source: string, rel = "runtimes.mjs"
     return dir;
 };
 
-test("discover: a dynamic runtimes function materializes per-deployment tags", async () => {
+test("{§executor-trust} discover: a dynamic runtimes function materializes per-deployment tags", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
@@ -199,7 +199,7 @@ test("discover: a dynamic runtimes function materializes per-deployment tags", a
     });
 });
 
-test("discover: the dynamic runtimes function may be a default export with a sync return", async () => {
+test("{§executor-trust} discover: the dynamic runtimes function may be a default export with a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [{ name: "slack", summary: "Use Slack tools.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
@@ -234,7 +234,7 @@ test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical 
     );
 });
 
-test("discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
+test("{§executor-trust} discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
@@ -250,7 +250,7 @@ test("discover: a broken dynamic runtimes function is fail-hard (trusted-package
     await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes function returned a non-array/);
 });
 
-test("discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
+test("{§executor-trust} discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
     // If the gate failed to guard the import, this function would throw and the
     // rejection would surface — proving execution. Under the gate it must be
     // skipped silently instead.
@@ -265,7 +265,7 @@ test("discover: an UNTRUSTED package's dynamic runtimes function is NEVER execut
     });
 });
 
-test("discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
+test("{§executor-trust} discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
     const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name: "@plurnk/plurnk-execs-both",
@@ -276,7 +276,7 @@ test("discover: static runtimes[] wins when both it and runtimesModule are decla
     assert.deepEqual([...registry.keys()], ["static"], "a static array short-circuits the runtimes function");
 });
 
-test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
+test("{§executor-trust} discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",
         plurnk: { kind: "exec", runtimes: [runtime("sh")] },
@@ -296,7 +296,7 @@ test("discover: ignores non-exec packages and missing glyphs default to empty", 
     });
 });
 
-test("discover: tag collision across packages is fail-hard", async () => {
+test("{§executor-trust} discover: tag collision across packages is fail-hard", async () => {
     const a = await makePkg({
         name: "@acme/acme-execs-lookup",
         plurnk: { kind: "exec", runtimes: [runtime("lookup")] },
@@ -344,7 +344,7 @@ test("{§executor-runtime-declaration} #105: static runtime tags are canonical, 
     );
 });
 
-test("discover: claimed runtime declarations with no name fail hard; unrelated malformed packages remain ignored", async () => {
+test("{§executor-trust} discover: claimed runtime declarations with no name fail hard; unrelated malformed packages remain ignored", async () => {
     for (const decl of [{ glyph: "❓" }, { name: "" }]) {
         const claimed = await makePkg({
             name: "@plurnk/plurnk-execs-invalid",
@@ -370,12 +370,12 @@ test("discover: claimed runtime declarations with no name fail hard; unrelated m
     assert.ok(registry.has("ok"));
 });
 
-test("discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
+test("{§executor-trust} discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
     const { registry } = await Discover.scan({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
     assert.equal(registry.size, 0);
 });
 
-test("discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
+test("{§executor-trust} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
     // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
     // scope, an unscoped name, and a non-exec package that must be ignored.
     const root = await mkTmp("execs-scan-");
@@ -409,7 +409,7 @@ const withGate = async (value: string | undefined, fn: () => Promise<void>): Pro
     }
 };
 
-test("trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
+test("{§executor-trust} trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
     const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [runtime("sh")] } });
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     await withGate("1", async () => {
@@ -419,7 +419,7 @@ test("trust gate ON: untrusted third-party is skipped (not registered); @plurnk 
     });
 });
 
-test("trust gate ON with an allowlist: a named third-party package is trusted", async () => {
+test("{§executor-trust} trust gate ON with an allowlist: a named third-party package is trusted", async () => {
     const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [runtime("cobol")] } });
     const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
     await withGate("@acme/acme-execs-cobol", async () => {
@@ -429,7 +429,7 @@ test("trust gate ON with an allowlist: a named third-party package is trusted", 
     });
 });
 
-test('trust gate OFF ("0"): every installed package loads, nothing skipped', async () => {
+test('{§executor-policy} trust gate OFF ("0"): every installed package loads, nothing skipped', async () => {
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [runtime("cobol")] } });
     await withGate("0", async () => {
         const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
@@ -454,7 +454,7 @@ const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise
     }
 };
 
-test("runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
+test("{§executor-trust} runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [runtime("search"), runtime("node"), runtime("sqlite")] },
@@ -495,7 +495,7 @@ test("{§executor-installation} configuration cannot enable an absent package, a
     });
 });
 
-test("runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
+test("{§executor-trust} runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [runtime("node"), runtime("sh")] },

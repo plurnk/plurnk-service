@@ -348,7 +348,7 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
     assert.deepEqual(time.delays(), []);
 });
 
-test("an unreadable enabled definition is unavailable with its Problem, and rejects only an add that introduces it", async () => {
+test("{§schedule-family} an unreadable enabled definition is unavailable with its Problem, and rejects only an add that introduces it", async () => {
     const reports: string[] = [];
     const adapter = family(new FakeTime(), {}, reports);
     const broken = { rule: "FREQ=DAILY;BOGUS=1", target: "worker://bot", prompt: "x" };

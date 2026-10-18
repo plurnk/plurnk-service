@@ -256,7 +256,7 @@ test("#157: a cataloged compatible provider fails before transport when its decl
     );
 });
 
-test("createSdkModel fails clearly for a declared but unsupported SDK package", () => {
+test("{§provider-fact-authority} createSdkModel fails clearly for a declared but unsupported SDK package", () => {
     assert.throws(
         () => createSdkModel("acme", "model", {
             PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@acme/ai-sdk",

@@ -88,7 +88,7 @@ test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep requ
     assert.doesNotMatch(JSON.stringify(invalidConfiguration), /not a url/u);
 });
 
-test("discovery is inert: a URL yields one card-derived candidate, configuration yields overlay candidates", async () => {
+test("{§a2a-functionality} discovery is inert: a URL yields one card-derived candidate, configuration yields overlay candidates", async () => {
     const agent = await startDemoAgent();
     try {
         const family = new A2aFunctionality(diagnosticEnv);
@@ -110,7 +110,7 @@ test("discovery is inert: a URL yields one card-derived candidate, configuration
     }
 });
 
-test("admission validates the exact definition and the alias/name identity", async () => {
+test("{§a2a-functionality} admission validates the exact definition and the alias/name identity", async () => {
     const family = new A2aFunctionality(diagnosticEnv);
     assert.deepEqual(await family.admit({ alias: "peer", definition: { name: "peer", url: "https://peer.example" } }), { alias: "peer", definition: { name: "peer", url: "https://peer.example" } });
     assert.equal((await problemOf(() => family.admit({ alias: "other", definition: { name: "peer", url: "https://peer.example" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/alias-mismatch");
@@ -121,7 +121,7 @@ test("admission validates the exact definition and the alias/name identity", asy
     assert.equal(aliasOfCard({ name: "42" } as never), "agent-42");
 });
 
-test("preparation attaches through the discovered card, reuses unchanged attachments, isolates failures, and resolves per workspace", async () => {
+test("{§a2a-functionality} preparation attaches through the discovered card, reuses unchanged attachments, isolates failures, and resolves per workspace", async () => {
     const agent = await startDemoAgent();
     try {
         const family = new A2aFunctionality({ ...diagnosticEnv, TOKEN: "s3cret" });
@@ -170,7 +170,7 @@ test("preparation attaches through the discovered card, reuses unchanged attachm
     }
 });
 
-test("symbolic references that cannot be resolved make the alias unavailable without contacting the host", async () => {
+test("{§a2a-functionality} symbolic references that cannot be resolved make the alias unavailable without contacting the host", async () => {
     const family = new A2aFunctionality(diagnosticEnv);
     const prepared = await family.prepare(preparation(3, { peer: { name: "peer", url: "http://127.0.0.1:9", headers: { "X-Key": "${MISSING_KEY}" } } }));
     const outcome = prepared.outcomes.get("peer") as { state: string; problem: { type: string; retryable?: boolean } };

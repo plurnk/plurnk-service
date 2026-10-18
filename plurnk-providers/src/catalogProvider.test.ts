@@ -115,7 +115,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     }, "gpt-4.1-mini"), /OUTPUT_PATH configures compatible request fields, not this native SDK/);
 });
 
-test("catalog provider resolves model physics and Models.dev USD rates", () => {
+test("{§provider-effort} catalog provider resolves model physics and Models.dev USD rates", () => {
     const provider = catalogProviderFromEnv("openai", env, "gpt-4.1-mini");
     assert.notEqual(provider, null);
     assert.equal(provider?.model, "gpt-4.1-mini");
@@ -127,7 +127,7 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     assert.deepEqual(provider?.supportedEfforts, ["off", "adaptive"]);
 });
 
-test("(#472) an effort refusal names the operator's declaration lever with the exact key", () => {
+test("{§provider-effort} (#472) an effort refusal names the operator's declaration lever with the exact key", () => {
     assert.throws(
         () => catalogProviderFromEnv("fireworks-ai", withProviderDefaults({
             ...env,
@@ -148,7 +148,7 @@ test("(#472) an effort refusal names the operator's declaration lever with the e
     assert.ok(declared.supportedEfforts.includes("medium"), "medium is admitted through the operator's declaration");
 });
 
-test("provider adapters advertise only efforts they can preserve", () => {
+test("{§provider-effort} provider adapters advertise only efforts they can preserve", () => {
     const deepseek = catalogProviderFromEnv("deepseek", {
         ...env,
         DEEPSEEK_API_KEY: "test-key",
@@ -253,7 +253,7 @@ test("{§provider-effort}: discovery never offers a fixed effort the installed t
     }
 });
 
-test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
+test("{§provider-effort} Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -314,7 +314,7 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     );
 });
 
-test("an operator-declared effort vocabulary extends Models.dev's for a provider's reasoning routes (#439)", async () => {
+test("{§provider-effort} an operator-declared effort vocabulary extends Models.dev's for a provider's reasoning routes (#439)", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
@@ -360,7 +360,7 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
     );
 });
 
-test("an operator context window caps catalog physics and percentage output policy", () => {
+test("{§provider-effort} an operator context window caps catalog physics and percentage output policy", () => {
     const provider = catalogProviderFromEnv("openai", {
         ...env,
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
@@ -376,7 +376,7 @@ test("an operator context window caps catalog physics and percentage output poli
     assert.equal(oversized?.contextWindow, 1_047_576, "an operator ceiling cannot enlarge model physics");
 });
 
-test("official AI SDK provider owns the native request while PLURNK owns call settings", async () => {
+test("{§provider-effort} official AI SDK provider owns the native request while PLURNK owns call settings", async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
@@ -431,7 +431,7 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
 });
 
-test("Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
+test("{§provider-effort} Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         body = JSON.parse(requestBody(init)) as Record<string, unknown>;
@@ -485,7 +485,7 @@ test("Cerebras explicit and adaptive reasoning do not invent a token budget", as
     }
 });
 
-test("Meta Muse adaptive reasoning is requested even when the endpoint returns no readable trace", async () => {
+test("{§provider-effort} Meta Muse adaptive reasoning is requested even when the endpoint returns no readable trace", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         body = JSON.parse(requestBody(init)) as Record<string, unknown>;
@@ -568,7 +568,7 @@ test("{§provider-effort} native graded requests use only the supported configur
     }
 });
 
-test("Google adaptive reasoning requests and preserves readable thought summaries", async () => {
+test("{§provider-effort} Google adaptive reasoning requests and preserves readable thought summaries", async () => {
     const bodies: Array<{
         generationConfig?: { thinkingConfig?: { includeThoughts?: boolean; thinkingLevel?: string; thinkingBudget?: number } };
     }> = [];
@@ -626,7 +626,7 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
     );
 });
 
-test("native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
+test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
     let request: Record<string, unknown> | undefined;
     const languageModel = {
         specificationVersion: "v4",
@@ -701,7 +701,7 @@ test("native Anthropic adaptive policy uses adaptive thinking rather than a fixe
     });
 });
 
-test("native provider routes project their documented cache controls through the actual SDK request", async (t) => {
+test("{§provider-effort} native provider routes project their documented cache controls through the actual SDK request", async (t) => {
     const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
@@ -887,7 +887,7 @@ test("native provider routes project their documented cache controls through the
     });
 });
 
-test("an uncataloged model names the ids whose final segment begins with it", () => {
+test("{§provider-effort} an uncataloged model names the ids whose final segment begins with it", () => {
     assert.throws(
         () => catalogProviderFromEnv("fireworks-ai", env, "deepseek-flash"),
         (error: Error) => error.message.includes('model "deepseek-flash" is not a Models.dev id or a unique path suffix of one; candidates: ')
@@ -895,7 +895,7 @@ test("an uncataloged model names the ids whose final segment begins with it", ()
     );
 });
 
-test("cataloged unknown model fails unless its context is explicit", () => {
+test("{§provider-effort} cataloged unknown model fails unless its context is explicit", () => {
     assert.throws(
         () => catalogProviderFromEnv("groq", env, "not-in-the-catalog"),
         /^Error: groq provider: model "not-in-the-catalog" is not a Models\.dev id or a unique path suffix of one — correct the model id, or set PLURNK_PROVIDERS_CONTEXT_WINDOW to route an uncataloged model$/,
@@ -958,7 +958,7 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
     });
 });
 
-test("#856: catalog implicit-cache pricing composes SDK usage without an operator rate override", async () => {
+test("{§provider-effort} #856: catalog implicit-cache pricing composes SDK usage without an operator rate override", async () => {
     mock.method(globalThis, "fetch", async () => new Response([
         `data: ${JSON.stringify({
             id: "response", model: "glm-5.3-flash",
@@ -1024,7 +1024,7 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
     mock.restoreAll();
 });
 
-test("(#458) declared efforts union into the supported set under the models.dev-id prefix", () => {
+test("{§provider-wire-declaration} (#458) declared efforts union into the supported set under the models.dev-id prefix", () => {
     const provider = catalogProviderFromEnv("fireworks-ai", {
         ...env,
         FIREWORKS_API_KEY: "test-key",

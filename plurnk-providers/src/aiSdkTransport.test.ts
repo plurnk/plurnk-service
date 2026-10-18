@@ -508,7 +508,7 @@ test("normalizeRetryAttemptError preserves the whole-call deadline ({§provider-
     assert.equal(normalizeRetryAttemptError(operation), operation);
 });
 
-test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Retry-After, or a directive (#479)", () => {
+test("{§provider-wire-emission} normalizeRetryAttemptError — only provider-directed waits retry: 429, Retry-After, or a directive (#479)", () => {
     const garbage = new APICallError({
         message: "Failed to process successful response",
         url: "https://api.example/v1/chat/completions",
@@ -559,7 +559,7 @@ test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Re
 });
 
 // {§provider-wire-emission} — a blank emission is readable: what the stream carried is kept, channel by channel.
-test("the transport record keeps the wire emission: empty chunks, tool calls and channels the protocol does not read", async (t) => {
+test("{§provider-usage-refusal} the transport record keeps the wire emission: empty chunks, tool calls and channels the protocol does not read", async (t) => {
     const usage = { prompt_tokens: 10, completion_tokens: 13, total_tokens: 23, completion_tokens_details: { reasoning_tokens: 4 } };
     await t.test("streamed", async () => {
         const chunks = [

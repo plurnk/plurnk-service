@@ -41,7 +41,7 @@ test("{§statement-rendering}: programs separate fenced operations without chang
     assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, body);
 });
 
-test("framing a large body does not spread its backtick runs into function arguments", () => {
+test("{§fence-boundary} framing a large body does not spread its backtick runs into function arguments", () => {
     const body = "`quoted` ".repeat(100_000);
     assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "```EDIT (large.md)\n" + body + "\n```");
 });

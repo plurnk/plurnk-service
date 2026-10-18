@@ -15,21 +15,21 @@ type HostSeam = ModuleSetupSeam & FunctionalitySeam<Runtime, Facet>;
 type NarrowSetup = Pick<ModuleSetupSeam, "readWorkspaceEnvironment"> & FunctionalitySeam;
 type NarrowStart = Pick<ApplicationPort, "listWorkspaces">;
 
-test("the module contract holds only abstractions: nothing of it exists at runtime", () => {
+test("{§module-contract} the module contract holds only abstractions: nothing of it exists at runtime", () => {
     assert.deepEqual(Object.keys(contract), []);
 });
 
-test("a module typed by the slices it uses is accepted by a host that offers more", () => {
+test("{§module-contract} a module typed by the slices it uses is accepted by a host that offers more", () => {
     const accepted: Assignable<DaemonModule<NarrowSetup, NarrowStart>, DaemonModule<HostSeam>> = true;
     assert.equal(accepted, true);
 });
 
-test("an adapter that prepares no runtime and exposes no facet fits every family's adapter type", () => {
+test("{§module-contract} an adapter that prepares no runtime and exposes no facet fits every family's adapter type", () => {
     const fits: Assignable<FunctionalityAdapter, FunctionalityAdapter<Runtime, Facet>> = true;
     assert.equal(fits, true);
 });
 
-test("what a family owns is not in the base slice", () => {
+test("{§module-contract} what a family owns is not in the base slice", () => {
     const schemes: Assignable<ModuleSetupSeam, { registerScheme(name: string, handler: object): Promise<void> }> = false;
     const plugins: Assignable<ModuleSetupSeam, { readWorkspacePlugins(workspaceId: number): Promise<unknown> }> = false;
     assert.deepEqual([schemes, plugins], [false, false]);

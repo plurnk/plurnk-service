@@ -47,7 +47,7 @@ test("{§executor-js-spelling}: a nested js example remains a literal message bo
 });
 
 // {§canonical-statement}
-test("independent fenced operations retain exact bodies and typed fields", () => {
+test("{§section-boundary} independent fenced operations retain exact bodies and typed fields", () => {
     const input = [
         frame("EDIT (worker:///note.md) <1,-1>", "alpha\nbeta"),
         frame("READ (worker:///note.md)", null),
@@ -64,7 +64,7 @@ test("independent fenced operations retain exact bodies and typed fields", () =>
 });
 
 // {§section-boundary}
-test("framing removes its own newline, not body whitespace or interstatement padding", () => {
+test("{§fence-boundary} framing removes its own newline, not body whitespace or interstatement padding", () => {
     const input = frame("EDIT (notes.md)", "alpha\n") + "\n\n" + task("done");
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(errors(parsed), []);
@@ -73,7 +73,7 @@ test("framing removes its own newline, not body whitespace or interstatement pad
 });
 
 // {§fence-boundary}
-test("a quoted turn remains one exact literal body", () => {
+test("{§executor-js-spelling} a quoted turn remains one exact literal body", () => {
     const body = [frame("SEND", "Paris."), task("Answered.")].join("\n");
     const parsed = PlurnkParser.parse([frame("EDIT (quoted.md)", body), task("Stored it.")].join("\n"));
     assert.deepEqual(errors(parsed), []);
@@ -116,7 +116,7 @@ test("{§whitespace-contract}: a text-only statement list is empty", () => {
 });
 
 // {§tier-entrypoints}
-test("parseStatements retains consecutive turns with independently chosen fence lengths", () => {
+test("{§disposition-anywhere} parseStatements retains consecutive turns with independently chosen fence lengths", () => {
     const source = "````SEND\nOne.\n````\n````WAIT\n````\n\n`````SEND\nTwo.\n`````\n`````WAIT\n`````";
     const parsed = PlurnkParser.parseStatements(source);
     assert.deepEqual(errors(parsed), []);
@@ -125,7 +125,7 @@ test("parseStatements retains consecutive turns with independently chosen fence 
 });
 
 // {§disposition-anywhere}
-test("operations after a disposition are admitted in authored order without a diagnostic", () => {
+test("{§fence-boundary} operations after a disposition are admitted in authored order without a diagnostic", () => {
     for (const op of ["WAIT"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
@@ -147,7 +147,7 @@ test("operations after a disposition are admitted in authored order without a di
 });
 
 // {§fence-boundary} {§disposition-anywhere}
-test("literal examples inside a SEND stay literal while a KILL after WAIT is admitted", () => {
+test("{§tier-entrypoints} literal examples inside a SEND stay literal while a KILL after WAIT is admitted", () => {
     const body = "Example:\n" + frame("KILL (notes.md)", null);
     const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained."), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
     assert.deepEqual(errors(parsed), []);
@@ -157,7 +157,7 @@ test("literal examples inside a SEND stay literal while a KILL after WAIT is adm
 });
 
 // {§tier-entrypoints}
-test("statement lists retain source order without inventing turn boundaries", () => {
+test("{§executor-js-spelling} statement lists retain source order without inventing turn boundaries", () => {
     const turn = [frame("KILL (log:///1/1/1/READ)", null), task("Continue.")].join("\n");
     const parsed = PlurnkParser.parseStatements(turn + "\n" + turn);
     assert.deepEqual(errors(parsed), []);
@@ -167,7 +167,7 @@ test("statement lists retain source order without inventing turn boundaries", ()
     assert.deepEqual(ops(unfinished).map(writtenOp), ["KILL", "WAIT", "READ"]);
 });
 
-test("prose without executable fences is not a program", () => {
+test("{§executor-js-spelling} prose without executable fences is not a program", () => {
     const parsed = PlurnkParser.parse("First consider the request.\nThen send the answer.");
     assert.equal(ops(parsed).length, 0);
     assert.ok(errors(parsed).length > 0);

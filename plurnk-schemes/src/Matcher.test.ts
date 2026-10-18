@@ -41,7 +41,7 @@ const doc = [
     "delta foo foo",    // 4 — two hits on one line (dedup)
 ].join("\n");
 
-test("matcher: returns deduplicated readable-text regions", async () => {
+test("{§matcher-dispatch} matcher: returns deduplicated readable-text regions", async () => {
     const mts = stubMimetypes(async () => [
         { regions: at(2, 7, 10), matched: "foo" },
         { regions: at(4, 7, 10), matched: "foo" },
@@ -56,7 +56,7 @@ test("matcher: returns deduplicated readable-text regions", async () => {
     assert.equal(r.body, undefined);
 });
 
-test("matcher: a multi-line span remains one range", async () => {
+test("{§matcher-dispatch} matcher: a multi-line span remains one range", async () => {
     const mts = stubMimetypes(async () => [{
         regions: [{
             startLine: 2,
@@ -77,7 +77,7 @@ test("matcher: a multi-line span remains one range", async () => {
     }]);
 });
 
-test("matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative", async () => {
+test("{§matcher-dispatch} matcher: passes the PARSED matcher to query (no re-parse), declared dialect authoritative", async () => {
     let seen: string | ParsedBodyMatcher | undefined;
     const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
     // {§matcher-dispatch} A regex body whose pattern `@foo` would classify as
@@ -87,7 +87,7 @@ test("matcher: passes the PARSED matcher to query (no re-parse), declared dialec
     assert.deepEqual(seen, { dialect: "regex", pattern: "@foo", flags: "g" });
 });
 
-test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", async () => {
+test("{§matcher-dispatch} matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", async () => {
     let seen: string | ParsedBodyMatcher | undefined;
     const mts = stubMimetypes(async (_input, matcher) => { seen = matcher; return []; });
     await Matcher.matchAgainstContent(
@@ -97,7 +97,7 @@ test("matcher: a structural dialect passes {dialect, pattern: raw} (no flags)", 
     assert.deepEqual(seen, { dialect: "jsonpath", pattern: "$.users[*].name" });
 });
 
-test("matcher: a locator-only match selects without fabricated coordinates", async () => {
+test("{§matcher-dispatch} matcher: a locator-only match selects without fabricated coordinates", async () => {
     const mts = stubMimetypes(async () => [{
         matched: 42,
         matching: "count(//item)",
@@ -111,7 +111,7 @@ test("matcher: a locator-only match selects without fabricated coordinates", asy
     assert.equal(r.body, undefined);
 });
 
-test("matcher: framework returns empty array → status 204", async () => {
+test("{§matcher-dispatch} matcher: framework returns empty array → status 204", async () => {
     const mts = stubMimetypes(async () => []);
     const r = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.equal(r.status, 204);
@@ -125,7 +125,7 @@ test("{§matcher-dispatch} enclosing evidence is not promoted to an exact select
     assert.deepEqual(r.matches, [{ locator: "//name", enclosingRegion: at(2, 1, 15)[0] }]);
 });
 
-test("matcher: structural hit exposes its canonical locator as metadata", async () => {
+test("{§matcher-dispatch} matcher: structural hit exposes its canonical locator as metadata", async () => {
     const json = ['{', '  "users": [', '    { "name": "Alice" },', '    { "name": "Bob" }', '  ]', '}'].join("\n");
     const mts = stubMimetypes(async () => [
         { regions: at(3, 7, 22), matched: "Alice", matching: "$.users[0].name" },
@@ -147,7 +147,7 @@ test("matcher: structural hit exposes its canonical locator as metadata", async 
     ]);
 });
 
-test("matcher: footprint-less values do not become retrieval content", async () => {
+test("{§matcher-dispatch} matcher: footprint-less values do not become retrieval content", async () => {
     const mts = stubMimetypes(async () => [
         { matched: { name: "Alice", role: "admin" } },
         { matched: "two\nlines" },
@@ -160,7 +160,7 @@ test("matcher: footprint-less values do not become retrieval content", async () 
     assert.equal(r.body, undefined);
 });
 
-test("matcher: malformed extension evidence fails at the adapter boundary", async () => {
+test("{§matcher-dispatch} matcher: malformed extension evidence fails at the adapter boundary", async () => {
     const mts = stubMimetypes(async () => [{
         matched: "broken",
         regions: [{
@@ -176,7 +176,7 @@ test("matcher: malformed extension evidence fails at the adapter boundary", asyn
     );
 });
 
-test("matcher: UnsupportedDialectError → 415", async () => {
+test("{§problems-schemes} matcher: UnsupportedDialectError → 415", async () => {
     const mts = stubMimetypes(async () => {
         throw new UnsupportedDialectError({
             mimetype: "image/png", dialect: "regex", reason: "binary content",
@@ -190,7 +190,7 @@ test("matcher: UnsupportedDialectError → 415", async () => {
     assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype."); // {§problems-schemes}
 });
 
-test("matcher: InvalidExpressionError → 400", async () => {
+test("{§problems-schemes} matcher: InvalidExpressionError → 400", async () => {
     const mts = stubMimetypes(async () => {
         throw new InvalidExpressionError({
             dialect: "regex", expression: "/[/", cause: new Error("unclosed bracket"),
@@ -211,7 +211,7 @@ test("matcher: InvalidExpressionError → 400", async () => {
     assert.equal("expression" in (r.problem ?? {}), false);
 });
 
-test("matcher: QueryParseFailureError → 203 fallback with raw content + reason", async () => {
+test("{§matcher-dispatch} matcher: QueryParseFailureError → 203 fallback with raw content + reason", async () => {
     const mts = stubMimetypes(async () => {
         throw new QueryParseFailureError({
             mimetype: "application/json", cause: new SyntaxError("unexpected token } in JSON"),
@@ -227,7 +227,7 @@ test("matcher: QueryParseFailureError → 203 fallback with raw content + reason
     assert.ok((r.reason ?? "").length > 0);
 });
 
-test("matcher: unexpected error propagates (not caught)", async () => {
+test("{§matcher-dispatch} matcher: unexpected error propagates (not caught)", async () => {
     const mts = stubMimetypes(async () => {
         throw new Error("something else entirely");
     });
@@ -272,7 +272,7 @@ test("{§mimetype-content-query} matcher receives XPath source coordinates throu
     ]);
 });
 
-test("matcher: a regex match row carries its matched text; structural dialects do not", async () => {
+test("{§matcher-dispatch} matcher: a regex match row carries its matched text; structural dialects do not", async () => {
     const mts = stubMimetypes(async () => [{ regions: at(2, 7, 10), matched: "foo", text: "foo" }]);
     const regex = await Matcher.matchAgainstContent(regexBody, doc, "text/markdown", mts);
     assert.deepEqual(regex.matches, [{ region: { startLine: 2, startColumn: 7, endLine: 2, endColumn: 10 }, matched: "foo" }]);

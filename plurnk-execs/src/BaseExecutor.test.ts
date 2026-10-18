@@ -73,7 +73,7 @@ test("BaseExecutor.run: writes to declared channel and closes it", async () => {
     assert.equal(h.events.length, 0);
 });
 
-test("BaseExecutor.run: matched tag flows through to the executor", async () => {
+test("{§executor-output-address} BaseExecutor.run: matched tag flows through to the executor", async () => {
     const ex = new EchoExecutor({ runtime: "images", glyph: "🖼" });
     const h = harness();
     await ex.run(h.args({ runtime: "images", body: "golden retriever" }));

@@ -43,7 +43,7 @@ const fullEnv = Object.freeze({
     OPENAI_BASE_URL: "http://x",
 });
 
-test("instantiateProvider: cataloged name resolves in-framework, no scan, no import", async () => {
+test("{§provider-resolution} instantiateProvider: cataloged name resolves in-framework, no scan, no import", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -60,7 +60,7 @@ test("instantiateProvider: cataloged name resolves in-framework, no scan, no imp
     mock.restoreAll();
 });
 
-test("instantiateProvider: an installed AI SDK provider resolves through discovery", async () => {
+test("{§provider-resolution} instantiateProvider: an installed AI SDK provider resolves through discovery", async () => {
     resetDiscoveryCache();
     const calls: unknown[] = [];
     const p = await instantiateProvider("acme", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "model-a",
@@ -74,7 +74,7 @@ test("instantiateProvider: an installed AI SDK provider resolves through discove
     assert.deepEqual(calls, ["@acme/ai-provider", "model-a"]);
 });
 
-test("instantiateProvider: a selected extension composes its static and runtime attribution sources", async () => {
+test("{§provider-resolution} instantiateProvider: a selected extension composes its static and runtime attribution sources", async () => {
     resetDiscoveryCache();
     const context: ExtensionAttributionContext = {
         workspaceId: "workspace",
@@ -104,7 +104,7 @@ test("instantiateProvider: a selected extension composes its static and runtime 
     assert.deepEqual(provider.attributions?.(context), ["runtime:provider", "static:provider"]);
 });
 
-test("instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe", async () => {
+test("{§provider-resolution} instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe", async () => {
     resetDiscoveryCache();
     const calls: string[] = [];
     mock.method(globalThis, "fetch", async (url: string) => {
@@ -119,7 +119,7 @@ test("instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe"
     mock.restoreAll();
 });
 
-test("instantiateProvider: a per-alias baseUrl drives the standard openai probe to the override host", async () => {
+test("{§provider-resolution} instantiateProvider: a per-alias baseUrl drives the standard openai probe to the override host", async () => {
     resetDiscoveryCache();
     const probed: string[] = [];
     mock.method(globalThis, "fetch", async (url: string) => {
@@ -134,7 +134,7 @@ test("instantiateProvider: a per-alias baseUrl drives the standard openai probe 
     mock.restoreAll();
 });
 
-test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {
+test("{§provider-resolution} instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {
     resetDiscoveryCache();
     const imports: string[] = [];
     const p = await instantiateProvider("foo", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096" }, "m",
@@ -144,7 +144,7 @@ test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to it
     assert.deepEqual(imports, ["@acme/acme-provider-foo"]); // not an @plurnk/ specifier
 });
 
-test("instantiateProvider: a cataloged name is authoritative — a scanned package of the same name is shadowed", async () => {
+test("{§provider-resolution} instantiateProvider: a cataloged name is authoritative — a scanned package of the same name is shadowed", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -159,7 +159,7 @@ test("instantiateProvider: a cataloged name is authoritative — a scanned packa
     mock.restoreAll();
 });
 
-test("instantiateProvider: unknown provider throws — no standard, no discovered package", async () => {
+test("{§provider-resolution} instantiateProvider: unknown provider throws — no standard, no discovered package", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("nope", { ...fullEnv }, "m", async () => ({}), mapOf({})),
@@ -167,7 +167,7 @@ test("instantiateProvider: unknown provider throws — no standard, no discovere
     );
 });
 
-test("instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown'", async () => {
+test("{§provider-resolution} instantiateProvider: an untrusted (skipped) provider gives a precise error, not 'unknown'", async () => {
     resetDiscoveryCache();
     const imports: string[] = [];
     await assert.rejects(
@@ -179,7 +179,7 @@ test("instantiateProvider: an untrusted (skipped) provider gives a precise error
     assert.deepEqual(imports, []); // never imported an untrusted package
 });
 
-test("instantiateProvider: discovered package must export an AI SDK provider", async () => {
+test("{§provider-resolution} instantiateProvider: discovered package must export an AI SDK provider", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("broken", { ...fullEnv }, "m",
@@ -189,7 +189,7 @@ test("instantiateProvider: discovered package must export an AI SDK provider", a
     );
 });
 
-test("instantiateProvider: a discovered package whose import throws fails hard, naming the specifier and preserving the cause", async () => {
+test("{§provider-resolution} instantiateProvider: a discovered package whose import throws fails hard, naming the specifier and preserving the cause", async () => {
     resetDiscoveryCache();
     const cause = new Error("ERR_MODULE_NOT_FOUND");
     await assert.rejects(
@@ -226,7 +226,7 @@ test("instantiateProvider: per-alias knobs scope through to the provider ({§pro
     mock.restoreAll();
 });
 
-test("public construction applies the package floor to a sparse consumer environment", async () => {
+test("{§provider-resolution} public construction applies the package floor to a sparse consumer environment", async () => {
     const provider = await instantiateProvider(
         "fireworks-ai",
         { FIREWORKS_API_KEY: "fw" },
@@ -309,7 +309,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     mock.restoreAll();
 });
 
-test("an explicit malformed cache-affinity override still fails at its owning contract", async () => {
+test("{§provider-resolution} an explicit malformed cache-affinity override still fails at its owning contract", async () => {
     await assert.rejects(
         () => instantiateProvider(
             "fireworks-ai",
@@ -325,7 +325,7 @@ test("an explicit malformed cache-affinity override still fails at its owning co
     );
 });
 
-test("a catalog provider with unknown model metadata never falls through to extension discovery", async () => {
+test("{§provider-resolution} a catalog provider with unknown model metadata never falls through to extension discovery", async () => {
     let scanned = false;
     await assert.rejects(
         () => instantiateProvider(
@@ -350,7 +350,7 @@ test("a catalog provider with unknown model metadata never falls through to exte
     assert.equal(scanned, false);
 });
 
-test("explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
+test("{§provider-resolution} explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
     let scanned = false;
     const provider = await instantiateProvider(
         "cloudflare-workers-ai",
@@ -425,7 +425,7 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
     ]);
 });
 
-test("two Fireworks aliases independently select default and priority service tiers", async () => {
+test("{§provider-resolution} two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
     const headers: Headers[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
@@ -470,7 +470,7 @@ test("two Fireworks aliases independently select default and priority service ti
     mock.restoreAll();
 });
 
-test("loadActiveProvider: resolves the alias cascade to an installed AI SDK provider", async () => {
+test("{§provider-resolution} loadActiveProvider: resolves the alias cascade to an installed AI SDK provider", async () => {
     resetDiscoveryCache();
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096", PLURNK_MODEL: "custom", PLURNK_MODEL_custom: "acme/model-a" } as NodeJS.ProcessEnv;
     const p = await loadActiveProvider(env,
@@ -479,7 +479,7 @@ test("loadActiveProvider: resolves the alias cascade to an installed AI SDK prov
     assert.equal(p.model, "model-a");
 });
 
-test("loadActiveProvider: throws a named error when no alias is active", async () => {
+test("{§provider-resolution} loadActiveProvider: throws a named error when no alias is active", async () => {
     await assert.rejects(
         () => loadActiveProvider({ ...fullEnv }),
         /set PLURNK_MODEL to a declared alias or provider\/model route/,
