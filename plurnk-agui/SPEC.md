@@ -284,33 +284,21 @@ sequence.
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
-§agui-status-children **Children are counted by the daemon, never inferred.** `status.children`
-is the bound Worker's alive direct children — `queued`, `running`, or `parked` under
-{§loop-lifecycle-vocabulary}; a parked child still owes a result and is exactly the one a user
-hops to. The module computes it from `ApplicationPort.listWorkers({ parentWorkerId })` for every
-snapshot and whole-gauge replacement, and reads it again after another worker's `loop/terminated` or
-`loop/packet`, after any `turn_generated` notice, or after the bound Worker's own `WORK`, `FORK`, or
-`KILL` row lands. It republishes `STATE_DELTA /plurnk/status/children` only when the count
-differs from the one the Run's client holds (its snapshot's, its latest whole-gauge replacement's,
-then each delta's), and never before the snapshot: a change that raced the snapshot is published
-after it. Clients render the number as their child
-indicator and never poll the directory to keep it honest. Topology is navigation: the client
-hops to a child to speak to it; watching a child's rows is the delegation observation a Run
-asks for ({§agui-delegation-observation}).
+§agui-status-children **Children are counted by the daemon, never inferred.** `status.children` is the bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result and is exactly the one a user hops to. Clients render the number as their child indicator and never poll the directory to keep it honest. Topology is navigation: the client hops to a child to speak to it; watching a child's rows is the delegation observation a Run asks for ({§agui-delegation-observation}).
 
-§agui-status-spend **The spend is the daemon's, from the Worker's beginning, republished, never promoted.**
-`status.spend` is `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting}
-projection over every settled request the bound Worker and its descendants have made since the Worker
-began ({§methods-worker-accounting}), without its request list — `requests` counts them, so zero
-requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through
-verbatim ({§agui-numbers-passthrough}). A fresh observer therefore starts from the Worker's spend so far.
-The module reads it beside `children`, at the same moments, and republishes `STATE_DELTA
-/plurnk/status/spend` under the same rule ({§agui-status-children}): only when the projection differs
-from the one the Run's client holds, never before the snapshot; a `turn_generated` notice is the moment
-a turn's spend settles. Descendant notices, packets and terminals themselves
-are not promoted ({§agui-delegation-observation}); one loop's own `turn_generated` and terminal-record
-accounting keep their meaning. With the lifecycle beat ({§loop-status-notice}) a parked parent's clock
-and its children's cost both move.
+| Fact | Rule |
+| --- | --- |
+| Computed | from `ApplicationPort.listWorkers({ parentWorkerId })` for every snapshot and whole-gauge replacement |
+| Read again | after another worker's `loop/terminated` or `loop/packet`, after any `turn_generated` notice, or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands |
+| Republished | as `STATE_DELTA /plurnk/status/children` only when the count differs from the one the Run's client holds (its snapshot's, its latest whole-gauge replacement's, then each delta's), and never before the snapshot: a change that raced the snapshot is published after it |
+
+§agui-status-spend **The spend is the daemon's, from the Worker's beginning, republished, never promoted.** `status.spend` is `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection over every settled request the bound Worker and its descendants have made since the Worker began ({§methods-worker-accounting}), without its request list — `requests` counts them, so zero requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through verbatim ({§agui-numbers-passthrough}). A fresh observer therefore starts from the Worker's spend so far.
+
+| Fact | Rule |
+| --- | --- |
+| Read and republished | beside `children`, at the same moments, as `STATE_DELTA /plurnk/status/spend` under the same rule ({§agui-status-children}): only when the projection differs from the one the Run's client holds, never before the snapshot; a `turn_generated` notice is the moment a turn's spend settles |
+| Not promoted | descendant notices, packets and terminals themselves ({§agui-delegation-observation}); one loop's own `turn_generated` and terminal-record accounting keep their meaning |
+| The lifecycle beat ({§loop-status-notice}) | a parked parent's clock and its children's cost both move |
 
 §agui-status-timing **A Loop's timing is the daemon's, and it travels with the Loop's identity.**
 `status.claimedAt` is when the latest Loop first ran ({§loop-claim-latency}) and `status.terminatedAt`
@@ -767,22 +755,14 @@ lineage or commons attention ({§actor-boundary}), or under the delegation
 observation the Run asked for ({§agui-delegation-observation}). AG-UI does not
 synthesize a second topology by rebroadcasting sibling rows.
 
-§agui-delegation-observation **A message Run may observe its delegation.** A
-message Run whose `forwardedProps.plurnk.descendants` is `true` also receives the
-rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker
-beneath its bound Worker in Core's authoritative topology. A row of a loop that a call in view
-opened is its subagent run's ({§agui-subagents}); every other descendant row is a foreign row,
-`CUSTOM plurnk.ambient` ({§agui-ambient}), and every descendant stream event is `plurnk.stream`.
-None enters the bound Worker's own steps or reasoning. Each descendant is introduced once with its
-identity and generation `{workerId, name, parentWorkerId, depth}`, depth counted from the bound Worker,
-so a client renders them without a second directory read: by the metadata of its subagent's
-`SUBAGENT_STARTED` ({§agui-subagents}), or, when its first event belongs to no subagent, by a
-`CUSTOM plurnk.descendant` before that event. A workspace's events reach the Run in the order the daemon published them:
-while a descendant's topology or loop is being read, every later event waits for it. A
-descendant's terminal never settles this Run, and its conclusion reaches the bound Worker as its
-parent's collect row; a descendant's open stream never defers this Run's settlement; a sibling or
-unrelated Worker's events never arrive. Without the request, the Run observes its bound Worker
-alone.
+§agui-delegation-observation **A message Run may observe its delegation.** A message Run whose `forwardedProps.plurnk.descendants` is `true` also receives the rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker beneath its bound Worker in Core's authoritative topology. None enters the bound Worker's own steps or reasoning. Without the request, the Run observes its bound Worker alone.
+
+| Fact | Rule |
+| --- | --- |
+| A descendant row | a row of a loop that a call in view opened is its subagent run's ({§agui-subagents}); every other descendant row is a foreign row, `CUSTOM plurnk.ambient` ({§agui-ambient}), and every descendant stream event is `plurnk.stream` |
+| Introduction | each descendant is introduced once with its identity and generation `{workerId, name, parentWorkerId, depth}`, depth counted from the bound Worker, so a client renders them without a second directory read: by the metadata of its subagent's `SUBAGENT_STARTED` ({§agui-subagents}), or, when its first event belongs to no subagent, by a `CUSTOM plurnk.descendant` before that event |
+| Order | a workspace's events reach the Run in the order the daemon published them: while a descendant's topology or loop is being read, every later event waits for it |
+| Settlement | a descendant's terminal never settles this Run, and its conclusion reaches the bound Worker as its parent's collect row; a descendant's open stream never defers this Run's settlement; a sibling or unrelated Worker's events never arrive |
 
 §agui-subagents **An observed delegation is a subagent run of the call that opened it.** Under
 {§agui-delegation-observation}, a descendant loop is a subagent of the Run when a call in view
@@ -905,32 +885,23 @@ never redirected; any other malformed request is redirected with its `error` and
 
 Every request under the authorization server's paths must name this daemon: a `Host` that is neither loopback nor the issuer's host is refused at 421 before any route, so a name a page rebinds to the loopback address reaches nothing. Every page it serves carries `frame-ancestors 'none'`.
 
-§agui-oauth-documents **The authorization server's documents are plain semantic HTML.** Every page it
-shows a person (sign-in, a refused password, too many attempts, no password, consent, a refused
-request, and the session page) is HTML with no script and no class: a `main` holding one `article`
-whose `header` carries the `h1`, paragraphs, and native form controls each named by its `label`; a
-page that reports a fault puts a warning glyph (`role="img"`, `aria-label="Warning"`) in its heading,
-and a refused password is an alert (`role="alert"`). A page carries its own small inline style,
-readable alone in either color scheme. On a request whose `client_id` names a module client that
-registered a stylesheet ({§credential-module-client}), the page links that stylesheet in place of its
-own style, and its policy admits same-origin styles only (`style-src 'self'`); the session page takes
-an optional `client_id` for the same purpose and carries it through its sign-out. A request can name a
-registered client and nothing else: no page links a stylesheet a request supplies, and a client that
-is unknown, not a module's or registered none gets the standalone page.
-`authorizationDocumentSpecimens()` renders every one of these documents, for a consumer whose
-production CSS pruning must keep the selectors they use.
+§agui-oauth-documents **The authorization server's documents are plain semantic HTML.** Every page it shows a person (sign-in, a refused password, too many attempts, no password, consent, a refused request, and the session page) is HTML with no script and no class. `authorizationDocumentSpecimens()` renders every one of these documents, for a consumer whose production CSS pruning must keep the selectors they use.
 
-§agui-oauth-login **The operator signs in at the authorization endpoint.** The sign-in page is plain
-HTML with no script: it names the client and the scopes it asks for and posts the operator's
-shared password, `PLURNK_PASS`, compared in constant time; a wrong password re-presents the form at
-401; the right one establishes the browser's session ({§agui-oauth-session}) and redirects with the
-code and the `state`. There is one local operator: the password selects no account, and the
-session's subject is the operator's whatever the password is, so changing it changes who can sign
-in, never who they are or what they own. `PLURNK_PASS` ships empty: while it is empty, every
-browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing,
-and client credentials are unaffected. The daemon does not throttle failed attempts: limiting
-requests by their real source is the job of a front such as the example nginx configuration
-({§nginx-example}), which sees addresses a proxied daemon cannot.
+| Fact | Rule |
+| --- | --- |
+| Structure | a `main` holding one `article` whose `header` carries the `h1`, paragraphs, and native form controls each named by its `label`; a page that reports a fault puts a warning glyph (`role="img"`, `aria-label="Warning"`) in its heading, and a refused password is an alert (`role="alert"`) |
+| Style | a page carries its own small inline style, readable alone in either color scheme |
+| A module client's stylesheet | on a request whose `client_id` names a module client that registered a stylesheet ({§credential-module-client}), the page links that stylesheet in place of its own style, and its policy admits same-origin styles only (`style-src 'self'`); the session page takes an optional `client_id` for the same purpose and carries it through its sign-out |
+| Any other request | can name a registered client and nothing else: no page links a stylesheet a request supplies, and a client that is unknown, not a module's or registered none gets the standalone page |
+
+§agui-oauth-login **The operator signs in at the authorization endpoint.** The sign-in page is plain HTML with no script: it names the client and the scopes it asks for and posts the operator's shared password, `PLURNK_PASS`, compared in constant time. There is one local operator: the password selects no account, and the session's subject is the operator's whatever the password is, so changing it changes who can sign in, never who they are or what they own.
+
+| Password | Result |
+| --- | --- |
+| Wrong | the form again, at 401 |
+| Right | the browser's session ({§agui-oauth-session}) and a redirect with the code and the `state` |
+| Empty (`PLURNK_PASS` ships empty) | every browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing; client credentials are unaffected |
+| Many attempts | the daemon does not throttle failed attempts: limiting requests by their real source is the job of a front such as the example nginx configuration ({§nginx-example}), which sees addresses a proxied daemon cannot |
 
 §agui-oauth-tokens **Credentials are opaque and bounded.** An access token lives
 `PLURNK_AGUI_ACCESS_TTL_SEC`, a refresh token `PLURNK_AGUI_REFRESH_TTL_SEC`; both are random strings the
@@ -976,7 +947,7 @@ address is the daemon's.
 | Tag | Promise |
 | --- | --- |
 | {§agui-run-input} | A Run's input is what its conversation doesn't hold. |
-| {§agui-run-source} | The run's user message is the causal actor behind its inbound SEND ({§message-causal-source}). |
+| {§agui-run-source} | The run's user message is the causal actor behind its inbound SEND |
 | {§agui-http-authorization} | `/agui` is a protected resource of the daemon's authority. |
 | {§agui-cors} | Every response carries `access-control-allow-origin` with the value of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows… |
 | {§agui-http-failure} | Failures before SSE headers are sent use `application/problem+json` with exact RFC 9457 Problem Details. |
@@ -1008,23 +979,15 @@ A new message that is not non-empty text is refused, 400 `user-message-text-requ
 the model-loop seam supports it deliberately. A client's address that core holds with other words is core's refusal,
 422 `message-address-reused`. A connection submits nothing ({§agui-owner-connection}).
 
-§agui-run-source The run's user message is the causal actor behind its inbound SEND
-({§message-causal-source}). The module supplies its canonical address as the loop's `source`:
-`agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment
-URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}):
-`operator` for the operator's own credentials, a declared client's id for its own, and `anonymous`
-when the listener authenticates nothing. The frontend's
-self-identification never enters the address ({§client-metadata}). The arrival row renders that
-source, so a model tells an operator's message from a worker's or a schedule's by address
-rather than by absence. Message identity belongs to the thread, not a transport run;
-the run ID remains envelope provenance. Accepted text remains available through ordinary
-READ, FIND and COPY after log curation, run conclusion, disconnect and daemon restart.
-`loop.inject` normalizes its prompt into a user message with a server-generated message ID
-and the injecting Run's thread/envelope; it follows this same source and reply contract.
-The source is immutable: EDIT, MOVE and KILL cannot mutate an accepted message.
-SEND to this exact address answers this message under {§send-response-receipt}; it does
-not create another inbound request. Standard AG-UI assistant messages and history replay
-carry the reply, independently of whether the loop can yet conclude.
+§agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}): `operator` for the operator's own credentials, a declared client's id for its own, and `anonymous` when the listener authenticates nothing. The frontend's self-identification never enters the address ({§client-metadata}).
+
+| Fact | Rule |
+| --- | --- |
+| The arrival row | renders that source, so a model tells an operator's message from a worker's or a schedule's by address rather than by absence |
+| Identity | message identity belongs to the thread, not a transport run; the run ID remains envelope provenance; the source is immutable, and EDIT, MOVE and KILL cannot mutate an accepted message |
+| Durability | accepted text remains available through ordinary READ, FIND and COPY after log curation, run conclusion, disconnect and daemon restart |
+| `loop.inject` | normalizes its prompt into a user message with a server-generated message ID and the injecting Run's thread/envelope; it follows this same source and reply contract |
+| A SEND to this exact address | answers this message under {§send-response-receipt}; it does not create another inbound request; standard AG-UI assistant messages and history replay carry the reply, independently of whether the loop can yet conclude |
 
 §agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. The principal of the admitted request is the credential's subject ({§agui-run-source}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
 
