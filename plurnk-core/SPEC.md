@@ -5541,8 +5541,9 @@ not from a live process or a cached worker environment.
 | COPY | carries a value out |
 | EDIT | sets the whole value through the family's `replace` for the Worker: a write is the Worker's own layer, never the workspace's or the operator's (the runtime worker keeps none, so a person's write is the workspace's, {§actor-boundary-client-operations}) |
 | KILL | retires the name from the Worker's commands: `remove` for an entry the Worker owns, which restores an inherited value, `disable` for an inherited one, which keeps its definition |
-
-A value has no lines: a line scope on EDIT or KILL is `value-whole` (400), and a pattern on EDIT is the dispatcher's refusal for any scheme without text scopes; a target that is not `env:///NAME` is `name-invalid` (400), or `target-required` (400) when absent; a name not in effect is `entry-not-found` (404) on READ and KILL alike.
+| a line scope on EDIT or KILL | `value-whole` (400): a value has no lines; a pattern on EDIT is the dispatcher's refusal for any scheme without text scopes |
+| a target that is not `env:///NAME` | `name-invalid` (400), or `target-required` (400) when absent |
+| a name not in effect | `entry-not-found` (404) on READ and KILL alike |
 
 §functionality-scope **A family declares its supported scopes.** Skills, MCP, members
 and outbound A2A describe what exists in a **workspace**: a capability, resident or installable,
