@@ -36,49 +36,19 @@ does not recompute them.
   started ({§module-http-mounts}). This module mounts `/agui` at `start`, so no
   request reaches it before its port is installed; from `stop` it answers `503
   service-stopping`.
-- §agui-thread-binding **An AG-UI thread represents a worker; workspace selection is a Plurnk extension.**
-  AG-UI itself defines no workspace. Without a workspace selection, an opaque thread string
-  resolves through core's `agui` worker reference ({§worker-external-reference}). Its first
-  worker-creating Run allocates one ordinary folderless workspace and model worker atomically;
-  subsequent Runs reuse that durable association, across reconnects, workspace rename, and daemon
-  restart. Inspection, resume and workspace actions alone never allocate an opaque conversation;
-  an unknown thread is `404 thread-not-found`. Neither names nor approval owners are lookup keys.
-  Qualified thread addresses resolve directly under {§agui-thread-address}.
-  An explicit `forwardedProps.plurnk.workspace` selects a workspace by exact name: attach if it exists, create with that name
-  otherwise when the Run permits creation. An earlier binding serves only while the workspace
-  still carries that name. After a rename, the old name resolves afresh and the new one reaches
-  the renamed workspace. Under this binding, `threadId` names a worker by its immutable name and is never
-  compared with the workspace's name. A rename preserves workers and their names; subsequent
-  requests must select the workspace's new name. The worker name resolves among model-origin workers only (forks and earlier workers are
-  addressable as threads; the runtime actor `_plurnk` is never bound). A worker comes into being by an act addressed to it or by its owner's session attaching
-  to it ({§agui-action-binding}): the first such Run creates the worker the thread names via
-  `createWorker`, and a thread named after the runtime actor fails at minting. Reading it,
-  watching it passively, or acting on the workspace never creates one. A client that names no particular worker supplies its own default name. A name the
-  daemon no longer holds (a fresh database, a deleted
-  worker) is minted anew by the next act addressed to it, with no history; the run-start status
-  gauge then reports `loopId: null` where the previous run's reported a loop, which is how a
-  client tells a new worker from a resumed one. The core workspace envelope carries only the workspace ({§methods-rebind}); AG-UI owns
-  the per-thread worker binding.
-  Process-local bindings key on the workspace's identity and the `threadId`; equal thread names
-  in different workspaces never share an envelope, Worker, replay, state, or active Run.
-  `workspace.create` selects its `name` literally under the same acquisition rule; a workspace
-  label resembling a qualified thread address is still a label, not an instruction to attach by ID.
-  Concurrent first requests acquire one envelope and worker binding. Workspace
-  acquisition is serialized across threads, retaining each request's create/attach contract;
-  the creating request supplies settings, and other threads attach that workspace. Failed acquisitions retain their cause and leave no failed
-  cache entry preventing a later retry. Explicit Core creation retains its name-conflict
-  semantics; protocol binding is not a second creation request.
-  `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker.
-  A Run that may create its worker, or that binds none, may create the workspace; every
-  other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the
-  client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace
-  minted after the name and answered there.
-  `log.read` and `entry.read` default there and may explicitly select another workspace worker.
-  Extended context persists across AG-UI Runs because the worker's log does.
-  A reply to any retained thread reference of the bound worker, its qualified address, or its
-  explicit workspace-selected name is speech in that worker's conversation. This changes neither
-  the recorded message address nor its approval owner. Arrivals from another thread spelling keep
-  their log-coordinate identities and source labels ({§agui-snapshot}).
+- §agui-thread-binding **An AG-UI thread represents a worker; workspace selection is a Plurnk extension.** AG-UI itself defines no workspace. The core workspace envelope carries only the workspace ({§methods-rebind}); AG-UI owns the per-thread worker binding. `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker; `log.read` and `entry.read` default there and may explicitly select another workspace worker. Extended context persists across AG-UI Runs because the worker's log does.
+
+  | Fact | Rule |
+  | --- | --- |
+  | An opaque thread | without a workspace selection, an opaque thread string resolves through core's `agui` worker reference ({§worker-external-reference}); its first worker-creating Run allocates one ordinary folderless workspace and model worker atomically, and subsequent Runs reuse that durable association, across reconnects, workspace rename, and daemon restart; inspection, resume and workspace actions alone never allocate an opaque conversation, and an unknown thread is `404 thread-not-found`; neither names nor approval owners are lookup keys; qualified thread addresses resolve directly under {§agui-thread-address} |
+  | An explicit `forwardedProps.plurnk.workspace` | selects a workspace by exact name: attach if it exists, create with that name otherwise when the Run permits creation; an earlier binding serves only while the workspace still carries that name — after a rename, the old name resolves afresh and the new one reaches the renamed workspace; a rename preserves workers and their names, and subsequent requests must select the workspace's new name; under this binding, `threadId` names a worker by its immutable name and is never compared with the workspace's name |
+  | The worker name | resolves among model-origin workers only (forks and earlier workers are addressable as threads; the runtime actor `_plurnk` is never bound); a worker comes into being by an act addressed to it or by its owner's session attaching to it ({§agui-action-binding}): the first such Run creates the worker the thread names via `createWorker`, and a thread named after the runtime actor fails at minting; reading it, watching it passively, or acting on the workspace never creates one; a client that names no particular worker supplies its own default name |
+  | A name the daemon no longer holds | (a fresh database, a deleted worker) is minted anew by the next act addressed to it, with no history; the run-start status gauge then reports `loopId: null` where the previous run's reported a loop, which is how a client tells a new worker from a resumed one |
+  | Process-local bindings | key on the workspace's identity and the `threadId`; equal thread names in different workspaces never share an envelope, Worker, replay, state, or active Run; `workspace.create` selects its `name` literally under the same acquisition rule, and a workspace label resembling a qualified thread address is still a label, not an instruction to attach by ID |
+  | Concurrent first requests | acquire one envelope and worker binding; workspace acquisition is serialized across threads, retaining each request's create/attach contract: the creating request supplies settings, and other threads attach that workspace; failed acquisitions retain their cause and leave no failed cache entry preventing a later retry; explicit Core creation retains its name-conflict semantics, and protocol binding is not a second creation request |
+  | Workspace creation | a Run that may create its worker, or that binds none, may create the workspace; every other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace minted after the name and answered there |
+  | A reply | to any retained thread reference of the bound worker, its qualified address, or its explicit workspace-selected name is speech in that worker's conversation; this changes neither the recorded message address nor its approval owner; arrivals from another thread spelling keep their log-coordinate identities and source labels ({§agui-snapshot}) |
+
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
   `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, interrupt outcomes, and `RunAgentInput.resume`
   follow the official `@ag-ui/core` schemas. PLURNK does not maintain a parallel client
@@ -416,23 +386,15 @@ every other daemon surface.
   their operation owners are live and are presented as interrupts when the owning thread is
   resumed; a days-old question is discoverable, never converted into a mystery hang.
 
-- §agui-sync **Synchronization is an inference-free AG-UI Run.**
-  A Run that carries no new message, action or interrupt resume synchronizes ({§agui-run-input}); its messages
-  are the client's copy. A passive observation (`forwardedProps.plurnk.control`
-  absent or false) resolves an existing worker under {§agui-thread-binding}, creates
-  nothing and claims nothing. An owner's control observation is the owner's session
-  attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}). It
-  emits the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then emits an authoritative
-  `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}). What reaches the Run while its log is
-  read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already
-  holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only
-  the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and
-  its result follow. A durable pending gate addressed to the
-  Run's thread ({§agui-worker-owner}) is re-presented through the standard terminate-resume contract,
-  passive or not; an active Loop remains observed through its
-  terminal; an idle worker emits `RUN_FINISHED`. Synchronization admits no prompt,
-  creates no turn, and performs no model inference. Disconnecting this observer never cancels
-  independently-owned work.
+- §agui-sync **Synchronization is an inference-free AG-UI Run.** A Run that carries no new message, action or interrupt resume synchronizes ({§agui-run-input}); its messages are the client's copy. Synchronization admits no prompt, creates no turn, and performs no model inference. Disconnecting this observer never cancels independently-owned work.
+
+  | Fact | Rule |
+  | --- | --- |
+  | A passive observation (`forwardedProps.plurnk.control` absent or false) | resolves an existing worker under {§agui-thread-binding}, creates nothing and claims nothing |
+  | An owner's control observation | the owner's session attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}) |
+  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then an authoritative `MESSAGES_SNAPSHOT` of the daemon-owned log ({§agui-snapshot}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
+  | A durable pending gate addressed to the Run's thread ({§agui-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not |
+  | An active Loop | remains observed through its terminal; an idle worker emits `RUN_FINISHED` |
 
 §agui-snapshot **A snapshot is the messages the live projection built**, in log order, under
 the live identities and with the same metadata ({§agui-plurnk-metadata}), each tool result after its call where the official reducer puts one that arrives
@@ -527,34 +489,17 @@ echoing the opaque `Interrupt.id` it answers.
 | A proposal of any other worker the owner reviews | Nothing: the Run holds no conversation of that worker | No `toolCallId` |
 | A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, and the request's `message` and `responseSchema` |
 
-A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its
-decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what
-the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and
-the decision is no result of its own. The operation's settlement answers it: the Run that holds the
-call receives a repeated `TOOL_CALL_START` and `TOOL_CALL_END` under the call's id carrying the settled
-facts, which the official reducer folds onto the call it holds, its arguments untouched, then the
-call's result, unless the operation opened an obligation, which what discharges it answers
-({§agui-call-result}). A snapshot holds a pending proposal as its call without a result
-({§agui-snapshot}), so a client that resumed holds exactly what a refreshed one builds. Separate
-presentations of one gate have separate interrupt IDs, so a resume addresses exactly the
-presentation its client holds ({§agui-run-disconnect}). Unknown presentations require
-rediscovery; pending proposals and interactions remain durable in Core. The module
-resolves the complete pending interrupt set for one worker, restores the thread's live projection
-state, and only then releases it. The pending Worker's persisted Worker and Loop remain the exact
-resolution identity. Owner-addressed gates route under {§agui-worker-owner}: when an owner's
-thread presents another worker's gate, its resume stays bound to that thread while
-releasing the exact requesting worker. Reconnect discovers pending gates from Core by recorded
-owner, not inferred ancestry. A terminal published after a
-descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot
-settle Run A before the interrupt is emitted. Concurrent descendant gates are
-presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
-Sibling and unrelated threads never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
-interrupt sets fails before any stopped operation is released. Mixing presentations or
-threads produces `interrupt-binding-invalid`; a connection closed before validated
-resolution produces `connection-closed` without releasing the stopped work.
-Loop terminals received while a resume is being validated or resolved are held:
-successful resolution delivers the bound Loop's terminal once; rejected resolution
-emits its exact `RUN_ERROR`, never success from the previously interrupted Loop.
+A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and the decision is no result of its own.
+
+| Fact | Rule |
+| --- | --- |
+| Settlement | the operation's settlement answers it: the Run that holds the call receives a repeated `TOOL_CALL_START` and `TOOL_CALL_END` under the call's id carrying the settled facts, which the official reducer folds onto the call it holds, its arguments untouched, then the call's result, unless the operation opened an obligation, which what discharges it answers ({§agui-call-result}) |
+| Snapshots | a snapshot holds a pending proposal as its call without a result ({§agui-snapshot}), so a client that resumed holds exactly what a refreshed one builds |
+| Presentations | separate presentations of one gate have separate interrupt IDs, so a resume addresses exactly the presentation its client holds ({§agui-run-disconnect}); unknown presentations require rediscovery, and pending proposals and interactions remain durable in Core; the module resolves the complete pending interrupt set for one worker, restores the thread's live projection state, and only then releases it; the pending Worker's persisted Worker and Loop remain the exact resolution identity |
+| Owner-addressed gates | route under {§agui-worker-owner}: when an owner's thread presents another worker's gate, its resume stays bound to that thread while releasing the exact requesting worker; reconnect discovers pending gates from Core by recorded owner, not inferred ancestry |
+| Ordering | a terminal published after a descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot settle Run A before the interrupt is emitted; concurrent descendant gates are presented one Worker at a time, and resolving one re-surfaces the next without admitting a new prompt; sibling and unrelated threads never receive one another's gates |
+| An invalid resume | one containing foreign, partial, unknown, duplicate, or multi-worker interrupt sets fails before any stopped operation is released; mixing presentations or threads produces `interrupt-binding-invalid`; a connection closed before validated resolution produces `connection-closed` without releasing the stopped work |
+| Terminals during a resume | loop terminals received while a resume is being validated or resolved are held: successful resolution delivers the bound Loop's terminal once; rejected resolution emits its exact `RUN_ERROR`, never success from the previously interrupted Loop |
 
 §agui-gate-deferral **A gate waits for the reasoning it cannot split.** A stopped-world that
 reaches a Run while its bound Worker's readable-reasoning lifecycle is open
@@ -858,23 +803,18 @@ followed by each subagent run it holds, presented parents first.
 
 ## §agui-broadcast-fan Event fan and AG-UI Run settlement
 
-One in-process subscription receives Core events; AG-UI routes each event to the
-Run that owns it. A message AG-UI Run binds to the Worker selected by its thread
-and then to the exact `loopId` returned by `ApplicationPort.runLoop`; an
-interrupt-resume Run restores its predecessor's projection and notification
-scope. A same-worker interrupt remains bound to the pending item's Worker and
-Loop. A foreign-worker interrupt preserves the owner's controlling Run binding,
-using the pending item's Worker and Loop only as its release identity. Only the
-controlling Run's bound Loop terminal may end the Run with its terminal record and close the SSE.
-The terminal record preserves the daemon's exact universal `result`; failures use
-the Problem `type` as the AG-UI error code and `detail` as its message. The
-module never reconstructs a failure from a status, summary, or exception text.
-Gate routing follows {§agui-worker-owner}; topology does not confer authority.
-A gate that reaches a Run inside an open reasoning lifecycle waits for
-it ({§agui-gate-deferral}). Terminations
-that race ahead of the `runLoop` acknowledgement are held until the loop identity
-is known. Sibling and concurrent loops therefore cannot end, relabel, or duplicate
-this Run.
+One in-process subscription receives Core events; AG-UI routes each event to the Run that owns it. Only the controlling Run's bound Loop terminal may end the Run with its terminal record and close the SSE. Gate routing follows {§agui-worker-owner}; topology does not confer authority.
+
+| Run | Binds to |
+| --- | --- |
+| A message Run | the Worker selected by its thread and then the exact `loopId` returned by `ApplicationPort.runLoop` |
+| An interrupt-resume Run | its predecessor's projection and notification scope; a same-worker interrupt remains bound to the pending item's Worker and Loop, and a foreign-worker interrupt preserves the owner's controlling Run binding, using the pending item's Worker and Loop only as its release identity |
+
+| Fact | Rule |
+| --- | --- |
+| The terminal record | preserves the daemon's exact universal `result`; failures use the Problem `type` as the AG-UI error code and `detail` as its message; the module never reconstructs a failure from a status, summary, or exception text |
+| A gate inside an open reasoning lifecycle | waits for it ({§agui-gate-deferral}) |
+| Terminations racing ahead of the `runLoop` acknowledgement | held until the loop identity is known, so sibling and concurrent loops cannot end, relabel, or duplicate this Run |
 
 | AG-UI Run | Core notifications admitted | Settlement owner |
 | ---------- | --------------------------- | ---------------- |
@@ -882,17 +822,14 @@ this Run.
 | `op.exec` / `op.parse` | Its operation's Loop in the runtime Worker, from the moment the dispatch opens it: that Loop's rows and notices, and the streams those rows announce. Workspace derivation progress may carry no Worker. | This action result, deferred through its owned streams; never the Loop's terminal. |
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
-An operation Run owns an execution from the row that announces it: a started or
-queued execution receipt (`200` or `202`) carries `attrs.stream`. A failed receipt's
-proposed address opens no stream. An admitted address stays open for the Run
-until its `stream/concluded`, so the action result is deferred even when the
-command writes late or never (a `stream/event` is a race the result must not
-win). A detached execution (`<-1>`) is nobody's obligation and never defers the
-result. The runtime Worker hosts every person's operations and the daemon's own work, so an
-operation Run never owns a stream its Loop did not announce. Stream activity of that Worker
-which no row of the Run's Loop has announced yet is held for it: the row that announces the
-address delivers the latest progress and then any conclusion, so a stream that concluded
-before its row defers nothing; activity no row of its Loop ever announces never reaches it.
+An operation Run owns an execution from the row that announces it; the runtime Worker hosts every person's operations and the daemon's own work, so an operation Run never owns a stream its Loop did not announce.
+
+| Receipt | The Run's obligation |
+| --- | --- |
+| A started or queued execution (`200` or `202`), carrying `attrs.stream` | the admitted address stays open for the Run until its `stream/concluded`, so the action result is deferred even when the command writes late or never (a `stream/event` is a race the result must not win) |
+| A failed receipt's proposed address | opens no stream |
+| A detached execution (`<-1>`) | nobody's obligation; never defers the result |
+| Stream activity of that Worker no row of the Run's Loop has announced yet | held for it: the row that announces the address delivers the latest progress and then any conclusion, so a stream that concluded before its row defers nothing; activity no row of its Loop ever announces never reaches it |
 
 `workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
 `entry.loop_id`) refines it wherever the event is loop-scoped. Opening a
@@ -950,45 +887,23 @@ by a path it registered ({§credential-module-client}), with no exception: under
 no other origin is its address. A request naming an unregistered client or redirect is answered to the person,
 never redirected; any other malformed request is redirected with its `error` and `state`.
 
-§agui-oauth-clients **Four kinds of client.** The operator's own client, `operator`, is confidential:
-its secret is the authority's operator secret ({§credential-authority}), the shared `PLURNK_SECRET`
-when set and otherwise the one the daemon mints at boot into the file beside its database, and it
-holds every scope; the terminal client, scripts and the bench exchange it for access tokens with
-`client_credentials`. An authority without an operator secret has no `operator` client, and the
-operator's tools have no way in but the sign-in. A declared client,
-`PLURNK_AGUI_CLIENT_<id>={"secret":"…","scopes":[…]}`, is confidential too and holds only the scopes
-declared; its tokens name it as their subject, and removing its line and restarting revokes them. A
-registered client is public and holds nothing to keep: it authenticates by its id alone, uses only
-the code grant with PKCE and refresh, and its tokens name the operator who signed in. A public client
-may not use `client_credentials` (`unauthorized_client`). A module's own client is the one a module
-of this daemon registered on the authority ({§credential-module-client}): confidential, as RFC 10017
-§6.2.3.1 requires of a backend that holds tokens for a page, authenticated by `client_secret_basic`
-or `client_secret_post` with the secret the authority minted and checks, using the code grant with
-PKCE and refresh, its tokens naming the operator who authorized it. It may not use
-`client_credentials` (`unauthorized_client`): it stands for the operator, never for itself. A scope
-it registered that this server does not issue is the module's fault and fails the request as a
-server error, never as a narrowed grant; a declared client may not take a module client's id.
+§agui-oauth-clients **Four kinds of client.** A scope a module client registered that this server does not issue is the module's fault and fails the request as a server error, never as a narrowed grant; a declared client may not take a module client's id.
 
-§agui-oauth-session **A browser is the operator only once it signs in.**
-The browser's standing is a `session` credential of the authority ({§credential-authority}),
-presented as the cookie `plurnk_session` (`HttpOnly`, `SameSite=Lax`, `Path=/oauth`, `Secure` under
-an https issuer), living as long as a refresh token and revoked by `POST /oauth/session` with
-`action=end`, which also clears the cookie; a session is never a bearer. Signing in with
-`PLURNK_PASS` ({§agui-oauth-login}) is the only way a session is established, wherever the browser
-runs: while it is empty, every browser is told so, and where to set it, at 503 and no session
-exists. A module's own client ({§agui-oauth-clients}) is this daemon's by
-registration, and the operator's session authorizes it silently; having no standing apart from that
-sign-in, its grant joins the session's family, so revoking the family from either side, by
-`/oauth/session` or by the module's own sign-out, ends the browser's standing here and the module's
-credentials together, and a code not yet exchanged ends with them; the next visit after a sign-out
-meets the sign-in form. Any other client, wherever its
-redirect points, is shown a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the
-request issues the code (`consent=allow`) or declines it (`consent=deny`, `access_denied` to the
-redirect), so a page elsewhere, whose cross-site POST carries no cookie and whose top-level GET
-cannot click, obtains nothing. Every request under the authorization server's paths must name this
-daemon: a `Host` that is neither loopback nor the issuer's host is refused at 421 before any route,
-so a name a page rebinds to the loopback address reaches nothing. Every page it serves carries
-`frame-ancestors 'none'`.
+| Client | Kind | Secret | Scopes | Grants and subject |
+| --- | --- | --- | --- | --- |
+| `operator`, the operator's own | confidential | the authority's operator secret ({§credential-authority}): the shared `PLURNK_SECRET` when set, otherwise the one the daemon mints at boot into the file beside its database; an authority without an operator secret has no `operator` client, and the operator's tools have no way in but the sign-in | every scope | the terminal client, scripts and the bench exchange it for access tokens with `client_credentials` |
+| A declared client, `PLURNK_AGUI_CLIENT_<id>={"secret":"…","scopes":[…]}` | confidential | as declared | only the scopes declared | its tokens name it as their subject; removing its line and restarting revokes them |
+| A registered client | public: nothing to keep, authenticates by its id alone | none | as registered | only the code grant with PKCE and refresh; its tokens name the operator who signed in; may not use `client_credentials` (`unauthorized_client`) |
+| A module's own client, one a module of this daemon registered on the authority ({§credential-module-client}) | confidential, as RFC 10017 §6.2.3.1 requires of a backend that holds tokens for a page | the secret the authority minted and checks, by `client_secret_basic` or `client_secret_post` | as registered | the code grant with PKCE and refresh, its tokens naming the operator who authorized it; may not use `client_credentials` (`unauthorized_client`): it stands for the operator, never for itself |
+
+§agui-oauth-session **A browser is the operator only once it signs in.** The browser's standing is a `session` credential of the authority ({§credential-authority}), presented as the cookie `plurnk_session` (`HttpOnly`, `SameSite=Lax`, `Path=/oauth`, `Secure` under an https issuer), living as long as a refresh token and revoked by `POST /oauth/session` with `action=end`, which also clears the cookie; a session is never a bearer. Signing in with `PLURNK_PASS` ({§agui-oauth-login}) is the only way a session is established, wherever the browser runs: while it is empty, every browser is told so, and where to set it, at 503 and no session exists.
+
+| Client | What the session does for it |
+| --- | --- |
+| A module's own client ({§agui-oauth-clients}) | this daemon's by registration, and the operator's session authorizes it silently; having no standing apart from that sign-in, its grant joins the session's family, so revoking the family from either side, by `/oauth/session` or by the module's own sign-out, ends the browser's standing here and the module's credentials together, and a code not yet exchanged ends with them; the next visit after a sign-out meets the sign-in form |
+| Any other client, wherever its redirect points | shown a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the request issues the code (`consent=allow`) or declines it (`consent=deny`, `access_denied` to the redirect), so a page elsewhere, whose cross-site POST carries no cookie and whose top-level GET cannot click, obtains nothing |
+
+Every request under the authorization server's paths must name this daemon: a `Host` that is neither loopback nor the issuer's host is refused at 421 before any route, so a name a page rebinds to the loopback address reaches nothing. Every page it serves carries `frame-ancestors 'none'`.
 
 §agui-oauth-documents **The authorization server's documents are plain semantic HTML.** Every page it
 shows a person (sign-in, a refused password, too many attempts, no password, consent, a refused
@@ -1111,22 +1026,18 @@ SEND to this exact address answers this message under {§send-response-receipt};
 not create another inbound request. Standard AG-UI assistant messages and history replay
 carry the reply, independently of whether the loop can yet conclude.
 
-§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the
-daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon
-issued as `authorization: Bearer <token>`, and admission precedes request-body reading. The principal of the admitted request is the credential's subject ({§agui-run-source}).
-Each refusal is an RFC 6750 challenge, a `WWW-Authenticate: Bearer` header naming the realm and the
-RFC 9728 resource metadata, beside its Problem: no bearer at all is 401 `bearer-token-required`; a
-token that is unknown, expired, consumed, revoked or not an access token is 401
-`bearer-token-invalid` with `error="invalid_token"`; an access token without the scope `agui` is 403
-`bearer-scope-insufficient` with `error="insufficient_scope"`. The shipped posture is authenticated
-with nothing configured: the daemon **mints its operator secret at every boot** into the file beside
-its database ({§credential-authority}), which the operator's own tools read, and the seeded operator
-file ({§operator-config-discovery}) teaches the keys without setting one. A daemon under
-`PLURNK_AUTH=0` serves no authorization server and admits every request as `anonymous`: that posture
-is the operator's deliberate configuration, never a default. This is the perimeter because a daemon is one trust
-domain and on loopback the operator's browser is inside it — any page they visit can reach the
-port, and only the credential tells the two apart. The secret itself is never a bearer: presented
-directly, it is an unknown token.
+§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. The principal of the admitted request is the credential's subject ({§agui-run-source}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
+
+| Refusal, an RFC 6750 challenge (`WWW-Authenticate: Bearer` naming the realm and the RFC 9728 resource metadata) beside its Problem | Status |
+| --- | --- |
+| No bearer at all | 401 `bearer-token-required` |
+| A token that is unknown, expired, consumed, revoked or not an access token | 401 `bearer-token-invalid` with `error="invalid_token"` |
+| An access token without the scope `agui` | 403 `bearer-scope-insufficient` with `error="insufficient_scope"` |
+
+| Posture | Rule |
+| --- | --- |
+| Shipped | authenticated with nothing configured: the daemon **mints its operator secret at every boot** into the file beside its database ({§credential-authority}), which the operator's own tools read, and the seeded operator file ({§operator-config-discovery}) teaches the keys without setting one |
+| `PLURNK_AUTH=0` | serves no authorization server and admits every request as `anonymous`: the operator's deliberate configuration, never a default |
 
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and
