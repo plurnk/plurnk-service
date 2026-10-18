@@ -32,6 +32,23 @@ spawn recipe and availability binary.
 
 ## §executor-contract Author surface
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§executor-sinks} | Inputs and sinks |
+| {§executor-interaction-sink} | `interact(request, signal?)` — Await one contracts-owned client interaction ({§client-interaction-wire}). |
+| {§executor-metadata} | Invocation metadata ownership |
+| {§executor-live-input} | Invocation-local input |
+| {§executor-stdin} | Subprocess input |
+| {§executor-channels} | Channels |
+| {§executor-results} | Results, failures, and notices |
+| {§problems-executor-input} | Invocation and live-input Problems. |
+| {§executor-page-receipt} | A full page says so. |
+| {§executor-exit-code} | An exit code is the command's answer. |
+| {§executor-effect} | Effect is an admission fact |
+| {§executor-probe} | Availability is per runtime tag |
+<!-- /map -->
+
 ```ts
 abstract class BaseExecutor {
     readonly runtime: string;
@@ -345,6 +362,22 @@ be reported as successful resource publication.
 
 ## §executor-discovery Discovery and registration
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§executor-installation} | Installed capability lifecycle |
+| {§executor-runtime-declaration} | Runtime metadata |
+| {§executor-invocation} | Every runtime declares exactly one invocation contract: |
+| {§executor-tool-registry} | A runtime representing a finite set of exact tools may implement `toolRegistry()` and return one immutable… |
+| {§executor-tool-catalog} | A registry may carry each tool's original JSON object as `definition`. |
+| {§executor-tool-document} | Tool documents are the model-facing executor directory. |
+| {§executor-input-schema-preview} | Schema-backed previews emit a compact, valid JSON skeleton containing only explicitly required top-level… |
+| {§executor-dynamic-runtimes} | Dynamic declarations |
+| {§executor-trust} | Trust precedes executable discovery code |
+| {§executor-policy} | Subtractive runtime policy |
+| {§executor-spawn-account} | Every subprocess runtime spawns as one configured account. |
+<!-- /map -->
+
 `discover(options?)` scans every scoped and unscoped package under the nearest
 `node_modules` for the exact declaration `plurnk.kind === "exec"`. It returns
 `{ registry, packageAttributions, skipped, disabled }`, where the registry maps
@@ -627,6 +660,14 @@ optional executor through {§executor-installation}; disabled tags contribute
 no discovery teaching or executor scheme ({§executor-policy}).
 
 ## §executor-subprocess Subprocess contract
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§executor-subprocess-routing} | Default routing |
+| {§executor-shell} | `sh` runs the environment's shell, and says which. |
+| {§executor-cancellation} | Cancellation and consumer timing |
+<!-- /map -->
 
 `SubprocessExecutor` translates a runtime, body, and optional target into:
 

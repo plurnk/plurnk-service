@@ -2,6 +2,18 @@
 
 ## 1. Overview
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§contract-representations} | JSON Schema is authoritative for shared data shapes. |
+| {§agui-discovery-contract} | `AguiDiscovery` is the complete installed AG-UI+ surface at one instant. |
+| {§agui-action-schema-enforcement} | The JSON Schema values in {§agui-discovery-contract} are executable boundary contracts, not prose or hints. |
+| {§agui-client-conformance} | `AguiClientConformance` is a language-neutral JSON document accounting for every action and notification in… |
+| {§agui-conformance-kit} | `AguiConformanceKit` is the one versioned, language-neutral corpus of raw SSE boundary specimens and AG-UI… |
+| {§json-result-rendering} | `renderJsonResult` renders compact aggregate operation rows. |
+| {§json-document-presentation} | Generated JSON documents use two-space indentation. |
+<!-- /map -->
+
 This package is the single authority for PLURNK's language, schemas, generated types and
 runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language it specifies
 ({§parser-consumers}). Its package root is the single code API for those contracts
@@ -91,6 +103,24 @@ serialization. Compact aggregate rows ({§json-result-rendering}) and packet
 metadata retain their deliberate layouts.
 
 ## 1.1 Contract layers and admission boundary
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§contract-proposal-projection} | Admission policy and stopped-world projection |
+| {§capability-policy-matching} | A selector is an exact conjunction: every field it declares must equal the descriptor, while every selected… |
+| {§capability-policy-cascade} | Capability layers are purely subtractive and order-independent: a descriptor is admitted only when every… |
+| {§capability-policy-projection} | A `CapabilityProjection` reports every durable workspace layer and their normalized intersection: `service`,… |
+| {§proposal-policy} | `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES` is its schema-owned vocabulary. |
+| {§effort-wire} | `Effort` is exactly `off \| adaptive \| low \| medium \| high \| xhigh \| max`. |
+| {§model-catalog-wire} | `ModelRoute` is one exact client-visible provider/model identity with optional alias provenance. |
+| {§client-interaction-wire} | Client-owned interaction wire |
+| {§provider-usage} | `ProviderUsage` records only known non-negative safe-integer quantities. |
+| {§provider-cost} | `ProviderCost` represents one physical provider request's monetary disposition. |
+| {§provider-request-accounting} | `ProviderRequestAccounting` is the indivisible accounting fact for one issued physical request. |
+| {§provider-request-evidence} | The physical-request settlement may also carry JSON-serializable, provider-owned response/failure evidence. |
+| {§provider-accounting} | `ProviderAccounting.requests` is the source evidence. |
+<!-- /map -->
 
 One contract, deliberately different projections (ARCHITECTURE.md). Each layer
 below owns what it alone can decide.
@@ -261,6 +291,55 @@ boundary-destroying failure makes later input undefined. Operation status codes
 and parse diagnostics are separate contracts.
 
 ## §canonical-statement 2. Canonical statement form
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§section-boundary} | Every statement is one backtick block. |
+| {§fence-closer} | A block opened with N backticks closes at a line made of at least N backticks and nothing else but horizontal… |
+| {§balanced-fences} | A complete nested interpretation takes precedence over missing-closer recovery. |
+| {§operation-fences} | Accept three or more backticks; teach and render three. |
+| {§naked-operation} | A native name with only an optional aside opens without a fence. |
+| {§fence-heading-in-body} | Outside a complete nested block ({§balanced-fences}), a fence line of three or more backticks carrying a… |
+| {§closer-fallback} | A block that ends at a heading or at the end of the input has no closer of its own; its body is the whole… |
+| {§fence-boundary} | Every fence line inside a body takes one of these meanings, chosen for the whole input at once by… |
+| {§fence-pairing} | Fence pairing |
+| {§pairing-need} | Why a pass ahead of the grammar. |
+| {§pairing-algorithm} | Algorithm. |
+| {§pairing-objective} | Objective. |
+| {§unclosed-mutation-yields} | A mutation body never swallows a native operation. |
+| {§prose-code-blocks} | A message or a prompt shows code. |
+| {§message-run-on} | A message runs to the end of the turn. |
+| {§pairing-witness} | Witnesses. |
+| {§indented-fences} | CommonMark's indentation, everywhere. |
+| {§inline-chain} | A closer on a heading line, or on a body's closing line, may be followed on that same line by the next… |
+| {§transparent-inline-closer} | A closer mid-heading is read as if it were not written. |
+| {§executor-case} | An executor tag in any case. |
+| {§executor-js-spelling} | When `node` is registered and `js` is not, `js` names `node` under {§executor-case}. |
+| {§one-line-turn} | A whole turn on one line. |
+| {§anchor-digits} | In a text scope, `@` followed by one to four digits cannot be a hash and is read as that line number, with… |
+| {§unclosed-aside} | A heading whose aside opens with `<!--` and never closes on its line takes the rest of the line as the aside,… |
+| {§quotation} | A fence that opens no operation quotes. |
+| {§forgotten-tag} | A tag on the line under a bare fence is the operation. |
+| {§executor-heading} | Syntax identifies an invocation; dispatch resolves its runtime. |
+| {§interstitial-fence} | Only a heading under {§executor-heading} opens an operation. |
+| {§closer-aside} | A closing fence followed on its line by one aside and nothing else is the closer; the aside is outside text. |
+| {§heading-slot-order} | A heading near-miss with exactly one reading is read as that reading, with no diagnostic and no teaching… |
+| {§native-tool-calls} | An emission that yields no operation may be a model's native tool-call markup naming a plurnk operation or a… |
+| {§native-tool-call-receipt} | Unexecuted native markup draws a warning. |
+| {§empty-section} | Both the compact bodyless form and an empty multiline block normalize optional bodies to null. |
+| {§statement-rendering} | `PlurnkParser.stringify` renders native OP names and named runtime fences from the shared AST, with one blank… |
+| {§slot-order} | Producers put target, scope, metadata, then aside, separated by one ASCII space. |
+| {§lifecycle-slots} | NOTE accepts no target, scope, or metadata. |
+| {§target-group} | READ and KILL take a target group. |
+| {§safe-uri-target-groups} | An explicit URI list is a target group. |
+| {§scope-on-scopeless} | A scope on an operation that takes none is dropped, and named. |
+| {§heading-inline-body} | Nonempty body text belongs below the fence header. |
+| {§bare-option-object} | A bare option object is the option block, where the house option array owns the block. |
+| {§operation-aside} | The final header modifier may be one single-line HTML comment. |
+| {§scheme-metadata-modifier} | A target may carry one single-line `[metadata]` block, placed under {§slot-order}; executor and SEND fences… |
+| {§matcher-option} | `pattern` is the matcher, and it lives in the heading. |
+<!-- /map -->
 
 `````text
 ```OP (path)? <scope>? [metadata]? <!-- aside -->?
@@ -813,6 +892,30 @@ and draws no advisory ({§naked-pattern}), otherwise as `[{"pattern": "…"}]`.
 
 ## §op-shapes 4. Per-operation semantics
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§retrieval-annotation} | A retrieval's authored body is memory, not selection or output. |
+| {§note-value} | NOTE retains its literal body as ordinary model-owned working memory. |
+| {§reasoning-operations} | The shared fence parser admits complete, line-leading NOTE, FIND and READ statements from exposed provider… |
+| {§exec-executor-slot} | The fence name selects the executor directly: for example, `python3 (tools/report.py)` or `gitea… |
+| {§turn-disposition} | WAIT requests parking; its literal body does not control scheduling, and its optional target is the label the… |
+| {§send-wait-scope} | WAIT's optional `[seconds]` metadata is a non-negative finite scalar bounding this park, not the lifetime of… |
+| {§send-directed-scope} | A recipient SEND carries an optional numeric scope after its target and metadata through to the addressed… |
+| {§kill-scope} | KILL takes an optional text-coordinate scope beside its target, numeric or anchored (```` ```KILL… |
+| {§bracket-metadata-slot} | Brackets are the owner's metadata modifier: the runtime or MCP service is the fence name, and tool input… |
+| {§text-scope-semantics} | Exact regions use 1-based lines and Unicode code-point columns. |
+| {§bare-statement} | BARE requests one isolated model inference. |
+| {§read-find-normalization} | An authored READ is never rewritten into a FIND. |
+| {§local-path-fragment} | A bare path takes `#channel` like a URL. |
+| {§read-exact-target} | READ targets one exact resource (a local path or scheme URL, with optional `#channel` fragment or… |
+| {§unscoped-edit-create-only} | No scope and an existing target is refused. |
+| {§empty-mutation-scope} | Empty mutation content has one writable position: `<0>`, `<1>`, `<-1>`, and `<1,-1>` all insert the body as… |
+| {§transfer-resource-selections} | COPY and MOVE require two singular `ResourceSelection` operands, source first and destination second, and… |
+| {§find-result-unit} | For FIND, target selection fixes the paginated result unit after scheme address resolution… |
+| {§copy-move-observation} | COPY and MOVE log projections preserve both admitted operand selections, including their independent scopes,… |
+<!-- /map -->
+
 The model-facing forms below are the canonical projection. Parser tolerance is
 governed by {§canonical-statement}; runtime conditions remain explicit below.
 
@@ -1048,6 +1151,15 @@ retrieval never returns inline within the emitting turn.
 
 ## §path-syntax 5. Target and path grammar
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§path-query} | The serialized query component is the lossless representation. |
+| {§path-parentheses} | An unescaped depth-zero `)` closes the target slot. |
+| {§path-glob} | `PathSyntax` owns exact-path versus path-pattern classification. |
+| {§worker-name} | The exported `WORKER_NAME` contract governs names minted for URI authority slots:… |
+<!-- /map -->
+
 The target slot contains either a local path or a scheme URL. Exact addresses
 and path globs share the slot; content matchers follow the heading forms in
 {§matcher-option}.
@@ -1109,6 +1221,17 @@ literal worker name. This is a minting and registry invariant, not an
 ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§heading-boundary-recovery} | A column-0 heading is the trustworthy boundary. |
+| {§scope-slot-tolerance} | A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````) is read as… |
+| {§extra-path-slot} | A path slot beyond the operation's admitted operands — one for every operation, two for COPY and MOVE, any… |
+| {§matcher-refusal} | A matcher the parser cannot read refuses its operation, never the turn. |
+| {§regex-dialect-readings} | Three habits of other regex dialects are read, with one advisory each. |
+| {§pattern-body-single-line} | Every matcher is one physical line. |
+<!-- /map -->
 
 FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
 through the `pattern` option ({§matcher-option}). AstBuilder assigns the dialect from the
@@ -1182,6 +1305,14 @@ statements remain recoverable when their boundaries are trustworthy.
   multiline.
 
 ## §scope-slot 7. Scope markers
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§text-line-anchor-syntax} | A text coordinate admits a case-sensitive line anchor spelled `@` followed by exactly five Base62 characters… |
+| {§scope-marker-forms} | Canonical producers separate components with commas and no spaces. |
+| {§scope-range-recovery} | For FIND result positions and text-coordinate operations, the parser normalizes these two-component numeric… |
+<!-- /map -->
 
 The model-facing slot is `<scope>`; the AST field is
 `lineMarker`. Numeric scopes preserve ordered components in `LineMarker`;
@@ -1275,6 +1406,16 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§send-mid-reservation} | WAIT is reserved ({§turn-disposition}). |
+| {§disposition-anywhere} | A disposition may sit anywhere in a model turn without imposing a program boundary. |
+| {§park-202-only} | WAIT joins live work: an open stream or a live child. |
+| {§lifecycle-only-turn} | A WAIT-, SEND-, NOTE-, or KILL-only turn is valid. |
+| {§send-body} | SEND body projection |
+<!-- /map -->
+
 The runtime adjudicates each admitted turn against actual message resolutions,
 results and live obligations ({§wait-obligation-matrix}). A response with no
 operation resolves no message and creates no new observation obligation ({§empty-turn}).
@@ -1352,6 +1493,14 @@ stateDiagram-v2
 
 ## §whitespace-contract 11. Whitespace and interstatement text
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§response-text} | The parser owns the partition between operations and response text. |
+| {§unfenced-operation} | The parser identifies ignored unfenced fragments. |
+| {§recorded-emissions} | The parser is regressed against emissions models actually produced, not fixtures we wrote. |
+<!-- /map -->
+
 Body framing removes the header line ending and the single line ending
 immediately before the closing fence. Every other body character is preserved,
 including leading/trailing blank lines, indentation, CRLF and literal
@@ -1401,6 +1550,16 @@ contract moving and the diff names every shape that moved with it. The extractor
 reports how many recorded turns concluded in a way the current contract would reject.
 
 ## 12. Public API
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§turn-shape} | `PlurnkParser.parse` accepts one model turn. |
+| {§tier-entrypoints} | Each parser entry point owns one document tier: |
+| {§runtime-neutral-root} | The package root is runtime-neutral. |
+| {§root-value-api} | The package-root runtime namespace is closed. |
+| {§parser-construction-boundary} | Parser construction components are internal rather than alternate consumer entry points: |
+<!-- /map -->
 
 The package root is the single JavaScript and TypeScript entry point for the language and wire
 contracts ({§runtime-neutral-root}). Shared AST and wire types come from generated schemas; the small hand-maintained parser
@@ -1478,6 +1637,29 @@ than alternate consumer entry points:
 | `PlurnkErrorStrategy`, `RecordingListener` | Assemble parser recovery and diagnostics around `antlr4ng`; consumers receive `PlurnkParseError` values       |
 
 ## 13. Runtime-neutral wire contracts
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§wire-entrypoint} | The package root exports generated wire types, `Problems`, and `Validator` alongside the AST types. |
+| {§text-region} | 13.1 Text regions |
+| {§range-extent} | 13.2 Range extents |
+| {§entry-read-result} | 13.3 Client entry reads |
+| {§operation-result} | Every public PLURNK operation returns one `OperationResult`: |
+| {§diagnostic-observation} | A diagnostic says what happened, never why. |
+| {§problem-details} | `ProblemDetails` requires `type`, `title`, `status`, and `detail`; `instance` is optional until a durable… |
+| {§problem-error-carrier} | `Problems.fromError(error)` recognizes existing failure carriers without depending on a producer's exception… |
+| {§problem-projection} | `ProblemProjection` is the sole compact model-packet view of an exact `ProblemDetails`. |
+| {§notice} | A `Notice` is a transient, nonterminal observation. |
+| {§notice-directive} | A Notice's `message` states what happened ({§diagnostic-observation}). |
+| {§client-display-capabilities} | 13.7 Client display capabilities |
+| {§mcp-server-definition} | 13.8 MCP server definitions |
+| {§mcp-oauth} | `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable HTTP server, included in that server's… |
+| {§application-port} | 13.9 Exterior application port |
+| {§application-worker-observation} | Worker observation exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a… |
+| {§loop-lifecycle-vocabulary} | One projection maps a loop's durable status onto the lifecycle words every client renders, shared by the… |
+| {§application-loop-observation} | Loop observation exposes the durable scheduler state of work loops (excluding maintenance-only administrative… |
+<!-- /map -->
 
 §wire-entrypoint The package root exports generated wire types, `Problems`, and
 `Validator` alongside the AST types. Their owning JSON Schemas are published
@@ -1764,6 +1946,30 @@ adapters consume this projection instead of reconstructing lifecycle from
 events or persistence; events remain the live notification edge.
 
 ## 14. Parse diagnostics
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§parse-diagnostics} | `PlurnkParseError` is a JSON-serializable Error subclass. |
+| {§parse-admission} | A diagnostic's severity does not describe whether an operation ran. |
+| {§parse-recovery} | Every hard diagnostic carries its working form. |
+| {§parser-position} | Parser source locations are points, not text regions. |
+| {§inline-flag-tolerance} | PCRE inline modifiers. |
+| {§regex-trailing-text} | A valid `/pattern/flags` prefix followed by horizontal whitespace and trailing text receives one concise… |
+| {§regex-sed-range} | A sed line range is named as one. |
+| {§unclosed-regex} | A regex that never closes. |
+| {§naked-pattern} | The matcher rides the heading bare. |
+| {§trailing-slots} | Slots after the matcher peel off the right. |
+| {§log-heading-notation} | The log's heading notation, copied as syntax, is read as the slot it stands for. |
+| {§bare-target} | A target written without its parentheses is refused with the line that runs. |
+| {§bare-anchor-scope} | An EDIT's anchor without its angle brackets is its scope. |
+| {§matcher-body-redirect} | Unread selector text. |
+| {§combined-anchor-tolerance} | Combined line number and anchor in a scope. |
+| {§invalid-scope-diagnostic} | Malformed scope content. |
+| {§error-shape} | The diagnostic class determines the parts of a message; every class says what happened, never why… |
+| {§parse-attempt} | A hard fact that refused a statement the parser opened carries its `attempt`: the statement's text exactly as… |
+| {§unparsed-tail-boundary} | When the lexer cannot determine where a malformed statement ends — an unfinished `(target` or `[metadata`… |
+<!-- /map -->
 
 §parse-diagnostics `PlurnkParseError` is a JSON-serializable Error subclass.
 Its `message` contains only the parser-owned diagnostic; position, source, and

@@ -4,6 +4,17 @@ Contract for `@plurnk/plurnk-schemes-*` sibling packages. Audience: implementer 
 
 ## §manifest §1 Manifest
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§manifest-authority} | `authority?` — URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"`… |
+| {§manifest-metadata-modifier} | `metadataModifier?` — `true` declares `[metadata]` on resource operations. |
+| {§manifest-capability-traits} | `traits?` — Unique lowercase capability facts (for example `web` or `interaction`). |
+| {§manifest-client-display} | `glyph?` — Non-empty opaque client presentation glyph. |
+| {§service-metadata-keys} | Two keys are the service's, withheld from every owner. |
+| {§manifest-self-doc} | Discoverable scheme references. |
+<!-- /map -->
+
 ```json
 {
     "name": "@plurnk/plurnk-schemes-<name>",
@@ -90,6 +101,21 @@ or rejects it, with timeout as a lifecycle bound.
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker:///_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
 
 ## §2 Interface
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§resource-publication-names} | Published resources have names, not invented ordinals. |
+| {§scheme-source-bytes} | Original bytes retain the full resource identity. |
+| {§web-materialization-contract} | Web materialization is a handler capability, not a package name. |
+| {§scheme-operation-dispatch} | Sister scheme handlers implement op methods consumed by plurnk-service via dispatch. |
+| {§resolved-edit-statement} | `ResolvedEditStatement` is the scheme-facing EDIT shape: its `lineMarker` is `LineMarker \| null` and… |
+| {§read-preparation} | `prepareRepresentation?` is the optional, operation-neutral acquisition seam for one exact resource. |
+| {§entry-address-resolution} | `resolveEntryAddress?` defines canonical addresses for client and model operations. |
+| {§handler-lifecycle} | A registered handler object is a process-lived shared instance and may receive overlapping operation calls. |
+| {§scheme-ctx-entries} | The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use… |
+| {§scheme-edit-batch-receipt} | Regional mutation receipts. |
+<!-- /map -->
 
 §resource-publication-names **Published resources have names, not invented ordinals.**
 `ResourceNames` allocates one URI-encoded component per resource: a supplied name
@@ -336,6 +362,32 @@ either inspection is unavailable. The hint is advisory: inspection failure
 does not reverse a landed mutation.
 
 ## §3 Helpers exported by this repo
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§scheme-packet-transform} | Packet-section transformation. |
+| {§executor-scheme-output} | Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a… |
+| {§scheme-catalog-parse-issues} | An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported… |
+| {§network-address} | Network address identity |
+| {§mimetype-classifier} | Mimetype classification — `MimetypeClassifier` |
+| {§mimetype-verbatim-transfer} | `MimetypeClassifier.isTransferCompatible(source, destination, sourceClassification?)` permits verbatim… |
+| {§scheme-projection} | Projection capability |
+| {§scheme-resource-capture} | `ctx.resources.capture(addresses)` acquires ordered exact resource/channel snapshots through Core's shared… |
+| {§slicer-window} | Positional windows without content - `Slicer.window` |
+| {§slicer-text-algebra} | Text-region slicing and replacement - `Slicer` |
+| {§range-starts-at-one} | A two-coordinate range starts at 1. |
+| {§read-zero-start} | The shared READ projection tolerates a two-coordinate `<0,M>` when `M` is a positive safe integer or `-1`: it… |
+| {§path-extension-mimetype} | Path-extension mimetype — `PathMimetype` |
+| {§result-shape-guards} | `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional… |
+| {§result-error-status} | `Results.isErrorStatus(status)` — `status >= 400`, and only those. |
+| {§capability-ctx} | §3.bis Capability ctx — the stable trusted-extension surface |
+| {§scheme-ctx-workspace-environment} | `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and… |
+| {§scheme-interactions} | `interactions` — `request(ClientInteractionRequest, signal?)` awaits the contracts-owned interaction and… |
+| {§scheme-subscriptions} | `subscriptions` — one streaming lifecycle: |
+| {§scheme-ctx-lifetime} | `SchemeCtx` belongs to one operation call. |
+| {§scheme-edit-proposal-receipt} | An accepted EDIT proposal may return its final aggregate `editReceipt` alongside its per-row model-facing… |
+<!-- /map -->
 
 ### Types
 
@@ -696,6 +748,15 @@ A scheme handler is discovered and registered with **zero first-party involvemen
 - **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§extension-trust-boundary}).
 
 ## Message sources
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§message-source-scheme} | Protocol modules register `MessageScheme` or compose its hooks into their existing scheme. |
+| {§message-immutable} | An EDIT, COPY or MOVE onto, or KILL of, a message address is refused 405 `message-immutable` with no… |
+| {§problems-schemes} | Selection and metadata Problems. |
+| {§pinned-wording-schemes} | Pinned wording. |
+<!-- /map -->
 
 §message-source-scheme Protocol modules register `MessageScheme` or compose its hooks into
 their existing scheme. Core's `SchemeCtx.messages` materializes retained messages in that

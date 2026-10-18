@@ -7,6 +7,17 @@ does not recompute them.
 
 ## Architecture
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-daemon-client} | The module is a discovered module of the daemon. |
+| {§agui-client-types} | A client's contracts are runtime-neutral. |
+| {§agui-listener-admission} | Bound is not ready. |
+| {§agui-thread-binding} | An AG-UI thread represents a worker; workspace selection is a Plurnk extension. |
+| {§agui-run-authority} | AG-UI owns the client lifecycle |
+| {§agui-thread-address} | A qualified thread is `<workspace ID>#<worker name>`: a canonical positive, safe decimal integer and a native… |
+<!-- /map -->
+
 - §agui-daemon-client **The module is a discovered module of the daemon.** The package
   declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
   ({§module-discovery}); nothing composes it by hand. It claims only `/agui` on the daemon's
@@ -174,6 +185,35 @@ further; repeated closure is inert. Preparation finishing after closure cannot o
 a new stream. Clients need not disconnect for the daemon to stop.
 
 ## §agui-projection The projection
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-call-result} | `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) — `TOOL_CALL_RESULT`… |
+| {§agui-parse-refusal} | `log/entry` model `error` row, a parse refusal — The call the worker attempted ({§parse-attempt}):… |
+| {§agui-progress-reply} | `log/entry` reply reporting progress on a message this worker's operation sent ({§methods-answering}) — A… |
+| {§agui-run-outcome} | `loop/terminated` — `STATE_DELTA` (latest-turn gauge only) + `RAW` (the provider's opaque metadata bag,… |
+| {§agui-outside-text} | `outside/event` — `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and… |
+| {§agui-lifecycle-projection} | Lifecycle, memory and speech remain distinct. |
+| {§agui-readable-reasoning} | Readable provider reasoning uses AG-UI's standard reasoning channel. |
+| {§agui-encrypted-reasoning} | The encrypted-reasoning interface is not implemented. |
+| {§agui-custom-namespace} | The custom namespace |
+| {§agui-plurnk-metadata} | plurnk facts ride standard metadata. |
+| {§agui-status-children} | Children are counted by the daemon, never inferred. |
+| {§agui-status-spend} | The spend is the daemon's, from the Worker's beginning, republished, never promoted. |
+| {§agui-status-timing} | A Loop's timing is the daemon's, and it travels with the Loop's identity. |
+| {§agui-numbers-passthrough} | Gauge numbers pass through verbatim. |
+| {§agui-state-patches} | Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s. |
+| {§agui-provider-routes} | `snapshot.plurnk.providers[*]` — `providers.list.aliases[*]` |
+| {§agui-status-wait} | `snapshot.plurnk.status.waitUntil` — `ApplicationLoopProjection.waitUntil` |
+| {§agui-workspace-state} | `snapshot.plurnk.workspace` — the Run's client envelope |
+| {§agui-cost-evidence} | AG-UI carries token usage on `RUN_FINISHED` ({§agui-run-outcome}), but it defines no monetary accounting and… |
+| {§agui-ambient} | A row outside the conversation rides whole |
+| {§agui-run-start} | The gauge starts true |
+| {§agui-replay} | Unoriented reattach replays once |
+| {§agui-sync} | Synchronization is an inference-free AG-UI Run. |
+| {§agui-snapshot} | A snapshot is the messages the live projection built |
+<!-- /map -->
 
 One accepted Run or daemon notification produces zero-or-more AG-UI events:
 
@@ -464,6 +504,15 @@ explicit path fails rather than falling back or skipping conformance.
 
 ## §agui-proposal-resolve Client-owned stop-the-world interactions
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-gate-deferral} | A gate waits for the reasoning it cannot split. |
+| {§agui-message-before-gate} | A message is durable before a pending gate is re-presented. |
+| {§agui-proposal-disposition} | AG-UI consumes Core's `ProposalProjection` identically for live delivery and reconnect. |
+| {§agui-provider-policy-forwarding} | A textual Run forwards `selector` and `childSelector` from `forwardedProps.plurnk` unchanged to… |
+<!-- /map -->
+
 A client-owned gate, a proposal its owner reviews ({§worker-owner-resolution}) or a contracts-owned
 client interaction, terminates AG-UI Run A with `RUN_FINISHED.outcome.type = "interrupt"`. The
 durable loop remains paused until the decision, indefinitely unless the operator sets a decision
@@ -546,6 +595,20 @@ Each string is one declared alias or exact provider/model route; an explicit
 selection.
 
 ## §agui-management-plane The action surface
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-action-binding} | What a Run binds. |
+| {§agui-client-operation} | `op.exec` and `op.parse` are the thread owner's client operations. |
+| {§agui-worker-model-actions} | Worker model selection is server-backed. |
+| {§agui-worker-effort-actions} | Effort has its own worker action. |
+| {§agui-module-action-scope} | An extension action uses the same management plane, not a private endpoint. |
+| {§agui-op-parse} | Parsed-operation projection |
+| {§agui-module-actions} | One public action namespace. |
+| {§discovery} | Discovery contract |
+| {§agui-stream-producer} | Stream updates route to `workerId`, the initiating Worker. |
+<!-- /map -->
 
 A Run's input ({§agui-run-input}) is one of three, and a Run that carries none of them synchronizes. A new user
 message and a standard interrupt resume are not management actions.
@@ -838,6 +901,19 @@ or turn disposition from an active worker.
 
 ## §agui-oauth Authentication
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-oauth-authority} | One authority, scoped by resource. |
+| {§agui-oauth-endpoints} | The endpoints live on the daemon's listener, under the issuer. |
+| {§agui-oauth-clients} | Four kinds of client. |
+| {§agui-oauth-session} | A browser is the operator only once it signs in. |
+| {§agui-oauth-documents} | The authorization server's documents are plain semantic HTML. |
+| {§agui-oauth-login} | The operator signs in at the authorization endpoint. |
+| {§agui-oauth-tokens} | Credentials are opaque and bounded. |
+| {§agui-oauth-revocation} | Revocation reaches what is open. |
+<!-- /map -->
+
 AG-UI is the OAuth 2.1 authorization server of the daemon's one credential authority
 ({§credential-authority}): it issues every credential the listener admits and verifies them for
 `/agui` ({§agui-http-authorization}). The daemon authenticates under the shared `PLURNK_AUTH=1`
@@ -980,6 +1056,18 @@ address is the daemon's.
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
 
 ## §agui-run-endpoint The AG-UI Run endpoint
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-run-input} | A Run's input is what its conversation doesn't hold. |
+| {§agui-run-source} | The run's user message is the causal actor behind its inbound SEND ({§message-causal-source}). |
+| {§agui-http-authorization} | `/agui` is a protected resource of the daemon's authority. |
+| {§agui-cors} | Every response carries `access-control-allow-origin` with the value of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows… |
+| {§agui-http-failure} | Failures before SSE headers are sent use `application/problem+json` with exact RFC 9457 Problem Details. |
+| {§problems-agui} | AG-UI Problems. |
+| {§pinned-wording-agui} | Pinned wording. |
+<!-- /map -->
 
 `POST /agui` accepts a schema-valid AG-UI `RunAgentInput`; the response is `text/event-stream`, one `data:` line
 per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Proposal disposition remains Core policy; this module routes

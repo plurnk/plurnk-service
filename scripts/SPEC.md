@@ -29,6 +29,18 @@ shared `.oxlintrc.json`. The gate fails on errors.
 
 ## Policies the root lint enforces
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§package-graph-policy} | Package graph — A framework never depends on an extension of its kind ({§core-extension-composition}); a… |
+| {§env-surface-policy} | Environment surface — Every number and choice a shipped source reads is declared on a panel… |
+| {§build-projection} | Build projection — Every workspace whose package projection includes `dist` owns one `build:clean`, begins… |
+| {§package-lifecycle} | Package lifecycle — A workspace's `test` is exactly its `test:lint`, `test:unit` and `test:intg` tiers in… |
+| {§packed-projection} | Packed projection — The tarball is a projection of the source: the published manifest carries no `plurnk-dev`… |
+| {§diagnostic-inventory} | Diagnostic inventory — Every Problem code and Notice a package mints is read lexically from its TypeScript —… |
+| {§commit-conventions} | Commit conventions — A commit is one conventional subject line of at most 100 characters with no body;… |
+<!-- /map -->
+
 Each step of `npm run root:lint` is one script with one rule; the rule is stated here and the script
 refuses the tree when it does not hold.
 
@@ -97,6 +109,15 @@ on either violation.
 
 A witness sits beside the file it proves (`scripts/lib/npm-json.test.mjs` beside `npm-json.mjs`); a
 witness of several files, or of the repository, sits at the top level.
+
+## §spec-chapter-map Every chapter opens with its map
+
+A specification is read by line ranges, by people and by the models the daemon's own skill hands it
+to, so each H2 chapter that declares three or more tags opens with a table of what it promises: one row
+per tag, in declaration order, with the sentence that declares it (a heading's title, a bold lead, a
+table row's label and first sentence, or the paragraph's first sentence, bounded). The table sits
+between `<!-- map -->` and `<!-- /map -->` under the heading; `scripts/spec-map.mjs` writes it and the
+root lint refuses a map that no longer matches its chapter. The map cites; it declares nothing.
 
 ## §agents-map The field guide is rules plus a map
 

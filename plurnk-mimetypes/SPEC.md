@@ -11,6 +11,20 @@ behavioral contract for handler authors and consumers.
 
 ## §mimetype-handler-contract 1. Handler contract
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mimetype-handler-authority} | The handler owns the material in each projection. |
+| {§mimetype-handler-content} | A package-level `plurnk.binary: true` declaration selects `Uint8Array` rather than UTF-8 decoding when the… |
+| {§mimetype-binary-input} | 1.1 Binary input and readable projection |
+| {§mimetype-projection-facts} | A readable projection may carry the handler's structured facts: when a handler overrides `facts`,… |
+| {§mimetype-image} | `@plurnk/plurnk-mimetypes-image` serves `image/png`, `image/jpeg`, `image/gif`, and `image/webp` as binary… |
+| {§mimetype-pdf-facts} | `@plurnk/plurnk-mimetypes-application-pdf` is a header-only owner, exactly as the image owner is: it… |
+| {§mimetype-audio-facts} | `@plurnk/plurnk-mimetypes-audio` lazily parses binary audio containers through `music-metadata`. |
+| {§mimetype-lifecycle} | 1.2 Orchestrator lifecycle |
+| {§mimetype-projection-identity} | 1.3 Projection identity |
+<!-- /map -->
+
 The exported `BaseHandler`, `HandlerContent`, `HandlerMetadata`, and channel
 types own the executable TypeScript surface. Handler packages normally extend
 `BaseHandler`, `TreeSitterExtractor`, or `AntlrExtractor` and override only the
@@ -129,6 +143,16 @@ mimetype has a stable identity and loads no extension code. `dispose()` clears
 cached grammar fingerprints as well as handler instances.
 
 ## 2. `package.json` `plurnk` discovery block
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mimetype-client-display} | `glyph` — string |
+| {§mimetype-discovery} | `discover()` uses one scope-agnostic, trust-gated path for first- and third-party packages: |
+| {§mimetype-extension-failure} | A missing manifest or package outside the mimetype kind is ignored, and a withheld package is reported… |
+| {§mimetype-package-resolution} | Registration and default loading use the same consumer package graph. |
+| {§mimetype-naming} | 2.1 Mimetype naming convention |
+<!-- /map -->
 
 A package declares one or more mimetype handlers via a uniform `handlers` array. Single-handler and multi-handler packages use the same shape.
 
@@ -403,6 +427,14 @@ glob remain available against the readable text without structural validation.
 
 ## §mimetype-error-policy 7. Error policy
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§logical-line-count} | One owner. |
+| {§mimetype-derivation-evidence} | `Mimetypes.process` adds source identity once at the channel-materialization boundary |
+| {§mimetype-artifact-absence} | A fixed artifact is absent only when module resolution names that exact requested package as missing. |
+<!-- /map -->
+
 The exported `ProcessResult` type owns the executable field shape.
 
 | Field family                         | Presence contract                                                                                  |
@@ -478,6 +510,14 @@ discovery; an unknown default still produces the handler-missing result in
 {§mimetype-error-policy}.
 
 ## 9. Parser backends
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§treesitter-runtime-gate} | 9.0 One tree-sitter runtime, serialized loads |
+| {§mimetype-backend-selection} | 9.1 Backend selection hierarchy |
+| {§mimetype-parser-coordinates} | 9.4.1 Parser coordinate boundary |
+<!-- /map -->
 
 ### §treesitter-runtime-gate 9.0 One tree-sitter runtime, serialized loads
 
@@ -846,6 +886,14 @@ Channels are built **per request** ({§mimetype-channel-selection}): a requested
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
 ## §mimetype-grammar-packages 13. Per-grammar package architecture
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mimetype-optional-grammars} | An optional grammar is an operator-installed package, not a default. |
+| {§grammar-package-reproducibility} | 13.5 Reproducibility |
+| {§grammar-package-lifecycle} | 13.6 Grammar maintenance |
+<!-- /map -->
 
 ### 13.1 Runtime boundary
 

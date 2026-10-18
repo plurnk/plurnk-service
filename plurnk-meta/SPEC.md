@@ -53,6 +53,18 @@ or invokes an installer merely to expose the service's own reference material.
 
 ## §extension-discovery Installed extension discovery
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§extension-kind} | One package, one kind |
+| {§env-knob} | One environment reader |
+| {§resource-environment} | Named resource environment projection |
+| {§error-detail-bound} | One diagnostic-preview bound |
+| {§extension-manifest-read} | One extension declaration |
+| {§extension-attribution} | Extension-authored attribution tags |
+| {§extension-trust-boundary} | One policy, enforcement before import |
+<!-- /map -->
+
 ```mermaid
 flowchart LR
     graph[Installed Node dependency graph] --> enumerate[Meta.packageDirs]

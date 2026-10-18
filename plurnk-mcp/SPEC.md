@@ -33,6 +33,15 @@ per-connection and absent from a legacy peer.
 
 ## §mcp-core-matrix Core capability matrix
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mcp-catalog-convergence} | A catalog is complete or it is an error. |
+| {§mcp-catalog-deadline} | `PLURNK_MCP_CONNECT_TIMEOUT` bounds connection setup and, separately, each complete catalog/list walk,… |
+| {§mcp-retry-pacing} | Every retry the adapter schedules on its own — reopening a dropped subscription, refreshing a catalog a… |
+| {§mcp-catalog-list-absence} | An unsupported list method does not disable the server. |
+<!-- /map -->
+
 The accountable capability matrix lives in `capabilityMatrix.ts`
 ({§mcp-capability-matrix}). This table describes the pinned revision;
 {§mcp-authority} owns the SDK-negotiated older-peer surface.
@@ -167,6 +176,15 @@ conformance stays a separate named gate, never folded into a matrix row.
 
 ## §mcp-transports Transport bindings
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mcp-endpoint-security} | Configured MCP and registry endpoints accept HTTP or HTTPS, including private-network hosts. |
+| {§mcp-stdio-process-ownership} | A stdio connection owns the complete process group created for its server. |
+| {§mcp-redirect-refused} | An HTTP endpoint is never redirected. |
+| {§mcp-header-declarations} | A tool with an invalid `x-mcp-header` declaration is never called. |
+<!-- /map -->
+
 | Binding | Contract |
 |---|---|
 | stdio | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC is the only stdout/stdin traffic; stderr is diagnostic; shutdown closes stdin, waits, then terminates if necessary |
@@ -225,6 +243,24 @@ a tool-level error completes with that tool result. Plurnk preserves the
 originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mcp-file-configuration} | Standalone `mcp.json` files are read-only configuration inputs, not plugins. |
+| {§mcp-plugin-configuration} | Plugin MCP components use their format's interpretation, not the native file dialect. |
+| {§mcp-activation-isolation} | Cold endpoint failure is capability-local. |
+| {§mcp-definitions} | A server is not a plugin installation. |
+| {§mcp-launch-directory} | An implicit working directory is workspace-owned state, not the project. |
+| {§mcp-summary-derivation} | Orientation prefers the server's own purpose over display labels; no capabilities are inferred. |
+| {§mcp-server-settings} | Independent behavior settings do not change connection definitions. |
+| {§mcp-module} | The MCP family beneath the coordinator |
+| {§mcp-launch-environment} | Ambient inheritance and explicit bindings are distinct. |
+| {§mcp-management-actions} | MCP is one family of workspace Functionality ({§functionality-coordinator}). |
+| {§mcp-registry-discovery} | `discover` searches the MCP Registry. |
+| {§mcp-preparation-diagnostics} | Unavailable preparation reports observations. |
+| {§oauth-continuation} | A URL-only HTTP definition is sufficient to reach the client sign-in handoff. |
+<!-- /map -->
 
 MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files, plugin components, and environment declarations
 supply the service baseline; live additions belong to the workspace. All use the common resolution
@@ -681,6 +717,15 @@ failures are reported. Core's shutdown deadline remains the outer bound
 ({§crash-only-stop}).
 
 ## §mcp-host-composition Protocol-to-Plurnk composition
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§mcp-input-deadline} | Client-input waits consume the remaining owning operation budget (`PLURNK_MCP_REQUEST_TIMEOUT`); each MRTR… |
+| {§mcp-tool-replay} | A tool call is effectful unless host policy proves otherwise. |
+| {§mcp-tool-problem-detail} | Tool-call Problems keep runtime, tool, and any bounded remote diagnostic as structured extensions. |
+| {§mcp-trailing-aside} | A tool call's body is one JSON object. |
+<!-- /map -->
 
 One `ServerConnection` owns negotiation, SDK caches, authorization partition,
 subscriptions, active request controllers, MRTR rounds, and Tasks for one

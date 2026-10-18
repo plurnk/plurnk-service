@@ -9,6 +9,16 @@ seam slice.
 
 ## §module-contract Module contract
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§module-http-mounts} | A module declares the HTTP prefixes it serves. |
+| {§module-phases} | Every module's `setup` completes before any module's `start`. |
+| {§module-self-activation} | A module configures itself. |
+| {§module-contained-configuration} | A module contains a setting it cannot use. |
+| {§module-failure} | A `setup` or `start` failure fails boot, and stopping releases exactly what was acquired. |
+<!-- /map -->
+
 A module is a `DaemonModule<SetupSeam, StartSeam>`. Every member is optional, and each seam
 type names only what the module uses.
 
@@ -89,6 +99,15 @@ contract is the one package that depends on it directly. There is no manifest ve
 
 ## Base setup functions
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§module-workspace-paths} | `workspacePaths(workspaceId)` — Returns the host's absolute `home`, the bound `projectRoot` (null for a… |
+| {§module-workspace-directory} | `workspaceStateDirectory(workspaceId, namespaceOwner)` — Returns and creates the module's absolute… |
+| {§module-action-registration} | `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` — Adds one non-empty,… |
+| {§module-functionality-adapter} | `registerFunctionalityAdapter(adapter)` — Registers one family beneath the host's shared coordinator… |
+<!-- /map -->
+
 | Function | Contract |
 | --- | --- |
 | §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§agent-roots}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
@@ -100,6 +119,15 @@ contract is the one package that depends on it directly. There is no manifest ve
 | §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the host's shared coordinator ({§functionality-coordinator}) and returns its family handle. |
 
 ## Functionality adapters
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§functionality-adapter} | An adapter owns protocol truth. |
+| {§functionality-preparation-cancellation} | Preparation belongs to its invoking lifetime. |
+| {§functionality-admission-preparation} | Admission data belongs to one attempt. |
+| {§functionality-discovery-inputs} | An adapter declares the discovery inputs it serves. |
+<!-- /map -->
 
 §functionality-adapter **An adapter owns protocol truth.** It declares its
 family, namespace owner, definition schema, contributed defaults, discovery

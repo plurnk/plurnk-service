@@ -13,6 +13,17 @@ The durable namespace is `@plurnk/plurnk-skills`.
 
 ## Workspace family
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§skills-functionality} | Agent Skills are one workspace Functionality family. |
+| {§skills-configuration} | Skills use the shared definition cascade. |
+| {§skills-sources} | A source is a git remote, a folder, or a file, read with standard tools. |
+| {§skills-resources} | A skill is a resource tree, not a rewritten document. |
+| {§skills-remove} | `remove` forgets the workspace binding, not the source. |
+| {§skills-hotload} | Skills placed out of band are admitted at the next turn |
+<!-- /map -->
+
 §skills-functionality **Agent Skills are one workspace Functionality family.**
 The discovered skills module registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A

@@ -36,6 +36,24 @@ not a Worker entrypoint.
 
 ## §2 Provider interface
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-interface} | `Provider` exposes immutable model facts and one generation operation: |
+| {§provider-prompt-measurement} | `PromptTokenMeasurement` is a discriminated request-level result: |
+| {§provider-capacity-admission} | `assessRequestCapacity` intersects every known physical input constraint: independent `maxInputTokens` and… |
+| {§provider-monetary-evidence} | One precedence path converts each physical provider request into {§provider-cost} evidence before the request… |
+| {§provider-cache-identity} | `generate` requires a non-empty, stable, opaque `workerId`. |
+| {§provider-call-kind} | `callKind` is either `emission` (the response is a PLURNK turn emission) or `bare` (the response is… |
+| {§provider-native-tools-disabled} | Generation requests declare no native tools and select the SDK's portable `none` tool choice, for emissions… |
+| {§provider-generation-completion} | Stream consumption follows the provider's completion boundary, subject to caller cancellation and configured… |
+| {§provider-request-observer} | When a consumer supplies the request observer, the adapter opens one durable identity through it immediately… |
+| {§provider-dispatched-request} | With `PLURNK_PROVIDERS_RAWBODY` enabled, installed SDK transports also retain the exact serialized generation… |
+| {§provider-reasoning-observer} | When a consumer supplies `observeReasoning`, the provider synchronously delivers each exact, ordered,… |
+| {§provider-finish-reason} | The finish reason is the AI SDK's unified classification |
+| {§provider-tagged-reasoning} | Structured provider or SDK reasoning fields are authoritative. |
+<!-- /map -->
+
 §provider-interface `Provider` exposes immutable model facts and one generation
 operation:
 
@@ -300,6 +318,21 @@ rail observed.
 
 ## §3 AI SDK boundary
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-sdk-boundary} | Cataloged providers instantiate their Models.dev-declared AI SDK package. |
+| {§operator-cost-override} | Models.dev is the rate starting point; the operator may overlay it. |
+| {§provider-effort} | The portable vocabulary comes from {§effort-wire}. |
+| {§provider-readable-reasoning} | Route-owned options may request exposed reasoning text. |
+| {§provider-sdk-warning} | AI SDK compatibility, unsupported-feature, deprecation, and other call warnings become source-attributed… |
+| {§provider-cache-affinity} | Cache affinity is route-owned request projection. |
+| {§provider-model-options} | A model family's native options are a provider declaration. |
+| {§provider-cache-write-policy} | Cache-write policy is separate from affinity. |
+| {§deepseek-reasoning-request} | Direct DeepSeek uses the panel's request-field declarations under {§provider-wire-declaration}. |
+| {§provider-wire-declaration} | Request-field declarations |
+<!-- /map -->
+
 §provider-sdk-boundary Cataloged providers instantiate their
 Models.dev-declared AI SDK package.
 Standard request shaping, streaming, usage, and vendor error parsing belong to
@@ -516,6 +549,16 @@ defaults.
 
 ## §5 Resolution
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-resolution} | `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an alias. |
+| {§model-catalog-readiness} | Catalog readiness and construction share one local configuration predicate. |
+| {§provider-input-modalities} | Native input parts |
+| {§model-fact-resolution} | Model fact precedence |
+| {§provider-fact-authority} | Provider declarations configure facts, not credentials, and Models.dev is authoritative for cataloged… |
+<!-- /map -->
+
 §provider-resolution `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an
 alias.
 `PLURNK_MODEL=<selector>` selects either a declared alias or an exact
@@ -660,6 +703,14 @@ model physics. `Discovery.packageAttributions` carries the canonical package map
 
 ## §7 Local capabilities
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-local-capabilities} | The `openai` local adapter probes `/v1/models`. |
+| {§llama-template-effort} | The template control expresses two postures, so on the wire an admitted effort rides as `adaptive` and `off`… |
+| {§llama-reasoning-request} | The allowance is cumulative across the complete response. |
+<!-- /map -->
+
 §provider-local-capabilities The `openai` local adapter probes `/v1/models`. A
 llama-server fingerprint may
 also expose:
@@ -709,6 +760,14 @@ response boundary.
 
 ## §8 Request authority
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-request-authority} | The caller's `sampling` bag expresses sampling intent. |
+| {§provider-request-controls} | A configured service tier or logprobs count reaches a native route only through the per-call option its SDK… |
+| {§openrouter-app-attribution} | A route on the OpenRouter SDK identifies the calling application only as its provider declares. |
+<!-- /map -->
+
 §provider-request-authority The caller's `sampling` bag expresses sampling
 intent. It cannot override:
 
@@ -756,6 +815,25 @@ another provider on the same SDK package sends none; an empty `APP_URL` suppress
 both.
 
 ## §9 Failures, retries, and cancellation
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-failure-normalization} | Provider failures normalize to `ProviderError`. |
+| {§provider-retryable-truth} | `retryable` states what happens next. |
+| {§provider-failure-cause} | The wrapper's cause is evidence, bounded. |
+| {§provider-capacity-failure} | A proven exact preflight overflow and an upstream context rejection normalize to… |
+| {§provider-flexed-allowance} | The grant is the window's remainder, between the floor and the model's limit. |
+| {§provider-output-floor} | The floor is the wall's other side. |
+| {§provider-sampling-passthrough} | Unconfigured sampling retains endpoint defaults. |
+| {§provider-connectivity} | The provider adapter owns one attempt scheduler around the complete generation exchange; SDK-internal retries… |
+| {§provider-cancellation-evidence} | Received usage/charge evidence and available response identity survive cancellation and deadline… |
+| {§provider-native-tool-calls} | A response with native tool-call data, or a `tool_calls` finish, preserves its text, reasoning, structured… |
+| {§provider-completed-admission} | A completed exchange is admitted as the provider delivered it. |
+| {§provider-request-rejection} | An HTTP 4xx rejection not classified as authorization, quota, capacity, grammar, rate limit, or transient… |
+| {§provider-interrupted-attempt} | Provider-declared interruption |
+| {§provider-generation-failed} | Provider-declared generation error |
+<!-- /map -->
 
 §provider-failure-normalization Provider failures normalize to `ProviderError`.
 Its public contract is an RFC
@@ -958,6 +1036,15 @@ is transport evidence so a digest can prove a run was constrained; nothing in
 the service issues a verdict on it.
 
 ## §11 Evidence and metadata
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§provider-evidence} | `assistantRaw` is an opaque normalized transport record. |
+| {§provider-wire-emission} | The emission is retained as the wire carried it, on every response. |
+| {§provider-usage-refusal} | The provider's bookkeeping is not the exchange. |
+| {§provider-open-reasoning} | Plurnk requires endpoints with open, verbatim reasoning. |
+<!-- /map -->
 
 §provider-evidence `assistantRaw` is an opaque normalized transport record.
 Provider top-level

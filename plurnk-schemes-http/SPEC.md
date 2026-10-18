@@ -78,6 +78,18 @@ model and the world.
 
 ## §http-lifecycle §3 Acquisition, materialization, and query lifecycle
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§http-text-decoding} | Text response decoding |
+| {§http-binary-source} | Finite binary responses retain bounded original bytes in `body`, with optional derived facts/text in… |
+| {§http-json-presentation} | Finite `application/json` and `+json` responses use {§json-document-presentation} in their canonical body… |
+| {§html-materialization} | Readable materialization |
+| {§http-materializer-extensions} | Materializer extensions |
+| {§http-channel-outcomes} | Channel outcomes |
+| {§http-llms-txt} | Origin llms.txt companions. |
+<!-- /map -->
+
 ```mermaid
 flowchart TD
     get["GET acquisition"] --> live{"text/event-stream?"}
@@ -320,6 +332,14 @@ handler does not sniff or guess unknown bytes.
 
 ## §5 Dependencies and configuration
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§http-config} | Operator configuration |
+| {§http-host-policy} | Operator web host policy |
+| {§automatic-fetch-check} | Automatic acquisition URL check |
+<!-- /map -->
+
 | Surface           | Runtime contract                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`                             |
@@ -369,6 +389,15 @@ Validation-time DNS answers are not pinned to connection-time resolution. This
 check therefore makes no DNS-rebinding or total-egress claim.
 
 ## §materialization-lifecycle §6 Materialization lifecycle
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§host-rewrite} | Acquisition target rewrite |
+| {§revalidation} | GET representation freshness |
+| {§http-kill} | KILL follows the entry rule; the remote DELETE is its own spelling. |
+| {§sse} | Server-sent events |
+<!-- /map -->
 
 | Concern        | Contract                                                                                                   |
 | -------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -536,6 +565,14 @@ owns no entry identity, registry selection, selected-channel policy, or query
 policy; its consumers supply those boundaries and the projection capability.
 
 ## §ws §8 WebSocket
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§ws-lifecycle} | Socket ownership and settlement |
+| {§problems-http} | Web materialization Problems. |
+| {§pinned-wording-http} | Pinned wording. |
+<!-- /map -->
 
 `wss` is a first-class data scheme; `ws` routes to the same handler. WebSocket
 is bidirectional and stateful, not an HTTP content type. It uses `messages` as a

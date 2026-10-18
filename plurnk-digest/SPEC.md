@@ -32,6 +32,27 @@ does not turn a failed or unpriced request into a free or absent request.
 
 ## Artifacts and reports
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§digest-storage} | The digest states the file's health. |
+| {§digest-turn-artifact-identity} | Digest packet artifacts project durable turns. |
+| {§share-packet-names} | Packet artifacts carry the coordinate the log uses. |
+| {§digest-navigation} | The main Markdown report links each turn's available input, output, reasoning and physical requests outside… |
+| {§share-snapshot} | A database is copied by SQLite, never by the filesystem. |
+| {§digest-programmatic-surface} | The digest is an importable forensic surface. |
+| {§digest-cost-kind} | Cost basis named. |
+| {§digest-wire-line} | Wire health aggregated. |
+| {§digest-room-line} | The room in provider tokens. |
+| {§digest-cache-ledger} | Measured cache reuse and estimated prompt overlap are separate. |
+| {§digest-edit-census} | Every model EDIT by the form it authored, how it landed, and whether it came back. |
+| {§digest-forensic-fidelity} | Forensic fidelity and cardinality. |
+| {§digest-executor-evidence} | A red command is work, not a defect. |
+| {§digest-capacity-evidence} | A 413 is the contract working, not a defect. |
+| {§digest-requiem} | A requiem is an out-of-band forensic interview, not a worker turn. |
+| {§digest-requiem-evidence-budget} | Quoted evidence fits the witness. |
+<!-- /map -->
+
 §digest-storage **The digest states the file's health.** Beside the database path it
 reports the file size, the free pages it holds, its `auto_vacuum` mode, and the six
 largest tables and indexes by allocated bytes (`dbstat`), so growth is a number in

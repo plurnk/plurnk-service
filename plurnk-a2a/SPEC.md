@@ -63,6 +63,18 @@ under `module:@plurnk/plurnk-a2a`.
 
 ## §a2a-inbound-exposure Inbound exterior exposure
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§a2a-task-observation} | Each streaming request receives exactly one initial Task snapshot, then Artifact/status updates from ordinary… |
+| {§a2a-hosted-card} | The exposure generates the hosted standard Agent Card from normalized environment identity plus actual… |
+| {§a2a-hosted-credentials} | The exposure is a protected resource of the daemon's authority. |
+| {§a2a-worker-ownership} | New Task workers are fresh model children of the configured existing parent and inherit its approval owner. |
+| {§a2a-context-resource} | Context history |
+| {§a2a-lazy-workspace} | Mounting the exposure, Agent Card discovery, Task observations, and rejected Task lookups perform no… |
+| {§a2a-task-listing} | Task listing |
+<!-- /map -->
+
 The inbound HTTP+JSON exposure is an exterior adapter over the
 `ApplicationPort` calls it makes, mounted on the daemon's one listener ({§http-host}): the
 public Agent Card at the standard well-known path and the interface at
@@ -236,6 +248,14 @@ not the Worker directory's creation order.
 
 ## §a2a-functionality Outbound agents as workspace Functionality
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§a2a-outbound-credentials} | An `oauth2` authorization obtains its own access token. |
+| {§a2a-problem-detail} | A2A Problems state the failed boundary fact without guessing intent or duplicating structured aliases, URLs,… |
+| {§a2a-catalog} | Turn 0 shows enabled agents concisely. |
+<!-- /map -->
+
 The package module registers, through its `OutboundModule` half, one workspace Functionality
 family named `a2a` ({§functionality-adapter} in core): the package, its keys,
 the family and the scheme share one name. Its definition
@@ -296,6 +316,15 @@ pullable exactly through `READ a2a://<alias>` ({§a2a-outbound-definition}).
 Hosted inbound exposure ({§a2a-inbound-exposure}) is unaffected by this family.
 
 ## §a2a-outbound-resources Outbound resources
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§a2a-scheme-face} | The scheme is the live half of the family's own runtime. |
+| {§a2a-outbound-definition} | An enabled outbound alias resolves through its workspace's `a2a` Functionality snapshot… |
+| {§a2a-outbound-turn-rhythm} | SEND delivers a Message; lifecycle verbs independently declare the local Loop's intent under… |
+| {§a2a-outbound-replay} | A card or resource READ and connection discovery are replay-safe observations. |
+<!-- /map -->
 
 The `a2a` scheme is an exterior client adapter over ordinary Plurnk resource
 and subscription contracts. Its URI authority is the configured remote-agent
@@ -361,6 +390,15 @@ stream end, therefore carry `retryable: false`; Plurnk never recommends an
 automatic identical replay that could duplicate remote work.
 
 ## §a2a-resource-projection Resource projection
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§a2a-hosted-message-resources} | Hosted input uses the ordinary inbox and {§send-resource-attachments}, not the outbound alias resolver. |
+| {§a2a-response-preferences} | Nonempty `configuration.acceptedOutputModes` appears as labeled response preferences beside the model-facing… |
+| {§a2a-part-resources} | Received raw Parts are ordinary typed resources, not base64 placeholders. |
+| {§problems-a2a} | A2A Problems. |
+<!-- /map -->
 
 §a2a-hosted-message-resources Hosted input uses the ordinary inbox and
 {§send-resource-attachments}, not the outbound alias resolver. An incoming

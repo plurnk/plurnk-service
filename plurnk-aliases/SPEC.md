@@ -9,6 +9,16 @@ single parsing authority.
 
 ## The cascade
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§alias-declaration} | `PLURNK_MODEL_<alias>=<provider>/<model>` |
+| {§alias-active-selector} | `PLURNK_MODEL=<selector>` |
+| {§alias-child-selector-reserved} | `PLURNK_MODEL_CHILD=<selector>` is reserved as the child-provider selector |
+| {§alias-base-url} | `PLURNK_BASEURL_<alias>` |
+| {§alias-case-folding} | Alias keys are **case-folded** (the suffix after `PLURNK_MODEL_` / `PLURNK_BASEURL_` is downcased), so… |
+<!-- /map -->
+
 - §alias-declaration **`PLURNK_MODEL_<alias>=<provider>/<model>`** declares an alias. The provider
   segment is the **first** `/`-delimited field; the model id is everything after
   that first `/` (it MAY contain further `/`, e.g. `openrouter/deepseek/deepseek-v4.1-flash`).
@@ -45,6 +55,15 @@ alias-scoped tuning applies only when that real alias is present.
 
 ## Functions
 
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§alias-parse} | `parseAliasesFromEnv(env = process.env): ProviderAlias[]` |
+| {§alias-resolve-selector} | `resolveModelSelector(selector, aliases): ProviderSpec \| null` |
+| {§alias-resolve-active} | `resolveActiveRoute(env = process.env): ProviderSpec \| null` |
+| {§alias-resolve-child} | `resolveChildRoute(env = process.env): ProviderSpec \| null` |
+<!-- /map -->
+
 - §alias-parse **`parseAliasesFromEnv(env = process.env): ProviderAlias[]`** — every declared
   alias. Skips entries with an empty value or no `/` in the value.
 - §alias-resolve-selector **`resolveModelSelector(selector, aliases): ProviderSpec | null`** — resolves a
@@ -58,6 +77,14 @@ alias-scoped tuning applies only when that real alias is present.
   alias declarations for both selectors.
 
 ## Fail-hard rules
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§alias-case-collisions} | Case-folding collision |
+| {§alias-dangling-override} | Dangling override |
+| {§alias-unresolved-selector} | Unresolved active selector |
+<!-- /map -->
 
 - §alias-case-collisions **Case-folding collision** — two nonempty `PLURNK_MODEL_*`
   declarations or two nonempty `PLURNK_BASEURL_*` overrides that downcase to the
