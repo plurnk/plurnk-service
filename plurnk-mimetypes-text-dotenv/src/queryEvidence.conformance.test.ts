@@ -6,7 +6,7 @@ import Handler from "./Dotenv.ts";
 const h = new Handler({"mimetype":"text/x-dotenv","glyph":"🔑","extensions":[".env",".env.local",".env.development",".env.production",".env.test",".env.example"]});
 const src = "A=1\nB=2\nC=3\n";
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§mimetype-query-conformance} query-evidence conformance (both dialects)", () => {
     for (const eol of ["\n", "\r\n"]) for (const dialect of ["jsonpath", "xpath"] as const) {
         it(`${dialect} locates the complete multiline assignment and the last duplicate, ${JSON.stringify(eol)}`, async () => {
             await assertQueryEvidenceConformance(h, [{

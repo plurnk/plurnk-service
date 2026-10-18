@@ -61,7 +61,7 @@ const ENV = [
     `not a var line`,
 ].join("\n");
 
-describe("Dotenv — variables as symbols", () => {
+describe("{§dotenv-values} Dotenv variables as symbols", () => {
     it("a multiline value does not introduce false assignments", () => {
         const source = 'MULTI="first\nDECOY=inside the value\nlast" # outside\nAFTER=ok';
         assert.deepEqual(h().extractRaw(source), [
@@ -77,7 +77,7 @@ describe("Dotenv — variables as symbols", () => {
     });
 });
 
-describe("Dotenv — deepJson value map", () => {
+describe("{§dotenv-values} Dotenv deepJson value map", () => {
     it("exposes values (no redaction), strips export + surrounding quotes", () => {
         const map = h().deepJson(ENV) as Record<string, string>;
         assert.equal(map.MODEL, "gpt-4");

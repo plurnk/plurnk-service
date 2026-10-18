@@ -8,7 +8,7 @@ const { fixtures } = JSON.parse(await readFile(new URL("../test/fixtures/csv-spe
 };
 const handler = new TextCsv({ mimetype: "text/csv", glyph: "📊", extensions: [".csv"] });
 
-describe("csv-spectrum 2.0.0", () => {
+describe("{§csv-records} csv-spectrum 2.0.0", () => {
     for (const { name, csvBase64, expectedJson } of fixtures) {
         const source = Buffer.from(csvBase64, "base64").toString("utf8");
         const csv = name.endsWith("_crlf") ? source.replaceAll("\n", "\r\n") : source;

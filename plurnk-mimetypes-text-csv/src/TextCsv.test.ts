@@ -10,7 +10,7 @@ const metadata = {
 
 const h = new TextCsv(metadata);
 
-describe("TextCsv — extract", () => {
+describe("{§csv-records} TextCsv extract: header names as field symbols", () => {
     it("extracts header columns as field symbols at line 1", () => {
         const result = h.extractRaw("name,age,role\nalice,30,admin\nbob,25,user\n");
         assert.deepEqual(
@@ -60,7 +60,7 @@ describe("TextCsv — extract", () => {
     });
 });
 
-describe("TextCsv — validate", () => {
+describe("{§mimetype-validation} TextCsv validate", () => {
     it("accepts uniform column-count CSV", () => {
         assert.doesNotThrow(() => h.validate("a,b,c\n1,2,3\n4,5,6\n"));
         assert.doesNotThrow(() => h.validate("a,b\n1,2"));
@@ -82,7 +82,7 @@ describe("TextCsv — validate", () => {
     });
 });
 
-describe("parseAll (RFC 4180 tokenizer)", () => {
+describe("{§csv-records} parseAll (RFC 4180 tokenizer)", () => {
     it("retains an empty quoted field at EOF as a record", () => {
         assert.deepEqual(parseAll('""'), [[""]]);
         assert.deepEqual(parseAll('name\n""'), [["name"], [""]]);
@@ -121,7 +121,7 @@ describe("parseAll (RFC 4180 tokenizer)", () => {
     });
 });
 
-describe("TextCsv — query (jsonpath against row objects)", () => {
+describe("{§mimetype-query} TextCsv query: jsonpath against row objects", () => {
     const src = [
         "name,role,score",
         "alice,admin,99",

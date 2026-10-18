@@ -6,7 +6,7 @@ import Handler from "./TextCsv.ts";
 const h = new Handler({"mimetype":"text/csv","glyph":"📊","extensions":[".csv"]});
 const src = "name,age\nalice,30\nbob,25\n";
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§mimetype-query-conformance} query-evidence conformance (both dialects)", () => {
     for (const eol of ["\n", "\r\n", "\r"]) for (const dialect of ["jsonpath", "xpath"] as const) {
         it(`${dialect} locates a multiline record and the record after it, ${JSON.stringify(eol)}`, async () => {
             const source = ['name,note', 'alice,"first', 'second"', 'bob,ok'].join(eol);
