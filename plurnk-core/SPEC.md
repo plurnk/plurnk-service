@@ -2747,24 +2747,17 @@ A READ carrying active native media is atomic: any KILL scope is ignored and the
 | Initial body suppression | Immutable event `initial_folded` | Packet presentation only; explicit retrieval can read an initially hidden body. An emission row remains folded; its program is separately eligible for {§emission-history}. |
 | Deliberate scoped KILL | Current projection `folded`, initially empty | Packet, READ, FIND, COPY, and search omit those lines; later retrieval cannot undo trimming. |
 
-Packet display combines both masks. Other consumers use only deliberate trimming.
-`tokens` prices the materialized observation, never absent body content.
-Coordinates and anchors retain the original body's physical lines; selection occurs
-before omitted lines are removed, and sparse receipts retain their original line
-ordinals. Automatic previews remain retrieval bounds, not deletions. COPY can read
-an active log source under ordinary read authority, without minting log history;
-entry destinations require independently writable storage; MOVE retires its
-source under {§move-decomposition}. A pattern spanning retained lines on either
-side of a curated gap maps to separate exact source regions, never to a bounding
-region that restores hidden lines. Concatenating those fragments reproduces only
-the matched readable text.
-Trimming invalidates derived search attachments; an in-flight derivation attaches
-only if its source projection is still current. Forks copy both projection facts;
-forensics always retain the complete immutable body and curation history.
-FIND row and folder weights price that same retained content. A byte-view READ's
-log body is its hexadecimal text, not another binary source: retrieval, copying,
-and indexing use `text/plain` while its immutable receipt retains the source MIME
-type and projection facts under {§read-bytes}.
+Packet display combines both masks; other consumers use only deliberate trimming.
+
+| Fact | Rule |
+| --- | --- |
+| `tokens` | prices the materialized observation, never absent body content; FIND row and folder weights price that same retained content |
+| Coordinates and anchors | retain the original body's physical lines; selection occurs before omitted lines are removed, and sparse receipts retain their original line ordinals; automatic previews remain retrieval bounds, not deletions |
+| COPY and MOVE | COPY can read an active log source under ordinary read authority, without minting log history; entry destinations require independently writable storage; MOVE retires its source under {§move-decomposition} |
+| A pattern across a curated gap | spanning retained lines on either side, it maps to separate exact source regions, never to a bounding region that restores hidden lines; concatenating those fragments reproduces only the matched readable text |
+| Derived attachments | trimming invalidates derived search attachments; an in-flight derivation attaches only if its source projection is still current |
+| Forks and forensics | forks copy both projection facts; forensics always retain the complete immutable body and curation history |
+| A byte-view READ's log body | its hexadecimal text, not another binary source: retrieval, copying, and indexing use `text/plain` while its immutable receipt retains the source MIME type and projection facts under {§read-bytes} |
 
 ### §log-wire-format The Log's wire format
 
@@ -3345,35 +3338,15 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   model can invoke without a READ and a menu that is cut is no menu. Absent
   metadata is omitted.
 
-  Resource-level `stream` and broad-match
-  `matchLocationCount` live only on `[0]`. A single-channel resource is therefore
-  a one-element array, with no path-owning wrapper or duplicated channel map.
-  A terminal single-star path scope is a one-level map: direct entries retain
-  that shape, while deeper first-segment directories collapse to the one-element
-  group `[{ path: "dir/**", items, weight }]`, where the selector and both aggregates
-  describe the exact recursive subtree. Scope summaries are navigation
-  metadata, not resources. Markerless FIND returns the first page
-  ({§markerless-first-page}) of positions in the selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
-  selects all. `range` reports the unit, complete result total, normalized
-  request, and returned positions ({§range-extent}). `itemsWeightTotal` weighs the complete matched set while
-  `returnedItemsWeightTotal` weighs the returned resource page; in exact
-  location mode both weigh the one selected resource once. Resource order is
-  rank for `~`full-text and candidate order otherwise; location order is dialect
-  order and exact duplicates deduplicate. The intended drill-down is broad FIND
-  to choose paths, exact-target FIND to choose locations, then exact READ.
-  `content` uses the shared generated-JSON projection ({§json-result-rendering}),
-  so universal packet numbering makes result ordinal N addressable as line N,
-  matching `<N>` pagination without a second coordinate system. It translates
-  only this final model-facing representation: `weight` reads `tokens`, a
-  `region` or `enclosingRegion` reads in the one scope notation `<SL,SC,EL,EC>`
-  ({§packet-extent-metadata}), and a location names its `channel` only when that
-  is not the resource's default channel ({§channel-selection-visibility}). A
-  location therefore reads `{"region":"<48,1,48,25>","matched":"class BaseCrossValidator"}`.
-  A returned page begins at `range.returned[0]`, and every
-  page left-pads its ordinals to the decimal width of `range.total`; content
-  therefore keeps one stable column across the complete result set. Pagination is the only FIND materialization bound; no
-  hidden complete row or location collection is retained behind the public
-  projection.
+  | Fact | Rule |
+  | --- | --- |
+  | `[0]` | resource-level `stream` and broad-match `matchLocationCount` live only there; a single-channel resource is therefore a one-element array, with no path-owning wrapper or duplicated channel map |
+  | A terminal single-star path scope | a one-level map: direct entries retain that shape, while deeper first-segment directories collapse to the one-element group `[{ path: "dir/**", items, weight }]`, where the selector and both aggregates describe the exact recursive subtree; scope summaries are navigation metadata, not resources |
+  | Pagination | markerless FIND returns the first page ({§markerless-first-page}) of positions in the selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly selects all; `range` reports the unit, complete result total, normalized request, and returned positions ({§range-extent}); it is the only FIND materialization bound, and no hidden complete row or location collection is retained behind the public projection |
+  | Weights | `itemsWeightTotal` weighs the complete matched set while `returnedItemsWeightTotal` weighs the returned resource page; in exact location mode both weigh the one selected resource once |
+  | Order | resource order is rank for `~`full-text and candidate order otherwise; location order is dialect order and exact duplicates deduplicate |
+  | The drill-down | broad FIND to choose paths, exact-target FIND to choose locations, then exact READ |
+  | `content` | the shared generated-JSON projection ({§json-result-rendering}), so universal packet numbering makes result ordinal N addressable as line N, matching `<N>` pagination without a second coordinate system; it translates only this final model-facing representation: `weight` reads `tokens`, a `region` or `enclosingRegion` reads in the one scope notation `<SL,SC,EL,EC>` ({§packet-extent-metadata}), and a location names its `channel` only when that is not the resource's default channel ({§channel-selection-visibility}), so a location reads `{"region":"<48,1,48,25>","matched":"class BaseCrossValidator"}`; a returned page begins at `range.returned[0]`, and every page left-pads its ordinals to the decimal width of `range.total`, so content keeps one stable column across the complete result set |
 
 §path-glob-matching Core's `PathGlob` owns shell-path matching and targeted disk
 traversal through the public `minimatch` and `glob` packages. Resource selection,
@@ -3870,22 +3843,15 @@ and rename, refuses these spellings as `name-invalid` (400):
 - Text that is not well-formed Unicode: an unpaired surrogate has no encoding.
 - A slash-delimited segment exactly `.` or `..`: a URL parser resolves it away, encoded or not.
 
-None is repaired or resolved. Every other spelling
-is admitted as written: spaces, Unicode, `~`, `@`, `%` and a literal `%2E%2E`, query and fragment
-punctuation, and a dot within a segment (`.config`, `file.txt`, `...`). A refused rename changes
-nothing. Admission governs new names only: a workspace already carrying a refused spelling keeps it,
-its id, its folder and its workers, stays listed and attachable, and is renamed like any other. Rename
-({§methods-workspace-rename}) changes the name alone; {§methods-workspace-attach} selects an existing workspace. With a project
-root and no name, `workspace.create` names the workspace after the root, the root's path with the daemon's
-home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the
-workspace of that name when one exists instead of creating a second, so two default launches on the
-same project and daemon share one workspace and a concurrent pair resolves to one. The root is resolved
-before it is named, so a root spelled with `.` or `..` components derives the name of the folder it
-reaches and no default is ever refused; a root that is not well-formed Unicode is
-`project-root-invalid` (400), since it names no folder. The default is a
-convention, not a mapping: a renamed workspace is not re-selected by its old default, and a workspace may
-carry any name over any folder. An explicit name that exists is `409 name-conflict`, never a
-selection.
+None is repaired or resolved. Every other spelling is admitted as written: spaces, Unicode, `~`, `@`, `%` and a literal `%2E%2E`, query and fragment punctuation, and a dot within a segment (`.config`, `file.txt`, `...`). A refused rename changes nothing.
+
+| Fact | Rule |
+| --- | --- |
+| Admission governs new names only | a workspace already carrying a refused spelling keeps it, its id, its folder and its workers, stays listed and attachable, and is renamed like any other |
+| Rename and attach | rename ({§methods-workspace-rename}) changes the name alone; {§methods-workspace-attach} selects an existing workspace |
+| The default name | with a project root and no name, `workspace.create` names the workspace after the root, the root's path with the daemon's home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the workspace of that name when one exists instead of creating a second, so two default launches on the same project and daemon share one workspace and a concurrent pair resolves to one |
+| The root | resolved before it is named, so a root spelled with `.` or `..` components derives the name of the folder it reaches and no default is ever refused; a root that is not well-formed Unicode is `project-root-invalid` (400), since it names no folder |
+| A convention, not a mapping | a renamed workspace is not re-selected by its old default, and a workspace may carry any name over any folder; an explicit name that exists is `409 name-conflict`, never a selection |
 
 §workspace-label **The workspace label: a folder's display spelling is the daemon's.** Wherever the application port
 returns a workspace's folder it returns its label beside it: `projectLabel` on a client envelope and
@@ -3949,26 +3915,15 @@ The first page uses both shared preview bounds in {§body-projection}; long
 records stop at the last complete line that fits, or at an exact Unicode region
 when even the first line exceeds the character bound. Explicit READ scopes stay exact.
 
-The durable per-subscription, per-channel cursor records the size last reported
-to the model — by the Open Work stream pointer while active, by the terminal
-observation at close — so the pointer can state growth and no partial document
-or record ever reaches the model. The terminal observation and its cursor
-transition commit atomically. A concluded stream lands one conclusion row per
-channel that holds content, and an empty sibling channel is a fact on that row
-(`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed
-nothing on any channel lands one bodyless conclusion row, on its default
-channel, whose terminal fact, causal execution link, and available exit code make
-completion explicit without invented narration. A failed execution is one failure: its
-terminal status and Problem ride its default channel's row when that row landed, else its
-first, and its other rows are 200 reads of their channels, so it puts one pointer in Errors
-({§operation-results}). A skipped channel's publication is still marked
-terminal, so the stream's termination is delivered and never left pending. KILL may curate
-that log row without rewinding the cursor or publishing the terminal result
-again; the exact terminal result and channel content remain READable at the
-stream address. Every READ then obeys {§body-projection} and therefore renders
-its selected result complete. A stream that closes before a same-turn wait
-remains pending until every selected channel's terminal READ crosses the next
-packet boundary. The execution row separately records the authored invocation.
+| Fact | Rule |
+| --- | --- |
+| The cursor | the durable per-subscription, per-channel cursor records the size last reported to the model — by the Open Work stream pointer while active, by the terminal observation at close — so the pointer can state growth and no partial document or record ever reaches the model; the terminal observation and its cursor transition commit atomically |
+| Conclusion rows | a concluded stream lands one conclusion row per channel that holds content, and an empty sibling channel is a fact on that row (`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed nothing on any channel lands one bodyless conclusion row, on its default channel, whose terminal fact, causal execution link, and available exit code make completion explicit without invented narration; the execution row separately records the authored invocation |
+| A failed execution | one failure: its terminal status and Problem ride its default channel's row when that row landed, else its first, and its other rows are 200 reads of their channels, so it puts one pointer in Errors ({§operation-results}) |
+| A skipped channel | its publication is still marked terminal, so the stream's termination is delivered and never left pending |
+| KILL | may curate that log row without rewinding the cursor or publishing the terminal result again; the exact terminal result and channel content remain READable at the stream address |
+| READ | every READ then obeys {§body-projection} and therefore renders its selected result complete |
+| A stream that closes before a same-turn wait | remains pending until every selected channel's terminal READ crosses the next packet boundary |
 
 ```` ```KILL (<runtime>:///<eight-hex-id>) ```` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable,
@@ -4971,22 +4926,16 @@ even if setup fails. A returned object identical to its module is tracked once.
 | Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
-The export is one DaemonModule ({§module-contract}) object or no-argument factory. The host
-records each module's owner, the package it came from, and its diagnostics name that owner. The
-service registers no module itself; a host that registers one explicitly, such as a test
-substituting a package, names it by its package the same way. Standard bundles follow
-{§agent-plugins-hosting} source order, then other installed module packages load in package-name
-order. All trusted modules register before setup; a daemon without a listener then leaves out
-every one that declares mounts ({§module-http-mounts}). A package the host registered explicitly is
-never also discovered: discovery skips that owner before importing it. Untrusted modules are reported and not imported. Invalid
-declarations, unavailable module files and configuration errors during construction are diagnosed
-at the affected extension, a declaration's error owned by `extensions` and a
-module's own configuration error by `module:<package>`; healthy siblings remain available. A factory validates startup
-configuration before `setup` acquires resources. Failures after registration begins follow
-{§module-lifecycle} cleanup, not a partial-registration fallback.
-An invalid module object, factory result or lifecycle member is an implementation contract failure,
-not configuration, and fails loudly. What a module contributes registers through its owning public
-interfaces and is released during {§module-lifecycle} resource teardown.
+The export is one DaemonModule ({§module-contract}) object or no-argument factory. The host records each module's owner, the package it came from, and its diagnostics name that owner. The service registers no module itself; a host that registers one explicitly, such as a test substituting a package, names it by its package the same way. What a module contributes registers through its owning public interfaces and is released during {§module-lifecycle} resource teardown.
+
+| Fact | Rule |
+| --- | --- |
+| Order | standard bundles follow {§agent-plugins-hosting} source order, then other installed module packages load in package-name order; all trusted modules register before setup, and a daemon without a listener then leaves out every one that declares mounts ({§module-http-mounts}) |
+| Explicit registration | a package the host registered explicitly is never also discovered: discovery skips that owner before importing it |
+| Untrusted modules | reported and not imported |
+| Invalid declarations, unavailable module files and configuration errors during construction | diagnosed at the affected extension, a declaration's error owned by `extensions` and a module's own configuration error by `module:<package>`; healthy siblings remain available; a factory validates startup configuration before `setup` acquires resources |
+| Failures after registration begins | follow {§module-lifecycle} cleanup, not a partial-registration fallback |
+| An invalid module object, factory result or lifecycle member | an implementation contract failure, not configuration, and fails loudly |
 
 §module-shutdown-order **Module shutdown is four phases in order under one deadline.** `Daemon.stop()`:
 
@@ -5390,22 +5339,16 @@ Worker runs — withholding it here would be theatre and would make `list` lie a
 environment its commands receive. A name the invariant reserves (`PLURNK_*`, provider credential
 names) is refused at **admission**, not dropped at the spawn, so the model learns why.
 
-`discover` is this installation's configuration catalog: every name an installed package declares
-under {§operator-config-env-defaults} that a Worker may set, projected as candidates whose summary
-is the declaration's own comment and whose provenance is the declaring package. The names the
-invariant reserves — plurnk's own configuration and provider credentials — are the operator's and
-never appear, so the catalog stays short enough to read whole. `query` matches a name or the
-comment that documents it, never a value. It is not a permissions list beyond that — a Worker may
-set any name it lists or none of them — it answers which names have a **consumer**, and it is how
-a Worker learns the name of a value only the operator can supply. The catalog projects
-declarations, never the host environment, so a credential the operator has filled in appears by
-name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never
-read). `source` selects one declaring package; an unknown source is `source-unknown`
-(400), not an empty catalog. A known source with no matching settable declarations
-returns an empty candidate list. A request naming neither input is the whole
-catalog. Files are read with READ; variables are set with `add` or `EDIT (env:///NAME)`.
-A client's own environment is no input: contributing candidates, it would be a second
-door past the ceiling.
+`discover` is this installation's configuration catalog: every name an installed package declares under {§operator-config-env-defaults} that a Worker may set, projected as candidates whose summary is the declaration's own comment and whose provenance is the declaring package. Files are read with READ; variables are set with `add` or `EDIT (env:///NAME)`.
+
+| Fact | Rule |
+| --- | --- |
+| Reserved names | the names the invariant reserves — plurnk's own configuration and provider credentials — are the operator's and never appear, so the catalog stays short enough to read whole |
+| `query` | matches a name or the comment that documents it, never a value |
+| Not a permissions list | a Worker may set any name it lists or none of them; the catalog answers which names have a **consumer**, and it is how a Worker learns the name of a value only the operator can supply |
+| Declarations, never the host environment | a credential the operator has filled in appears by name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never read) |
+| `source` | selects one declaring package; an unknown source is `source-unknown` (400), not an empty catalog; a known source with no matching settable declarations returns an empty candidate list; a request naming neither input is the whole catalog |
+| A client's own environment | no input: contributing candidates, it would be a second door past the ceiling |
 
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
 not from a live process or a cached worker environment.
@@ -6071,21 +6014,13 @@ Conditional absence never reorders the surviving default sections.
 |    12 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
 |    13 | user   | `recap`               | Optional authored operational recap. |
 
-The order favors prefix-cache locality where semantics permit: the definition
-and privileged policy lead operator notes, while the append-mostly
-log and interpolated programs lead the volatile user-status clump. That clump is never cached
-across turns, since the next turn's log grows into its place, so its order serves attention alone:
-it runs from ambient state (Git Status, Context, Worker, Open Work) to what the turn owes (Open
-Messages) to feedback on the last turn (Notices, then Errors), and closes with the Recap. The nearer
-the end, the more a section asks of this turn. With `all`, appending new
-observations and programs preserves the existing history's roles and text prefix; no old program
-moves past newly appended observations. Changing selection or curating a row may invalidate the
-prefix at the affected position. It does **not** claim that every system byte is
-immutable or that the complete packet is globally monotone in volatility:
-operator notes and policies can change. Trust is a separate
-admission rule. The system slot contains trusted control-plane material;
-observations stay in the user role, and only the model's admitted content program is replayed
-under assistant authorship.
+The order favors prefix-cache locality where semantics permit: the definition and privileged policy lead operator notes, while the append-mostly log and interpolated programs lead the volatile user-status clump. Trust is a separate admission rule: the system slot contains trusted control-plane material, observations stay in the user role, and only the model's admitted content program is replayed under assistant authorship.
+
+| Fact | Rule |
+| --- | --- |
+| The status clump | never cached across turns, since the next turn's log grows into its place, so its order serves attention alone: it runs from ambient state (Git Status, Context, Worker, Open Work) to what the turn owes (Open Messages) to feedback on the last turn (Notices, then Errors), and closes with the Recap; the nearer the end, the more a section asks of this turn |
+| With `all` | appending new observations and programs preserves the existing history's roles and text prefix; no old program moves past newly appended observations; changing selection or curating a row may invalidate the prefix at the affected position |
+| Not claimed | that every system byte is immutable or that the complete packet is globally monotone in volatility: operator notes and policies can change |
 
 ### §packet-extension-transform Trusted whole-list extension seam
 
@@ -6786,23 +6721,14 @@ later boot never refreshes or recreates it.
 
 ### §packet-git-status The Git status section — compact repository state
 
-When Git is admitted for the workspace, `## Git Status` contains a Markdown
-`> [!NOTE]` block. Its quoted lines report the current
-branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then
-one bounded line per non-empty class (at most `PLURNK_SERVICE_GIT_STATUS_PATHS` paths, `+K more`): staged,
-unstaged, `untracked members` — each path with the inclusion pattern that admits it or
-`created` for a creation record — and `untracked (not members)`, named because such a
-file is not a member ({§membership-baseline}) and a human must `git add` it or add a
-members definition before the model can read it. The section never contradicts the
-catalog: an untracked file a definition admits is named as the member it is. The section never carries an unbounded path list. Per-path state belongs to
-the runtime actor's durable causal evidence: its `source=file` row carries
-the exact two-character porcelain `XY` value as `git` metadata when the status
-snapshot names that path. The engine takes one snapshot after membership
-reconciliation and uses it for both projections; no per-file Git process exists.
-Porcelain v2 NUL-delimited records supply these facts: an unborn branch retains
-its actual name with `no commits`; detached HEAD is identified as detached,
-never as a branch named `HEAD`. Pathnames and rename sources retain their exact
-bytes; the internal two-character status uses spaces for unchanged coordinates.
+When Git is admitted for the workspace, `## Git Status` contains a Markdown `> [!NOTE]` block. The section never contradicts the catalog: an untracked file a definition admits is named as the member it is. The section never carries an unbounded path list.
+
+| Fact | Rule |
+| --- | --- |
+| The quoted lines | the current branch, upstream ahead/behind counts, and staged/unstaged/untracked totals, then one bounded line per non-empty class (at most `PLURNK_SERVICE_GIT_STATUS_PATHS` paths, `+K more`): staged, unstaged, `untracked members` — each path with the inclusion pattern that admits it or `created` for a creation record — and `untracked (not members)`, named because such a file is not a member ({§membership-baseline}) and a human must `git add` it or add a members definition before the model can read it |
+| Per-path state | belongs to the runtime actor's durable causal evidence: its `source=file` row carries the exact two-character porcelain `XY` value as `git` metadata when the status snapshot names that path |
+| The snapshot | the engine takes one after membership reconciliation and uses it for both projections; no per-file Git process exists |
+| Porcelain v2 NUL-delimited records | supply these facts: an unborn branch retains its actual name with `no commits`; detached HEAD is identified as detached, never as a branch named `HEAD`; pathnames and rename sources retain their exact bytes; the internal two-character status uses spaces for unchanged coordinates |
 
 ### §recap Optional Recap footer
 
