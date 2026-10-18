@@ -175,7 +175,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
     } finally { await db.close(); }
 });
 
-test("streaming exec: the workspace catalog picks up partial channel content between samples", async () => {
+test("{§exec-target-routing} streaming exec: the workspace catalog picks up partial channel content between samples", async () => {
     // The workspace catalog (engine_list_workspace_entries, its
     // source) reads channels.content LIVE — so each turn build sees
     // whatever bytes have landed by that moment. This proves the model

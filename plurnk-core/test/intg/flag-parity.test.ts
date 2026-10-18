@@ -15,7 +15,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_RECAP_LINE_"];
 
-test("every shipped service flag has an adjacent description for CLI help", () => {
+test("{§operator-config-flag-parity} every shipped service flag has an adjacent description for CLI help", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");
     const flags = EnvFlags.parseEnvDefaultsContent(template);
     assert.ok(flags.length > 0);
@@ -27,7 +27,7 @@ test("every shipped service flag has an adjacent description for CLI help", () =
     }
 });
 
-test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
+test("{§operator-config-flag-parity} every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");
     // Declared: active `PLURNK_SERVICE_X=` and commented `# PLURNK_SERVICE_X=` lines.
     const declared = new Set(

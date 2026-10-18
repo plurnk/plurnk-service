@@ -139,7 +139,7 @@ test("{§operation-aside}: the descriptive aside survives durable dispatch uncha
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing to kill)", async () => {
+test("{§turn-ops-log-curation} Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing to kill)", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
@@ -325,7 +325,7 @@ test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 20
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
+test("{§problems-dispatch} Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/anchored.md");
     const identity = "worker:///anchored.md";
@@ -545,7 +545,7 @@ test("Engine.dispatch: scoped KILL accepts body and log anchors, and READ respec
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
+test("{§problems-dispatch} Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/contextual-anchor.md");
     const content = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`).join("\n");
@@ -845,7 +845,7 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
         assert.equal(rows[1]?.pathname, "/b");
     } finally { await db.close(); }
 });
-test("Engine.dispatch: origin field captured in log", async () => {
+test("{§scheme-surface} Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
         const turnIds: number[] = [];
@@ -994,7 +994,7 @@ test("Engine.dispatch: an instance manifest enforces writableBy like a static ma
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a model reply needs no external capability", async () => {
+test("{§scheme-surface-exception-500} Engine.dispatch: a model reply needs no external capability", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
@@ -1010,7 +1010,7 @@ test("Engine.dispatch: a model reply needs no external capability", async () => 
 // {§scheme-surface-exception-500} Scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
-test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -1047,7 +1047,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: non-Error throw becomes the same generic contract Problem", async () => {
+test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same generic contract Problem", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();

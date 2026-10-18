@@ -17,7 +17,7 @@ const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockR
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 
-test("a short message lands as one inbound SEND row", async () => {
+test("{§context-fit} a short message lands as one inbound SEND row", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -135,7 +135,7 @@ test("{§markerless-first-page}: the operator's message and the model's own rows
     }
 });
 
-test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
+test("{§context-fit} a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
         coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://tidy",

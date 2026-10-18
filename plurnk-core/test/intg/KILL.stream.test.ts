@@ -42,14 +42,14 @@ const setup = async () => {
 
 const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: KillStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
-test("KILL on nonexistent entry returns 404", async () => {
+test("{§stream-control} KILL on nonexistent entry returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(url("worker", "nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
-test("End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
+test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];

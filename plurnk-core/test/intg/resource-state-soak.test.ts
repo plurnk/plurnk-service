@@ -21,7 +21,7 @@ import { viableWindow } from "./_provider.ts";
 
 const execFileP = promisify(execFile);
 
-test("soak: N turn boundaries with per-turn membership re-resolution — zero growth, zero violations, every boundary", { timeout: 120_000 }, async () => {
+test("{§fs-resource-state} soak: N turn boundaries with per-turn membership re-resolution — zero growth, zero violations, every boundary", { timeout: 120_000 }, async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-soak-"));
     const db = await openMigrated();
     try {

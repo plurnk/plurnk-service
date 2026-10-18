@@ -22,7 +22,7 @@ const fakeProvider = (
     countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
 }) as unknown as Provider;
 
-test("configured GBNF startup performs no model generation", async () => {
+test("{§grammar-configuration-admission} configured GBNF startup performs no model generation", async () => {
     const calls: string[] = [];
     const provider = fakeProvider(calls);
     const alias = {
@@ -49,7 +49,7 @@ test("configured GBNF startup performs no model generation", async () => {
     }
 });
 
-test("no grammar requested makes admission a no-op", () => {
+test("{§grammar-configuration-admission} no grammar requested makes admission a no-op", () => {
     const calls: string[] = [];
     ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {});
     ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {
@@ -58,7 +58,7 @@ test("no grammar requested makes admission a no-op", () => {
     assert.deepEqual(calls, []);
 });
 
-test("configured GBNF requires a provider that advertises local transport", () => {
+test("{§grammar-configuration-admission} configured GBNF requires a provider that advertises local transport", () => {
     const calls: string[] = [];
     assert.throws(
         () => ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {
@@ -69,7 +69,7 @@ test("configured GBNF requires a provider that advertises local transport", () =
     assert.deepEqual(calls, []);
 });
 
-test("per-alias GBNF admission resolves when the bare setting is empty", () => {
+test("{§grammar-configuration-admission} per-alias GBNF admission resolves when the bare setting is empty", () => {
     const calls: string[] = [];
     ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls), {
         PLURNK_PROVIDERS_GBNF: "",

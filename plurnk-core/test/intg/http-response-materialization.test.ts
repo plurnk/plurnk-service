@@ -387,7 +387,7 @@ test("{§http-binary-source} a direct PDF retains its complete bytes beside fact
     }
 });
 
-test("a direct textual response durably preserves Fetch UTF-8 normalization and charset evidence", async () => {
+test("{§http-lifecycle} a direct textual response durably preserves Fetch UTF-8 normalization and charset evidence", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -499,7 +499,7 @@ test("{§http-channel-outcomes}: a hard materializer failure is the readable cha
     }
 });
 
-test("an empty finite GET materializes atomically and remains reusable through 304 and TTL", async () => {
+test("{§readable-channel} an empty finite GET materializes atomically and remains reusable through 304 and TTL", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -569,7 +569,7 @@ test("an empty finite GET materializes atomically and remains reusable through 3
 });
 
 // {§revalidation}: exercise the model syntax through parser, scheme, and durable entry state.
-test("parser-produced request metadata cannot share a fresh HTTP representation", async () => {
+test("{§http-lifecycle} parser-produced request metadata cannot share a fresh HTTP representation", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -635,7 +635,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
     }
 });
 
-test("a durable no-store response is operation evidence, not a reusable HTTP cache entry", async () => {
+test("{§http-lifecycle} a durable no-store response is operation evidence, not a reusable HTTP cache entry", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;

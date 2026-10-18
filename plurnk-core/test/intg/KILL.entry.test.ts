@@ -20,7 +20,7 @@ const setup = async () => {
 const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement | KillStatement, sequence = 1) =>
     engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
-test("KILL(worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
+test("{§kill-scope-entry} KILL(worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/doomed"), "tomorrow"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -35,7 +35,7 @@ test("KILL(worker:///x) deletes the entry (side-effect; not model-facing)", asyn
     } finally { await db.close(); }
 });
 
-test("KILL on missing entry returns 404", async () => {
+test("{§kill-scope-entry} KILL on missing entry returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/nope")));
@@ -43,7 +43,7 @@ test("KILL on missing entry returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("KILL with #fragment deletes that channel only; entry remains", async () => {
+test("{§kill-scope-entry} KILL with #fragment deletes that channel only; entry remains", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -57,7 +57,7 @@ test("KILL with #fragment deletes that channel only; entry remains", async () =>
     } finally { await db.close(); }
 });
 
-test("KILL with #fragment on missing channel returns 404", async () => {
+test("{§kill-scope-entry} KILL with #fragment on missing channel returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/y"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -67,7 +67,7 @@ test("KILL with #fragment on missing channel returns 404", async () => {
 });
 
 // {§kill-scope-entry}
-test("a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
+test("{§edit-receipt-removed-text} a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -84,7 +84,7 @@ test("a scoped KILL deletes one span of an entry through the EDIT path; the log 
 });
 
 // {§kill-pattern}
-test("an entry KILL with a pattern deletes exactly the matching spans and records the KILL", async () => {
+test("{§kill-pattern} an entry KILL with a pattern deletes exactly the matching spans and records the KILL", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma\nbeta again\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -104,7 +104,7 @@ test("an entry KILL with a pattern deletes exactly the matching spans and record
 });
 
 // {§kill-pattern} — a scope bounds the lines the pattern may touch; zero matches change nothing.
-test("a scoped entry KILL with a pattern matches only inside the scope and reports zero matches as 204", async () => {
+test("{§kill-pattern} a scoped entry KILL with a pattern matches only inside the scope and reports zero matches as 204", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma\nbeta again"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -121,7 +121,7 @@ test("a scoped entry KILL with a pattern matches only inside the scope and repor
 });
 
 // {§kill-pattern}
-test("an entry KILL with a full-text pattern deletes the matching source span", async () => {
+test("{§kill-scope-entry} an entry KILL with a full-text pattern deletes the matching source span", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -132,7 +132,7 @@ test("an entry KILL with a full-text pattern deletes the matching source span", 
     } finally { await db.close(); }
 });
 
-test("a recipient SEND to an entry scheme returns 501 (entry schemes carry no messages)", async () => {
+test("{§kill-scope-entry} a recipient SEND to an entry scheme returns 501 (entry schemes carry no messages)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -141,7 +141,7 @@ test("a recipient SEND to an entry scheme returns 501 (entry schemes carry no me
     } finally { await db.close(); }
 });
 
-test("KILL(worker:///x) deletes unknown entry", async () => {
+test("{§kill-scope-entry} KILL(worker:///x) deletes unknown entry", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -153,7 +153,7 @@ test("KILL(worker:///x) deletes unknown entry", async () => {
     } finally { await db.close(); }
 });
 
-test("KILL cascades to entry channels", async () => {
+test("{§kill-scope-entry} KILL cascades to entry channels", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();

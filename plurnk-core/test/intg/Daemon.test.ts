@@ -354,7 +354,7 @@ test("{§module-action-registration} passive scoped actions validate identities 
     assert.equal(activations, 0, "identity validation never starts the workspace's capabilities");
 });
 
-test("Daemon: workspace Functionality is shared, demand-activated, and durable across restart", async () => {
+test("{§actor-boundary-client-operations} Daemon: workspace Functionality is shared, demand-activated, and durable across restart", async () => {
     const db = await openMigrated();
     const owner = "workspace Functionality test module";
     const tag = "workspacecap";
@@ -774,7 +774,7 @@ test("{§methods-workspace-create} workspace.create returns id+name, mints no wo
     });
 });
 
-test("workspace.create with no name auto-generates a unique name", async () => {
+test("{§workspace-auto-name} workspace.create with no name auto-generates a unique name", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1066,7 +1066,7 @@ test("{§workspace-name} a workspace already carrying a refused spelling stays l
     });
 });
 
-test("workspace.create on an already-attached connection re-binds in place (no reject)", async () => {
+test("{§methods-rebind} workspace.create on an already-attached connection re-binds in place (no reject)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1159,7 +1159,7 @@ test("providers.list returns parsed aliases with active marker", async () => {
         } finally { ws.close(); }
     });
 });
-test("workspace.workers lists workers in the workspace, most-recent first", async () => {
+test("{§application-worker-observation} workspace.workers lists workers in the workspace, most-recent first", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "list-workers" });
         await db.test_workers_insert.run({ workspace_id: workspace?.id, name: "first" });
@@ -1240,7 +1240,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
     });
 });
 
-test("the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
+test("{§tokenomics-window-partition} the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
     // The loop-control hook: the module supplies only workspace/worker/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
     // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
@@ -1520,7 +1520,7 @@ test("{§methods-workspace-create} {§methods-workspace-attach} the client-inter
     });
 });
 
-test("the client-interface seam — readEntry returns an entry's shape and incremental channel slice", async () => {
+test("{§methods-entry-read} the client-interface seam — readEntry returns an entry's shape and incremental channel slice", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1592,7 +1592,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
     });
 });
 
-test("the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held", async () => {
+test("{§application-worker-observation} the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);

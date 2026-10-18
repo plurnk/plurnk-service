@@ -219,7 +219,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
     }
 });
 
-test("separator-free provider preamble does not reject a complete model turn", async () => {
+test("{§empty-turn} separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const content = "harmless status.````SEND\ndone\n````";
@@ -1871,7 +1871,7 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
     } finally { await db.close(); }
 });
 
-test("(#478) a cut too deep to parse names the truncation, never the parser", async () => {
+test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never the parser", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };

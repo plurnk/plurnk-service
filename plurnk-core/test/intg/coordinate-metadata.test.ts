@@ -17,7 +17,7 @@ class CoordMock extends Mock {
     }
 }
 
-test("generate carries the workspace this call serves, and its durable worker identity", async () => {
+test("{§provider-surface-generate} generate carries the workspace this call serves, and its durable worker identity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `coord-${crypto.randomUUID()}`);

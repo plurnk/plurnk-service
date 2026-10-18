@@ -104,7 +104,7 @@ const withHeadlessWorkspace = async (fn: (ctx: PlurnkSchemeContext, db: Db) => P
     } finally { await db.close(); }
 };
 
-test("File.read: read existing file inside workspace → 200 + content + text/markdown", async () => {
+test("{§markerless-first-page} File.read: read existing file inside workspace → 200 + content + text/markdown", async () => {
     // plurnk-service's text primitive is text/markdown — File.read of a
     // .txt with no specific handler falls back to it (any plain text is
     // valid markdown; auto-derived text mimetype is never text/plain).
@@ -118,7 +118,7 @@ test("File.read: read existing file inside workspace → 200 + content + text/ma
     });
 });
 
-test("File.read: nested path inside workspace works", async () => {
+test("{§markerless-first-page} File.read: nested path inside workspace works", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
@@ -143,7 +143,7 @@ test("{§mimetype-parser-coordinates}: READ preserves an indented Python referen
     });
 });
 
-test("File.read: missing file → 404", async () => {
+test("{§markerless-first-page} File.read: missing file → 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const result = await readFileScheme(readStmt(filePath("missing.txt")), ctx);
         assert.equal(result.status, 404);
@@ -151,7 +151,7 @@ test("File.read: missing file → 404", async () => {
     });
 });
 
-test("File.read: workspace escape via .. → 403 or 404", async () => {
+test("{§markerless-first-page} File.read: workspace escape via .. → 403 or 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -162,7 +162,7 @@ test("File.read: workspace escape via .. → 403 or 404", async () => {
     });
 });
 
-test("File.read: symlink pointing outside workspace → 404 (never a member)", async () => {
+test("{§markerless-first-page} File.read: symlink pointing outside workspace → 404 (never a member)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -177,7 +177,7 @@ test("File.read: symlink pointing outside workspace → 404 (never a member)", a
     });
 });
 
-test("File.read: headless workspace (no entries) → 404", async () => {
+test("{§markerless-first-page} File.read: headless workspace (no entries) → 404", async () => {
     await withHeadlessWorkspace(async (ctx) => {
         // Entry-backed read: a headless workspace materializes no file entries, so
         // any file read finds nothing → 404 (uniform with stored entries; the old
@@ -187,14 +187,14 @@ test("File.read: headless workspace (no entries) → 404", async () => {
     });
 });
 
-test("File.read: null path → 400", async () => {
+test("{§markerless-first-page} File.read: null path → 400", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const result = await readFileScheme(readStmt(null), ctx);
         assert.equal(result.status, 400);
     });
 });
 
-test("File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
+test("{§markerless-first-page} File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         await addMember(ctx, "f.txt");
@@ -205,7 +205,7 @@ test("File.read: lineMarker <N> selects line N as raw content with startLine=N",
     });
 });
 
-test("File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
+test("{§markerless-first-page} File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         await addMember(ctx, "f.txt");
@@ -216,7 +216,7 @@ test("File.read: lineMarker <N,M> selects inclusive range as raw content with st
     });
 });
 
-test("File.read: lineMarker out of range returns 416", async () => {
+test("{§markerless-first-page} File.read: lineMarker out of range returns 416", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
@@ -231,7 +231,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("File.read: an invalid exact region remains a composed 416 result", async () => {
+test("{§text-scope-semantics} File.read: an invalid exact region remains a composed 416 result", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
@@ -249,7 +249,7 @@ test("File.read: an invalid exact region remains a composed 416 result", async (
     });
 });
 
-test("File.find: an exact matcher returns flat match locations", async () => {
+test("{§markerless-first-page} File.find: an exact matcher returns flat match locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
@@ -264,7 +264,7 @@ test("File.find: an exact matcher returns flat match locations", async () => {
     });
 });
 
-test("File.find: a binary member does not poison a body search across readable members", async () => {
+test("{§markerless-first-page} File.find: a binary member does not poison a body search across readable members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "readme.md"), "the needle is here\n");
         await addMember(ctx, "readme.md");
@@ -301,7 +301,7 @@ test("{§matcher-invalid-expression} File.find: an invalid matcher preserves the
     });
 });
 
-test("File.find: an invalid matcher exposes stable cause and recovery facts", async () => {
+test("{§problems-schemes} File.find: an invalid matcher exposes stable cause and recovery facts", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.json"), "{\"answer\":42}\n");
         await addMember(ctx, "f.json");
@@ -320,7 +320,7 @@ test("File.find: an invalid matcher exposes stable cause and recovery facts", as
     });
 });
 
-test("File.find: matcher evaluates the full resource before <L> pages locations", async () => {
+test("{§markerless-first-page} File.find: matcher evaluates the full resource before <L> pages locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
         await addMember(ctx, "f.txt");
@@ -334,7 +334,7 @@ test("File.find: matcher evaluates the full resource before <L> pages locations"
     });
 });
 
-test("File.find: a zero-match selector returns 204", async () => {
+test("{§markerless-first-page} File.find: a zero-match selector returns 204", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
         await addMember(ctx, "f.txt");
@@ -346,7 +346,7 @@ test("File.find: a zero-match selector returns 204", async () => {
         assert.equal(r.problem, undefined);
     });
 });
-test("File.read: long content round-trips", async () => {
+test("{§markerless-first-page} File.read: long content round-trips", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
@@ -371,7 +371,7 @@ test("{§fs-namei} File.read: an absolute spelling resolves the existing member"
     });
 });
 
-test("File.read: bare relative path (no leading slash) normalizes to the member key and resolves", async () => {
+test("{§markerless-first-page} File.read: bare relative path (no leading slash) normalizes to the member key and resolves", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "Codename: Bluejay\n");
         await addMember(ctx, "notes.md");
@@ -403,7 +403,7 @@ test("{§markerless-first-page} File.read: a markerless exact READ is the first 
     });
 });
 
-test("File.read: bare nested relative path resolves to its member key too", async () => {
+test("{§markerless-first-page} File.read: bare nested relative path resolves to its member key too", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
@@ -414,7 +414,7 @@ test("File.read: bare nested relative path resolves to its member key too", asyn
     });
 });
 
-test("File.read: absolute path OUTSIDE workspace → 404 (never a member)", async () => {
+test("{§membership-change-gated-sync} File.read: absolute path OUTSIDE workspace → 404 (never a member)", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -457,7 +457,7 @@ test("{§membership-change-gated-sync}: a grown file exposes newly valid lines a
 });
 
 // {§local-path-fragment} — the channel a receipt advertises is addressable in the bare spelling.
-test("READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
+test("{§markerless-first-page} READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "data"), { recursive: true });
         await writeFile(join(root, "data/users.html"), "<html>\n  <body>\n    <h1>Team Roster</h1>\n    <p>Alice</p>\n  </body>\n</html>\n");

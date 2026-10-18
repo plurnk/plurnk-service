@@ -5,7 +5,7 @@ import { routeAdvisories, rootsFor } from "../../scripts/deps-audit.ts";
 // {§install-root-advisory-ownership}: fixtures shaped like `npm audit --json`
 // verify routing without introducing a vulnerable dependency.
 
-test("routeAdvisories routes a transitive advisory to its owning @plurnk/* package", () => {
+test("{§install-root-advisory-ownership} routeAdvisories routes a transitive advisory to its owning @plurnk/* package", () => {
     // uuid (the GHSA source) → @cucumber/messages → @cucumber/gherkin → text-gherkin → @plurnk/plurnk-mimetypes (direct). Fixture predates the -all removal; the chain is synthetic.
     const audit = {
         vulnerabilities: {
@@ -30,7 +30,7 @@ test("routeAdvisories routes a transitive advisory to its owning @plurnk/* packa
     assert.deepEqual(routed[0].plurnkRoots, ["@plurnk/plurnk-mimetypes"], "routed to its owning @plurnk package for upstream filing");
 });
 
-test("an advisory rooted in a first-party direct dependency is not routed upstream", () => {
+test("{§install-root-advisory-ownership} an advisory rooted in a first-party direct dependency is not routed upstream", () => {
     // A vuln pulled directly by a non-@plurnk direct dep (ws) is ours to fix here, not routed to an extension.
     const audit = {
         vulnerabilities: {
@@ -44,7 +44,7 @@ test("an advisory rooted in a first-party direct dependency is not routed upstre
     assert.deepEqual(routed[0].plurnkRoots, [], "not a @plurnk chain → not routed upstream");
 });
 
-test("rootsFor follows effects edges to every direct-dependency root", () => {
+test("{§install-root-advisory-ownership} rootsFor follows effects edges to every direct-dependency root", () => {
     const vulns = {
         leaf: { effects: ["mid"] },
         mid: { effects: ["@plurnk/a", "ws"] },

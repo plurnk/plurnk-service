@@ -53,7 +53,7 @@ const wire = async () => {
     return { db, engine, exec, workspaceId, workerId, loopId, turnId };
 };
 
-test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
+test("{§exec-stream} effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
@@ -71,7 +71,7 @@ test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, n
     } finally { await db.close(); }
 });
 
-test("effect-gating: a pure execution being applied is never discoverable as a client proposal", async () => {
+test("{§exec-target-routing} effect-gating: a pure execution being applied is never discoverable as a client proposal", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     const applyEntered = deferred<void>();
     const releaseApply = deferred<void>();
@@ -130,7 +130,7 @@ test("{§exec-target-routing}: targetless sqlite ignores workspace cwd and opens
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
+test("{§exec-host-proposes} effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const idDeferred = deferred<number>();
@@ -148,7 +148,7 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
     } finally { await db.close(); }
 });
 
-test("one canonical target derives one preserved effect fact (#107)", async () => {
+test("{§exec-host-proposes} one canonical target derives one preserved effect fact (#107)", async () => {
     const effectCalls: Array<{ target: string | null; argumentCount: number }> = [];
     const runs: Array<{ body: string; cwd: string | null; target: string | null; materialized?: string }> = [];
     const exe: Executor = new class extends BaseExecutor {
@@ -260,7 +260,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
     }
 });
 
-test("bare execution resolves to sh through the shared workspace capability policy", async () => {
+test("{§exec-host-proposes} bare execution resolves to sh through the shared workspace capability policy", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         await db.test_set_workspace_settings.run({

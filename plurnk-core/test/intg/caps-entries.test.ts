@@ -30,7 +30,7 @@ test("{§binary-parity} public entry writes retain bytes for ordinary byte READs
     } finally { await db.close(); }
 });
 
-test("DbEntryCaps: write creates (201) → read round-trips → re-write updates (200) → delete (200→404)", async () => {
+test("{§capability-ctx} DbEntryCaps: write creates (201) → read round-trips → re-write updates (200) → delete (200→404)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-entries-${crypto.randomUUID()}`);

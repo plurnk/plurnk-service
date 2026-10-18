@@ -25,7 +25,7 @@ test("entries: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: owner derives its workspace", async () => {
+test("{§entry-owner} entries: owner derives its workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
@@ -368,7 +368,7 @@ test("entry_channels: CASCADE chain workspace→entries→entry_channels", async
     } finally { await db.close(); }
 });
 
-test("entry resources have no tag relation", async () => {
+test("{§logical-line-count} entry resources have no tag relation", async () => {
     const db = await openMigrated();
     try {
         const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" });
@@ -398,7 +398,7 @@ const storedLines = async (db: Db, entryId: number, content: string): Promise<{ 
     return { inserted, updated };
 };
 
-test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
+test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
     const db = await openMigrated();
     try {
         for (const [label, content] of LINE_CORPUS) {

@@ -86,7 +86,7 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
     }
 }
 
-test("scheme metadata remains outside the target and reaches only an opted-in scheme", async () => {
+test("{§problems-dispatch} scheme metadata remains outside the target and reaches only an opted-in scheme", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `scheme-metadata-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();

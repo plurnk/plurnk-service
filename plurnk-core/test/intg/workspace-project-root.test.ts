@@ -38,7 +38,7 @@ test("workspace.create without projectRoot leaves the column null (headless)", a
     });
 });
 
-test("workspace.create rejects non-absolute projectRoot", async () => {
+test("{§pinned-wording-core} workspace.create rejects non-absolute projectRoot", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

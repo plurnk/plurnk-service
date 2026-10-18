@@ -15,7 +15,7 @@ import { packetSection } from "./_packet.ts";
 // list through transformSections — the in-process seam that lets a third-party
 // extension add / remove / reorder packet sections without forking the engine. The
 // client wire never reaches the packet; this does.
-test("extension packet control: a scheme adds, removes, and reorders packet sections", async () => {
+test("{§emission-history} extension packet control: a scheme adds, removes, and reorders packet sections", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-extension-${crypto.randomUUID()}`);

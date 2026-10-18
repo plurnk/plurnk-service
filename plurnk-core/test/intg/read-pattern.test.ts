@@ -23,7 +23,7 @@ const setup = async (content = "alpha\nTODO one\nbeta\nTODO two\ngamma") => {
     return { db, dispatch };
 };
 
-test("READ by pattern renders exactly the matching lines with their physical ordinals and anchors", async () => {
+test("{§read-pattern} READ by pattern renders exactly the matching lines with their physical ordinals and anchors", async () => {
     const { db, dispatch } = await setup();
     try {
         const regex: MatcherBody = { dialect: "regex", raw: "/^TODO/", pattern: "^TODO", flags: "" };
@@ -41,7 +41,7 @@ test("READ by pattern renders exactly the matching lines with their physical ord
     } finally { await db.close(); }
 });
 
-test("a scope bounds the lines a READ pattern may select; matched counts inside it", async () => {
+test("{§read-pattern} a scope bounds the lines a READ pattern may select; matched counts inside it", async () => {
     const { db, dispatch } = await setup();
     try {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), { marks: [1, 2] }, { dialect: "glob", raw: "TODO" }));
@@ -55,7 +55,7 @@ test("a scope bounds the lines a READ pattern may select; matched counts inside 
     } finally { await db.close(); }
 });
 
-test("zero matches read as empty (204) with matched 0", async () => {
+test("{§read-pattern} zero matches read as empty (204) with matched 0", async () => {
     const { db, dispatch } = await setup();
     try {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "glob", raw: "DONE" }));
@@ -79,7 +79,7 @@ test("{§markerless-first-page} a whole-resource pattern READ returns every sele
     } finally { await db.close(); }
 });
 
-test("a full-text READ returns matching lines and exact token coordinates", async () => {
+test("{§read-fan-out} a full-text READ returns matching lines and exact token coordinates", async () => {
     const { db, dispatch } = await setup();
     try {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~TODO" }));
@@ -95,7 +95,7 @@ test("a full-text READ returns matching lines and exact token coordinates", asyn
 
 // {§read-fan-out} — a pattern READ over a glob is grep: one ordinary exact pattern READ receipt per
 // matching path, in the FIND's order; no match is one 204 on the glob.
-test("a pattern READ over a glob fans out into one exact pattern READ receipt per matching path", async () => {
+test("{§read-fan-out} a pattern READ over a glob fans out into one exact pattern READ receipt per matching path", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

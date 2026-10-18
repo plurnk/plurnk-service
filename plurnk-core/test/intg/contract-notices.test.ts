@@ -267,7 +267,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
     } finally { await db.close(); }
 });
 
-test("a thrown ProviderError is persisted as one exact operation failure — no turn is fabricated", async () => {
+test("{§packet} a thrown ProviderError is persisted as one exact operation failure — no turn is fabricated", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // A ProviderError means no completed exchange exists (auth, network, rate
@@ -313,7 +313,7 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
     } finally { await db.close(); }
 });
 
-test("provider error: a terminal kind is durable product truth, never a notices notice", async () => {
+test("{§provider-recovery} provider error: a terminal kind is durable product truth, never a notices notice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -353,7 +353,7 @@ test("provider error: a terminal kind is durable product truth, never a notices 
     } finally { await db.close(); }
 });
 
-test("engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
+test("{§turn-accounting-notice} engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -448,7 +448,7 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
     } finally { await db.close(); }
 });
 
-test("a notice broadcasts structured and drains as its terse model-facing projection", async () => {
+test("{§packet} a notice broadcasts structured and drains as its terse model-facing projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

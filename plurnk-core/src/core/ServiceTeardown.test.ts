@@ -114,7 +114,7 @@ test("{§crash-only-stop} a clean request reports its settlement once, to the cl
     assert.deepEqual(reported, [], "nothing failed, so nothing was reported as a failure");
 });
 
-test("service teardown diagnostics enumerate aggregate failures", () => {
+test("{§crash-only-stop} service teardown diagnostics enumerate aggregate failures", () => {
     const cause = new AggregateError([
         new Error("daemon stop failed"),
         new Error("database close failed"),

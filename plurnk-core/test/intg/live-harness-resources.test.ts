@@ -10,7 +10,7 @@ import { findStmt, readStmt } from "./_dsl.ts";
 import { namedModelWorker } from "./_workers.ts";
 import { TEST_OWNER } from "./_approval.ts";
 
-test("live fixtures obey resource publication and query contracts", async (t) => {
+test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and query contracts", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");

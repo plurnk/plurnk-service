@@ -38,7 +38,7 @@ test("{§notifications-notice-event} notifyNotice broadcasts to clients attached
     });
 });
 
-test("notice/event is workspace-scoped — other workspaces don't see it", async () => {
+test("{§operation-results} notice/event is workspace-scoped — other workspaces don't see it", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);

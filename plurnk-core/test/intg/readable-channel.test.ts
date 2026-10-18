@@ -37,7 +37,7 @@ const page = urlPath("worker", "/users.html");
 const readable = urlPath("worker", "/users.html", "readable");
 const regex = (pattern: string, flags = ""): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/${flags}`, pattern, flags });
 
-test("an HTML source lands with its readable projection beside it, and the projection follows every source write", async () => {
+test("{§readable-channel} an HTML source lands with its readable projection beside it, and the projection follows every source write", async () => {
     const { db, dispatch, channel } = await setup();
     try {
         assert.equal((await dispatch(editStmt(page, HTML))).status, 201);
@@ -52,7 +52,7 @@ test("an HTML source lands with its readable projection beside it, and the proje
     } finally { await db.close(); }
 });
 
-test("a Markdown source has no projection and no sibling", async () => {
+test("{§readable-channel} a Markdown source has no projection and no sibling", async () => {
     const { db, dispatch, channel } = await setup();
     try {
         assert.equal((await dispatch(editStmt(urlPath("worker", "/notes.md"), "# Notes\n\nplain"))).status, 201);
@@ -60,7 +60,7 @@ test("a Markdown source has no projection and no sibling", async () => {
     } finally { await db.close(); }
 });
 
-test("each channel matches in its own text and reports its own coordinates", async () => {
+test("{§channel-selection-visibility} each channel matches in its own text and reports its own coordinates", async () => {
     const { db, dispatch } = await setup();
     try {
         await dispatch(editStmt(page, HTML));
@@ -87,7 +87,7 @@ test("each channel matches in its own text and reports its own coordinates", asy
     } finally { await db.close(); }
 });
 
-test("full-text search reaches HTML through its readable channel", async () => {
+test("{§readable-channel} full-text search reaches HTML through its readable channel", async () => {
     const { db, env, dispatch } = await setup();
     try {
         await dispatch(editStmt(page, HTML));
@@ -99,7 +99,7 @@ test("full-text search reaches HTML through its readable channel", async () => {
     } finally { await db.close(); }
 });
 
-test("nothing writes the derived channel: EDIT, a transfer landing, and a MOVE out are refused; COPY from it reads", async () => {
+test("{§readable-channel} nothing writes the derived channel: EDIT, a transfer landing, and a MOVE out are refused; COPY from it reads", async () => {
     const { db, dispatch, channel } = await setup();
     try {
         await dispatch(editStmt(page, HTML));
@@ -118,7 +118,7 @@ test("nothing writes the derived channel: EDIT, a transfer landing, and a MOVE o
     } finally { await db.close(); }
 });
 
-test("a tracked .html member materializes with its readable projection beside the source", async () => {
+test("{§channel-selection-visibility} a tracked .html member materializes with its readable projection beside the source", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-readable-member-"));
     const db = await openMigrated();
     try {
@@ -142,7 +142,7 @@ test("a tracked .html member materializes with its readable projection beside th
 
 // {§channel-selection-visibility} — first contact carries the choice: a READ names the resource's
 // other channels with their tokens, so the model reaches for `#readable` from the receipt itself.
-test("a READ names the resource's other channels with their tokens; a single-channel entry names none", async () => {
+test("{§readable-channel} a READ names the resource's other channels with their tokens; a single-channel entry names none", async () => {
     const { db, dispatch } = await setup();
     try {
         await dispatch(editStmt(page, HTML));

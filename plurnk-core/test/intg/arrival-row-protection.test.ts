@@ -27,7 +27,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("an explicit scoped KILL of the arrival row is ordinary curation", async () => {
+test("{§message-arrival} an explicit scoped KILL of the arrival row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -39,7 +39,7 @@ test("an explicit scoped KILL of the arrival row is ordinary curation", async ()
         assert.equal(visibility?.folded, "[[1,-1]]", "the explicit curation request is honored");
     } finally { await db.close(); }
 });
-test("prior and current loop arrivals share the same explicit curation contract", async () => {
+test("{§message-arrival} prior and current loop arrivals share the same explicit curation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, engine } = await seedPromptWorker(db);
@@ -59,7 +59,7 @@ test("prior and current loop arrivals share the same explicit curation contract"
     } finally { await db.close(); }
 });
 
-test("KILL of the arrival remains deliberate curation", async () => {
+test("{§message-arrival} KILL of the arrival remains deliberate curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -68,7 +68,7 @@ test("KILL of the arrival remains deliberate curation", async () => {
     } finally { await db.close(); }
 });
 
-test("sister workers' initial messages have independent inbox rows and publications", async () => {
+test("{§message-arrival} sister workers' initial messages have independent inbox rows and publications", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);

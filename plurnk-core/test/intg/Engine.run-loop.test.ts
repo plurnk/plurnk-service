@@ -106,7 +106,7 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
 });
 }
 
-test("Engine.runLoop: three edits are observed before answered work concludes", async () => {
+test("{§send-premature-terminate} Engine.runLoop: three edits are observed before answered work concludes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -182,7 +182,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on completed invent
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: repeated identical NOTE-only turns remain subject to the cycle rail", async () => {
+test("{§engine-cycle-evidence} Engine.runLoop: repeated identical NOTE-only turns remain subject to the cycle rail", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // {§engine-cycle-evidence}

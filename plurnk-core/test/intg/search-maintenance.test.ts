@@ -53,7 +53,7 @@ test("{§derivation-dedup-parallel} changed resources report one aggregate deriv
     } finally { db.close(); }
 });
 
-test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
+test("{§derivation-exhaustive} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
     const prev = process.env.PLURNK_SERVICE_SEARCH_EXCLUDE;
     process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = "*/dist/*";
     const mimetypes = new Mimetypes();

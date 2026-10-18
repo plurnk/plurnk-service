@@ -18,7 +18,7 @@ const parseEvents = (body: string): Event[] => body
     .filter((frame) => frame.startsWith("data: "))
     .map((frame) => JSON.parse(frame.slice(6)) as Event);
 
-test("the status gauge counts alive direct children: 0, then 1 on WORK, then 0 when the child concludes", { timeout: 30_000 }, async (approvalContext) => {
+test("{§agui-status-children} the status gauge counts alive direct children: 0, then 1 on WORK, then 0 when the child concludes", { timeout: 30_000 }, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new Mock({
         contextWindow: 1_000_000,

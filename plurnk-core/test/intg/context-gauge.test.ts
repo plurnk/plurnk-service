@@ -41,7 +41,7 @@ const recordRequest = async (
     });
 };
 
-test("loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
+test("{§tokenomics-client-gauge} loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-${crypto.randomUUID()}`);
@@ -69,7 +69,7 @@ test("loopUsage.contextTokens is the latest turn's prompt, not the summed total"
     } finally { await db.close(); }
 });
 
-test("loopUsage.contextTokens ignores later BARE calls while accounting remains cardinal", async () => {
+test("{§tokenomics-client-gauge} loopUsage.contextTokens ignores later BARE calls while accounting remains cardinal", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-bare-${crypto.randomUUID()}`);
@@ -91,7 +91,7 @@ test("loopUsage.contextTokens ignores later BARE calls while accounting remains 
     } finally { await db.close(); }
 });
 
-test("loopUsage keeps latest-turn curation and physical pairs together across a model switch", async () => {
+test("{§tokenomics-client-gauge} loopUsage keeps latest-turn curation and physical pairs together across a model switch", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
@@ -121,7 +121,7 @@ test("loopUsage keeps latest-turn curation and physical pairs together across a 
     } finally { await db.close(); }
 });
 
-test("loopUsage.curationBudget is null when provider input capacity is unknown", async () => {
+test("{§tokenomics-client-gauge} loopUsage.curationBudget is null when provider input capacity is unknown", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-null-${crypto.randomUUID()}`);
@@ -141,7 +141,7 @@ test("loopUsage.curationBudget is null when provider input capacity is unknown",
     } finally { await db.close(); }
 });
 
-test("loopUsage does not reuse an earlier turn's context when the latest provider call never completed", async () => {
+test("{§tokenomics-client-gauge} loopUsage does not reuse an earlier turn's context when the latest provider call never completed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-failed-${crypto.randomUUID()}`);
@@ -169,7 +169,7 @@ test("loopUsage does not reuse an earlier turn's context when the latest provide
     } finally { await db.close(); }
 });
 
-test("loopUsage binds physical usage and capacity to the same latest emission call", async () => {
+test("{§tokenomics-client-gauge} loopUsage binds physical usage and capacity to the same latest emission call", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-preflight-${crypto.randomUUID()}`);
@@ -206,7 +206,7 @@ test("loopUsage binds physical usage and capacity to the same latest emission ca
     } finally { await db.close(); }
 });
 
-test("runTurn stores provider-derived curation and request-shaped physical capacity", async () => {
+test("{§tokenomics-client-gauge} runTurn stores provider-derived curation and request-shaped physical capacity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-budget-${crypto.randomUUID()}`);
@@ -223,7 +223,7 @@ test("runTurn stores provider-derived curation and request-shaped physical capac
     } finally { await db.close(); }
 });
 
-test("providers.list advertises resolved physical input capacity", async () => {
+test("{§tokenomics-client-gauge} providers.list advertises resolved physical input capacity", async () => {
     const { rpcCall, connect, withDaemon } = await import("./_rpc.ts");
     const { makeMockResponse } = await import("./_mock.ts");
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });

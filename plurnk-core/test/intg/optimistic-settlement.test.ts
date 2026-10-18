@@ -145,7 +145,7 @@ child ${index + 1} done
     }
 }
 
-test("near-simultaneous child conclusions share one parent provider turn", async (approvalContext) => {
+test("{§worker-optimistic-settlement} near-simultaneous child conclusions share one parent provider turn", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
@@ -211,7 +211,7 @@ test("near-simultaneous child conclusions share one parent provider turn", async
     }
 });
 
-test("a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
+test("{§worker-optimistic-settlement} a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
@@ -263,7 +263,7 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     }
 });
 
-test("stream conclusions coalesce across the same worker-local settlement window", async (approvalContext) => {
+test("{§worker-optimistic-settlement} stream conclusions coalesce across the same worker-local settlement window", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "200";
@@ -299,7 +299,7 @@ test("stream conclusions coalesce across the same worker-local settlement window
     }
 });
 
-test("a child and stream conclusion share the same settlement window", async (approvalContext) => {
+test("{§worker-optimistic-settlement} a child and stream conclusion share the same settlement window", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "300";
@@ -351,7 +351,7 @@ test("a child and stream conclusion share the same settlement window", async (ap
     }
 });
 
-test("the settlement deadline is bounded and does not slide on later conclusions", async (approvalContext) => {
+test("{§worker-optimistic-settlement} the settlement deadline is bounded and does not slide on later conclusions", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";

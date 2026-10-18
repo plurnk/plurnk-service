@@ -89,7 +89,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
-test("a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
+test("{§env-delta-log-pull} a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `owner-delta-${crypto.randomUUID()}`);
@@ -182,7 +182,7 @@ test("{§env-delta-child-activity}: child log curation stays with the child, inc
     }
 });
 
-test("a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
+test("{§env-delta-log-pull} a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
@@ -218,7 +218,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
     }
 });
 
-test("ambient delivery follows monotonic occurrence identity, never wall-clock order", async () => {
+test("{§env-delta-log-pull} ambient delivery follows monotonic occurrence identity, never wall-clock order", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `event-id-${crypto.randomUUID()}`);
@@ -270,7 +270,7 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
     }
 });
 
-test("a settled child proposal reaches its parent while only a landed commons effect broadcasts", async () => {
+test("{§env-delta-log-pull} a settled child proposal reaches its parent while only a landed commons effect broadcasts", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `proposal-event-${crypto.randomUUID()}`);
@@ -326,7 +326,7 @@ test("a settled child proposal reaches its parent while only a landed commons ef
     }
 });
 
-test("a closed pull boundary assigns before, during, and after races exactly once", async () => {
+test("{§env-delta-log-pull} a closed pull boundary assigns before, during, and after races exactly once", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `closed-boundary-${crypto.randomUUID()}`);
@@ -387,7 +387,7 @@ test("a closed pull boundary assigns before, during, and after races exactly onc
     }
 });
 
-test("a fresh worker baselines history but retains an event racing its first packet", async () => {
+test("{§env-delta-log-pull} a fresh worker baselines history but retains an event racing its first packet", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `first-boundary-${crypto.randomUUID()}`);
@@ -424,7 +424,7 @@ test("a fresh worker baselines history but retains an event racing its first pac
     }
 });
 
-test("ambient occurrence evidence survives source-log curation", async () => {
+test("{§env-delta-log-pull} ambient occurrence evidence survives source-log curation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `curated-source-${crypto.randomUUID()}`);
@@ -456,7 +456,7 @@ test("ambient occurrence evidence survives source-log curation", async () => {
     }
 });
 
-test("a fork inherits observed progress and independently receives pending events", async () => {
+test("{§env-delta-log-pull} a fork inherits observed progress and independently receives pending events", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-cursor-${crypto.randomUUID()}`);
@@ -503,7 +503,7 @@ test("a fork inherits observed progress and independently receives pending event
     }
 });
 
-test("a child-activity delta preserves typed attributes and initial classifications", async () => {
+test("{§env-delta-log-pull} a child-activity delta preserves typed attributes and initial classifications", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `typed-delta-${crypto.randomUUID()}`);
@@ -539,7 +539,7 @@ test("a child-activity delta preserves typed attributes and initial classificati
     }
 });
 
-test("exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
+test("{§methods-loop-run-fold-consistency} exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place: inject and IRC resume parked workers in place
     // under {§methods-loop-run-fold-consistency}. No third channel — by design.
     const db = await openMigrated();
@@ -572,7 +572,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
     }
 });
 
-test("an out-of-band disk change is runtime evidence, not a workspace broadcast", async () => {
+test("{§env-delta-filesystem-narration} an out-of-band disk change is runtime evidence, not a workspace broadcast", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
@@ -716,7 +716,7 @@ test("{§env-delta-child-termination} administrative loops stay private without 
     }
 });
 
-test("a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
+test("{§worker-scheme-collect} a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);

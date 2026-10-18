@@ -26,7 +26,7 @@ const dispatch = async (engine: Engine, env: { workspaceId: number; workerId: nu
     });
 };
 
-test("Engine.copy copies the default channel", async () => {
+test("{§copy} Engine.copy copies the default channel", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/france/capital"), "Paris"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -41,7 +41,7 @@ test("Engine.copy copies the default channel", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.copy cross-scheme (worker commons → fixture)", async () => {
+test("{§copy} Engine.copy cross-scheme (worker commons → fixture)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -66,7 +66,7 @@ test("{§copy-missing-source-404} Engine.copy missing source returns 404", async
     } finally { await db.close(); }
 });
 
-test("Engine.copy conflicting destination returns 409", async () => {
+test("{§copy} Engine.copy conflicting destination returns 409", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
@@ -80,7 +80,7 @@ test("Engine.copy conflicting destination returns 409", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.copy to a destination already holding identical content returns 304", async () => {
+test("{§copy} Engine.copy to a destination already holding identical content returns 304", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
@@ -105,7 +105,7 @@ test("Engine.copy to a destination already holding identical content returns 304
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");
     } finally { await db.close(); }
 });
-test("Engine.move relocates: source deleted, dest created", async () => {
+test("{§copy} Engine.move relocates: source deleted, dest created", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -150,7 +150,7 @@ test("{§move-canonical-whole-source}: Engine.move treats <1,-1> as whole-channe
     } finally { await db.close(); }
 });
 
-test("Engine.move keeps an ordinary source region regional when it covers the current content", async () => {
+test("{§copy} Engine.move keeps an ordinary source region regional when it covers the current content", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "only line"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -195,7 +195,7 @@ test("{§move-missing-source-404} Engine.move missing source returns 404", async
     } finally { await db.close(); }
 });
 
-test("Engine.move cross-scheme (worker commons → fixture) deletes source, creates dest", async () => {
+test("{§copy} Engine.move cross-scheme (worker commons → fixture) deletes source, creates dest", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/draft"), "answer"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -241,7 +241,7 @@ test("{§copy-l-source-range} Engine.copy with <L> slices the source range into 
     } finally { await db.close(); }
 });
 
-test("Engine.copy with <L> out of range returns 416", async () => {
+test("{§copy} Engine.copy with <L> out of range returns 416", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "only one line"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -252,7 +252,7 @@ test("Engine.copy with <L> out of range returns 416", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.move with a source region removes only that region", async () => {
+test("{§copy} Engine.move with a source region removes only that region", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, workerId }));

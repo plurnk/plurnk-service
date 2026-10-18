@@ -55,7 +55,7 @@ const dispatchTurn = async (
     return { turnId, statuses };
 };
 
-test("e2e: single-turn EDIT + SEND — entry created, log rows populated, statuses match", async () => {
+test("{§send-premature-terminate} e2e: single-turn EDIT + SEND — entry created, log rows populated, statuses match", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");

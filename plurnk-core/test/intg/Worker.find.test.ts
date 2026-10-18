@@ -49,7 +49,7 @@ const seedEntries = async (db: Db, workspaceId: number, workerId: number, entrie
     }
 };
 
-test("Worker.find returns the scheme's catalog groups (JSON), filtered to matches", async () => {
+test("{§find} Worker.find returns the scheme's catalog groups (JSON), filtered to matches", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -80,7 +80,7 @@ test("Worker.find returns the scheme's catalog groups (JSON), filtered to matche
     } finally { db.close(); }
 });
 
-test("Worker.find with scope prefix filters to that subtree", async () => {
+test("{§find} Worker.find with scope prefix filters to that subtree", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -92,7 +92,7 @@ test("Worker.find with scope prefix filters to that subtree", async () => {
     } finally { db.close(); }
 });
 
-test("a single-star path glob lists one level with actionable recursive folder summaries", async () => {
+test("{§find} a single-star path glob lists one level with actionable recursive folder summaries", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -145,7 +145,7 @@ test("a single-star path glob lists one level with actionable recursive folder s
     } finally { db.close(); }
 });
 
-test("path globs use shell segment semantics and support native brace patterns", async () => {
+test("{§find} path globs use shell segment semantics and support native brace patterns", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -179,7 +179,7 @@ test("path globs use shell segment semantics and support native brace patterns",
     } finally { db.close(); }
 });
 
-test("Worker.find with glob matcher filters by CONTENT", async () => {
+test("{§find} Worker.find with glob matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Pathnames are neutral (a/b/c); the matchable token lives in the content.
@@ -192,7 +192,7 @@ test("Worker.find with glob matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
-test("a broad content match emits one item per resource with location counts", async () => {
+test("{§find} a broad content match emits one item per resource with location counts", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
@@ -210,7 +210,7 @@ test("a broad content match emits one item per resource with location counts", a
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });
-test("Worker.find with regex matcher filters by CONTENT", async () => {
+test("{§find} Worker.find with regex matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
@@ -220,7 +220,7 @@ test("Worker.find with regex matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find preserves an invalid matcher's parser cause and recovery facts", async () => {
+test("{§problems-schemes} Worker.find preserves an invalid matcher's parser cause and recovery facts", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a.json", "{\"answer\":42}"]]);
@@ -239,7 +239,7 @@ test("Worker.find preserves an invalid matcher's parser cause and recovery facts
     }
 });
 
-test("Worker.find regex honors flags — case-insensitive (i) on content", async () => {
+test("{§find} Worker.find regex honors flags — case-insensitive (i) on content", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
@@ -252,7 +252,7 @@ test("Worker.find regex honors flags — case-insensitive (i) on content", async
     } finally { db.close(); }
 });
 
-test("Worker.find regex accepts `g` flag on content (no throw)", async () => {
+test("{§find} Worker.find regex accepts `g` flag on content (no throw)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "foo here"], ["b", "a foo"], ["c", "bar"]]);
@@ -264,7 +264,7 @@ test("Worker.find regex accepts `g` flag on content (no throw)", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find regex `y` (sticky) anchors at content start", async () => {
+test("{§find} Worker.find regex `y` (sticky) anchors at content start", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "foobar"], ["b", "a foobar"]]);
@@ -276,7 +276,7 @@ test("Worker.find regex `y` (sticky) anchors at content start", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find xpath matcher with no structural match → 204", async () => {
+test("{§find} Worker.find xpath matcher with no structural match → 204", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // xpath runs over the markdown deepXml; `//x` matches no element →
@@ -288,7 +288,7 @@ test("Worker.find xpath matcher with no structural match → 204", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find with <L> paginates results", async () => {
+test("{§find} Worker.find with <L> paginates results", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
@@ -332,7 +332,7 @@ test("{§markerless-first-page} Worker.find without a scope returns its first pa
     } finally { db.close(); }
 });
 
-test("Worker.find with no matches returns an empty 204 result", async () => {
+test("{§find} Worker.find with no matches returns an empty 204 result", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "x"]]);
@@ -355,7 +355,7 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find reports a matcher miss before applying result pagination", async () => {
+test("{§find} Worker.find reports a matcher miss before applying result pagination", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"]]);
@@ -378,7 +378,7 @@ test("Worker.find reports a matcher miss before applying result pagination", asy
     } finally { db.close(); }
 });
 
-test("Worker.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
+test("{§find} Worker.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Seed in this workspace
@@ -396,7 +396,7 @@ test("Worker.find is scoped to the workspace (doesn't leak across workspaces)", 
     } finally { db.close(); }
 });
 
-test("commons FIND is scoped to the scheme (doesn't leak across schemes)", async () => {
+test("{§find} commons FIND is scoped to the scheme (doesn't leak across schemes)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["here-commons", "x"]]);

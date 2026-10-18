@@ -28,7 +28,7 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {
+test("{§exec} fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -97,7 +97,7 @@ test("{§execution-output-identity}: simultaneous claims retry collisions instea
     } finally { await db.close(); }
 });
 
-test("shared entries require only a workspace, not a synthetic Worker", async () => {
+test("{§entry-owner} shared entries require only a workspace, not a synthetic Worker", async () => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-commons-${crypto.randomUUID()}`);

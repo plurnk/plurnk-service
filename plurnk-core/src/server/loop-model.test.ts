@@ -20,22 +20,22 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
-test("neither alias nor model -> null (the daemon's boot default)", () => {
+test("{§methods-loop-run-model} neither alias nor model -> null (the daemon's boot default)", () => {
     assert.equal(resolveLoopRoute(undefined, DECLARED), null);
 });
 
-test("an exact model selector remains an alias-free route", () => {
+test("{§methods-loop-run-model} an exact model selector remains an alias-free route", () => {
     assert.deepEqual(resolveLoopRoute("openrouter/qwen/qwen3-coder", DECLARED),
         { provider: "openrouter", model: "qwen/qwen3-coder" },
         "the model id keeps its inner slashes; only the first splits provider");
 });
 
-test("a named alias resolves from the declared cascade, case-folded", () => {
+test("{§methods-loop-run-model} a named alias resolves from the declared cascade, case-folded", () => {
     assert.deepEqual(resolveLoopRoute("FIRESLOW", DECLARED), DECLARED[0], "alias lookup is case-insensitive");
     assert.deepEqual(resolveLoopRoute("local", DECLARED), DECLARED[1], "the baseUrl override rides through");
 });
 
-test("a malformed exact model selector throws legibly", () => {
+test("{§methods-loop-run-model} a malformed exact model selector throws legibly", () => {
     for (const model of ["/leading", "trailing/"]) {
         const { result } = failureFrom(() => resolveLoopRoute(model, DECLARED));
         assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/model-spec-invalid");
@@ -46,7 +46,7 @@ test("a malformed exact model selector throws legibly", () => {
     }
 });
 
-test("an undeclared alias throws - never a silent wrong-model worker", () => {
+test("{§methods-loop-run-model} an undeclared alias throws - never a silent wrong-model worker", () => {
     const { result } = failureFrom(() => resolveLoopRoute("ghost", DECLARED));
     assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/alias-not-found");
     assert.equal(result.problem.status, 404);

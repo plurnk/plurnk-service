@@ -34,7 +34,7 @@ const addPackage = async (nm: string, name: string, opts: { plurnk?: boolean; de
     if (opts.defaults !== undefined) await writeFile(join(dir, ".env.defaults"), opts.defaults);
 };
 
-test("collect: the host's file + @plurnk/* + plurnk-declaring third parties; bystanders excluded", async () => {
+test("{§operator-config-env-defaults} collect: the host's file + @plurnk/* + plurnk-declaring third parties; bystanders excluded", async () => {
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_FAKE_X=1\n" });
@@ -47,7 +47,7 @@ test("collect: the host's file + @plurnk/* + plurnk-declaring third parties; bys
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("the ONE law: a key claimed by two packages crashes naming both", async () => {
+test("{§operator-config-env-defaults} the ONE law: a key claimed by two packages crashes naming both", async () => {
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_ENVD_TEST_KNOB=13\n" });
@@ -70,7 +70,7 @@ test("{§operator-config-source-errors} unreadable defaults fail with their owne
     });
 });
 
-test("apply is a floor — set-if-unset, never an override", async () => {
+test("{§operator-config-env-defaults} apply is a floor — set-if-unset, never an override", async () => {
     const key = "PLURNK_ENVD_FLOOR_PROBE";
     delete process.env[key];
     try {
@@ -83,7 +83,7 @@ test("apply is a floor — set-if-unset, never an override", async () => {
     } finally { delete process.env[key]; delete process.env.PLURNK_ENVD_FLOOR_PROBE_2; }
 });
 
-test("a malformed member file crashes naming the owner — never a degraded floor", async () => {
+test("{§operator-config-env-defaults} a malformed member file crashes naming the owner — never a degraded floor", async () => {
     const { root, nm } = await scaffold();
     try {
         // parseEnv never throws — it mints junk keys from malformed lines (" =" → key "").
@@ -94,7 +94,7 @@ test("a malformed member file crashes naming the owner — never a degraded floo
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("the on-demand catalog is owner-labelled and preserves package comments", async () => {
+test("{§operator-config-env-defaults} the on-demand catalog is owner-labelled and preserves package comments", async () => {
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "# fake's own doc line\nPLURNK_FAKE_X=1\n" });
@@ -109,7 +109,7 @@ test("the on-demand catalog is owner-labelled and preserves package comments", a
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("the catalog contains declarations and examples, never effective environment values", async () => {
+test("{§operator-config-env-defaults} the catalog contains declarations and examples, never effective environment values", async () => {
     const { root, nm } = await scaffold();
     const key = "PLURNK_ENVD_REFERENCE_SECRET";
     const previous = process.env[key];
@@ -127,7 +127,7 @@ test("the catalog contains declarations and examples, never effective environmen
     }
 });
 
-test("PLURNK_EXTENSIONS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {
+test("{§operator-config-env-defaults} PLURNK_EXTENSIONS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {
     const { root, nm } = await scaffold();
     const prior = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {

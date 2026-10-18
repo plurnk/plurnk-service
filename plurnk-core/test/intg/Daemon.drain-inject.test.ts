@@ -20,7 +20,7 @@ const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { bo
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
-test("loop.run: enqueues + drains + returns first loop's result", async () => {
+test("{§send-premature-terminate} loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
@@ -123,7 +123,7 @@ test("{§worker-ownership}: a fresh injection preserves the worker owner", async
     });
 });
 
-test("loop.cancel terminates a backgrounded exec; the stream concludes 499", async (approvalContext) => {
+test("{§executor-cancellation} loop.cancel terminates a backgrounded exec; the stream concludes 499", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A fire-and-forget exec outlives the loop that spawned it (in_progress keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
@@ -184,7 +184,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     });
 });
 
-test("loop.cancel: no active drain → cancelled=false", async () => {
+test("{§actor-boundary-passive-wake} loop.cancel: no active drain → cancelled=false", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````SEND [200]\ndone\n````")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -197,7 +197,7 @@ test("loop.cancel: no active drain → cancelled=false", async () => {
     });
 });
 
-test("loop.run: post-cancel, a fresh loop.run starts a new drain", async (approvalContext) => {
+test("{§actor-boundary-passive-wake} loop.run: post-cancel, a fresh loop.run starts a new drain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
@@ -577,7 +577,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
     });
 });
 
-test("loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async (approvalContext) => {
+test("{§actor-boundary-passive-wake} loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A backgrounded sleep registers an active exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes with the exact 499 Problem — not
@@ -617,7 +617,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     });
 });
 
-test("a cancelled worker is not revived by its straggler stream's conclusion", async (approvalContext) => {
+test("{§completion-defers-to-messages} a cancelled worker is not revived by its straggler stream's conclusion", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
     // in the worker — the cancel was deliberate. Proven by the worker's loop count staying at

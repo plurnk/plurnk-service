@@ -9,7 +9,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
-test("consistent resource state reports no violations after real lifecycle traffic", async () => {
+test("{§fs-resource-state} consistent resource state reports no violations after real lifecycle traffic", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-"));
     const db = await openMigrated();
     try {
@@ -26,7 +26,7 @@ test("consistent resource state reports no violations after real lifecycle traff
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the detector CATCHES: a non-canon stored key and an alien grantor both self-name", async () => {
+test("{§fs-canonical-name} the detector CATCHES: a non-canon stored key and an alien grantor both self-name", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-bad-"));
     const db = await openMigrated();
     try {

@@ -496,7 +496,7 @@ test("{§provider-cache-identity} BARE calls receive only their body prompts, ru
 });
 
 // {§bare-inference} {§provider-guarantees-signal-wired}
-test("loop cancellation reaches every concurrent BARE call before the batch escapes", async () => {
+test("{§bare-inference} loop cancellation reaches every concurrent BARE call before the batch escapes", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
@@ -590,7 +590,7 @@ test("{§provider-recovery}: an isolated call that drops once is re-issued; the 
 }));
 
 // {§bare-inference} {§send-premature-terminate}
-test("a same-turn BARE response is unseen retrieval work and defers completion", async () => {
+test("{§bare-inference} a same-turn BARE response is unseen retrieval work and defers completion", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({

@@ -78,7 +78,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
     });
 });
 
-test("a model's execution result surfaces visibly in the next turn without an explicit READ", async (approvalContext) => {
+test("{§exec-stream} a model's execution result surfaces visibly in the next turn without an explicit READ", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -251,7 +251,7 @@ test("{§executor-exit-code} {§exec-stream} a nonzero exit reaches the model as
     });
 });
 
-test("the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async (approvalContext) => {
+test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed before its close still gets a visible terminal delta", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A channel written in one final burst can be complete while its process is still active; the
     // close then arrives with no new content. The model must still see the stream conclude. Turn 1:

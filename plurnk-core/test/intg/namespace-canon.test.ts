@@ -151,7 +151,7 @@ test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the storage fixpoint: every file-class row is its own canon", async () => {
+test("{§fs-canonical-name} the storage fixpoint: every file-class row is its own canon", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "a.md"), "a\n");
@@ -164,7 +164,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("the log row: address columns speak canon while tx retains non-sensitive authored spelling", async () => {
+test("{§fs-canonical-name} the log row: address columns speak canon while tx retains non-sensitive authored spelling", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
@@ -353,7 +353,7 @@ test("{§fs-create-incorporation}: accept records constraint provenance before r
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it into existence", async () => {
+test("{§fs-canonical-name} an in-root file no grantor admits DOES NOT EXIST; a client pick brings it into existence", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         // A real file, physically in the root — non-git root, no pick: NO grantor admits it.

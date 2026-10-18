@@ -32,7 +32,7 @@ const serialized = (spans: ReturnType<{ spans(): unknown[] }["spans"]>): string 
     return parts.join("\n");
 };
 
-test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundary", async (approvalContext) => {
+test("{§observability-boundary} observe: prompts, bodies, hosts, URLs, and secrets never cross the boundary", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const memory = await mountMemoryTracing();
     try {

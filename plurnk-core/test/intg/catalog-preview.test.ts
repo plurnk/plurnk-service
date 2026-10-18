@@ -19,7 +19,7 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND [200]\ndone\n```", 50)] });
 
-test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
+test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
@@ -63,7 +63,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs 
 
 // The catalog is FIND-served — there is no materialized manifest entry. With the preview
 // off, the worker opens with no foisted catalog; the model FINDs each scheme on demand.
-test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
+test("{§operator-config-workspace-files-items} no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // preview OFF
     try {
@@ -87,7 +87,7 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
 
 // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("workspace.create settings.filesItems replaces the env default at turn 0", async () => {
+test("{§operator-config-workspace-files-items} workspace.create settings.filesItems replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // env ON (full) but the client's workspace asks for OFF (0) → no preview foisted.
@@ -121,7 +121,7 @@ test("workspace.create settings.filesItems replaces the env default at turn 0", 
 });
 
 // {§operator-config-workspace-files-items} — the client surface is narrow and validated.
-test("workspace.create rejects malformed settings — fail hard, no silent accept", async () => {
+test("{§actor-boundary-catalog-preview} workspace.create rejects malformed settings — fail hard, no silent accept", async () => {
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -141,7 +141,7 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
 // {§actor-boundary-catalog-preview} — turn-0 once-per-worker foists fire on the worker's first
 // loop only; later loops in the same worker already carry them in the persistent log. Two loops in
 // one worker: the manifest READ is in loop 1's log, absent from loop 2's.
-test("turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
+test("{§actor-boundary} turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
@@ -166,7 +166,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     }
 });
 
-test("the turn-0 initialization consists of the real orienting operations", async () => {
+test("{§emission-row} the turn-0 initialization consists of the real orienting operations", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each survey whole at turn 0
@@ -217,7 +217,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
     }
 });
 
-test("an empty workspace executes all eight orienting FINDs and preserves empty-surface results", async () => {
+test("{§actor-boundary-catalog-preview} an empty workspace executes all eight orienting FINDs and preserves empty-surface results", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";

@@ -72,7 +72,7 @@ test("{§send-administrative-terminal} an _plurnk administrative completion clos
     } finally { await db.close(); }
 });
 
-test("a newer terminal loop cannot mask a child's older unresolved work", async () => {
+test("{§completion-defers-to-results} a newer terminal loop cannot mask a child's older unresolved work", async () => {
     // A real fork clamps inherited loops terminal before creating its own work.
     // This deliberately inconsistent fixture proves that every unresolved loop
     // remains a live obligation regardless of newer history.
@@ -195,7 +195,7 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
     } finally { await db.close(); }
 });
 
-test("waiting cannot complete an empty join over a same-turn failed operation", async () => {
+test("{§send-premature-terminate} waiting cannot complete an empty join over a same-turn failed operation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-failure-${crypto.randomUUID()}`);
@@ -231,7 +231,7 @@ test("waiting cannot complete an empty join over a same-turn failed operation", 
     } finally { await db.close(); }
 });
 
-test("a successful same-turn scoped KILL continues an empty wait and permits explicit completion", async () => {
+test("{§send-premature-terminate} a successful same-turn scoped KILL continues an empty wait and permits explicit completion", async () => {
     const db = await openMigrated();
     try {
         const run = async (status: 200 | 202) => {
@@ -298,7 +298,7 @@ test("a successful same-turn scoped KILL continues an empty wait and permits exp
     } finally { await db.close(); }
 });
 
-test("a READ with a NOTE continues while its message remains unanswered", async () => {
+test("{§send-premature-terminate} a READ with a NOTE continues while its message remains unanswered", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-read-ok-${crypto.randomUUID()}`);
@@ -336,7 +336,7 @@ test("{§completion-joins-live-work} a model declaring done with a live child pa
     } finally { await db.close(); }
 });
 
-test("499 is never gated by live work: it recursively cancels unresolved descendants", async () => {
+test("{§completion-defers-to-results} 499 is never gated by live work: it recursively cancels unresolved descendants", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `guard-499-${crypto.randomUUID()}`);

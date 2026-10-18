@@ -62,7 +62,7 @@ test("{§module-workspace-provider} provider registration is validated and exact
     }
 });
 
-test("acquire validates the workspace, activates providers in order with a working retain, and refuses ghosts", async () => {
+test("{§module-workspace-residency} acquire validates the workspace, activates providers in order with a working retain, and refuses ghosts", async () => {
     const { db, workspaceId, residency, calls } = await harness();
     try {
         const order: string[] = [];
@@ -95,7 +95,7 @@ test("acquire validates the workspace, activates providers in order with a worki
     }
 });
 
-test("a failed provider activation deactivates what activated and surfaces the cause", async () => {
+test("{§module-workspace-residency} a failed provider activation deactivates what activated and surfaces the cause", async () => {
     const { db, workspaceId, residency } = await harness();
     try {
         const order: string[] = [];
@@ -115,7 +115,7 @@ test("a failed provider activation deactivates what activated and surfaces the c
     }
 });
 
-test("activation failure unwinds while the requesting workspace turn remains held", async () => {
+test("{§module-workspace-residency} activation failure unwinds while the requesting workspace turn remains held", async () => {
     const { db, workspaceId, residency, workspaceGate } = await harness();
     const held = workspaceGate.tryExclusive(workspaceId);
     assert.ok(held);
@@ -143,7 +143,7 @@ test("activation failure unwinds while the requesting workspace turn remains hel
     }
 });
 
-test("replacement: gate modes, durable state round-trip, owner mismatch, and atomic rollback", async () => {
+test("{§module-workspace-residency} replacement: gate modes, durable state round-trip, owner mismatch, and atomic rollback", async () => {
     const { db, workspaceId, residency, workspaceGate, calls, rollbacks } = await harness();
     try {
         const registration = (owner: string, name: string) => ({

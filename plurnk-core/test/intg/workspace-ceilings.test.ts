@@ -33,7 +33,7 @@ const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
 
-test("workspace settings.maxCommands min()s the env action cap — tightens, never widens", async () => {
+test("{§operator-config} workspace settings.maxCommands min()s the env action cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         // TIGHTEN: env 99, workspace 1 → min 1 → only the first model op dispatches.
@@ -92,7 +92,7 @@ test("{§operator-config-workspace-max-commands-floor} maxCommands:0 admits WAIT
     }
 });
 
-test("workspace settings.git:false denies git membership for the workspace (env AND workspace)", async () => {
+test("{§operator-config} workspace settings.git:false denies git membership for the workspace (env AND workspace)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-deny-"));
     const db = await openMigrated();
     try {
@@ -119,7 +119,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
     }
 });
 
-test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
+test("{§operator-config} workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

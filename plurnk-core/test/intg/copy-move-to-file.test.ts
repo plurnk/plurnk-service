@@ -163,7 +163,7 @@ test("{§notifications-loop-proposal} live and reconnect use one COPY destinatio
     });
 });
 
-test("a scoped COPY into a new file reports the accepted creation receipt", async () => {
+test("{§copy-cross-scheme-copy} a scoped COPY into a new file reports the accepted creation receipt", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "alpha\nbeta\ngamma\n");
         const result = await proposeAndResolve(
@@ -194,7 +194,7 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
     });
 });
 
-test("a scoped COPY receipt reports parser recovery for the complete landed file", async () => {
+test("{§copy-cross-scheme-copy} a scoped COPY receipt reports parser recovery for the complete landed file", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "broken.go", "package sample\nfunc broken(\n");
         const result = await proposeAndResolve(
@@ -233,7 +233,7 @@ test("{§proposal-reject-fails}: a rejected COPY into a file never touches disk"
     });
 });
 
-test("a regional COPY into a file reports the accepted text receipt", async () => {
+test("{§copy-cross-scheme-copy} a regional COPY into a file reports the accepted text receipt", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "alpha\nbeta\ngamma\n");
         await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
@@ -276,7 +276,7 @@ test("{§move-cross-scheme-move}: accepted MOVE lands the file and deletes the s
     });
 });
 
-test("a same-file regional MOVE reports both accepted effects from one batch", async () => {
+test("{§copy-cross-scheme-copy} a same-file regional MOVE reports both accepted effects from one batch", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "document.md", "abcdef");
         const result = await proposeAndResolve(
@@ -311,7 +311,7 @@ test("a same-file regional MOVE reports both accepted effects from one batch", a
     });
 });
 
-test("a reviewer-rewritten same-file MOVE reports its one landed replacement effect (#172)", async () => {
+test("{§copy-cross-scheme-copy} a reviewer-rewritten same-file MOVE reports its one landed replacement effect (#172)", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "document.md", "abcdef");
         const reviewed = "reviewer\nreplacement\n";
@@ -359,7 +359,7 @@ test("a reviewer-rewritten same-file MOVE reports its one landed replacement eff
     });
 });
 
-test("a reviewer-rewritten cross-resource MOVE still reports its landed source removal (#172)", async () => {
+test("{§copy-cross-scheme-copy} a reviewer-rewritten cross-resource MOVE still reports its landed source removal (#172)", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "source", "alpha\nbeta\ngamma\n");
         await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
@@ -461,7 +461,7 @@ test("{§move-canonical-whole-source}: file MOVE with <1,-1> to absent <0> unlin
     });
 });
 
-test("MOVE from a file to an internal destination applies the source proposal after the destination lands", async () => {
+test("{§move-decomposition} MOVE from a file to an internal destination applies the source proposal after the destination lands", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "source.md", "source content\n");
         const result = await proposeAndResolve(
@@ -508,7 +508,7 @@ for (const destinationKind of ["file", "worker"] as const) {
     }
 }
 
-test("rejecting a source-side MOVE proposal reports the already-written destination without deleting the source", async () => {
+test("{§copy-cross-scheme-copy} rejecting a source-side MOVE proposal reports the already-written destination without deleting the source", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "source.md", "source content\n");
         const result = await proposeAndResolve(
@@ -529,7 +529,7 @@ test("rejecting a source-side MOVE proposal reports the already-written destinat
     });
 });
 
-test("EDIT onto an existing NON-member file is refused (403) and never clobbers it", async () => {
+test("{§copy-cross-scheme-copy} EDIT onto an existing NON-member file is refused (403) and never clobbers it", async () => {
     // The unfair edge: a file exists on disk but was never tracked (git/client left it out), so it's
     // INVISIBLE to the model. The model, blind to it, tries to "create" it — and MUST NOT be able to
     // overwrite it. The refusal is opaque (never reveals the file exists) so the model can't probe the
@@ -546,7 +546,7 @@ test("EDIT onto an existing NON-member file is refused (403) and never clobbers 
     });
 });
 
-test("KILL of a file is a destructive host delete → it PROPOSES; on accept the file is unlinked + deregistered", async () => {
+test("{§copy-cross-scheme-copy} KILL of a file is a destructive host delete → it PROPOSES; on accept the file is unlinked + deregistered", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "doomed.txt", "delete me\n");
         const result = await proposeAndResolve(ctx, killStmt(localPath("doomed.txt")), "accept");
@@ -556,7 +556,7 @@ test("KILL of a file is a destructive host delete → it PROPOSES; on accept the
     });
 });
 
-test("a REJECTED KILL of a file preserves it — a destructive delete never bypasses review", async () => {
+test("{§copy-cross-scheme-copy} a REJECTED KILL of a file preserves it — a destructive delete never bypasses review", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "keep.txt", "keep me\n");
         const result = await proposeAndResolve(ctx, killStmt(localPath("keep.txt")), "reject");
@@ -565,7 +565,7 @@ test("a REJECTED KILL of a file preserves it — a destructive delete never bypa
     });
 });
 
-test("KILL of a NON-member file is 404 — the model can't delete untracked disk it can't see", async () => {
+test("{§fs-write-surface} KILL of a NON-member file is 404 — the model can't delete untracked disk it can't see", async () => {
     await withWorkspace(async (root, ctx) => {
         await writeFile(join(root, "untracked.txt"), "not yours\n", "utf8"); // on disk, NOT a member
         const result = await ctx.engine.dispatch({

@@ -51,7 +51,7 @@ const setup = async () => {
     return { db, workspaceId, workerId, loopId, turnId, mimetypes, schemes, engine };
 };
 
-test("FIND locates resources by glob matcher", async () => {
+test("{§read-exact-target} FIND locates resources by glob matcher", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, workerId, mimetypes, "/a", "intro\nfrance alpha\ntail");
@@ -69,7 +69,7 @@ test("FIND locates resources by glob matcher", async () => {
     } finally { await db.close(); }
 });
 
-test("FIND with zero matches returns 204", async () => {
+test("{§read-exact-target} FIND with zero matches returns 204", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, workerId, mimetypes, "/a", "italy");
@@ -82,7 +82,7 @@ test("FIND with zero matches returns 204", async () => {
     } finally { await db.close(); }
 });
 
-test("exact READ returns target content", async () => {
+test("{§read-exact-target} exact READ returns target content", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, workerId, mimetypes, "/a", "france one");
@@ -95,7 +95,7 @@ test("exact READ returns target content", async () => {
     } finally { await db.close(); }
 });
 
-test("trailing slash is ordinary resource syntax unless the scheme declares folder scopes", async () => {
+test("{§read-exact-target} trailing slash is ordinary resource syntax unless the scheme declares folder scopes", async () => {
     class OpaqueResource {
         static manifest = {
             name: "opaque", channels: { body: "text/markdown" }, defaultChannel: "body",

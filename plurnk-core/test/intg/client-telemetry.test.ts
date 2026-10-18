@@ -29,11 +29,11 @@ const captureClient = async (clientId: string | null): Promise<string | undefine
     return captured;
 };
 
-test("a stored client id never reaches the provider call", async () => {
+test("{§client-metadata} a stored client id never reaches the provider call", async () => {
     assert.equal(await captureClient("@plurnk/plurnk-tui/1.4.0"), undefined, "the client id stays inside the daemon");
 });
 
-test("workspace.create refuses an empty client id", async () => {
+test("{§pinned-wording-core} workspace.create refuses an empty client id", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

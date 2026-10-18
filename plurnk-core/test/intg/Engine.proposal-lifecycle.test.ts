@@ -264,7 +264,7 @@ test("{§proposal-projection}: a pending proposal names its worker and log coord
     } finally { await db.close(); }
 });
 
-test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
+test("{§engine-rails} proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -324,7 +324,7 @@ test("{§proposal-proposed-hidden}: creation and client-visible settlement are d
         assert.deepEqual(settled, [logEntryId], "the terminal proposal row publishes exactly once after settlement");
     } finally { await db.close(); }
 });
-test("proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
+test("{§engine-rails} proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -338,7 +338,7 @@ test("proposal: reject transitions to state='failed', status=400, outcome='rejec
     } finally { await db.close(); }
 });
 
-test("proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
+test("{§engine-rails} proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -352,7 +352,7 @@ test("proposal: cancel transitions to state='cancelled', status=499, outcome='lo
     } finally { await db.close(); }
 });
 
-test("proposal: caller-supplied outcome overrides the default", async () => {
+test("{§engine-rails} proposal: caller-supplied outcome overrides the default", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -364,7 +364,7 @@ test("proposal: caller-supplied outcome overrides the default", async () => {
     } finally { await db.close(); }
 });
 
-test("proposal: attrs from scheme persist into log_entries.attrs JSON", async () => {
+test("{§engine-rails} proposal: attrs from scheme persist into log_entries.attrs JSON", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -376,7 +376,7 @@ test("proposal: attrs from scheme persist into log_entries.attrs JSON", async ()
     } finally { await db.close(); }
 });
 
-test("proposal: status=202 + state='proposed' rows hidden from the log section render", async () => {
+test("{§packet-terms} proposal: status=202 + state='proposed' rows hidden from the log section render", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -406,7 +406,7 @@ test("proposal: status=202 + state='proposed' rows hidden from the log section r
     } finally { await db.close(); }
 });
 
-test("proposal: resolveProposal for unknown id throws", () => {
+test("{§problems-functionality} proposal: resolveProposal for unknown id throws", () => {
     return openMigrated().then(async (db) => {
         try {
             const ctx = await setupEngine(db);
@@ -421,7 +421,7 @@ test("proposal: resolveProposal for unknown id throws", () => {
     });
 });
 
-test("proposal: pendingProposalIds reports waiting entries", async () => {
+test("{§engine-rails} proposal: pendingProposalIds reports waiting entries", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -441,7 +441,7 @@ test("proposal: pendingProposalIds reports waiting entries", async () => {
     } finally { await db.close(); }
 });
 
-test("proposal: onProposalPending listener fires with the right payload", async () => {
+test("{§engine-rails} proposal: onProposalPending listener fires with the right payload", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -536,7 +536,7 @@ test("{§worker-owner-resolution} proposal: server acceptance is core-owned and 
     } finally { await db.close(); }
 });
 
-test("proposal: an observational failure is visible and cannot derail loop-owned settlement", async (t) => {
+test("{§engine-rails} proposal: an observational failure is visible and cannot derail loop-owned settlement", async (t) => {
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const db = await openMigrated();
@@ -563,7 +563,7 @@ test("proposal: an observational failure is visible and cannot derail loop-owned
     } finally { await db.close(); }
 });
 
-test("proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async (t) => {
+test("{§engine-rails} proposal: a policy-preparation failure preserves its cause and terminalizes the durable row", async (t) => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db, new ProposingTest(async () => {
@@ -605,7 +605,7 @@ test("proposal: a policy-preparation failure preserves its cause and terminalize
     } finally { await db.close(); }
 });
 
-test("proposal: invalid explicit timeout fails hard without orphaning the durable stopped world", async (t) => {
+test("{§engine-rails} proposal: invalid explicit timeout fails hard without orphaning the durable stopped world", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -656,7 +656,7 @@ test("proposal: invalid explicit timeout fails hard without orphaning the durabl
     } finally { await db.close(); }
 });
 
-test("proposal: the default review disposition does not approve without a resolver", async (t) => {
+test("{§engine-rails} proposal: the default review disposition does not approve without a resolver", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
@@ -683,7 +683,7 @@ test("proposal: the default review disposition does not approve without a resolv
     } finally { await db.close(); }
 });
 
-test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (t) => {
+test("{§engine-rails} proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -714,7 +714,7 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
     } finally { await db.close(); }
 });
 
-test("the shipped empty default is indefinite — a stopped world waits for its human", async (t) => {
+test("{§engine-rails} the shipped empty default is indefinite — a stopped world waits for its human", async (t) => {
     // Absence is not an answer: with the knob unset, a pending proposal outlives any would-be
     // window and resolves only when the human does. The operator-bounded lane above keeps its test.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;

@@ -219,7 +219,7 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     );
 });
 
-test("ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
+test("{§executor-probe} ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
     const root = await mkdtemp(join(tmpdir(), "core-strict-exec-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const packageName = "@plurnk/plurnk-execs-strict-fixture";

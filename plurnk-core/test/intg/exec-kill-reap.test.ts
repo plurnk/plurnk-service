@@ -23,7 +23,7 @@ const mockTurn = (dsl: string) => ({
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
 const stubbornSpawn = "````sh\ntrap '' HUP TERM; sleep 30\n````\n\n````WAIT\nparked with a stubborn spawn\n````";
 
-test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async (approvalContext) => {
+test("{§worker-lifecycle-total-reap} teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget

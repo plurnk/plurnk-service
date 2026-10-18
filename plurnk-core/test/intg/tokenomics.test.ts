@@ -37,7 +37,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("EDIT stores entry_channels.weight from the model-agnostic ruler", async () => {
+test("{§tokenomics-agnostic-ruler} EDIT stores entry_channels.weight from the model-agnostic ruler", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
@@ -54,7 +54,7 @@ test("EDIT stores entry_channels.weight from the model-agnostic ruler", async ()
     } finally { await db.close(); }
 });
 
-test("dispatched op stores log_entries.weight from its complete canonical log body", async () => {
+test("{§tokenomics} dispatched op stores log_entries.weight from its complete canonical log body", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         let logEntryId = 0;
@@ -72,7 +72,7 @@ test("dispatched op stores log_entries.weight from its complete canonical log bo
     } finally { await db.close(); }
 });
 
-test("entry_channels.weight honors an injected ruler override (test seam)", async () => {
+test("{§tokenomics} entry_channels.weight honors an injected ruler override (test seam)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-prov-${crypto.randomUUID()}`);
@@ -117,7 +117,7 @@ test("{§context-gauge} below pressure the gauge carries populated tokens and bu
     } finally { await db.close(); }
 });
 
-test("context token budget carries active total and maximum without a percent", async () => {
+test("{§tokenomics} context token budget carries active total and maximum without a percent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-pct-${crypto.randomUUID()}`);
@@ -179,7 +179,7 @@ test("{§context-wall} a packet past the window even as receipts preserves exact
     }
 });
 
-test("content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {
+test("{§tokenomics} content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {
     const { contentHash } = await import("../../src/core/content-hash.ts");
     const h = contentHash("same bytes");
     assert.equal(h, contentHash("same bytes"), "deterministic: identical content → identical hash");

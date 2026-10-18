@@ -13,7 +13,7 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("observe: an invalid first emission retries under the turn without failing the successful parent", async (approvalContext) => {
+test("{§observability-boundary} observe: an invalid first emission retries under the turn without failing the successful parent", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const memory = await mountMemoryTracing();
     try {

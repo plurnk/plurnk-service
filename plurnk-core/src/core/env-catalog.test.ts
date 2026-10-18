@@ -62,7 +62,7 @@ test("EnvCatalog.project keeps the comment with its declaration when filtered", 
         "a filtered declaration arrives documented, which is the point of projecting the source text");
 });
 
-test("EnvCatalog.project drops a package with no match rather than rendering an empty section", () => {
+test("{§functionality-model-projection} EnvCatalog.project drops a package with no match rather than rendering an empty section", () => {
     assert.doesNotMatch(EnvCatalog.project(FILES, { query: "PAGER" }), /plurnk-mcp/u);
 });
 
@@ -98,7 +98,7 @@ test("EnvCatalog.candidates projects the declared value, never an operator's", (
     assert.match(credential.summary!, /unset disables/u, "the model learns what it is for, so it can ask by name");
 });
 
-test("EnvCatalog.candidates omits summary rather than inventing one", () => {
+test("{§operator-config-undeclared-key} EnvCatalog.candidates omits summary rather than inventing one", () => {
     const [bare] = EnvCatalog.candidates([{ owner: "@plurnk/x", parsed: {}, text: "BARE=1" }]);
     assert.equal(bare.summary, undefined, "a templated instance is self-documenting; an empty string would be a lie");
 });

@@ -40,7 +40,7 @@ test("{§web-materialization-contract}: the entry sink's web materializer is the
     assert.equal(registry.webMaterializer(), https.webMaterializer, "the registry hands out the handler's own materializer");
 });
 
-test("SchemeRegistry.discoverExternal registers the https sibling", async () => {
+test("{§extension-discovery} SchemeRegistry.discoverExternal registers the https sibling", async () => {
     const registry = new SchemeRegistry();
     assert.equal(registry.has("https"), false, "not registered until discovery runs");
 
@@ -49,7 +49,7 @@ test("SchemeRegistry.discoverExternal registers the https sibling", async () => 
     assert.equal(registry.has("https"), true, "the external https sibling is discovered + registered");
 });
 
-test("discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
+test("{§extension-discovery} discoverExternal treats the same package claim as an idempotent rescan", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
@@ -65,7 +65,7 @@ test("discoverExternal treats the same package claim as an idempotent rescan", a
     assert.deepEqual(registry.attributions(attributionContext), ["@plurnk/http"], "idempotent scans retain one package fact");
 });
 
-test("discoverExternal retains loaded package handlers as runtime attribution sources", async (t: TestContext) => {
+test("{§extension-discovery} discoverExternal retains loaded package handlers as runtime attribution sources", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
@@ -99,7 +99,7 @@ test("{§exec-registry-resolves} an actionable runtime without an executor is an
     assert.throws(() => registry.registerRuntimeSchemes(broken), /Available runtime 'broken' has no executor instance/u);
 });
 
-test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard", () => {
+test("{§extension-discovery} registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard", () => {
     const registry = new SchemeRegistry();
     assert.throws(
         () => registry.registerRuntimeSchemes(runtimeRegistry("file", "@acme/exec-file")),
@@ -108,7 +108,7 @@ test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fail
     );
 });
 
-test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face", () => {
+test("{§extension-discovery} registerRuntimeSchemes: a non-reserved executor tag registers its own per-tag face", () => {
     const registry = new SchemeRegistry();
     registry.registerRuntimeSchemes(runtimeRegistry("sh", "@plurnk/plurnk-execs-common"));
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
@@ -143,7 +143,7 @@ test("{§module-workspace-capabilities} runtime scheme faces are worker-isolated
     assert.equal(registry.get("gitea", 1), undefined);
 });
 
-test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
+test("{§extension-discovery} registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", handler("figma")); // an external scheme sibling claims the name first
     assert.throws(
@@ -153,7 +153,7 @@ test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fai
     );
 });
 
-test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision", () => {
+test("{§extension-discovery} registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, not a collision", () => {
     const registry = new SchemeRegistry();
     const real = runtimeRegistry("sh", "@plurnk/plurnk-execs-common");
     registry.registerRuntimeSchemes(real);
@@ -162,7 +162,7 @@ test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, no
     assert.equal(registry.get("sh"), original, "the rescan retains the first runtime scheme face");
 });
 
-test("registerRuntimeSchemes: a different executor package cannot hide behind a registered tag", () => {
+test("{§extension-discovery} registerRuntimeSchemes: a different executor package cannot hide behind a registered tag", () => {
     const registry = new SchemeRegistry();
     registry.registerRuntimeSchemes(runtimeRegistry("search", "@acme/exec-search"));
 
@@ -172,7 +172,7 @@ test("registerRuntimeSchemes: a different executor package cannot hide behind a 
     );
 });
 
-test("discoverExternal rejects a different package claim across scans before importing it", async (t: TestContext) => {
+test("{§extension-discovery} discoverExternal rejects a different package claim across scans before importing it", async (t: TestContext) => {
     let packageName = "@plurnk/plurnk-schemes-http";
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName }],
@@ -191,7 +191,7 @@ test("discoverExternal rejects a different package claim across scans before imp
     assert.equal(registry.get("https"), original, "the rejected package cannot replace the first handler");
 });
 
-test("scheme/executor collisions have the same result in both registration orders", async (t: TestContext) => {
+test("{§extension-discovery} scheme/executor collisions have the same result in both registration orders", async (t: TestContext) => {
     t.mock.method(SchemeDiscovery, "discover", async () => ({
         schemes: [{ name: "https", packageName: "@plurnk/plurnk-schemes-http" }],
         skipped: [],
@@ -213,7 +213,7 @@ test("scheme/executor collisions have the same result in both registration order
     );
 });
 
-test("lifecycle hooks run once per unique handler object identity", async () => {
+test("{§extension-discovery} lifecycle hooks run once per unique handler object identity", async () => {
     const registry = new SchemeRegistry();
     let name = "resource-a";
     let probes = 0;
@@ -237,7 +237,7 @@ test("lifecycle hooks run once per unique handler object identity", async () => 
     assert.equal(closes, 1, "aliases and repeated shutdown passes close one handler object once");
 });
 
-test("ready: a later registration probes only the newly registered handler", async () => {
+test("{§extension-discovery} ready: a later registration probes only the newly registered handler", async () => {
     const registry = new SchemeRegistry();
     let firstProbes = 0;
     let secondProbes = 0;
@@ -251,7 +251,7 @@ test("ready: a later registration probes only the newly registered handler", asy
     assert.equal(secondProbes, 1);
 });
 
-test("ready: a failed probe is retained rather than invoked again", async () => {
+test("{§extension-discovery} ready: a failed probe is retained rather than invoked again", async () => {
     const registry = new SchemeRegistry();
     const failure = new Error("readiness failed");
     let probes = 0;
@@ -272,7 +272,7 @@ test("ready: a failed probe is retained rather than invoked again", async () => 
     assert.equal(closes, 1, "a readiness failure does not exempt partial resources from shutdown");
 });
 
-test("close: attempts and awaits every handler, then aggregates every failure", async () => {
+test("{§extension-discovery} close: attempts and awaits every handler, then aggregates every failure", async () => {
     const registry = new SchemeRegistry();
     const slow = Promise.withResolvers<void>();
     let slowSettled = false;
@@ -339,7 +339,7 @@ test("{§schemes-directory}: hidden schemes do not publish model references", as
     assert.ok((await registry.docs()).find(({ name }) => name === "worker"));
 });
 
-test("docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {
+test("{§extension-discovery} docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {
     const registry = new SchemeRegistry();
     registry.register("undocumented", handler("undocumented"));
     registry.register("documented", {

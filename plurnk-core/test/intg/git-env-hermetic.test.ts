@@ -20,7 +20,7 @@ const execFileP = promisify(execFile);
 const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
 const seed = (cwd: string) => execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd, env: hermeticGitEnv() });
 
-test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched", async () => {
+test("{§membership-git-hermetic} demo fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hermetic-"));
     const victim = join(base, "victim");
     const priorGitDir = process.env.GIT_DIR;
@@ -83,7 +83,7 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
     }
 });
 
-test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes", async () => {
+test("{§membership-git-hermetic} a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hooksesc-"));
     const priorGlobal = process.env.GIT_CONFIG_GLOBAL;
     try {
@@ -128,7 +128,7 @@ test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it
 
 // #568 — a supplied repository's OWN config names a program (`core.fsmonitor`); automatic
 // inspection (status, membership) must not run it as the daemon. Control first: the vector is real.
-test("automatic inspection never runs a repository-supplied core.fsmonitor helper — status and membership stay normal", async () => {
+test("{§membership-git-hermetic} automatic inspection never runs a repository-supplied core.fsmonitor helper — status and membership stay normal", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-fsmonitor-"));
     const repo = join(base, "supplied");
     const marker = join(base, "HELPER-RAN");
@@ -185,7 +185,7 @@ test("automatic inspection never runs a repository-supplied core.fsmonitor helpe
 
 // {§membership-git-hermetic} (#568 residual): no key can pin off an arbitrary `filter.<name>` driver,
 // so a supplied repository declaring one is refused for automatic inspection — a warning-and-skip.
-test("automatic inspection refuses a supplied repository declaring a filter program — status and membership skip, one notice names the key", async () => {
+test("{§membership-git-hermetic} automatic inspection refuses a supplied repository declaring a filter program — status and membership skip, one notice names the key", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-filter-"));
     const repo = join(base, "supplied");
     const marker = join(base, "FILTER-RAN");

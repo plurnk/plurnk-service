@@ -367,7 +367,7 @@ test("{§packet-git-status}: Git packet state names each class once, bounded, an
 // defaultChannel, its rendered target is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("log entry: a no-body row omits body, display, model origin, and routine status — heading is log URI, path is action operand (#338)", () => {
+test("{§tokenomics-agnostic-ruler} log entry: a no-body row omits body, display, model origin, and routine status — heading is log URI, path is action operand (#338)", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -521,7 +521,7 @@ test("{§packet-markdown}: section headings are separated from content without s
     assert.match(packet, /### log:\/\/\/1\/2\/1\/READ → notes\.md · \d+\n1:notes/u);
 });
 
-test("environment-delta provenance renders as source", () => {
+test("{§tokenomics-agnostic-ruler} environment-delta provenance renders as source", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "_plurnk",
@@ -627,7 +627,7 @@ test("{§scheme-address-network}: a body-suppressed web identity renders https:/
     assert.match(out, /^### log:\/\/\/1\/1\/9\/EDIT → https:\/\/en\.wikipedia\.org\/wiki\/Paris · \d+$/m, "the authority form, one spelling");
 });
 
-test("model-facing targets escape literal URI delimiters without rewriting percent-encoded identity", () => {
+test("{§tokenomics-agnostic-ruler} model-facing targets escape literal URI delimiters without rewriting percent-encoded identity", () => {
     const target = {
         kind: "url",
         scheme: "https",
@@ -652,7 +652,7 @@ test("model-facing targets escape literal URI delimiters without rewriting perce
     assert.equal(out.split(`→ ${spelling}`).length, 3, "both operands are written with the same escaped spelling");
 });
 
-test("COPY/MOVE render operand selections and scoped textual materialization receipts", () => {
+test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scoped textual materialization receipts", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/5",
         origin: "model",
@@ -788,7 +788,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.doesNotMatch(unchanged, /"body":/, "none-state is body absence (#338)");
 });
 
-test("COPY/MOVE retain authored line anchors in durable operand selections", () => {
+test("{§tokenomics-agnostic-ruler} COPY/MOVE retain authored line anchors in durable operand selections", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/10",
         origin: "model",
@@ -821,7 +821,7 @@ test("COPY/MOVE retain authored line anchors in durable operand selections", () 
     assert.deepEqual(parseLogRecords(out)[0].scope, { from: "<@aZ09b,@0Aa9Z>", to: "<@10Zyx,4,@zY01A,4>" });
 });
 
-test("a reviewer-rewritten same-resource MOVE renders one replacement effect and both operands (#172)", () => {
+test("{§tokenomics-agnostic-ruler} a reviewer-rewritten same-resource MOVE renders one replacement effect and both operands (#172)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/9",
         origin: "model",
@@ -875,7 +875,7 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
     assert.equal(out.match(/2:replacement/g)?.length, 1);
 });
 
-test("log entry: a worker:// spawn renders the worker NAME in the addressed operand", () => {
+test("{§tokenomics-agnostic-ruler} log entry: a worker:// spawn renders the worker NAME in the addressed operand", () => {
     // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the
     // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
@@ -889,7 +889,7 @@ test("log entry: a worker:// spawn renders the worker NAME in the addressed oper
     assert.doesNotMatch(out, /\(worker:\/\/\)/, "no nameless worker:// rows (the blindness)");
 });
 
-test("log entry: a web host survives into the target — http://host/path, not http:///path", () => {
+test("{§tokenomics-agnostic-ruler} log entry: a web host survives into the target — http://host/path, not http:///path", () => {
     // Same render path, same bug class: an authority-bearing scheme keeps its host in `hostname`.
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" } },
@@ -897,7 +897,7 @@ test("log entry: a web host survives into the target — http://host/path, not h
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ → https:\/\/en\.wikipedia\.org\/wiki\/Paris · \d+$/m, "the web host reaches the rendered target");
 });
 
-test("log entry: network target preserves port, ordered query, and channel fragment", () => {
+test("{§tokenomics-agnostic-ruler} log entry: network target preserves port, ordered query, and channel fragment", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
@@ -915,7 +915,7 @@ test("log entry: network target preserves port, ordered query, and channel fragm
     assert.match(out, /^### log:\/\/\/1\/1\/2\/READ → https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview · \d+$/m);
 });
 
-test("log render: READ@200 with text/markdown rx body → line-numbered Markdown content", () => {
+test("{§tokenomics-agnostic-ruler} log render: READ@200 with text/markdown rx body → line-numbered Markdown content", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -954,7 +954,7 @@ test("{§log-wire-format}: a READ beginning with a blank source line numbers eve
     );
 });
 
-test("log render: a scoped READ preserves its complete source TextRegion", () => {
+test("{§tokenomics-agnostic-ruler} log render: a scoped READ preserves its complete source TextRegion", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
@@ -1028,7 +1028,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
 });
 
 // {§channel-selection-visibility} — a READ row names the resource's other channels with tokens.
-test("log render: a READ row carries its sibling channels", () => {
+test("{§retrieval-packet-metadata} log render: a READ row carries its sibling channels", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
@@ -1042,7 +1042,7 @@ test("log render: a READ row carries its sibling channels", () => {
 });
 
 // {§retrieval-packet-metadata} {§edit-pattern} — a pattern mutation names its matcher and count.
-test("log render: a pattern EDIT carries its matcher and matched count beside the receipt", () => {
+test("{§tokenomics-agnostic-ruler} log render: a pattern EDIT carries its matcher and matched count beside the receipt", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
@@ -1057,7 +1057,7 @@ test("log render: a pattern EDIT carries its matcher and matched count beside th
     assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "matched", "matcher", "modifiers", "path", "tokens"]]);
 });
 
-test("log render: a matcher FIND exposes surgical coordinates", () => {
+test("{§tokenomics-agnostic-ruler} log render: a matcher FIND exposes surgical coordinates", () => {
     const matches = [
         { region: { startLine: 143, startColumn: 1, endLine: 143, endColumn: 8 } },
         { region: { startLine: 617, startColumn: 4, endLine: 617, endColumn: 11 } },
@@ -1255,7 +1255,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     );
 });
 
-test("log render: READ@200 with application/json is line-addressable", () => {
+test("{§tokenomics-agnostic-ruler} log render: READ@200 with application/json is line-addressable", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -1280,7 +1280,7 @@ test("log render: READ@200 with application/json is line-addressable", () => {
 // packet (that format belongs in client communication, where humans want
 // colored before/after rendering).
 
-test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
+test("{§tokenomics-agnostic-ruler} log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
@@ -1297,7 +1297,7 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
-test("log render: model EDIT receipt renders its extent, change, effect and bounded join context verbatim", () => {
+test("{§tokenomics-agnostic-ruler} log render: model EDIT receipt renders its extent, change, effect and bounded join context verbatim", () => {
     const exactReceipt = receipt("1:one\n2:TWO\n3:2.5\n4:three");
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
@@ -1314,7 +1314,7 @@ test("log render: model EDIT receipt renders its extent, change, effect and boun
     assert.doesNotMatch(out, new RegExp(revision));
 });
 
-test("reviewer-replaced EDIT rows render authored dispositions and one landed replacement", () => {
+test("{§tokenomics-agnostic-ruler} reviewer-replaced EDIT rows render authored dispositions and one landed replacement", () => {
     const replacement = {
         requested: "<1,-1>",
         source: "<1,4>",
@@ -1364,7 +1364,7 @@ test("reviewer-replaced EDIT rows render authored dispositions and one landed re
     assert.doesNotMatch(out, new RegExp(revision));
 });
 
-test("render guard: every content-emitting op applies the N: convention uniformly", () => {
+test("{§tokenomics-agnostic-ruler} render guard: every content-emitting op applies the N: convention uniformly", () => {
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
@@ -1391,7 +1391,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     }
 });
 
-test("an oversized automatically visible terminal stream READ renders its complete observation", () => {
+test("{§tokenomics-agnostic-ruler} an oversized automatically visible terminal stream READ renders its complete observation", () => {
     const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -1407,7 +1407,7 @@ test("an oversized automatically visible terminal stream READ renders its comple
     assert.doesNotMatch(rendered, /"preview"/, "READ owns its selected result bound");
 });
 
-test("READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
+test("{§tokenomics-agnostic-ruler} READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
     const read = PacketWire.renderLog([{
         coordinate: "1/2/1",
         origin: "model",
@@ -1435,7 +1435,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
     assert.doesNotMatch(find, /1<@[0-9A-Za-z]{5}>/);
 });
 
-test("partially suppressed log bodies preserve source coordinates and expose only hidden intervals", () => {
+test("{§tokenomics-agnostic-ruler} partially suppressed log bodies preserve source coordinates and expose only hidden intervals", () => {
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
         origin: "model",
@@ -1454,7 +1454,7 @@ test("partially suppressed log bodies preserve source coordinates and expose onl
     assert.doesNotMatch(rendered, /18:two|19:three/);
 });
 
-test("READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {
+test("{§tokenomics-agnostic-ruler} READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {
     assert.throws(
         () => PacketWire.renderLog([{
             coordinate: "1/2/1",
@@ -1471,7 +1471,7 @@ test("READ rendering fails hard when persisted anchors do not align with the pro
     );
 });
 
-test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
+test("{§tokenomics-agnostic-ruler} log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -1507,12 +1507,12 @@ test("{§notice-callout} a notice is one callout: the level picks it, the direct
     assert.equal(PacketWire.renderNotices([{ source: "engine:turn", kind: "loop_status", level: "info" }]), "> [!NOTE]\n> [loop_status]");
 });
 
-test("a durable failure pointer is one status+path JSON object", () => {
+test("{§tokenomics-agnostic-ruler} a durable failure pointer is one status+path JSON object", () => {
     const out = PacketWire.renderFailurePointers([{ status: 403, coordinate: "1/1/2/EDIT" }]);
     assert.equal(out, '[{"status":403,"path":"log:///1/1/2/EDIT"}]', "the section is a link; the row holds the detail");
 });
 
-test("heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
+test("{§tokenomics-agnostic-ruler} heterogeneous failures render as uniform durable pointers, no per-kind shape", () => {
     // A dispatch refusal (400), an action failure (403), a budget overflow (413): three categories, one
     // channel. Each is a LogCoordinate-positioned event rendered as the same {status, path} JSON object —
     // the section never restates the term or carries per-kind shape. The detail lives on each row, READ via the path.
@@ -1525,7 +1525,7 @@ test("heterogeneous failures render as uniform durable pointers, no per-kind sha
     assert.equal(out, '[{"status":400,"path":"log:///1/2/3/error"},\n{"status":403,"path":"log:///1/2/5/EDIT"},\n{"status":413,"path":"log:///1/3/1/error"}]');
 });
 
-test("log render: FIND@200 renders its result catalog, not just the echoed query", () => {
+test("{§tokenomics-agnostic-ruler} log render: FIND@200 renders its result catalog, not just the echoed query", () => {
     // The turn-0 foisted FIND catalog map is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
@@ -1543,7 +1543,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
     assert.match(out, /\n1:\[/);
 });
 
-test("log render: READ@200 with text/html is line-addressable", () => {
+test("{§tokenomics-agnostic-ruler} log render: READ@200 with text/html is line-addressable", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -1560,7 +1560,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
     assert.equal(parseLogRecords(out)[0]?.body, "1:<h1>Hi</h1>\n");
 });
 
-test("a suppressed program READ receipt keeps its address and readable extent", () => {
+test("{§tokenomics-agnostic-ruler} a suppressed program READ receipt keeps its address and readable extent", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
@@ -1573,7 +1573,7 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while suppressed — budget-neutral");
 });
 
-test("a rejected emission renders as an addressable /attempt leaf without duplicate kind metadata", () => {
+test("{§tokenomics-agnostic-ruler} a rejected emission renders as an addressable /attempt leaf without duplicate kind metadata", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/1", origin: "model", op: null, status: 200, initial_folded: [[1, -1]],
         attrs: { kind: "emissionAttempt" },
@@ -1583,7 +1583,7 @@ test("a rejected emission renders as an addressable /attempt leaf without duplic
     assert.deepEqual(parseLogRecords(out).map(facts), [["lines", "logPath", "tokens"]]);
 });
 
-test("a program READ presents exact source, line-numbered", () => {
+test("{§tokenomics-agnostic-ruler} a program READ presents exact source, line-numbered", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200, folded: [],
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
@@ -1622,7 +1622,7 @@ test("{§body-projection}: a program READ renders whole; deliberate curation and
     }
 });
 
-test("initialization renders a program READ alongside its other real operation outcomes", () => {
+test("{§tokenomics-agnostic-ruler} initialization renders a program READ alongside its other real operation outcomes", () => {
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "FIND", status: 200, folded: [],
@@ -1838,7 +1838,7 @@ test("{§body-projection}: partial curation keeps canonical coordinates on a who
     assert.doesNotMatch(rendered, /"preview"/);
 });
 
-test("structured mutation receipts bypass a second generic preview", () => {
+test("{§tokenomics-agnostic-ruler} structured mutation receipts bypass a second generic preview", () => {
     const numbered = [
         ...Array.from({ length: 10 }, (_, i) => i + 1),
         ...Array.from({ length: 10 }, (_, i) => i + 21),

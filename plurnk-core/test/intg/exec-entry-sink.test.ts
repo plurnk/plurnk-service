@@ -186,7 +186,7 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
     }
 });
 
-test("entry() materializes an https resource as plurnk narration rows", async () => {
+test("{§env-delta-entry-materialization} entry() materializes an https resource as plurnk narration rows", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -282,7 +282,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
+test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-entry-failure",
         entryFailure: true,
@@ -375,7 +375,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
     }
 });
 
-test("search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
+test("{§exec-entry-sink} search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
     try {
         const search = await engine.dispatch({
@@ -448,7 +448,7 @@ test("{§http-binary-source} executor acquisition preserves binary source and na
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
+test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-encoded-path",
         encodedPath: true,
@@ -480,7 +480,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
+test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
     try {
         await engine.dispatch({
@@ -502,7 +502,7 @@ test("an exact HTTPS full-text FIND cannot leak or retarget a match from another
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
+test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response("publisher home", {
@@ -592,7 +592,7 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
+test("{§exec-entry-sink} entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
     const started = Promise.withResolvers<void>();
     const webFetcher = new WebFetcher();
     let preserved = false;
@@ -640,7 +640,7 @@ test("entry(content:null) preserves caller cancellation through the real WebFetc
     }
 });
 
-test("entry(content:null) admits only HTTP acquisition targets", async () => {
+test("{§exec-entry-sink} entry(content:null) admits only HTTP acquisition targets", async () => {
     let fetches = 0;
     const fetchWeb: WebFetch = async (url) => {
         fetches += 1;

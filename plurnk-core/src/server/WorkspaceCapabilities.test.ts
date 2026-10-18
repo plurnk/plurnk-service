@@ -146,7 +146,7 @@ test("new demand waits for in-progress cooling and then reactivates", async () =
     releaseSecond();
 });
 
-test("beginStop cancels pending cooling and refuses new residency", async () => {
+test("{§module-shutdown-order} beginStop cancels pending cooling and refuses new residency", async () => {
     const cooled: number[] = [];
     const residency = new WorkspaceCapabilities(
         { warmMs: 20, warmMax: -1 },

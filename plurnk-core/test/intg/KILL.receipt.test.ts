@@ -88,7 +88,7 @@ Continue the task.
     });
 }
 
-test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
+test("{§kill-scope-entry} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````EDIT (worker:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),

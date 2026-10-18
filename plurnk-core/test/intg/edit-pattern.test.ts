@@ -56,7 +56,7 @@ test("{§edit-pattern} pattern replacement preserves the body's literal line end
     } finally { await db.close(); }
 });
 
-test("a literal pattern replaces every occurrence on every line with the literal body", async () => {
+test("{§edit-pattern} a literal pattern replaces every occurrence on every line with the literal body", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(editStmt(target, "baz", null, { dialect: "glob", raw: "foo" }));
@@ -69,7 +69,7 @@ test("a literal pattern replaces every occurrence on every line with the literal
     } finally { await db.close(); }
 });
 
-test("a regex pattern replaces its spans; the body is literal, never a template", async () => {
+test("{§edit-pattern} a regex pattern replaces its spans; the body is literal, never a template", async () => {
     const { db, dispatch, body } = await setup("id: 12\nid: 345\nname: x");
     try {
         const r = await dispatch(editStmt(target, "$1-<0>", null, regex("\\d+")));
@@ -79,7 +79,7 @@ test("a regex pattern replaces its spans; the body is literal, never a template"
     } finally { await db.close(); }
 });
 
-test("a scope bounds the lines a pattern may touch; a glob with metacharacters replaces whole lines", async () => {
+test("{§edit-pattern} a scope bounds the lines a pattern may touch; a glob with metacharacters replaces whole lines", async () => {
     const { db, dispatch, body } = await setup("keep\nold value\nold thing\nkeep");
     try {
         const r = await dispatch(editStmt(target, "new", { marks: [2] }, { dialect: "glob", raw: "old*" }));
@@ -89,7 +89,7 @@ test("a scope bounds the lines a pattern may touch; a glob with metacharacters r
     } finally { await db.close(); }
 });
 
-test("zero matches change nothing and answer 204 with matched 0", async () => {
+test("{§edit-pattern} zero matches change nothing and answer 204 with matched 0", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(editStmt(target, "baz", null, { dialect: "glob", raw: "absent" }));
@@ -99,7 +99,7 @@ test("zero matches change nothing and answer 204 with matched 0", async () => {
     } finally { await db.close(); }
 });
 
-test("an empty body deletes the matched spans and leaves the lines", async () => {
+test("{§edit-pattern} an empty body deletes the matched spans and leaves the lines", async () => {
     const { db, dispatch, body } = await setup("a foo b\nfoo");
     try {
         const r = await dispatch(editStmt(target, "", null, { dialect: "glob", raw: "foo" }));
@@ -108,7 +108,7 @@ test("an empty body deletes the matched spans and leaves the lines", async () =>
     } finally { await db.close(); }
 });
 
-test("a regex pattern replaces its exact region across a line break", async () => {
+test("{§edit-pattern} a regex pattern replaces its exact region across a line break", async () => {
     const { db, dispatch, body } = await setup("one\ntwo");
     try {
         const r = await dispatch(editStmt(target, "x", null, regex("one\\ntwo")));
@@ -118,7 +118,7 @@ test("a regex pattern replaces its exact region across a line break", async () =
     } finally { await db.close(); }
 });
 
-test("a node-selecting pattern replaces each node's whole region, across lines", async () => {
+test("{§edit-pattern} a node-selecting pattern replaces each node's whole region, across lines", async () => {
     const xml = "<books>\n  <book>\n    <title>A</title>\n    <price>40</price>\n  </book>\n  <book>\n    <title>B</title>\n    <price>10</price>\n  </book>\n</books>";
     const { db, dispatch, body } = await setup(xml, "/books.xml");
     try {
@@ -129,7 +129,7 @@ test("a node-selecting pattern replaces each node's whole region, across lines",
     } finally { await db.close(); }
 });
 
-test("a jsonpath pattern with an empty body removes the selected nodes' text", async () => {
+test("{§edit-pattern} a jsonpath pattern with an empty body removes the selected nodes' text", async () => {
     const { db, dispatch, body } = await setup('{"items": [\n  {"name": "a", "price": 10},\n  {"name": "b", "price": 50}\n]}', "/data.json");
     try {
         const r = await dispatch(editStmt(urlPath("worker", "/data.json"), "", null, { dialect: "jsonpath", raw: "$.items[?(@.price > 20)]" }));
@@ -139,7 +139,7 @@ test("a jsonpath pattern with an empty body removes the selected nodes' text", a
     } finally { await db.close(); }
 });
 
-test("a full-text pattern replaces SQLite's located token occurrences", async () => {
+test("{§edit-pattern} a full-text pattern replaces SQLite's located token occurrences", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(editStmt(target, "x", null, { dialect: "fts", raw: "~foo" }));
@@ -161,7 +161,7 @@ for (const matcher of [{ dialect: "glob", raw: "foo" }, regex("foo"), { dialect:
     });
 }
 
-test("a pattern on an existing empty entry is a no-match, not a missing resource", async () => {
+test("{§edit-pattern} a pattern on an existing empty entry is a no-match, not a missing resource", async () => {
     const { db, dispatch, body } = await setup("");
     try {
         const r = await dispatch(editStmt(target, "x", null, regex("foo")));
@@ -173,7 +173,7 @@ test("a pattern on an existing empty entry is a no-match, not a missing resource
 
 // {§edit-pattern} {§readable-channel} — a regex splices the source channel's own coordinates: on
 // HTML the markup, never the readable projection beside it.
-test("a regex pattern edits HTML source coordinates; the readable projection follows", async () => {
+test("{§edit-pattern} a regex pattern edits HTML source coordinates; the readable projection follows", async () => {
     const { db, dispatch, body } = await setup("<html>\n  <body>\n    <h1>Team Roster</h1>\n  </body>\n</html>", "/users.html");
     try {
         const r = await dispatch(editStmt(urlPath("worker", "/users.html"), "<h2>Roster</h2>", null, { dialect: "regex", raw: "/<h1>.*<\\/h1>/", pattern: "<h1>.*<\\/h1>", flags: "" }));

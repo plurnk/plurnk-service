@@ -8,7 +8,7 @@ const request = (): RequestPacket => ({
     attributions: ["creator:ada", "topic:search"],
 });
 
-test("StoredPacket: NULL is the singular no-request representation", () => {
+test("{§packet-items} StoredPacket: NULL is the singular no-request representation", () => {
     assert.equal(StoredPacket.parse(null), null);
 });
 

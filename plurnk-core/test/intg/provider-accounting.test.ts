@@ -110,7 +110,7 @@ const fixture = async (): Promise<{
     return { db, loopId };
 };
 
-test("loop accounting adds decimal strings exactly without denormalized rollups", async () => {
+test("{§provider-request-accounting} loop accounting adds decimal strings exactly without denormalized rollups", async () => {
     const { db, loopId } = await fixture();
     try {
         await openRequest(db, loopId, 1, {
@@ -179,7 +179,7 @@ test("{§provider-accounting} one unknown request makes the total unknown withou
     }
 });
 
-test("the baseline has no floating-point or denormalized accounting columns", async () => {
+test("{§provider-request-accounting} the baseline has no floating-point or denormalized accounting columns", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-money-schema-"));
     const path = join(dir, "plurnk.db");
     const db = await openMigrated(path);

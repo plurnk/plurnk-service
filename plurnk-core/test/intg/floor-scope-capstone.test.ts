@@ -19,7 +19,7 @@ const parse = (dsl: string): PlurnkStatement[] => {
         .map((i) => i.statement);
 };
 
-test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
+test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, "capstone-ws", { producer: "client" });
     // FIND body matchers run content through the mimetypes framework,

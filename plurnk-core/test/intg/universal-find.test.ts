@@ -299,7 +299,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
     }
 });
 
-test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async (t) => {
+test("{§http-outbound-proposes} HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const schemes = new SchemeRegistry();

@@ -27,7 +27,7 @@ const setup = async () => {
 const literal: MatcherBody = { dialect: "glob", raw: "TODO" };
 const withSource = <T extends CopyStatement | MoveStatement>(statement: T, matcher: MatcherBody): T => ({ ...statement, source: { ...statement.source, matcher } });
 
-test("COPY by pattern lands exactly the matching text and leaves the source alone", async () => {
+test("{§copy-move-pattern} COPY by pattern lands exactly the matching text and leaves the source alone", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), literal));
@@ -38,7 +38,7 @@ test("COPY by pattern lands exactly the matching text and leaves the source alon
     } finally { await db.close(); }
 });
 
-test("a scoped source bounds the lines a pattern may select", async () => {
+test("{§copy-move-pattern} a scoped source bounds the lines a pattern may select", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md"), { marks: [1, 3] }), literal));
@@ -48,7 +48,7 @@ test("a scoped source bounds the lines a pattern may select", async () => {
     } finally { await db.close(); }
 });
 
-test("zero matches copy nothing and answer 204", async () => {
+test("{§copy-move-pattern} zero matches copy nothing and answer 204", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), { dialect: "glob", raw: "DONE" }));
@@ -58,7 +58,7 @@ test("zero matches copy nothing and answer 204", async () => {
     } finally { await db.close(); }
 });
 
-test("MOVE by pattern removes exactly the matching spans from the source", async () => {
+test("{§copy-move-pattern} MOVE by pattern removes exactly the matching spans from the source", async () => {
     const { db, dispatch, body } = await setup();
     try {
         // Regex anchors refer to source lines without requiring an explicit `m` flag.
@@ -75,7 +75,7 @@ test("MOVE by pattern removes exactly the matching spans from the source", async
     } finally { await db.close(); }
 });
 
-test("MOVE by pattern within one channel appends the spans and removes them where they were", async () => {
+test("{§copy-move-pattern} MOVE by pattern within one channel appends the spans and removes them where they were", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(moveStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/notes.md"), null, { marks: [-1] }), literal));
@@ -85,7 +85,7 @@ test("MOVE by pattern within one channel appends the spans and removes them wher
     } finally { await db.close(); }
 });
 
-test("a pattern on the destination is refused: a destination is a place", async () => {
+test("{§copy-move-pattern} a pattern on the destination is refused: a destination is a place", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const statement = copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md"));
@@ -96,7 +96,7 @@ test("a pattern on the destination is refused: a destination is a place", async 
     } finally { await db.close(); }
 });
 
-test("a full-text pattern transfers matching tokens without surrounding source", async () => {
+test("{§copy-move-pattern} a full-text pattern transfers matching tokens without surrounding source", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), { dialect: "fts", raw: "~TODO" }));

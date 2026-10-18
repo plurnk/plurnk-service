@@ -60,7 +60,7 @@ const wire = async (run: Executor["run"]) => {
     return { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
 };
 
-test("a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
+test("{§executor-results} a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => {
         throw new Error("Invalid URL");
     });
@@ -169,7 +169,7 @@ test("{§notice-level} a runtime-JavaScript notice without severity fails at the
     } finally { await db.close(); }
 });
 
-test("a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
+test("{§executor-results} a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
         // The 0.3.3-class liar: hangs until aborted, then claims success.
         args.signal.addEventListener("abort", () => res({ status: 200, exitCode: 0 }), { once: true });

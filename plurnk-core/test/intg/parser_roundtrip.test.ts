@@ -32,7 +32,7 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     return statuses;
 };
 
-test("parser roundtrip: EDIT writes the resource", async () => {
+test("{§entry-owner} parser roundtrip: EDIT writes the resource", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
@@ -140,7 +140,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
+test("{§fence-boundary} parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-params");

@@ -209,7 +209,7 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
     }
 });
 
-test("execution source READ preserves the complete authored scheme address (#163)", async () => {
+test("{§exec-target-routing} execution source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
     const seen: RepresentationPreparationRequest[] = [];
     const completeSource = Array.from({ length: 20 }, (_, index) => `source line ${index + 1}`).join("\n");
@@ -336,7 +336,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("execution source READ preserves literal shared and named scratch identities", async () => {
+test("{§worker-read-scope} execution source READ preserves literal shared and named scratch identities", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.workerId, "child");
@@ -419,7 +419,7 @@ test("{§execution-output-identity}: execution source READ uses the same workspa
     }
 });
 
-test("execution source eligibility and failures come from the owning READ contract (#163)", async () => {
+test("{§exec-target-routing} execution source eligibility and failures come from the owning READ contract (#163)", async () => {
     const ctx = await wire();
     let loggingPreparationCalled = false;
     try {

@@ -42,7 +42,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 // subscription; dispatching KILL through the Engine must reach that
 // scheme's send(), resolve the registry to the stored handle, fire teardown
 // with that exact handle, and close the registry row at 499.
-test("KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
+test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
@@ -142,7 +142,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
     } finally { await db.close(); }
 });
 
-test("a public streaming READ returns its 102 row before detached subscription work settles", async () => {
+test("{§no-chunk-rows} a public streaming READ returns its 102 row before detached subscription work settles", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
@@ -216,7 +216,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
 // lifecycle ONLY (open/close), never one row per chunk. A real streaming exec
 // emits ≥5 stdout chunks (one per line) yet produces exactly ONE execution log row,
 // resolved at status 200 — proving chunks live on the channel, not in the log.
-test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
+test("{§stream-constraints} multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
     const db = await openMigrated();
     try {
         const chunkEvents: Array<{ channel: string; state: string }> = [];
@@ -265,7 +265,7 @@ test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async (
 // body, enforced by CHECK on entry_channels.content. Over-cap → SQLITE_CONSTRAINT.
 // And NOTHING else is capped: a write well under the cap (1 MiB here) is stored
 // verbatim, un-truncated/un-throttled — the engine doesn't impose any smaller limit.
-test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
+test("{§live-updates} 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
@@ -303,7 +303,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
 // render live waterfalls without polling. Driving appendToChannel with the
 // daemon's notify callback must fire one event PER chunk (not just at close),
 // each carrying the new (growing) contentLength.
-test("daemon fires stream/event per chunk with growing contentLength", async () => {
+test("{§stream} daemon fires stream/event per chunk with growing contentLength", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -334,7 +334,7 @@ test("daemon fires stream/event per chunk with growing contentLength", async () 
 // connection/transaction surface (begin/commit/rollback/open/close). And
 // to the engine, channels are static storage — content arrives by a scheme
 // calling appendToChannel directly, with zero engine brokering.
-test("engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
+test("{§sql-ts-boundary} engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -369,7 +369,7 @@ test("engine has no connection/transaction surface; channel growth is scheme-dir
 // content grows OR state transitions"), and the payload is metadata-only:
 // { entryId, channel, state, contentLength } — the new state, the existing
 // content length, and never any content body.
-test("state transition fires metadata-only stream/event with new state", async () => {
+test("{§stream} state transition fires metadata-only stream/event with new state", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

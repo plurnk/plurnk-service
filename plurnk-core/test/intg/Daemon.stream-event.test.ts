@@ -6,7 +6,7 @@ import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWri
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import { seedEntryWithChannel } from "./_db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
+test("{§live-updates} notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -33,7 +33,7 @@ test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped wi
     });
 });
 
-test("appendToChannel via the daemon's notify callback fires stream/event end-to-end", async () => {
+test("{§live-updates} appendToChannel via the daemon's notify callback fires stream/event end-to-end", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -57,7 +57,7 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
     });
 });
 
-test("setChannelState end-to-end fires stream/event with state change", async () => {
+test("{§live-updates} setChannelState end-to-end fires stream/event with state change", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -76,7 +76,7 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
     });
 });
 
-test("stream/event is workspace-scoped — other workspaces don't see it", async () => {
+test("{§live-updates} stream/event is workspace-scoped — other workspaces don't see it", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
@@ -114,7 +114,7 @@ test("stream/event is workspace-scoped — other workspaces don't see it", async
     });
 });
 
-test("appendToChannel + setChannelState forward the entry coordinate onto stream/event", async () => {
+test("{§live-updates} appendToChannel + setChannelState forward the entry coordinate onto stream/event", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -141,7 +141,7 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
     });
 });
 
-test("appendToChannel with a mimetype retypes the channel + surfaces it on stream/event", async () => {
+test("{§live-updates} appendToChannel with a mimetype retypes the channel + surfaces it on stream/event", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

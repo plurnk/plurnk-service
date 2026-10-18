@@ -21,7 +21,7 @@ const indexingTurn = {
     },
 };
 
-test("the commons catalog is complete and unranked — every selected entry, no `shown`, never itself", async () => {
+test("{§packet} the commons catalog is complete and unranked — every selected entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-${crypto.randomUUID()}`);
@@ -62,7 +62,7 @@ test("the commons catalog is complete and unranked — every selected entry, no 
     } finally { await db.close(); }
 });
 
-test("catalog projection selects by literal authority, or the whole workspace when omitted", async () => {
+test("{§packet} catalog projection selects by literal authority, or the whole workspace when omitted", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-owner-${crypto.randomUUID()}`);
@@ -102,7 +102,7 @@ test("catalog projection selects by literal authority, or the whole workspace wh
     } finally { await db.close(); }
 });
 
-test("manifest build survives a malformed application/json entry — degrades to a line count, never crashes the turn (-32603)", async () => {
+test("{§packet} manifest build survives a malformed application/json entry — degrades to a line count, never crashes the turn (-32603)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-badjson-${crypto.randomUUID()}`);
@@ -308,7 +308,7 @@ test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed,
     } finally { await db.close(); }
 });
 
-test("[note4] manifest groups addressable channels default-first — default bare, non-default #fragment", async () => {
+test("{§packet} [note4] manifest groups addressable channels default-first — default bare, non-default #fragment", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `note4-${crypto.randomUUID()}`);

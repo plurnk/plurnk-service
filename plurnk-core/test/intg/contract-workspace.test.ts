@@ -116,7 +116,7 @@ test("{§membership-baseline}: an untracked file is never an ambient member — 
     });
 });
 
-test("git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
+test("{§membership} git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO test_seed_entry_workspace was
         // issued for it. Under {§membership} D4 (git present → ls-files membership),
@@ -193,7 +193,7 @@ test("{§fs-namei} absolute paths printed by a shell READ and EDIT the existing 
 
 type WriteAttrs = { path: string; canonical: string; patched: string; baseSig: string | null };
 
-test("an out-of-band disk change between propose and accept is an edit collision, never a clobber", async () => {
+test("{§membership} an out-of-band disk change between propose and accept is an edit collision, never a clobber", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx); // snapshot: body channel + synced_sig, both from disk
         const file = new File();
@@ -219,7 +219,7 @@ test("an out-of-band disk change between propose and accept is an edit collision
     });
 });
 
-test("with no drift the proposal lands and restamps the snapshot signature", async () => {
+test("{§membership} with no drift the proposal lands and restamps the snapshot signature", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx);
         const file = new File();
@@ -241,7 +241,7 @@ test("with no drift the proposal lands and restamps the snapshot signature", asy
     });
 });
 
-test("resolveOverlay reports members and the files an exclusion removed", async () => {
+test("{§membership} resolveOverlay reports members and the files an exclusion removed", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         await writeFile(join(root, "readme.md"), "# readme\n");
         await writeFile(join(root, "secret.md"), "secret\n");
@@ -277,7 +277,7 @@ test("{§machine-processes-one-overlay} membership is the workspace's — one ov
 
 // ───────────── {§membership} overlay and divergence composition ─────────────
 
-test("an exclusion drops a tracked file from membership, reconciling already-registered ones", async () => {
+test("{§membership} an exclusion drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
         const before = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: trackedPath});
@@ -295,7 +295,7 @@ test("an exclusion drops a tracked file from membership, reconciling already-reg
     });
 });
 
-test("an include glob admits an untracked file git misses", async () => {
+test("{§membership} an include glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
@@ -310,7 +310,7 @@ test("an include glob admits an untracked file git misses", async () => {
 });
 
 
-test("out-of-band change to a member remains truthful runtime-actor evidence", async () => {
+test("{§membership} out-of-band change to a member remains truthful runtime-actor evidence", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         // EMI re-reads disk each turn (git materialization); the build-time delta
         // detector turns an out-of-band member change into a runtime-owned EDIT
@@ -347,7 +347,7 @@ test("out-of-band change to a member remains truthful runtime-actor evidence", a
 
 // ─────────────── {§membership} incremental and concurrent passes ───────────────
 
-test("a member unchanged on disk is not re-tokenized on the next pass", async () => {
+test("{§membership} a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;
         const counting: PlurnkSchemeContext = { ...ctx, weigh: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };
@@ -432,7 +432,7 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
     });
 });
 
-test("overlapping startup and turn membership requests coalesce into one workspace pass", async () => {
+test("{§membership} overlapping startup and turn membership requests coalesce into one workspace pass", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         let calls = 0;
         const slow: PlurnkSchemeContext = {

@@ -86,7 +86,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
     }
 };
 
-test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream concludes", async () => {
+test("{§exec-hold-until-concluded} a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream concludes", async () => {
     const prevHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "holdstub1";
     try {
@@ -99,7 +99,7 @@ test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream conc
     }
 });
 
-test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees the live stream", async () => {
+test("{§exec-hold-until-concluded} a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees the live stream", async () => {
     const prevHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "some-other-runtime";
     try {

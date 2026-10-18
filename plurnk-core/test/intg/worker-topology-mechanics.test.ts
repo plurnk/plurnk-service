@@ -73,7 +73,7 @@ test("a fork inherits the parent's loops as HISTORY (clamped terminal), never fr
     } finally { await db.close(); }
 });
 
-test("the completion gate and child orientation use the same any-unresolved-loop liveness law", async () => {
+test("{§worker-obligations} the completion gate and child orientation use the same any-unresolved-loop liveness law", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);

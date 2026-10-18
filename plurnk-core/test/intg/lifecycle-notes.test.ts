@@ -15,7 +15,7 @@ import { clientRead } from "./_client-read.ts";
 
 const frame = PlurnkParser.frame;
 
-test("#713: notes have durable sources, normal log curation, and do not block completion", async () => {
+test("{§turn-source-resources} #713: notes have durable sources, normal log curation, and do not block completion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-notes");

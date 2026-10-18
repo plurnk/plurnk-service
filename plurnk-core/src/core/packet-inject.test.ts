@@ -6,12 +6,12 @@ import { join } from "node:path";
 import { resolveInjectPath, readPacketInject } from "./packet-inject.ts";
 
 // {§packet-inject}: ~ expansion, per-turn read, fail-hard on a broken path.
-test("resolveInjectPath expands ~/, leaves absolute paths alone", () => {
+test("{§packet-inject} resolveInjectPath expands ~/, leaves absolute paths alone", () => {
     assert.equal(resolveInjectPath("~/notes.md"), join(homedir(), "notes.md"), "~/ → home dir");
     assert.equal(resolveInjectPath("/etc/notes.md"), "/etc/notes.md", "absolute path untouched");
 });
 
-test("readPacketInject: unset → null; a real file → content; a missing path FAILS HARD", async () => {
+test("{§packet-inject} readPacketInject: unset → null; a real file → content; a missing path FAILS HARD", async () => {
     const prior = process.env.PLURNK_SERVICE_PACKET_INJECT;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-"));
     try {

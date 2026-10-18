@@ -10,7 +10,7 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
 // {§disposition-anywhere} {§emission-admission}
-test("a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
+test("{§disposition-anywhere} a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -53,7 +53,7 @@ Answer.
     } finally { await db.close(); }
 });
 
-test("SEND authored first: later operations run in authored order and completion waits for their results", async () => {
+test("{§matcher-refusal} SEND authored first: later operations run in authored order and completion waits for their results", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
@@ -100,7 +100,7 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
     } finally { await db.close(); }
 });
 
-test("internal turn programs admit a disposition anywhere like model turns", () => {
+test("{§disposition-anywhere} internal turn programs admit a disposition anywhere like model turns", () => {
     const source = "```KILL (log:///1/1/*)\n```\n\n```WAIT\nContinue.\n```";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "WAIT"]);

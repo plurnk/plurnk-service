@@ -26,7 +26,7 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
     }
 };
 
-test("a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async (approvalContext) => {
+test("{§exec-stream} a 40-line stream closes as its first page with the extent; a scoped READ still reaches line 40", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new StreamMock({
         contextWindow: 100_000,
@@ -95,7 +95,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
     }));
 });
 
-test("an active stream reaches the model only as an Open Work stream pointer with its size and growth", async (approvalContext) => {
+test("{§exec-stream-page} an active stream reaches the model only as an Open Work stream pointer with its size and growth", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new StreamMock({
         contextWindow: 100_000,

@@ -64,7 +64,7 @@ const seed = async () => {
 const find = (db: Db, workspaceId: number, workerId: number, raw: string) =>
     new Worker().find(findStmt(url(""), graph(raw)), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
 
-test("graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {
+test("{§graph-relations} graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `graph-readiness-${crypto.randomUUID()}`);
@@ -83,7 +83,7 @@ test("graph FIND reports an incomplete persistent index instead of silently drop
     } finally { db.close(); }
 });
 
-test("&<foo finds entries that reference foo, not the definer", async () => {
+test("{§graph-relations} &<foo finds entries that reference foo, not the definer", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "&<foo");
@@ -94,7 +94,7 @@ test("&<foo finds entries that reference foo, not the definer", async () => {
     } finally { db.close(); }
 });
 
-test("&>foo finds entries defining what foo references", async () => {
+test("{§graph-relations} &>foo finds entries defining what foo references", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "&>foo");
@@ -103,7 +103,7 @@ test("&>foo finds entries defining what foo references", async () => {
     } finally { db.close(); }
 });
 
-test("&foo selects definitions, not callers or dependencies", async () => {
+test("{§graph-relations} &foo selects definitions, not callers or dependencies", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "&foo");
@@ -134,7 +134,7 @@ test("{§range-extent}: a graph matcher selecting no resources returns 204 with 
     } finally { db.close(); }
 });
 
-test("editing foo's referrer away drops it from &<foo after index maintenance", async () => {
+test("{§graph-relations} editing foo's referrer away drops it from &<foo after index maintenance", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
@@ -146,7 +146,7 @@ test("editing foo's referrer away drops it from &<foo after index maintenance", 
     } finally { db.close(); }
 });
 
-test("persistent-index maintenance re-derives only on content change", async () => {
+test("{§graph-relations} persistent-index maintenance re-derives only on content change", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-${crypto.randomUUID()}`);

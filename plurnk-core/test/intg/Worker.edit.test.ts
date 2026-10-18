@@ -38,7 +38,7 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Worker.edit: new entry — inserts entries row and body channel", async () => {
+test("{§entry-owner} Worker.edit: new entry — inserts entries row and body channel", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({
@@ -79,7 +79,7 @@ test("{§ext-mimetype-extension-mimetype}: EDIT preserves an existing channel's 
     } finally { await db.close(); }
 });
 
-test("Worker.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
+test("{§problems-dispatch} Worker.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const claim = new Proxy(db.ops_insert_workspace_entry_if_absent, {
@@ -133,7 +133,7 @@ test("Worker.edit: second EDIT against same path — same entry id, body replace
     } finally { await db.close(); }
 });
 
-test("Worker.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
+test("{§problems-dispatch} Worker.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const worker = new Worker();

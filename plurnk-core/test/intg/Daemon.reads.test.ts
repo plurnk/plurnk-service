@@ -43,7 +43,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("entry.read returns the contracts-owned client projection", async () => {
+test("{§rpc} entry.read returns the contracts-owned client projection", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -110,7 +110,7 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
     });
 });
 
-test("entry.read returns 404 for missing entry", async () => {
+test("{§rpc} entry.read returns 404 for missing entry", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -123,7 +123,7 @@ test("entry.read returns 404 for missing entry", async () => {
     });
 });
 
-test("entry.read requires URL-shaped path", async () => {
+test("{§problems-functionality} entry.read requires URL-shaped path", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -137,7 +137,7 @@ test("entry.read requires URL-shaped path", async () => {
     });
 });
 
-test("entry.read with fragment strips fragment (channel selection is per-op concern)", async () => {
+test("{§rpc} entry.read with fragment strips fragment (channel selection is per-op concern)", async () => {
     // entry.read returns the WHOLE entry. Channel selection via fragment is for
     // op.read where the model wants a specific channel. entry.read is the
     // omnibus surface — fragment is ignored.
@@ -159,7 +159,7 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
     });
 });
 
-test("log.read returns recent entries from the attached workspace", async () => {
+test("{§rpc} log.read returns recent entries from the attached workspace", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -183,7 +183,7 @@ test("log.read returns recent entries from the attached workspace", async () => 
     });
 });
 
-test("log.read respects limit", async () => {
+test("{§rpc} log.read respects limit", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -198,7 +198,7 @@ test("log.read respects limit", async () => {
     });
 });
 
-test("log.read filters by sinceId for incremental fetch", async () => {
+test("{§rpc} log.read filters by sinceId for incremental fetch", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -218,7 +218,7 @@ test("log.read filters by sinceId for incremental fetch", async () => {
     });
 });
 
-test("log.read entries have hydrated JSON columns", async () => {
+test("{§rpc} log.read entries have hydrated JSON columns", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -265,7 +265,7 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
     });
 });
 
-test("log.read is workspace-scoped — doesn't see other workspaces' logs", async () => {
+test("{§rpc} log.read is workspace-scoped — doesn't see other workspaces' logs", async () => {
     await withDaemon(async (_db, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);

@@ -15,7 +15,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("an ignored or excluded AGENTS.md is never projected; the standard does not outrank .gitignore or an exclusion", async () => {
+test("{§members-configuration} an ignored or excluded AGENTS.md is never projected; the standard does not outrank .gitignore or an exclusion", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";

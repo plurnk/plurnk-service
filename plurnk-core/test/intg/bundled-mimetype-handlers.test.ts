@@ -117,11 +117,11 @@ const CASES: Case[] = [
 // idempotent and cheap on the cached path.
 const mimetypes = new Mimetypes();
 
-test("discovery: Mimetypes initializes without throwing", async () => {
+test("{§bundled-set} discovery: Mimetypes initializes without throwing", async () => {
     await mimetypes.ready();
 });
 
-test("discovery: every service-owned format-handler declaration is registered", async () => {
+test("{§bundled-set} discovery: every service-owned format-handler declaration is registered", async () => {
     const found = await discover({ includeTreeSitter: false });
     for (const { packageName, mimetype } of defaultHandlerPackages) {
         assert.equal(
@@ -132,7 +132,7 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
-test("the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
+test("{§mimetype-pdf-facts} the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.[imagePackage], imageManifest.version);
     // {§mimetype-pdf-facts} — the PDF owner is header-only and dependency-free, so it ships by default like the image owner (#542).
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], pdfManifest.version);

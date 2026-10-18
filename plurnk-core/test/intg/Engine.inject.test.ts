@@ -25,7 +25,7 @@ test("{§message-loop-containment} concurrent injections keep arrival order acro
     } finally { await db.close(); }
 });
 
-test("engine.inject: persists a message with its ordinal, open paths, and causal source", async () => {
+test("{§message-causal-source} engine.inject: persists a message with its ordinal, open paths, and causal source", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -58,7 +58,7 @@ test("engine.inject: persists a message with its ordinal, open paths, and causal
     } finally { await db.close(); }
 });
 
-test("concurrent injects are contained as distinct ordered messages with their own paths", async () => {
+test("{§message-loop-containment} concurrent injects are contained as distinct ordered messages with their own paths", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -88,7 +88,7 @@ test("concurrent injects are contained as distinct ordered messages with their o
     } finally { await db.close(); }
 });
 
-test("engine.inject: returns null when the addressed Loop is missing or finished", async () => {
+test("{§message-loop-containment} engine.inject: returns null when the addressed Loop is missing or finished", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });

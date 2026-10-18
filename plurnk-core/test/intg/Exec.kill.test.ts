@@ -121,7 +121,7 @@ test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme
     } finally { await db.close(); }
 });
 
-test("KILL rejects streams whose terminal state is already durable", async () => {
+test("{§stream-control} KILL rejects streams whose terminal state is already durable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);

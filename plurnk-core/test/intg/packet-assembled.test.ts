@@ -167,7 +167,7 @@ test("{§workspace-capability-policy}: packet assembly surfaces invalid workspac
     } finally { await db.close(); }
 });
 
-test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
+test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist markerless shallow maps at turn 0
     const db = await openMigrated();
@@ -421,7 +421,7 @@ test("{§recap-lines} no recap line ships and the recap source is empty, so a pa
     } finally { await db.close(); }
 });
 
-test("assembled packet: the skills foist surfaces the Worker's materialized skills into its log", async () => {
+test("{§schemes-directory} assembled packet: the skills foist surfaces the Worker's materialized skills into its log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
@@ -507,7 +507,7 @@ test("{§operator-config-real-model-profile}: the provider packet excludes perso
     assert.equal(await readFile(path, "utf8"), personal, "daily-driving policy remains untouched");
 });
 
-test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
+test("{§turn0-agents-stunt} assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
     const db = await openMigrated();
@@ -541,7 +541,7 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
     }
 });
 
-test("the live things a worker holds — child workers — surface as terse pointers in the status clump", async () => {
+test("{§child-orientation} the live things a worker holds — child workers — surface as terse pointers in the status clump", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-${crypto.randomUUID()}`);
@@ -563,7 +563,7 @@ test("the live things a worker holds — child workers — surface as terse poin
     } finally { await db.close(); }
 });
 
-test("no live children or streams → Open Work states every list as empty", async () => {
+test("{§packet-empty-sections} no live children or streams → Open Work states every list as empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);

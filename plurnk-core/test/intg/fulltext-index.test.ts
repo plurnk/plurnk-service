@@ -25,7 +25,7 @@ const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]
     return rows.map((r) => r.pathname);
 };
 
-test("persistent-index maintenance indexes body content into derivation_fts and re-indexes on change", async () => {
+test("{§persistent-search-index} persistent-index maintenance indexes body content into derivation_fts and re-indexes on change", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-${crypto.randomUUID()}`);
@@ -49,7 +49,7 @@ test("persistent-index maintenance indexes body content into derivation_fts and 
     } finally { db.close(); }
 });
 
-test("search artifacts index the exact READ body rather than a hidden mimetype projection", async () => {
+test("{§persistent-search-index} search artifacts index the exact READ body rather than a hidden mimetype projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-readable-${crypto.randomUUID()}`);

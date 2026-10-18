@@ -40,7 +40,7 @@ test("loop transitions are guarded and terminal state is immutable", async () =>
     }
 });
 
-test("structured cancellation atomically claims the unresolved descendant tree", async () => {
+test("{§problems-functionality} structured cancellation atomically claims the unresolved descendant tree", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cancel-tree-${crypto.randomUUID()}`);

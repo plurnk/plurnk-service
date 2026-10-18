@@ -7,7 +7,7 @@ import StreamMock from "./_stream-mock.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async (approvalContext) => {
+test("{§exec-stream} FIND over an exec stream channel answers the match instead of throwing on the default channel", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new StreamMock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nprintf 'alpha\\nbeta\\n'\n````\n\n````WAIT\nwaiting\n````", 10),

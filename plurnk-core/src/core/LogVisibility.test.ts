@@ -48,7 +48,7 @@ test("LogVisibility resolves both published and log-bound anchors in the immutab
     );
 });
 
-test("LogVisibility rejects character regions but treats absent lines as no-ops", () => {
+test("{§log-scope-recovery} LogVisibility rejects character regions but treats absent lines as no-ops", () => {
     assert.deepEqual(
         LogVisibility.resolveScope({ marks: [1, 2, 3, 4] }, "log:///1/1/1", "a\nb\nc"),
         {

@@ -35,11 +35,11 @@ const withTrust = async (value: string, run: () => Promise<void>): Promise<void>
     }
 };
 
-test("the chapter shows a plugin, a scheme extension and a module, in that order", async () => {
+test("{§plurnk-skill} the chapter shows a plugin, a scheme extension and a module, in that order", async () => {
     assert.deepEqual((await chapter()).map(({ info }) => info), ["text", "json", "json", "json", "json", "js"]);
 });
 
-test("the plugin example is a valid Agent Plugin whose layout carries its skill and MCP server", async (t) => {
+test("{§plurnk-skill} the plugin example is a valid Agent Plugin whose layout carries its skill and MCP server", async (t) => {
     const [layout, manifest, mcp] = await chapter();
     const validated = validateManifest(JSON.parse(manifest.body));
     assert.ok("manifest" in validated, "the manifest is accepted");
@@ -62,7 +62,7 @@ test("the plugin example is a valid Agent Plugin whose layout carries its skill 
     assert.deepEqual([...plugins[0].mcpServers?.keys() ?? []], ["files"]);
 });
 
-test("the scheme example's package is discovered as the scheme it declares", async (t) => {
+test("{§plurnk-skill} the scheme example's package is discovered as the scheme it declares", async (t) => {
     const [, , , scheme] = await chapter();
     const declaration = JSON.parse(scheme.body) as { name: string };
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-scheme-"));
@@ -78,7 +78,7 @@ test("the scheme example's package is discovered as the scheme it declares", asy
     });
 });
 
-test("the module example loads from its export subpath as one daemon module", async (t) => {
+test("{§plurnk-skill} the module example loads from its export subpath as one daemon module", async (t) => {
     const [, , , , modulePackage, moduleSource] = await chapter();
     const declaration = JSON.parse(modulePackage.body) as { name: string };
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-module-"));
@@ -101,7 +101,7 @@ test("the module example loads from its export subpath as one daemon module", as
     });
 });
 
-test("the definition pages' add examples conform to their families' definition schemas", async () => {
+test("{§plurnk-skill} the definition pages' add examples conform to their families' definition schemas", async () => {
     for (const [packageName, docName, fence, schema] of [
         ["@plurnk/plurnk-mcp", "mcp.md", "mcp (add)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
         ["@plurnk/plurnk-a2a", "a2a.md", "a2a (add)", "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json"],

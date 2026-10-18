@@ -50,7 +50,7 @@ const seedExecEntry = async (
     return entryId;
 };
 
-test("fragment targets the named channel; fragment-less targets default", async () => {
+test("{§channels} fragment targets the named channel; fragment-less targets default", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
@@ -480,7 +480,7 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
     } finally { await db.close(); }
 });
 
-test("fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
+test("{§channels} fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Worker();
@@ -521,7 +521,7 @@ test("{§channels-entry-name-key} channels are keyed by (entry_id, name); same k
     } finally { await db.close(); }
 });
 
-test("the exec scheme transitions channel state across the connection lifecycle", async () => {
+test("{§channels} the exec scheme transitions channel state across the connection lifecycle", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const schemes = new SchemeRegistry();
@@ -553,7 +553,7 @@ test("the exec scheme transitions channel state across the connection lifecycle"
     } finally { await db.close(); }
 });
 
-test("channel state does not gate reads — errored/closed channels still return content", async () => {
+test("{§channels} channel state does not gate reads — errored/closed channels still return content", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Seed an entry whose channel is in the 'errored' terminal state with

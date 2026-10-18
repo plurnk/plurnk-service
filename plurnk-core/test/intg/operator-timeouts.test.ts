@@ -27,7 +27,7 @@ class AbortBlockingMock extends Mock {
     }
 }
 
-test("execution exhaustion rules a legible 504 loop_timeout terminal", async (t) => {
+test("{§operator-config-loop-timeout} execution exhaustion rules a legible 504 loop_timeout terminal", async (t) => {
     const loopTimeoutMs = 60_000;
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
@@ -121,7 +121,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
     }
 });
 
-test("the panel's wall never intrudes — a short loop concludes 200 untouched", async () => {
+test("{§operator-config-loop-timeout} the panel's wall never intrudes — a short loop concludes 200 untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-off-${crypto.randomUUID()}`);

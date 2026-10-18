@@ -141,7 +141,7 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
     assert.equal(source.preparations, 0, "denied sources are not fetched or prepared");
 });
 
-test("invalid persisted workspace policy fails at its durable owner before dispatch", async () => {
+test("{§capability-admission} invalid persisted workspace policy fails at its durable owner before dispatch", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
@@ -160,7 +160,7 @@ test("invalid persisted workspace policy fails at its durable owner before dispa
     } finally { await db.close(); }
 });
 
-test("one access selector gates every matching mutation shape while observations remain admitted", async () => {
+test("{§capability-admission} one access selector gates every matching mutation shape while observations remain admitted", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ access: "mutate" }] }));
@@ -184,7 +184,7 @@ test("one access selector gates every matching mutation shape while observations
     } finally { await db.close(); }
 });
 
-test("a MOVE source requires observation as well as mutation authority", async () => {
+test("{§capability-admission} a MOVE source requires observation as well as mutation authority", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", scheme: "file" }] }));
@@ -204,7 +204,7 @@ test("a MOVE source requires observation as well as mutation authority", async (
     } finally { await db.close(); }
 });
 
-test("proposal disposition cannot deny or resurrect a capability", async () => {
+test("{§capability-admission} proposal disposition cannot deny or resurrect a capability", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({}, "reject"));
@@ -223,7 +223,7 @@ test("proposal disposition cannot deny or resurrect a capability", async () => {
     } finally { await db.close(); }
 });
 
-test("an operation with no external capability demand remains available under an empty only-set", async () => {
+test("{§capability-admission} an operation with no external capability demand remains available under an empty only-set", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const { id: turnId } = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
@@ -236,7 +236,7 @@ test("an operation with no external capability demand remains available under an
     } finally { await db.close(); }
 });
 
-test("unknown routes reach ordinary resolution even under matching capability denials", async () => {
+test("{§capability-admission} unknown routes reach ordinary resolution even under matching capability denials", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [
@@ -276,7 +276,7 @@ test("unknown routes reach ordinary resolution even under matching capability de
     } finally { await db.close(); }
 });
 
-test("execution admission precedes every target acquisition shape", async () => {
+test("{§capability-admission} execution admission precedes every target acquisition shape", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
@@ -295,7 +295,7 @@ test("execution admission precedes every target acquisition shape", async () => 
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("a resource-shaped execution target adds its own observe demand", async () => {
+test("{§capability-admission} a resource-shaped execution target adds its own observe demand", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
@@ -312,7 +312,7 @@ test("a resource-shaped execution target adds its own observe demand", async () 
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("a literal execution target is a tool identifier, never a resource route", async () => {
+test("{§capability-admission} a literal execution target is a tool identifier, never a resource route", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);

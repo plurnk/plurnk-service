@@ -49,7 +49,7 @@ test("{§worker-lifecycle-child-matrix} waiting on a just-concluded child contin
 // A branch batch that fails git-preflight finishes the child's loop before the child ever had a
 // turn. Its termination still announces to the parent, which never waits on a child that cannot
 // report (#385).
-test("a child refused before its first turn still announces its death to the parent", async () => {
+test("{§send-undelivered-child-term} a child refused before its first turn still announces its death to the parent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ghost-${crypto.randomUUID()}`);
@@ -74,7 +74,7 @@ test("a child refused before its first turn still announces its death to the par
     } finally { await db.close(); }
 });
 
-test("a delivered answer cannot complete before the just-concluded child is observed", async () => {
+test("{§send-undelivered-child-term} a delivered answer cannot complete before the just-concluded child is observed", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);

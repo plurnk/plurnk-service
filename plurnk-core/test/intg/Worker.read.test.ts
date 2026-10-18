@@ -186,7 +186,7 @@ test("Worker.find: matcher evaluates the full resource before projecting locatio
         assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
-test("Worker.read: edited entry round-trips through read — content matches what edit wrote", async () => {
+test("{§edit-marker-required-on-existing} Worker.read: edited entry round-trips through read — content matches what edit wrote", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();

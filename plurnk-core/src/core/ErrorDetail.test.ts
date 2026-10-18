@@ -10,13 +10,13 @@ afterEach(() => {
 });
 
 // {§error-detail-bound}
-test("model-facing diagnostic detail uses the package-owned configured bound", () => {
+test("{§error-detail-bound} model-facing diagnostic detail uses the package-owned configured bound", () => {
     process.env[ERROR_DETAIL_LIMIT] = "4";
     assert.equal(ErrorDetail.preview("abcdef"), "abcd...");
     assert.equal(ErrorDetail.preview(new Error("abc")), "abc");
 });
 
-test("model-facing diagnostic detail rejects a missing or invalid bound by name", () => {
+test("{§error-detail-bound} model-facing diagnostic detail rejects a missing or invalid bound by name", () => {
     delete process.env[ERROR_DETAIL_LIMIT];
     assert.throws(() => ErrorDetail.preview("failure"), /PLURNK_SERVICE_ERROR_DETAIL_LIMIT is missing from the assembled environment floor/);
     process.env[ERROR_DETAIL_LIMIT] = "-1";

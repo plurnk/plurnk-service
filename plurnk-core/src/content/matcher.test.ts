@@ -32,7 +32,7 @@ const hit = (line: number, matched: unknown): QueryMatch =>
 
 const regexBody = (pattern: string): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" });
 
-test("regex hits select the resource and retain readable-text regions", async () => {
+test("{§mimetype-query} regex hits select the resource and retain readable-text regions", async () => {
     const content = "alpha\nfoo bar\nbeta\nfoo baz";
     const r = await Matcher.matchAgainstContent(regexBody("foo"), content, "text/markdown",
         stubQuery(async () => [hit(2, "foo"), hit(4, "foo")]));
@@ -77,7 +77,7 @@ test("{§matcher-result-resource-selection} structural hits expose coordinates r
     ]);
 });
 
-test("two structural matches on one line retain distinct canonical paths", async () => {
+test("{§mimetype-query} two structural matches on one line retain distinct canonical paths", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.users[*].name" },
         '{"users":[{"name":"Alice"},{"name":"Bob"}]}', "application/json",
@@ -98,7 +98,7 @@ test("two structural matches on one line retain distinct canonical paths", async
     ]);
 });
 
-test("a multi-line match remains one coordinate range", async () => {
+test("{§mimetype-query} a multi-line match remains one coordinate range", async () => {
     const content = "<root>\n  <user>\n    Alice\n  </user>\n</root>";
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "//user" }, content, "text/html",
@@ -124,7 +124,7 @@ test("a multi-line match remains one coordinate range", async () => {
     }]);
 });
 
-test("a scalar retains its locator without fabricated coordinates", async () => {
+test("{§mimetype-query} a scalar retains its locator without fabricated coordinates", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "count(//user)" }, "<root><user/><user/></root>", "text/html",
         stubQuery(async () => [{ matched: 2, matching: "count(//user)" }]));
@@ -142,7 +142,7 @@ test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype
     assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // the handler's templated reason
 });
 
-test("malformed matcher expression → 400 (model-facing, not a 500)", async () => {
+test("{§problems-schemes} malformed matcher expression → 400 (model-facing, not a 500)", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "//[" }, "<root><a/></root>", "text/html",
         stubQuery(async () => { throw new InvalidExpressionError({ dialect: "xpath", expression: "//[" }); }));
@@ -155,7 +155,7 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
     assert.equal(r.problem?.retryable, false);
 });
 
-test("relation dialects (~full-text / &graph) never reach the content matcher", async () => {
+test("{§mimetype-query} relation dialects (~full-text / &graph) never reach the content matcher", async () => {
     // Invariant: both relation dialects resolve through the persistent search index to
     // (resource, span) items; neither is a content matcher. Reaching matchAgainstContent with one is a
     // routing bug → fail hard, not a silent 501/400.

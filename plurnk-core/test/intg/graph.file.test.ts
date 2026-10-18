@@ -45,7 +45,7 @@ const seed = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("&graph resolves over file:/// entries", async () => {
+test("{§graph-relations} &graph resolves over file:/// entries", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });

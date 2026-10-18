@@ -124,7 +124,7 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 // covered by Exec.scheme.test.ts).
 const SELF_CONTAINED = ["sh", "node", "awk", "bc", "perl", "python3", "jq", "sqlite"] as const;
 
-test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
+test("{§exec-registry-resolves} execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
     const available = new Set(reg.availableRuntimes());
     const covered = new Set(CASES.map((c) => c.tag).concat("sh")); // sh: Exec.scheme.test.ts
@@ -176,7 +176,7 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
     });
 }
 
-test("an unregistered executable tag fails without shell reinterpretation", async () => {
+test("{§exec-executor-slot} an unregistered executable tag fails without shell reinterpretation", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

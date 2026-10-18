@@ -82,7 +82,7 @@ const binaryProjectionMimetypes = (revision: string): Mimetypes => {
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
-test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
+test("{§slice-semantics-compose-pattern} jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const k = new Worker();
@@ -104,7 +104,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
 
 // --- {§slice-semantics-compose-pattern}: matcher evidence guides a later <L> -------------
 
-test("an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
+test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose");
@@ -166,7 +166,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 
-test("KILL(path#fragment) deletes only the named channel; siblings remain", async () => {
+test("{§mimetype-methods} KILL(path#fragment) deletes only the named channel; siblings remain", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`, { producer: "client" });
@@ -207,7 +207,7 @@ test("KILL(path#fragment) deletes only the named channel; siblings remain", asyn
 // post-0.15. Assert the shape against the real auto-discovered service for a
 // known mimetype (markdown → symbols) and an unknown one (ok:false).
 
-test("Mimetypes.process returns metadata plus requested projections", async () => {
+test("{§mimetype} Mimetypes.process returns metadata plus requested projections", async () => {
     const md = "# Title\n\nbody paragraph\n\n## Sub\n\nmore";
     const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { channels: ["symbols"] });
     assert.equal(known.mimetype, "text/markdown", "process echoes the resolved mimetype");
@@ -283,7 +283,7 @@ test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and de
     } finally { await db.close(); }
 });
 
-test("a binary file persists only derived Unicode and refreshes when its projection identity changes (#140)", async () => {
+test("{§read-bytes} a binary file persists only derived Unicode and refreshes when its projection identity changes (#140)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-readable-binary-"));
     const db = await openMigrated();
     try {
@@ -580,7 +580,7 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
 
 // {§mimetype-query} Recursive descent over a deep structural projection remains
 // a valid matcher rather than becoming a depth-capped 400.
-test("recursive-descent jsonpath over a deep code-entry parse tree matches", async () => {
+test("{§matcher-dispatch} recursive-descent jsonpath over a deep code-entry parse tree matches", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const k = new Worker();

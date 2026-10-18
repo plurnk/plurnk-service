@@ -31,7 +31,7 @@ const implementationModules = (env: Record<string, string>): string[] => {
     return JSON.parse(result.stdout) as string[];
 };
 
-test("observe: an unconfigured process keeps the no-op API — no SDK loads and spans do not record", async () => {
+test("{§observability-boundary} observe: an unconfigured process keeps the no-op API — no SDK loads and spans do not record", async () => {
     const handle = await startObservability({});
     assert.equal(handle, null, "no exporter named → no SDK handle");
     const span = serviceTracer().startSpan("probe");
@@ -39,7 +39,7 @@ test("observe: an unconfigured process keeps the no-op API — no SDK loads and 
     span.end();
 });
 
-test("observe: OTEL_SDK_DISABLED keeps the no-op API even with exporters named", async () => {
+test("{§observability-boundary} observe: OTEL_SDK_DISABLED keeps the no-op API even with exporters named", async () => {
     const handle = await startObservability({ OTEL_SDK_DISABLED: "TRUE", OTEL_TRACES_EXPORTER: "console" });
     assert.equal(handle, null);
     const span = serviceTracer().startSpan("probe");
@@ -47,18 +47,18 @@ test("observe: OTEL_SDK_DISABLED keeps the no-op API even with exporters named",
     span.end();
 });
 
-test("observe: unconfigured and standards-valid disabled processes load no implementation modules", () => {
+test("{§observability-boundary} observe: unconfigured and standards-valid disabled processes load no implementation modules", () => {
     assert.deepEqual(implementationModules({}), []);
     assert.deepEqual(implementationModules({ OTEL_SDK_DISABLED: "True", OTEL_TRACES_EXPORTER: "console" }), []);
 });
 
-test("observe: configured traces load their selected SDK without a NodeSDK or Logs path", () => {
+test("{§observability-boundary} observe: configured traces load their selected SDK without a NodeSDK or Logs path", () => {
     const loaded = implementationModules({ OTEL_TRACES_EXPORTER: "console" });
     assert.ok(loaded.some((path) => path.includes("@opentelemetry/sdk-trace")));
     assert.ok(!loaded.some((path) => /@opentelemetry\/(?:sdk-node|sdk-logs|exporter-logs-)/.test(path)));
 });
 
-test("observe: each OTLP signal loads its selected exporter without a NodeSDK or Logs provider", () => {
+test("{§observability-boundary} observe: each OTLP signal loads its selected exporter without a NodeSDK or Logs provider", () => {
     const traces = implementationModules({ OTEL_TRACES_EXPORTER: "otlp" });
     assert.ok(traces.some((path) => path.includes("exporter-trace-otlp-http")));
     assert.ok(!traces.some((path) => /@opentelemetry\/(?:sdk-node|sdk-logs|exporter-logs-)/.test(path)));
@@ -68,7 +68,7 @@ test("observe: each OTLP signal loads its selected exporter without a NodeSDK or
     assert.ok(!metrics.some((path) => /@opentelemetry\/(?:sdk-node|sdk-logs|exporter-logs-)/.test(path)));
 });
 
-test("observe: exporter names `none` do not load the SDK", async () => {
+test("{§observability-boundary} observe: exporter names `none` do not load the SDK", async () => {
     const handle = await startObservability({ OTEL_TRACES_EXPORTER: "none", OTEL_METRICS_EXPORTER: "none" });
     assert.equal(handle, null);
 });
@@ -80,7 +80,7 @@ test("{§configuration-repair-path} unknown exporter names reject observability 
     );
 });
 
-test("observe: a configured console trace exporter registers a recording provider that exports spans", async () => {
+test("{§observability-boundary} observe: a configured console trace exporter registers a recording provider that exports spans", async () => {
     const handle = await startObservability({ OTEL_TRACES_EXPORTER: "console", OTEL_METRICS_EXPORTER: "none", OTEL_SERVICE_NAME: "observe-test" });
     if (handle === null) throw new Error("console traces configured — expected an SDK handle");
     const shutdown = handle.shutdown.bind(handle);
@@ -108,7 +108,7 @@ test("observe: a configured console trace exporter registers a recording provide
     }
 });
 
-test("observe: an empty OTEL_SERVICE_NAME uses the daemon service name", async () => {
+test("{§observability-boundary} observe: an empty OTEL_SERVICE_NAME uses the daemon service name", async () => {
     const handle = await startObservability({ OTEL_TRACES_EXPORTER: "console", OTEL_SERVICE_NAME: "  " });
     if (handle === null) throw new Error("console traces configured — expected an SDK handle");
     const printed: string[] = [];
@@ -125,7 +125,7 @@ test("observe: an empty OTEL_SERVICE_NAME uses the daemon service name", async (
     }
 });
 
-test("observe: traces-only configuration never registers a meter provider", async () => {
+test("{§observability-boundary} observe: traces-only configuration never registers a meter provider", async () => {
     const dir = console.dir.bind(console);
     console.dir = (): void => {};
     const handle = await startObservability({ OTEL_TRACES_EXPORTER: "console", OTEL_METRICS_EXPORTER: "none" });
@@ -148,7 +148,7 @@ test("observe: traces-only configuration never registers a meter provider", asyn
     }
 });
 
-test("observe: metrics-only configuration registers no tracer provider", async () => {
+test("{§observability-boundary} observe: metrics-only configuration registers no tracer provider", async () => {
     const handle = await startObservability({ OTEL_TRACES_EXPORTER: "none", OTEL_METRICS_EXPORTER: "console" });
     if (handle === null) throw new Error("console metrics configured — expected an observability handle");
     const shutdown = handle.shutdown.bind(handle);

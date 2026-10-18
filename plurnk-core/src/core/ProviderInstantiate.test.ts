@@ -56,7 +56,7 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
     assert.ok(!hit.some((u) => u.startsWith(`http://127.0.0.1:${ambientPort}`)), `probe must NOT fall through to OPENAI_BASE_URL; hit: ${hit.join(", ")}`);
 });
 
-test("an alias-scoped provider knob binds at construction — the per-alias CONTEXT_WINDOW pin is promoted, not dropped", async () => {
+test("{§operator-config-precedence} an alias-scoped provider knob binds at construction — the per-alias CONTEXT_WINDOW pin is promoted, not dropped", async () => {
     // {§operator-config-precedence}: PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias> reaches the
     // factory, so min(cap, served) binds.
     const provider = await ProviderInstantiate.instantiateProvider(

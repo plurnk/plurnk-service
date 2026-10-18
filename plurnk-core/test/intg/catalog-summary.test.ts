@@ -21,7 +21,7 @@ const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     matcher: null, position: { line: 1, column: 1 },
 });
 
-test("[catalog] engine_scheme_catalog_summary tallies distinct entries per scheme", async () => {
+test("{§scheme-catalog-aside} [catalog] engine_scheme_catalog_summary tallies distinct entries per scheme", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `catalog-${crypto.randomUUID()}`);

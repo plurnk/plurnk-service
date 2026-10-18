@@ -12,7 +12,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.t
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline", async () => {
+test("{§tokenomics-window-unpollable-deliberate} null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unpollable-${crypto.randomUUID()}`);

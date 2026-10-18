@@ -27,7 +27,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     matcher: null, position: { line: 1, column: 1 },
 });
 
-test("a workspace-commons entry is shared — a second worker updates it rather than minting another", async () => {
+test("{§machine-processes} a workspace-commons entry is shared — a second worker updates it rather than minting another", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -93,7 +93,7 @@ test("{§no-visibility} curating the log leaves the entry catalogued and READ-ab
     } finally { db.close(); }
 });
 
-test("a fork copies the parent's log (rows + their suppressed body intervals)", async () => {
+test("{§machine-processes} a fork copies the parent's log (rows + their suppressed body intervals)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -179,7 +179,7 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
     } finally { await db.close(); }
 });
 
-test("a fork closes an in-flight turn snapshot without fabricating its disposition", async () => {
+test("{§machine-processes} a fork closes an in-flight turn snapshot without fabricating its disposition", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -206,7 +206,7 @@ test("a fork closes an in-flight turn snapshot without fabricating its dispositi
     } finally { db.close(); }
 });
 
-test("a fork shares workspace-commons entries live and uncopied", async () => {
+test("{§machine-processes} a fork shares workspace-commons entries live and uncopied", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -274,7 +274,7 @@ test("{§machine-processes-entry-inheritance} a fork copies only quiescent snaps
     } finally { await db.close(); }
 });
 
-test("a fork creates a worker while retaining the shared workspace", async () => {
+test("{§machine-processes} a fork creates a worker while retaining the shared workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

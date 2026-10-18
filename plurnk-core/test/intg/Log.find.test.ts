@@ -47,7 +47,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture works", async () => {
+test("{§log-uniform-query} FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture works", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const r = await new Log().find(
@@ -65,7 +65,7 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
     } finally { await db.close(); }
 });
 
-test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
+test("{§log-uniform-query} a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
@@ -131,7 +131,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     }
 });
 
-test("an exact body-less log FIND returns 404 when the resource does not exist", async () => {
+test("{§log-uniform-query} an exact body-less log FIND returns 404 when the resource does not exist", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
@@ -144,7 +144,7 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
     } finally { await db.close(); }
 });
 
-test("an exact log FIND rejects a supplied /OP delimiter that disagrees with an existing row", async () => {
+test("{§log-uniform-query} an exact log FIND rejects a supplied /OP delimiter that disagrees with an existing row", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
@@ -189,7 +189,7 @@ test("{§markerless-first-page} a markerless log FIND returns its first page of 
     } finally { await db.close(); }
 });
 
-test("a single-star log FIND maps one coordinate level without crossing separators", async () => {
+test("{§log-uniform-query} a single-star log FIND maps one coordinate level without crossing separators", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const log = new Log();
@@ -214,7 +214,7 @@ test("a single-star log FIND maps one coordinate level without crossing separato
     } finally { await db.close(); }
 });
 
-test("FIND pagination misses carry the exact result extent", async () => {
+test("{§log-uniform-query} FIND pagination misses carry the exact result extent", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const statement = {
@@ -231,7 +231,7 @@ test("FIND pagination misses carry the exact result extent", async () => {
     } finally { await db.close(); }
 });
 
-test("log FIND reports an exact readable region for structural matches", async () => {
+test("{§log-uniform-query} log FIND reports an exact readable region for structural matches", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -255,7 +255,7 @@ test("log FIND reports an exact readable region for structural matches", async (
     } finally { await db.close(); }
 });
 
-test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async () => {
+test("{§log-uniform-query} FIND(log:///**):/pattern/ — FIND locates matching log entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
@@ -269,7 +269,7 @@ test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async ()
     } finally { await db.close(); }
 });
 
-test("READ(log://)<1,-1> returns a composed row's complete canonical body", async () => {
+test("{§log-uniform-query} READ(log://)<1,-1> returns a composed row's complete canonical body", async () => {
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
@@ -311,7 +311,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
     } finally { await db.close(); }
 });
 
-test("zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
+test("{§log-uniform-query} zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
     const { db, workerId, workspaceId } = await setup();
     try {
         const none = await new Log().find(
@@ -328,7 +328,7 @@ test("zero content matches → 204; an unwarmed relation query fails with struct
     } finally { await db.close(); }
 });
 
-test("full-text and graph FIND over logs use the same persistent derivations as entries", async () => {
+test("{§log-uniform-query} full-text and graph FIND over logs use the same persistent derivations as entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({

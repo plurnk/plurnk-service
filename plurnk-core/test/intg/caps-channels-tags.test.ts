@@ -9,7 +9,7 @@ import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
 import { openMigrated, insertWorkspace } from "./_db.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 
-test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transitions; absent → 404", async () => {
+test("{§capability-ctx} DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transitions; absent → 404", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-channels-${crypto.randomUUID()}`);

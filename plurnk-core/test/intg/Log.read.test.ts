@@ -120,7 +120,7 @@ const insertExecutionRow = async (
     });
 };
 
-test("Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
+test("{§log-range-miss-names-stream} Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -135,7 +135,7 @@ test("Log.read: EDIT op log entry returns its canonical effect receipt", async (
     } finally { db.close(); }
 });
 
-test("Log.read: an exact /OP delimiter must agree with the addressed row", async () => {
+test("{§log-range-miss-names-stream} Log.read: an exact /OP delimiter must agree with the addressed row", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -179,7 +179,7 @@ test("{§log-coordinate-hierarchy}: rejected attempts retain exact canonical lea
     }
 });
 
-test("Log.read: each coordinate addresses its own canonical body", async () => {
+test("{§log-range-miss-names-stream} Log.read: each coordinate addresses its own canonical body", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/a", "1"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -197,7 +197,7 @@ test("Log.read: each coordinate addresses its own canonical body", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: cross-loop coordinates within a worker resolve correctly", async () => {
+test("{§log-range-miss-names-stream} Log.read: cross-loop coordinates within a worker resolve correctly", async () => {
     const { db, engine, workspaceId, workerId, loopId: loop1, turnId: turn1 } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), workspaceId, workerId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
@@ -213,7 +213,7 @@ test("Log.read: cross-loop coordinates within a worker resolve correctly", async
     } finally { db.close(); }
 });
 
-test("Log.read: 404 on missing coordinates", async () => {
+test("{§log-range-miss-names-stream} Log.read: 404 on missing coordinates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const result = await readLog(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -222,7 +222,7 @@ test("Log.read: 404 on missing coordinates", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: 400 on malformed coordinates", async () => {
+test("{§log-range-miss-names-stream} Log.read: 400 on malformed coordinates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         for (const bad of ["abc", "1/2", "1/2/3/READ/4", "x/y/z"]) {
@@ -232,7 +232,7 @@ test("Log.read: 400 on malformed coordinates", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: core rejects a channel fragment before projecting an atomic log row", async () => {
+test("{§log-range-miss-names-stream} Log.read: core rejects a channel fragment before projecting an atomic log row", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -255,7 +255,7 @@ test("Log.read: core rejects a channel fragment before projecting an atomic log 
     } finally { db.close(); }
 });
 
-test("Log.read: 400 on null path", async () => {
+test("{§log-range-miss-names-stream} Log.read: 400 on null path", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const result = await readLog(readStmt(null), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -263,7 +263,7 @@ test("Log.read: 400 on null path", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: lineMarker <1> on a JSON result selects its first physical line", async () => {
+test("{§log-range-miss-names-stream} Log.read: lineMarker <1> on a JSON result selects its first physical line", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -281,7 +281,7 @@ test("Log.read: lineMarker <1> on a JSON result selects its first physical line"
     } finally { db.close(); }
 });
 
-test("Log.read: a range miss carries the exact textual line extent", async () => {
+test("{§log-range-miss-names-stream} Log.read: a range miss carries the exact textual line extent", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -301,7 +301,7 @@ test("Log.read: a range miss carries the exact textual line extent", async () =>
     } finally { db.close(); }
 });
 
-test("Log.find: an exact matcher returns flat locations and complete path/location counts", async () => {
+test("{§log-range-miss-names-stream} Log.find: an exact matcher returns flat locations and complete path/location counts", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -327,7 +327,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
     } finally { db.close(); }
 });
 
-test("Log.read: a READ signal does not filter the addressed log resource", async () => {
+test("{§edit-receipt-anchored-context} Log.read: a READ signal does not filter the addressed log resource", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -338,7 +338,7 @@ test("Log.read: a READ signal does not filter the addressed log resource", async
     } finally { db.close(); }
 });
 
-test("Log.find: body matcher selects the full projection before <L> projects text", async () => {
+test("{§log-range-miss-names-stream} Log.find: body matcher selects the full projection before <L> projects text", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -360,7 +360,7 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
     } finally { db.close(); }
 });
 
-test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
+test("{§log-range-miss-names-stream} Log.find: a matcher FIND writes flat surgical coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await new Worker().edit(
@@ -388,7 +388,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme", async () => {
+test("{§edit-receipt-anchored-context} Log.read: dispatches correctly via Engine.dispatch routing to log scheme", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
@@ -410,7 +410,7 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
 
 // {§log-channel-miss-names-stream} (#502) — a channel READ on a log execution item is a miss the
 // receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/sh#channel.
-test("Log.read: #channel on an execution log item names the command's stream address in its 404", async () => {
+test("{§log-range-miss-names-stream} Log.read: #channel on an execution log item names the command's stream address in its 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const schemes = new SchemeRegistry();
@@ -519,7 +519,7 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
 
 // {§log-range-miss-names-stream} — no recorded stream, no naming: the generic slicer problem
 // is byte-identical, the condition the augmentation must not disturb.
-test("Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
+test("{§problems-schemes} Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await insertExecutionRow(db, { workerId, loopId, turnId }, 1, {}, null);

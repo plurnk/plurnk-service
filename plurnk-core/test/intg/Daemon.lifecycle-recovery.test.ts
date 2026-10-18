@@ -39,7 +39,7 @@ const enqueueLoop = async (
     return row.id;
 };
 
-test("boot restores a drain for accepted queued work", async () => {
+test("{§message-arrival} boot restores a drain for accepted queued work", async () => {
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
@@ -137,7 +137,7 @@ test("{§machine-processes}: boot rejects queued provider work owned by a non-mo
     }
 });
 
-test("boot settles a crash-open physical request as unknown and closes its emission attempt", async () => {
+test("{§message-arrival} boot settles a crash-open physical request as unknown and closes its emission attempt", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -247,7 +247,7 @@ for (const pending of [false, true]) {
     });
 }
 
-test("boot closes an open operation turn even when its loop already parked", async () => {
+test("{§message-loop-containment} boot closes an open operation turn even when its loop already parked", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -481,7 +481,7 @@ for (const accepted of [false, true]) test(`{§proposal-decision-evidence}: boot
     }
 });
 
-test("boot settles vanished owners and resumes the now-unblocked parent topology", async () => {
+test("{§message-arrival} boot settles vanished owners and resumes the now-unblocked parent topology", async () => {
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
@@ -558,7 +558,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
     }
 });
 
-test("a child drain exception still propagates the parent wake edge", async () => {
+test("{§message-arrival} a child drain exception still propagates the parent wake edge", async () => {
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,

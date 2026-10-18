@@ -29,7 +29,7 @@ test("live and demo deadline reads the existing env knob and rejects invalid lim
     }
 });
 
-test("the live catalog contains every registered specimen exactly once", async () => {
+test("{§tier-census} the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
     assert.equal(names.length, 42);

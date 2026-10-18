@@ -474,7 +474,7 @@ test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cum
     });
 });
 
-test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async (approvalContext) => {
+test("{§worker-lifecycle-wake-liveness} wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Loop emits exec + an NOTE per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
@@ -516,7 +516,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     });
 });
 
-test("wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async (approvalContext) => {
+test("{§worker-lifecycle-wake-liveness} wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A countdown emits 5 lines over ~2.5s. The model waits — the loop SLEEPS
     // while the countdown runs on. When the countdown concludes, the loop RESUMES in
@@ -627,7 +627,7 @@ test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel m
     });
 });
 
-test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async (approvalContext) => {
+test("{§executor-cancellation} loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // printf lands "a\nb\n" (4 bytes) immediately, then `sleep 30` runs; at
     // cancel time those bytes are already in the channel. Under

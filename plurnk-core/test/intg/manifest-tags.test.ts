@@ -5,7 +5,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
-test("manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
+test("{§entry-identity-no-null} manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `mslash-${crypto.randomUUID()}`);

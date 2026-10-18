@@ -52,7 +52,7 @@ test("{§actor-boundary-no-mutex} two workers in one workspace both write the sa
     } finally { db.close(); }
 });
 
-test("a packet renders one worker's log; a sibling worker's log is absent", async () => {
+test("{§actor-boundary} a packet renders one worker's log; a sibling worker's log is absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -75,7 +75,7 @@ test("a packet renders one worker's log; a sibling worker's log is absent", asyn
     } finally { db.close(); }
 });
 
-test("origin is attribution (provenance), never read to hide a row at render", async () => {
+test("{§connection-lifecycle} origin is attribution (provenance), never read to hide a row at render", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -132,7 +132,7 @@ test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on 
     });
 });
 
-test("runtime-owned entry work is an ordinary administrative turn in the addressed worker", async () => {
+test("{§turn0-agents-stunt} runtime-owned entry work is an ordinary administrative turn in the addressed worker", async () => {
     // The AGENTS stunt ({§turn0-agents-stunt}) is operation-shaped runtime work,
     // so it uses DispatchAsPlurnk. Its generated resource and causal operation
     // history belong to the same Worker that receives the resulting Turn-0 READ.

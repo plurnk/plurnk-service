@@ -81,7 +81,7 @@ const dispatchRows = async (
 
 // --- FIND projects resources or locations from the authored target shape -----
 
-test("FIND recognizes shell character-class paths as globs", async () => {
+test("{§find-result-projection} FIND recognizes shell character-class paths as globs", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a1.md", "one");
@@ -92,7 +92,7 @@ test("FIND recognizes shell character-class paths as globs", async () => {
     } finally { await db.close(); }
 });
 
-test("exact glob-pattern FIND returns flat matched-line locations", async () => {
+test("{§find-result-projection} exact glob-pattern FIND returns flat matched-line locations", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
@@ -101,7 +101,7 @@ test("exact glob-pattern FIND returns flat matched-line locations", async () => 
     } finally { await db.close(); }
 });
 
-test("regex FIND returns matched resources", async () => {
+test("{§find-result-projection} regex FIND returns matched resources", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "intro\nerror: one\ntail");
@@ -112,7 +112,7 @@ test("regex FIND returns matched resources", async () => {
     } finally { await db.close(); }
 });
 
-test("exact jsonpath FIND returns flat locators with exact regions", async () => {
+test("{§find-result-projection} exact jsonpath FIND returns flat locators with exact regions", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
@@ -121,7 +121,7 @@ test("exact jsonpath FIND returns flat locators with exact regions", async () =>
     } finally { await db.close(); }
 });
 
-test("two structural matches on one source line remain distinguishable by locator", async () => {
+test("{§find-result-projection} two structural matches on one source line remain distinguishable by locator", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
@@ -130,7 +130,7 @@ test("two structural matches on one source line remain distinguishable by locato
     } finally { await db.close(); }
 });
 
-test("a matcher FIND with zero matches returns 204", async () => {
+test("{§find-result-projection} a matcher FIND with zero matches returns 204", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "nothing here");
@@ -139,7 +139,7 @@ test("a matcher FIND with zero matches returns 204", async () => {
     } finally { await db.close(); }
 });
 
-test("full-text FIND uses ranking to select resources", async () => {
+test("{§find-result-projection} full-text FIND uses ranking to select resources", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
@@ -150,7 +150,7 @@ test("full-text FIND uses ranking to select resources", async () => {
     } finally { await db.close(); }
 });
 
-test("exact xpath FIND returns flat locator evidence", async () => {
+test("{§find-result-projection} exact xpath FIND returns flat locator evidence", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
@@ -159,7 +159,7 @@ test("exact xpath FIND returns flat locator evidence", async () => {
     } finally { await db.close(); }
 });
 
-test("broad &graph FIND returns selected resource channel groups", async () => {
+test("{§find-result-projection} broad &graph FIND returns selected resource channel groups", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -170,7 +170,7 @@ test("broad &graph FIND returns selected resource channel groups", async () => {
     } finally { await db.close(); }
 });
 
-test("broad &graph FIND reports each resource's location count without nesting coordinates on multi-match rows", async () => {
+test("{§find-result-projection} broad &graph FIND reports each resource's location count without nesting coordinates on multi-match rows", async () => {
     const { db, workspaceId, workerId, mimetypes, ctx, loopId, turnId } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -192,7 +192,7 @@ test("broad &graph FIND reports each resource's location count without nesting c
 
 // --- The target contract: bare = exact, folder/glob = scope ------
 
-test("FIND(bare entry) is the one entry, never a prefix that pulls siblings", async () => {
+test("{§find-result-projection} FIND(bare entry) is the one entry, never a prefix that pulls siblings", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "config.md", "the config");
@@ -203,7 +203,7 @@ test("FIND(bare entry) is the one entry, never a prefix that pulls siblings", as
     } finally { await db.close(); }
 });
 
-test("FIND(folder/) returns the folder's contents; a glob is a scope", async () => {
+test("{§find-result-projection} FIND(folder/) returns the folder's contents; a glob is a scope", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "docs/a.md", "alpha");
@@ -215,7 +215,7 @@ test("FIND(folder/) returns the folder's contents; a glob is a scope", async () 
     } finally { await db.close(); }
 });
 
-test("FIND(folder/) locates the folder's contents", async () => {
+test("{§find-result-projection} FIND(folder/) locates the folder's contents", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "docs/a.md", "alpha body");
@@ -228,7 +228,7 @@ test("FIND(folder/) locates the folder's contents", async () => {
 
 // --- FIND projects resources or locations according to target shape ----------
 
-test("broad matcher FIND emits one item per resource with a complete location count", async () => {
+test("{§find-result-projection} broad matcher FIND emits one item per resource with a complete location count", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
@@ -245,7 +245,7 @@ test("broad matcher FIND emits one item per resource with a complete location co
     } finally { await db.close(); }
 });
 
-test("broad matcher FIND promotes a resource's locator/region when it matches exactly once", async () => {
+test("{§find-result-projection} broad matcher FIND promotes a resource's locator/region when it matches exactly once", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "one.md", "alpha\ntarget\nbeta");
@@ -308,7 +308,7 @@ test("{§markerless-first-page} a markerless exact matcher FIND returns its firs
     } finally { await db.close(); }
 });
 
-test("FIND on an exact target with a result-position scope", async () => {
+test("{§find-result-projection} FIND on an exact target with a result-position scope", async () => {
     // ### FIND_ (worker:///doc.md) <1> — the scope selects the first result of
     // an exact-target listing; a single-target FIND returns that target.
     const { db, workspaceId, workerId, ctx } = await setup();
@@ -367,7 +367,7 @@ test("{§read-find-normalization}: a glob survey is an authored FIND; a pattern 
     } finally { await db.close(); }
 });
 
-test("broad FIND pagination counts selected resources, not match locations", async () => {
+test("{§find-result-projection} broad FIND pagination counts selected resources, not match locations", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "target one\ntarget two\ntarget three");
@@ -384,7 +384,7 @@ test("broad FIND pagination counts selected resources, not match locations", asy
     } finally { await db.close(); }
 });
 
-test("FIND coordinates compose into scoped READ for structured JSON", async () => {
+test("{§find-result-projection} FIND coordinates compose into scoped READ for structured JSON", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "users.json", [
@@ -430,7 +430,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
     } finally { await db.close(); }
 });
 
-test("body-less FIND is the catalog without match metadata", async () => {
+test("{§find-result-projection} body-less FIND is the catalog without match metadata", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "alpha");

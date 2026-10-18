@@ -11,7 +11,7 @@ import { seedEntryWithChannel } from "./_db.ts";
 import { namedModelWorker } from "./_workers.ts";
 import type { LoopUsage } from "../../src/core/Engine.ts";
 
-test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
+test("{§send-premature-terminate} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````SEND [200]\nParis is the capital.\n````", 0)] });
@@ -83,7 +83,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
     });
 });
 
-test("loop.inject speaks into an existing worker; errors when there's none", async (approvalContext) => {
+test("{§problems-functionality} loop.inject speaks into an existing worker; errors when there's none", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND [200]\nfirst done\n````", 10),
@@ -122,7 +122,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
     });
 });
 
-test("run.fork branches the model worker into a named worker; errors with no worker", async () => {
+test("{§problems-functionality} run.fork branches the model worker into a named worker; errors with no worker", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (worker:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -169,7 +169,7 @@ test("run.fork branches the model worker into a named worker; errors with no wor
     });
 });
 
-test("loop.run streams log/entry notifications during execution", async () => {
+test("{§emission-row} loop.run streams log/entry notifications during execution", async () => {
     const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
@@ -219,7 +219,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
     });
 });
 
-test("loop.run fires loop/terminated notification on completion", async () => {
+test("{§notifications} loop.run fires loop/terminated notification on completion", async () => {
     const dsl = "````EDIT (worker:///x)\nbody\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
@@ -251,7 +251,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
     });
 });
 
-test("loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
+test("{§engine-rails} loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
     // A loop that ERRORS must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — each
     // exhausted call is an invalid response, one provider-response-contract strike ({§engine-rails}
@@ -310,7 +310,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     assert.equal(logged.some((l) => /drain error/.test(l)), false, "a rail termination is clean — no swallowed-throw diagnostics needed");
 });
 
-test("loop.run without a model selection returns 501", async (t) => {
+test("{§problems-functionality} loop.run without a model selection returns 501", async (t) => {
     const selected = process.env.PLURNK_MODEL;
     delete process.env.PLURNK_MODEL;
     t.after(() => {
@@ -330,7 +330,7 @@ test("loop.run without a model selection returns 501", async (t) => {
     });
 });
 
-test("loop.run requires non-empty prompt", async () => {
+test("{§pinned-wording-core} loop.run requires non-empty prompt", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

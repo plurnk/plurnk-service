@@ -71,7 +71,7 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
     assert.equal(settled[0].result.status, 200, "{§stream-asked-stop}: the stop its holder asked for settles the local obligation, not a cancellation");
 });
 
-test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path", async (t) => {
+test("{§a2a-scheme-face} outbound A2A uses Core's ordinary 102 subscription and terminal READ path", async (t) => {
     serverProposals(t, "accept");
     const agent = await startDemoAgent();
     t.after(() => agent.close());

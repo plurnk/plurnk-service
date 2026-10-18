@@ -19,7 +19,7 @@ class ExplodingExporter implements SpanExporter {
     forceFlush?(): Promise<void> { return Promise.resolve(); }
 }
 
-test("observe: an exploding exporter cannot change the loop result or daemon lifecycle", async () => {
+test("{§observability-boundary} observe: an exploding exporter cannot change the loop result or daemon lifecycle", async () => {
     assert.equal(await explosionProofLoop(), true);
 });
 

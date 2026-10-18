@@ -89,7 +89,7 @@ reading
 // {§child-orientation} {§worker-read-scope} — a child is told whose child it is (#394): its packet
 // carries a Parent Worker pointer naming the parent, so it can address the parent's streams and
 // space by name. The root worker has no such section.
-test("a child's packet names its parent worker; the root's packet does not", async (approvalContext) => {
+test("{§packet-empty-sections} a child's packet names its parent worker; the root's packet does not", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````WORK (worker://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),

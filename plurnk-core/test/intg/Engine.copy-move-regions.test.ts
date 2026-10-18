@@ -134,7 +134,7 @@ for (const transfer of [copyStmt, moveStmt]) {
     });
 }
 
-test("COPY transfers only the selected channel", async () => {
+test("{§copy-destination-mimetype} COPY transfers only the selected channel", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -229,7 +229,7 @@ test("{§fs-write-surface}: empty destination scopes create independently of sou
     }
 });
 
-test("COPY composes source selection and destination insertion with Unicode code-point coordinates", async () => {
+test("{§copy-destination-mimetype} COPY composes source selection and destination insertion with Unicode code-point coordinates", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -264,7 +264,7 @@ test("COPY composes source selection and destination insertion with Unicode code
     }
 });
 
-test("COPY resolves line anchors independently at its source and destination", async () => {
+test("{§copy-destination-mimetype} COPY resolves line anchors independently at its source and destination", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         const source = "alpha\nbeta\ngamma";
@@ -290,7 +290,7 @@ test("COPY resolves line anchors independently at its source and destination", a
     }
 });
 
-test("COPY treats an explicit default channel as the same line-anchor identity", async () => {
+test("{§copy-destination-mimetype} COPY treats an explicit default channel as the same line-anchor identity", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         const source = "alpha\nbeta\ngamma";
@@ -319,7 +319,7 @@ test("COPY treats an explicit default channel as the same line-anchor identity",
     }
 });
 
-test("COPY rejects a stale source anchor without changing either resource", async () => {
+test("{§copy-destination-mimetype} COPY rejects a stale source anchor without changing either resource", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         const original = "alpha\nbeta\ngamma";
@@ -347,7 +347,7 @@ test("COPY rejects a stale source anchor without changing either resource", asyn
     }
 });
 
-test("COPY propagates tolerated source and destination scope normalizations in authored order", async () => {
+test("{§copy-destination-mimetype} COPY propagates tolerated source and destination scope normalizations in authored order", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -376,7 +376,7 @@ test("COPY propagates tolerated source and destination scope normalizations in a
     }
 });
 
-test("MOVE composes exact source and destination regions across resources", async () => {
+test("{§copy-destination-mimetype} MOVE composes exact source and destination regions across resources", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -416,7 +416,7 @@ test("MOVE composes exact source and destination regions across resources", asyn
     }
 });
 
-test("MOVE resolves line anchors at both resources and removes the selected current source", async () => {
+test("{§copy-destination-mimetype} MOVE resolves line anchors at both resources and removes the selected current source", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         const source = "alpha\nbeta\ngamma";
@@ -442,7 +442,7 @@ test("MOVE resolves line anchors at both resources and removes the selected curr
     }
 });
 
-test("MOVE propagates tolerated source and destination scope normalizations", async () => {
+test("{§copy-destination-mimetype} MOVE propagates tolerated source and destination scope normalizations", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -505,7 +505,7 @@ test("{§edit-batch} same-channel MOVE applies destination insertion and source 
     }
 });
 
-test("same-channel MOVE composes source and destination anchors against one snapshot", async () => {
+test("{§copy-destination-mimetype} same-channel MOVE composes source and destination anchors against one snapshot", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         const content = "abcdef";
@@ -551,7 +551,7 @@ test("{§edit-batch} same-channel MOVE rejects overlapping source and destinatio
     }
 });
 
-test("whole-channel MOVE removes only the selected source channel", async () => {
+test("{§copy-destination-mimetype} whole-channel MOVE removes only the selected source channel", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -608,7 +608,7 @@ test("{§move-canonical-whole-source}: <1,-1> removes only the selected source c
     }
 });
 
-test("whole-channel MOVE removes the source entry when its final channel leaves", async () => {
+test("{§copy-destination-mimetype} whole-channel MOVE removes the source entry when its final channel leaves", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -679,7 +679,7 @@ test("{§empty-mutation-scope}: an exact region beyond the empty destination lea
     }
 });
 
-test("a divergent whole-channel destination conflicts and leaves the MOVE source untouched", async () => {
+test("{§copy-destination-mimetype} a divergent whole-channel destination conflicts and leaves the MOVE source untouched", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {

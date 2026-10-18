@@ -208,7 +208,7 @@ const parseFind = (dsl: string): FindStatement => {
     return item.statement;
 };
 
-test("entry-backed data schemes inherit exact READ projection", async () => {
+test("{§markerless-first-page} entry-backed data schemes inherit exact READ projection", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("entry-backed", new EntryBackedScheme());
@@ -253,7 +253,7 @@ test("entry-backed data schemes inherit exact READ projection", async () => {
     }
 });
 
-test("inherited READ uses the scheme's canonical pathname and owner", async () => {
+test("{§markerless-first-page} inherited READ uses the scheme's canonical pathname and owner", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("resolved-entry", new ResolvedEntryScheme());
@@ -289,7 +289,7 @@ test("inherited READ uses the scheme's canonical pathname and owner", async () =
     }
 });
 
-test("preparation capabilities bind to the already-resolved canonical owner", async () => {
+test("{§markerless-first-page} preparation capabilities bind to the already-resolved canonical owner", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("owner-bound-preparation", new OwnerBoundPreparationScheme());
@@ -353,7 +353,7 @@ test("{§read-preparation} scope-blind preparation durably composes producer sta
     }
 });
 
-test("core selects one channel before applying its independent durable producer result", async () => {
+test("{§markerless-first-page} core selects one channel before applying its independent durable producer result", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("independent-channel", new IndependentChannelScheme());
@@ -398,7 +398,7 @@ test("core selects one channel before applying its independent durable producer 
     }
 });
 
-test("exact FIND shares representation preparation but retains universal query semantics", async () => {
+test("{§markerless-first-page} exact FIND shares representation preparation but retains universal query semantics", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("archive", new ArchiveScheme());
@@ -439,7 +439,7 @@ test("exact FIND shares representation preparation but retains universal query s
     }
 });
 
-test("COPY resolves and prepares the canonical source representation before selection", async () => {
+test("{§markerless-first-page} COPY resolves and prepares the canonical source representation before selection", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("archive", new ArchiveScheme());
@@ -478,7 +478,7 @@ test("COPY resolves and prepares the canonical source representation before sele
     }
 });
 
-test("COPY refuses a selected channel whose canonical producer outcome failed", async () => {
+test("{§markerless-first-page} COPY refuses a selected channel whose canonical producer outcome failed", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("independent-channel", new IndependentChannelScheme());
@@ -517,7 +517,7 @@ test("COPY refuses a selected channel whose canonical producer outcome failed", 
     }
 });
 
-test("public schemes cannot replace canonical COPY storage with incidental CRUD methods", async () => {
+test("{§markerless-first-page} public schemes cannot replace canonical COPY storage with incidental CRUD methods", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("public-crud-trap", new PublicCrudTrapScheme());
@@ -561,7 +561,7 @@ test("public schemes cannot replace canonical COPY storage with incidental CRUD 
     }
 });
 
-test("cold finite HTTP READ acquires before applying the exact text scope", async () => {
+test("{§markerless-first-page} cold finite HTTP READ acquires before applying the exact text scope", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("https", new Http());

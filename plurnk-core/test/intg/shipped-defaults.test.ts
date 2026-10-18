@@ -32,7 +32,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     return env;
 };
 
-test("the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
+test("{§operator-config-shipped-defaults} the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
     // {§operator-config-shipped-defaults}: model selection belongs to the operator.
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
@@ -57,7 +57,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 
-test("under the shipped policy wiring, the shipped policy has one packet owner", async () => {
+test("{§operator-config-shipped-defaults} under the shipped policy wiring, the shipped policy has one packet owner", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
     // POLICY.md to the XDG configuration AGENTS.md).
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;

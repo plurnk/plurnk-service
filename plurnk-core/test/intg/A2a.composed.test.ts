@@ -176,7 +176,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
 // Worker `a2a` family (no injected resolver), delegates twice, and the
 // composition respects independent Task workers on the hosted
 // side and topology-scoped ambience on the calling side.
-test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async (approvalContext) => {
+test("{§http-outbound-proposes} composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const [callerDb, agentDb] = await Promise.all([openMigrated(), openMigrated()]);
     const delegate = (fruit: string) => makeMockResponse([

@@ -79,14 +79,14 @@ const foldedAt = async (
     return JSON.parse(row?.folded ?? "null") as unknown;
 };
 
-test("new log entry defaults to no suppressed intervals", async () => {
+test("{§log-kill-scope} new log entry defaults to no suppressed intervals", async () => {
     const { db, workerId } = await setup();
     try {
         assert.equal(await getFolded(db, workerId), "[]");
     } finally { await db.close(); }
 });
 
-test("KILL <1,-1> (log:///1/1/1) suppresses the complete body interval", async () => {
+test("{§log-kill-scope} KILL <1,-1> (log:///1/1/1) suppresses the complete body interval", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -97,7 +97,7 @@ test("KILL <1,-1> (log:///1/1/1) suppresses the complete body interval", async (
     } finally { await db.close(); }
 });
 
-test("a scoped KILL accepts the canonical /OP suffix", async () => {
+test("{§log-kill-scope} a scoped KILL accepts the canonical /OP suffix", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -107,7 +107,7 @@ test("a scoped KILL accepts the canonical /OP suffix", async () => {
     } finally { await db.close(); }
 });
 
-test("a scoped KILL rejects a supplied /OP suffix that disagrees with the addressed row", async () => {
+test("{§log-kill-scope} a scoped KILL rejects a supplied /OP suffix that disagrees with the addressed row", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -117,7 +117,7 @@ test("a scoped KILL rejects a supplied /OP suffix that disagrees with the addres
     } finally { await db.close(); }
 });
 
-test("a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
+test("{§log-kill-scope} a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
     const accepted = await setup('{"kind":"entry_materialized"}');
     try {
         assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/READ"), WHOLE), ctxOf(accepted))).status, 200);
@@ -129,7 +129,7 @@ test("a typed entry-materialization row resolves by its projected /READ suffix, 
     } finally { await rejected.db.close(); }
 });
 
-test("a scoped KILL is a friendly visibility no-op on a valid bodyless entry", async () => {
+test("{§log-kill-scope} a scoped KILL is a friendly visibility no-op on a valid bodyless entry", async () => {
     const context = await setup("{}", "");
     const { db, workerId } = context;
     try {
@@ -145,7 +145,7 @@ test("a scoped KILL is a friendly visibility no-op on a valid bodyless entry", a
     } finally { await db.close(); }
 });
 
-test("scoped KILLs compose one way: numeric and hash-selected intervals accumulate", async () => {
+test("{§log-kill-scope} scoped KILLs compose one way: numeric and hash-selected intervals accumulate", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -186,7 +186,7 @@ test("{§log-curation-set-selection} bulk scoped KILL intersects one scope with 
     } finally { await db.close(); }
 });
 
-test("a matcher body selects the rows a scoped KILL curates", async () => {
+test("{§log-kill-scope} a matcher body selects the rows a scoped KILL curates", async () => {
     const context = await setup();
     const { db, workspaceId, workerId, loopId, turnId } = context;
     try {
@@ -225,7 +225,7 @@ test("{§log-curation-set-selection} an unscoped pattern KILL retires only the r
     } finally { await db.close(); }
 });
 
-test("KILL on a nonexistent coordinate returns 404, scoped or whole", async () => {
+test("{§log-kill-scope} KILL on a nonexistent coordinate returns 404, scoped or whole", async () => {
     const context = await setup();
     const { db } = context;
     try {
@@ -234,7 +234,7 @@ test("KILL on a nonexistent coordinate returns 404, scoped or whole", async () =
     } finally { await db.close(); }
 });
 
-test("KILL on a malformed path returns 400", async () => {
+test("{§log-kill-scope} KILL on a malformed path returns 400", async () => {
     const context = await setup();
     const { db } = context;
     try {
@@ -242,7 +242,7 @@ test("KILL on a malformed path returns 400", async () => {
     } finally { await db.close(); }
 });
 
-test("engine_render_log carries the delta source; self-authored entries stay null", async () => {
+test("{§env-delta} engine_render_log carries the delta source; self-authored entries stay null", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
         // A synthetic environment-delta row ({§env-delta}): origin=_plurnk, source=a scheme.
@@ -262,7 +262,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
     } finally { await db.close(); }
 });
 
-test("log curation honors segment-local `*` and recursive `**`", async () => {
+test("{§turn-ops-log-curation} log curation honors segment-local `*` and recursive `**`", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -284,7 +284,7 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
 });
 
 // {§turn-ops-log-curation}
-test("KILL retires the addressed row from the active projection without erasing history", async () => {
+test("{§log-kill-scope} KILL retires the addressed row from the active projection without erasing history", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -314,7 +314,7 @@ test("KILL retires the addressed row from the active projection without erasing 
     } finally { await db.close(); }
 });
 
-test("log selectors treat complete numeric bracket segments as inclusive intervals", async () => {
+test("{§log-kill-scope} log selectors treat complete numeric bracket segments as inclusive intervals", async () => {
     const context = await setup();
     const { db, workerId, loopId, turnId } = context;
     try {
@@ -378,7 +378,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
     } finally { await db.close(); }
 });
 
-test("KILL retires an op='error' item while preserving the durable failure record", async () => {
+test("{§log-kill-scope} KILL retires an op='error' item while preserving the durable failure record", async () => {
     const context = await setup();
     const { db, workerId, loopId, turnId } = context;
     try {
@@ -406,7 +406,7 @@ test("KILL retires an op='error' item while preserving the durable failure recor
     } finally { await db.close(); }
 });
 
-test("KILL <1,-1> (log:///1/1/) suppresses the turn's row bodies — the trailing slash means the contents, uniform with READ(folder/)", async () => {
+test("{§log-kill-scope} KILL <1,-1> (log:///1/1/) suppresses the turn's row bodies — the trailing slash means the contents, uniform with READ(folder/)", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -417,7 +417,7 @@ test("KILL <1,-1> (log:///1/1/) suppresses the turn's row bodies — the trailin
     } finally { await db.close(); }
 });
 
-test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error", async () => {
+test("{§log-kill-scope} a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error", async () => {
     const context = await setup();
     const { db } = context;
     try {
@@ -504,7 +504,7 @@ test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or with
     } finally { await db.close(); }
 });
 
-test("a scoped KILL curates engine-minted error rows through the same operation coordinate grammar", async () => {
+test("{§log-kill-scope} a scoped KILL curates engine-minted error rows through the same operation coordinate grammar", async () => {
     const context = await setup();
     const { db, workerId, loopId, turnId } = context;
     try {

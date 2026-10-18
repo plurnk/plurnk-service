@@ -146,7 +146,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
     }
 });
 
-test("a model turn joins an in-flight startup warm before calling its provider", async () => {
+test("{§derivation-exhaustive} a model turn joins an in-flight startup warm before calling its provider", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `warm-join-${crypto.randomUUID()}`);

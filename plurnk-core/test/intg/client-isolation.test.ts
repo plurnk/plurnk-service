@@ -74,7 +74,7 @@ test("{§connection-lifecycle} {§actor-boundary-isolation} a client op.* journa
     });
 });
 
-test("a connection reads the model worker by id — loop.run returns modelWorkerId, log.read targets it, ownership-gated", async () => {
+test("{§connection-lifecycle} a connection reads the model worker by id — loop.run returns modelWorkerId, log.read targets it, ownership-gated", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -115,7 +115,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
     });
 });
 
-test("workspace.workers tags each worker with its actor — the model worker is found by origin, not name", async () => {
+test("{§connection-lifecycle} workspace.workers tags each worker with its actor — the model worker is found by origin, not name", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

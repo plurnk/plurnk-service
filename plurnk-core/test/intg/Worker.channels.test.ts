@@ -67,7 +67,7 @@ test("{§manifest} Worker declares a dynamic body beside its typed readable proj
     assert.equal(Worker.manifest.defaultChannel, "body");
 });
 
-test("Worker.edit writes only the body channel; preview is render-time", async () => {
+test("{§scheme-manifest} Worker.edit writes only the body channel; preview is render-time", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const r = await new Worker().edit(editStmt(urlPath("worker", "/x"), "hello"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -92,7 +92,7 @@ test("{§channel-selection-missing} Worker.edit with unknown channel returns 404
     } finally { await db.close(); }
 });
 
-test("Worker.read with no fragment returns body channel (default)", async () => {
+test("{§scheme-manifest} Worker.read with no fragment returns body channel (default)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Worker();

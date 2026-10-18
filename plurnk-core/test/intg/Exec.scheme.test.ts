@@ -64,7 +64,7 @@ const withWorkspace = async <T>(fn: (ctx: {
     }
 };
 
-test("execution: empty body and absent target → 400", async () => {
+test("{§exec-executor-slot} execution: empty body and absent target → 400", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, null, ""),
@@ -75,7 +75,7 @@ test("execution: empty body and absent target → 400", async () => {
     });
 });
 
-test("Exec.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
+test("{§exec-executor-slot} Exec.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
     await withWorkspace(async (ctx) => {
         await assert.rejects(
             ctx.exec.applyResolution(
@@ -269,7 +269,7 @@ test("{§exec-target-routing} `[{\"cwd\": \".\"}]` in a headless workspace is th
         assert.equal(stdout?.content, `${process.cwd()}\n`);
     });
 });
-test("bare execution defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
+test("{§exec-executor-slot} bare execution defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -516,7 +516,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
 // result lives intact on the subscription row's close_result; close_status is
 // its constrained relational projection and channels carry lifecycle state.
 
-test("sh: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
+test("{§exec-executor-slot} sh: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -594,7 +594,7 @@ test("{§executor-exit-code} sh: an exit code is the answer: channels closed, st
     });
 });
 
-test("execution: cwd defaults to workspace.project_root when statement target is null", async () => {
+test("{§exec-executor-slot} execution: cwd defaults to workspace.project_root when statement target is null", async () => {
     // Writes a file via shell into "$PWD/<marker>", then asserts the file
     // exists at <project_root>/<marker> — proves cwd really was project_root.
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-cwd-default-"));
@@ -625,7 +625,7 @@ test("execution: cwd defaults to workspace.project_root when statement target is
     }
 });
 
-test("node: runs code via -e and captures stdout", async () => {
+test("{§exec-env-scoped} node: runs code via -e and captures stdout", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -656,7 +656,7 @@ test("node: runs code via -e and captures stdout", async () => {
     });
 });
 
-test("execution: subscription row opens then closes; stream/event fires per chunk + transition", async () => {
+test("{§exec-executor-slot} execution: subscription row opens then closes; stream/event fires per chunk + transition", async () => {
     type Event = { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
     const events: Event[] = [];
     const db = await openMigrated();

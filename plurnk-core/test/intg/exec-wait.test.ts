@@ -206,7 +206,7 @@ test("{§worker-lifecycle-subscription-matrix} a current-turn stream still activ
 });
 
 // {§send-premature-terminate}: a fast failure must settle before strike exhaustion reaps work.
-test("a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
+test("{§worker-optimistic-settlement} a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {

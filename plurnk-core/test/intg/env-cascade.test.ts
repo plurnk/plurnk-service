@@ -121,7 +121,7 @@ test("{§operator-config-precedence} launcher cascade: the working directory's .
     }
 });
 
-test("launcher cascade: config, env files, shell, and CLI retain their tiers", async () => {
+test("{§operator-config-precedence} launcher cascade: config, env files, shell, and CLI retain their tiers", async () => {
     const fx = await fixture();
     try {
         const first = join(fx.root, "first.env");
@@ -181,7 +181,7 @@ test("launcher cascade: config, env files, shell, and CLI retain their tiers", a
     }
 });
 
-test("launcher cascade: env-file optional absence and required absence remain distinct from config", async () => {
+test("{§operator-config-precedence} launcher cascade: env-file optional absence and required absence remain distinct from config", async () => {
     const fx = await fixture();
     try {
         const selected = join(fx.root, "selected.env");
@@ -205,7 +205,7 @@ test("launcher cascade: env-file optional absence and required absence remain di
     }
 });
 
-test("config discovery is provider-free, on-demand, and does not create a second config artifact", async () => {
+test("{§operator-config-precedence} config discovery is provider-free, on-demand, and does not create a second config artifact", async () => {
     const fx = await fixture();
     try {
         const defaults = await runService(fx, ["config", "defaults"]);
@@ -605,7 +605,7 @@ test("{§operator-config-offline-validation} the built executable validates the 
     await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" });
 });
 
-test("config edit preserves editor arguments and an XDG path containing spaces", async () => {
+test("{§operator-config-env-defaults} config edit preserves editor arguments and an XDG path containing spaces", async () => {
     const fx = await fixture();
     try {
         const configHome = join(fx.root, "config home");

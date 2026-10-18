@@ -16,7 +16,7 @@ import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("observe: a real loop emits the loop → turn → provider → parse → dispatch topology", async (approvalContext) => {
+test("{§observability-boundary} observe: a real loop emits the loop → turn → provider → parse → dispatch topology", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // The surveys are the initialization program; with the preview off there is none to dispatch.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;

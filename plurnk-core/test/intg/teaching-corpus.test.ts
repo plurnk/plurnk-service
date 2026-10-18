@@ -25,7 +25,7 @@ const corpusRoot = async (): Promise<string> => {
     return root;
 };
 
-test("language and delegation references named by plurnk.md are materialized from their published sources", async () => {
+test("{§teaching-corpus} language and delegation references named by plurnk.md are materialized from their published sources", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -44,7 +44,7 @@ test("language and delegation references named by plurnk.md are materialized fro
     } finally { await db.close(); }
 });
 
-test("required built-in corpus absence rejects workspace doc materialization with its filesystem cause", async () => {
+test("{§teaching-corpus} required built-in corpus absence rejects workspace doc materialization with its filesystem cause", async () => {
     const root = await corpusRoot();
     const db = await openMigrated();
     try {
@@ -68,7 +68,7 @@ test("required built-in corpus absence rejects workspace doc materialization wit
     }
 });
 
-test("a failed required corpus read is not reclassified as optional absence", async () => {
+test("{§teaching-corpus} a failed required corpus read is not reclassified as optional absence", async () => {
     const root = await corpusRoot();
     const db = await openMigrated();
     try {

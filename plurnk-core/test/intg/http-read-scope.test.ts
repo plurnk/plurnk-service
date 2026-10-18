@@ -111,7 +111,7 @@ for (const pretty of [false, true]) {
     }
 }
 
-test("#283: a scoped READ of a materialized https page's source returns exactly the window", async () => {
+test("{§readable-channel} #283: a scoped READ of a materialized https page's source returns exactly the window", async () => {
     const { db, engine, ids } = await setup();
     const originalFetch = globalThis.fetch;
     try {
@@ -147,7 +147,7 @@ test("#283: a scoped READ of a materialized https page's source returns exactly 
     }
 });
 
-test("#283: a scoped READ of a materialized https entry's body channel returns exactly the window", async () => {
+test("{§universal-read-composition} #283: a scoped READ of a materialized https entry's body channel returns exactly the window", async () => {
     const { db, engine, ids } = await setup();
     const originalFetch = globalThis.fetch;
     try {
@@ -180,7 +180,7 @@ test("#283: a scoped READ of a materialized https entry's body channel returns e
     }
 });
 
-test("#283: a scoped READ of a project file still returns exactly the window", async () => {
+test("{§universal-read-composition} #283: a scoped READ of a project file still returns exactly the window", async () => {
     const { db, engine, ids } = await setup();
     try {
         let sequence = 0;

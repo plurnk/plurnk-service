@@ -24,7 +24,7 @@ const find = (pathname: string, query: string, marks: LineMarker["marks"] = [1, 
     position: { line: 1, column: 1 },
 });
 
-test("native FTS5 expressions select visible resources and integer result pages", async () => {
+test("{§find-fulltext-selection} native FTS5 expressions select visible resources and integer result pages", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-${crypto.randomUUID()}`);
@@ -67,7 +67,7 @@ test("native FTS5 expressions select visible resources and integer result pages"
     } finally { await db.close(); }
 });
 
-test("FTS5 locations preserve Unicode columns, line endings and multi-line phrases", async () => {
+test("{§find-fulltext-selection} FTS5 locations preserve Unicode columns, line endings and multi-line phrases", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-coordinates-${crypto.randomUUID()}`);
@@ -92,7 +92,7 @@ test("FTS5 locations preserve Unicode columns, line endings and multi-line phras
     } finally { await db.close(); }
 });
 
-test("FTS5 reindexing replaces old terms, uses complete bodies and preserves stable ties", async () => {
+test("{§find-fulltext-selection} FTS5 reindexing replaces old terms, uses complete bodies and preserves stable ties", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-freshness-${crypto.randomUUID()}`);
@@ -112,7 +112,7 @@ test("FTS5 reindexing replaces old terms, uses complete bodies and preserves sta
     } finally { await db.close(); }
 });
 
-test("malformed native FTS5 queries return their parser diagnostic without guessing intent", async () => {
+test("{§find-fulltext-selection} malformed native FTS5 queries return their parser diagnostic without guessing intent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-invalid-${crypto.randomUUID()}`);
@@ -167,7 +167,7 @@ test("{§fts-word-phrase}: a word with inner punctuation searches its tokens as 
     } finally { await db.close(); }
 });
 
-test("FTS5 uses native BM25 relevance before the identity tie-breaker", async () => {
+test("{§find-fulltext-selection} FTS5 uses native BM25 relevance before the identity tie-breaker", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-rank-${crypto.randomUUID()}`);
@@ -182,7 +182,7 @@ test("FTS5 uses native BM25 relevance before the identity tie-breaker", async ()
     } finally { await db.close(); }
 });
 
-test("FTS5 respects literal namespaces and removes deleted targets from every observer's results", async () => {
+test("{§find-fulltext-selection} FTS5 respects literal namespaces and removes deleted targets from every observer's results", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-owner-${crypto.randomUUID()}`);

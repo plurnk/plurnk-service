@@ -15,7 +15,7 @@ test("killReason: KILL without a signal override (null) carries no override — 
     assert.deepEqual(ExecAbort.killReason(null), { signal: null });
 });
 
-test("teardownReason: a bounded housekeeping reap carrying the consumer's grace", () => {
+test("{§operator-config-only-home} teardownReason: a bounded housekeeping reap carrying the consumer's grace", () => {
     const r = ExecAbort.teardownReason();
     assert.equal(r.housekeeping, true);
     assert.equal(typeof r.graceMs, "number");

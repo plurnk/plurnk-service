@@ -298,7 +298,7 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
     });
 });
 
-test("file.edit: a landed source receipt reports parser recovery against its preserved mimetype", async () => {
+test("{§engine-rails} file.edit: a landed source receipt reports parser recovery against its preserved mimetype", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "broken.go";
         const id = deferred<number>();
@@ -334,7 +334,7 @@ test("file.edit: a landed source receipt reports parser recovery against its pre
     });
 });
 
-test("file.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
+test("{§engine-rails} file.applyResolution: malformed accepted proposal state remains an internal invariant", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         await assert.rejects(
             new File().applyResolution(
@@ -352,7 +352,7 @@ test("file.applyResolution: malformed accepted proposal state remains an interna
     });
 });
 
-test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal", async () => {
+test("{§engine-rails} file.edit: an unchanged file is a 304 no-op and never becomes a proposal", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "unchanged.txt";
         const original = "same\n";
@@ -434,7 +434,7 @@ test("{§proposal-outcome-terse-error} file.edit: rejection leaves file untouche
     });
 });
 
-test("file.edit: creates a new file on accept (target doesn't exist)", async () => {
+test("{§engine-rails} file.edit: creates a new file on accept (target doesn't exist)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "new-dir"), { recursive: true });
         const target = "new-dir/new-file.md";
@@ -532,7 +532,7 @@ test("{§unscoped-edit-create-only} {§edit-marker-required-on-existing}: marker
     });
 });
 
-test("file.edit: refuses traversal escape", async () => {
+test("{§engine-rails} file.edit: refuses traversal escape", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");
         const result = await ctx.engine.dispatch({
@@ -543,7 +543,7 @@ test("file.edit: refuses traversal escape", async () => {
     });
 });
 
-test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
+test("{§membership} bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate);
@@ -577,7 +577,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
     });
 });
 
-test("file.read: reads the materialized entry beside the edit path", async () => {
+test("{§engine-rails} file.read: reads the materialized entry beside the edit path", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "read-me.txt";
         await writeFile(join(root, target), "content\n", "utf8");
@@ -598,7 +598,7 @@ test("file.read: reads the materialized entry beside the edit path", async () =>
     });
 });
 
-test("file.edit: headless workspace (no project_root) → 400", async () => {
+test("{§engine-rails} file.edit: headless workspace (no project_root) → 400", async () => {
     // A workspace with no project_root returns 400 with a clear error naming
     // the contract: file ops need a workspace created with projectRoot
     // (headless is forever).

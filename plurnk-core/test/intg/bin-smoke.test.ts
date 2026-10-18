@@ -231,7 +231,7 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
     return result;
 };
 
-test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
+test("{§agui-daemon-client} bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon();
     try {
         assert.equal(new URL(booted.url).pathname, "/agui");
@@ -277,7 +277,7 @@ test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process 
     }
 });
 
-test("bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
+test("{§agui-daemon-client} bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -322,7 +322,7 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
     }
 });
 
-test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
+test("{§agui-daemon-client} bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -365,7 +365,7 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
     }
 });
 
-test("bin: --help prints usage without booting daemon", async () => {
+test("{§service-posix-artifacts} bin: --help prints usage without booting daemon", async () => {
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "--help"], {
             env: { ...process.env, HOME: join(tmpdir(), "plurnk-help-home"), PLURNK_SERVICE_DB_PATH: join(tmpdir(), "plurnk-help-test.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
@@ -415,7 +415,7 @@ test("{§operator-config-precedence} a working directory's .env configures nothi
     }
 });
 
-test("bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
+test("{§startup-admission-order} bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
     // The classic footgun: the main DB deleted while -wal/-shm sidecars survive (often held by a
     // still-running daemon) — SQLite reports only "disk I/O error". Repro deterministically by
     // squatting a DIRECTORY on the -wal path; assert the boot error is legible: path + sidecar hint.
@@ -455,7 +455,7 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
     }
 });
 
-test("bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
+test("{§agui-daemon-client} bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-port-admission-"));
     const dataDir = join(dir, "data");
     const dbPath = join(dataDir, "plurnk.db");

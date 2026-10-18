@@ -61,7 +61,7 @@ const kill = (target: UrlPath): KillStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("direct-child activity reaches its parent without leaking to a grandparent or independent root", async () => {
+test("{§actor-boundary-lineage-attention} direct-child activity reaches its parent without leaking to a grandparent or independent root", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lineage-activity-${crypto.randomUUID()}`);
@@ -202,7 +202,7 @@ test("{§env-delta-child-activity} received messages remain local observations, 
     }
 });
 
-test("a fork inherits parent activity pending at its snapshot but not later sibling activity", async () => {
+test("{§actor-boundary-lineage-attention} a fork inherits parent activity pending at its snapshot but not later sibling activity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-activity-${crypto.randomUUID()}`);

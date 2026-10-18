@@ -92,7 +92,7 @@ const urlTarget = (statement: PlurnkStatement): UrlPath => {
 };
 
 // {§log-sensitive-request-evidence}
-test("ordinary operation evidence redacts credential slots once before every durable projection", async () => {
+test("{§log-sensitive-request-evidence} ordinary operation evidence redacts credential slots once before every durable projection", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-log-redaction-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

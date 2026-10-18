@@ -147,7 +147,7 @@ test("{§worker-read-scope}: FIND addresses literal namespaces identically from 
     } finally { await db.close(); }
 });
 
-test("WORK(worker://name):task spawns a same-workspace sister, seeded via injectWorker", async () => {
+test("{§machine-processes} WORK(worker://name):task spawns a same-workspace sister, seeded via injectWorker", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -328,7 +328,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
 
 // {§worker-control-addressing} Parser tolerance does not grant semantics to
 // components outside the exact authority-only worker control address.
-test("worker control rejects every non-authority URI component before spawning (#160)", async () => {
+test("{§machine-processes} worker control rejects every non-authority URI component before spawning (#160)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -378,7 +378,7 @@ test("worker control rejects every non-authority URI component before spawning (
     } finally { await db.close(); }
 });
 
-test("the exact worker control address is enforced before every operation path (#160)", async () => {
+test("{§machine-processes} the exact worker control address is enforced before every operation path (#160)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -514,7 +514,7 @@ test("{§worker-scheme-spawn}: WORK naming a PARKED sister delivers its body to 
     } finally { await db.close(); }
 });
 
-test("WORK and FORK reject non-mintable worker authorities before creating or starting a child", async () => {
+test("{§pinned-wording-core} WORK and FORK reject non-mintable worker authorities before creating or starting a child", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -621,7 +621,7 @@ test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch i
     } finally { await db.close(); }
 });
 
-test("READ(worker://name) collects the exact terminal result — 425 running, 404 absent", async () => {
+test("{§join-blocking-collect} READ(worker://name) collects the exact terminal result — 425 running, 404 absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `worker-collect-${crypto.randomUUID()}`);
@@ -694,7 +694,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
     } finally { await db.close(); }
 });
 
-test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
+test("{§problems-entries} EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -826,7 +826,7 @@ test("{§worker-write-scoping}: entry KILL works upward, downward and on self wi
     } finally { await db.close(); }
 });
 
-test("FORK(worker://name):task forks a NAMED branch — started via injectWorker", async () => {
+test("{§machine-processes} FORK(worker://name):task forks a NAMED branch — started via injectWorker", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -852,7 +852,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
     } finally { await db.close(); }
 });
 
-test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
+test("{§machine-processes} spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;
     process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "2";
@@ -892,7 +892,7 @@ test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard 
     }
 });
 
-test("KILL(worker://name) aborts a sister by address; a missing sister is 404", async () => {
+test("{§worker-read-scope} KILL(worker://name) aborts a sister by address; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];
@@ -946,7 +946,7 @@ for (const related of [true, false]) test(`{§worker-read-scope}: ${related ? "p
     } finally { await db.close(); }
 });
 
-test("the runtime worker is an ordinary named space: readable and writable by everyone", async () => {
+test("{§machine-processes} the runtime worker is an ordinary named space: readable and writable by everyone", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -1057,7 +1057,7 @@ test("{§op-synchronous} KILL(worker) settles before same-turn completion", asyn
     } finally { await db.close(); }
 });
 
-test("WAIT: a live obligation parks; an empty join continues without inventing completion", async () => {
+test("{§wait-obligation-matrix} WAIT: a live obligation parks; an empty join continues without inventing completion", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -1127,7 +1127,7 @@ for (const answer of ["", "The module was tested."]) {
     });
 }
 
-test("an empty waiting inventory stays runnable in the same turn", async () => {
+test("{§machine-processes} an empty waiting inventory stays runnable in the same turn", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);

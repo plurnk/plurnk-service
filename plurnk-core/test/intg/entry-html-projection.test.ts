@@ -25,7 +25,7 @@ const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadSta
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
-test("an AUTHORED html write is verbatim — attribute data survives a default READ", async () => {
+test("{§readable-channel} an AUTHORED html write is verbatim — attribute data survives a default READ", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
@@ -66,7 +66,7 @@ test("{§naked-pattern} {§readable-channel}: `READ (page.html) #readable`, the 
     } finally { await db.close(); }
 });
 
-test("a FETCHED html page (via the exec sink) keeps its source as body and its Markdown as #readable", async () => {
+test("{§exec-entry-sink} a FETCHED html page (via the exec sink) keeps its source as body and its Markdown as #readable", async () => {
     const rawHtml = `<html><head><script>ads()</script></head><body><h1>Headline</h1><p>${"the body text remains readable ".repeat(20)}</p></body></html>`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();

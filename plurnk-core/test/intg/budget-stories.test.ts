@@ -77,7 +77,7 @@ const measure = async (db: Db): Promise<{ floor: number; expanded: number }> => 
 
 // 0 — the fattener actually fattens. If this fails every recovery story below is
 // vacuous, so it is pinned first.
-test("budget: a READ result renders into the log and weighs on the next turn's packet", async () => {
+test("{§tokenomics} budget: a READ result renders into the log and weighs on the next turn's packet", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -86,7 +86,7 @@ test("budget: a READ result renders into the log and weighs on the next turn's p
 });
 
 // 1 — cascade ok: comfortably under budget the overflow recovery is inert, delivered ≤100%.
-test("budget: under the ceiling the turn delivers and the budget reads at or below 100%", async () => {
+test("{§tokenomics} budget: under the ceiling the turn delivers and the budget reads at or below 100%", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -121,7 +121,7 @@ test("{§context-wall} the irreducible window overflow reports a positive oversh
 });
 
 // 11 — provider-derived input capacity governs curation (a real build).
-test("budget: the provider-derived input capacity is the curation ceiling", async () => {
+test("{§tokenomics-window-partition} budget: the provider-derived input capacity is the curation ceiling", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

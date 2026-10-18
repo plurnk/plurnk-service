@@ -16,7 +16,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-test("independent root workers share one acquired https representation in their workspace", async () => {
+test("{§scheme-entry-matrix} independent root workers share one acquired https representation in their workspace", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal(process.cwd());

@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
+test("{§problems-dispatch} a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
@@ -36,7 +36,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
     });
 });
 
-test("a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
+test("{§problems-dispatch} a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),

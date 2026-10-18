@@ -52,7 +52,7 @@ test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent
     });
 });
 
-test("a child cancelling itself (499) also wakes the parent — any conclusion is a wake edge", async (approvalContext) => {
+test("{§worker-loop-lifecycle} a child cancelling itself (499) also wakes the parent — any conclusion is a wake edge", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // The parent observes cancellation as well as successful completion.
     // 16384: the parent's woken turn carries the whole child history + collect delta, cresting at the
@@ -158,7 +158,7 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
     });
 });
 
-test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async (approvalContext) => {
+test("{§worker-loop-lifecycle} an empty failed child stream is observed by the child before its terminal result reaches the parent", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://stream-child)\nrun the empty failing stream and report its outcome\n````\n\n````WAIT\nwaiting on stream-child\n````", 10),
@@ -266,7 +266,7 @@ test("{§worker-lifecycle-total-reap}: abandonment survives child activation fin
     });
 });
 
-test("wake propagates UP a grandchild chain (parent→child→grandchild)", async (approvalContext) => {
+test("{§worker-loop-lifecycle} wake propagates UP a grandchild chain (parent→child→grandchild)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
@@ -289,7 +289,7 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
     });
 });
 
-test("a parent wakes across SEQUENTIAL children (multiple wakes)", async (approvalContext) => {
+test("{§worker-loop-lifecycle} a parent wakes across SEQUENTIAL children (multiple wakes)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // 16384: the parent's woken turn carries the whole child history; generous headroom over the
     // static packet so the wake budget edge is the subtree, not the tool teaching.
@@ -319,7 +319,7 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async (approv
     });
 });
 
-test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's durable model", async (approvalContext) => {
+test("{§worker-lifecycle-idle-is-concluded} an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's durable model", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Under {§worker-lifecycle-idle-is-concluded}, an actor with nothing to wait on CONCLUDES — it does not
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
@@ -368,7 +368,7 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
     });
 });
 
-test("an empty wait continues through the real loop until the assignment is answered", async (approvalContext) => {
+test("{§worker-loop-lifecycle} an empty wait continues through the real loop until the assignment is answered", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
@@ -419,7 +419,7 @@ test("{§worker-owner-resolution} server auto-approval settles both WORK and FOR
     });
 });
 
-test("a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async (approvalContext) => {
+test("{§wait-obligation-matrix} a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // The delegation-policy race: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
@@ -453,7 +453,7 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     });
 });
 
-test("log-targeted KILL is recorded in the DB, and a failed one persists", async (approvalContext) => {
+test("{§log-kill-meta-operation} log-targeted KILL is recorded in the DB, and a failed one persists", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-kill-meta-operation}

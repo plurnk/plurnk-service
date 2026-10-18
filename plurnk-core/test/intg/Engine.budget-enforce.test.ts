@@ -237,7 +237,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
     }
 });
 
-test("an estimate defers physical admission to the upstream provider", async () => {
+test("{§packet-wire-envelope} an estimate defers physical admission to the upstream provider", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -271,7 +271,7 @@ test("an estimate defers physical admission to the upstream provider", async () 
     }
 });
 
-test("a proven request-token upper bound can authorize provider admission", async () => {
+test("{§context-wall-measure} a proven request-token upper bound can authorize provider admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

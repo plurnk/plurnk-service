@@ -64,7 +64,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
 
 // CELL [FIND × bare local path]. The member is stored `/notes.md`; the model FINDs
 // `notes.md`. FIND must canonicalize and select the member — exactly as READ does.
-test("contract: FIND(bare path) resolves the canonical-stored member", async () => {
+test("{§fs-namei} contract: FIND(bare path) resolves the canonical-stored member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -76,7 +76,7 @@ test("contract: FIND(bare path) resolves the canonical-stored member", async () 
 });
 
 // CONTROL [READ × bare local path]. Same condition — proves the harness reproduces the real path.
-test("contract: READ(bare path) resolves the canonical-stored member (control)", async () => {
+test("{§fs-namei} contract: READ(bare path) resolves the canonical-stored member (control)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -89,7 +89,7 @@ test("contract: READ(bare path) resolves the canonical-stored member (control)",
 
 // CONTROL [EDIT × bare local path]. EDIT canonicalizes (#resolveTarget) — a bare
 // path resolves to the member and proposes (202).
-test("contract: EDIT(bare path) resolves the canonical-stored member and proposes (control)", async () => {
+test("{§edit-marker-required-on-existing} contract: EDIT(bare path) resolves the canonical-stored member and proposes (control)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -112,7 +112,7 @@ test("{§fs-namei} FIND of an absolute path resolves the member", async () => {
 
 // {§find-result-projection}: exact matcher FIND exposes navigation locations.
 
-test("an exact regex FIND returns its flat match location", async () => {
+test("{§fs-namei} an exact regex FIND returns its flat match location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
@@ -123,7 +123,7 @@ test("an exact regex FIND returns its flat match location", async () => {
     });
 });
 
-test("contract: an exact FIND returns every match as a flat location", async () => {
+test("{§fs-namei} contract: an exact FIND returns every match as a flat location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
@@ -134,7 +134,7 @@ test("contract: an exact FIND returns every match as a flat location", async () 
     });
 });
 
-test("contract: an exact jsonpath FIND returns flat structural locations", async () => {
+test("{§path-syntax} contract: an exact jsonpath FIND returns flat structural locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
@@ -165,7 +165,7 @@ test("{§fs-namei} explicit file URI and bare FIND globs list the same members",
     });
 });
 
-test("contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", async () => {
+test("{§fs-namei} contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, ".env.defaults"), "defaults");
         await mkdir(join(root, ".github"), { recursive: true });

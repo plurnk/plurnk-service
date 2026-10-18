@@ -114,7 +114,7 @@ const close = async (fixture: Fixture, chunk?: string): Promise<void> => {
     });
 };
 
-test("an atomic application/json channel remains hidden until its complete terminal document exists", async () => {
+test("{§exec-stream-page} an atomic application/json channel remains hidden until its complete terminal document exists", async () => {
     const fixture = await setup("application/json", '[{"n":1},');
     try {
         const active = await fixture.runTurn();
@@ -144,7 +144,7 @@ test("an atomic application/json channel remains hidden until its complete termi
     }
 });
 
-test("application/jsonl publishes nothing while active; its records arrive once, at close", async () => {
+test("{§markerless-first-page} application/jsonl publishes nothing while active; its records arrive once, at close", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n{"n":');
     try {
         const active = await fixture.runTurn();
@@ -168,7 +168,7 @@ test("application/jsonl publishes nothing while active; its records arrive once,
     }
 });
 
-test("an active text channel publishes nothing; its content arrives once, at close", async () => {
+test("{§markerless-first-page} an active text channel publishes nothing; its content arrives once, at close", async () => {
     const fixture = await setup("text/plain; charset=utf-8", "event one\n");
     try {
         const active = await fixture.runTurn();
@@ -192,7 +192,7 @@ test("an active text channel publishes nothing; its content arrives once, at clo
     }
 });
 
-test("a stream that closes with no new content still emits exactly one conclusion", async () => {
+test("{§markerless-first-page} a stream that closes with no new content still emits exactly one conclusion", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n');
     try {
         const active = await fixture.runTurn();
@@ -216,7 +216,7 @@ test("a stream that closes with no new content still emits exactly one conclusio
     }
 });
 
-test("a published channel materializes its exact terminal result override", async () => {
+test("{§markerless-first-page} a published channel materializes its exact terminal result override", async () => {
     const fixture = await setup("application/json", '{"ok":false}');
     const channelFailure = Results.failure(
         "scheme:structured-fixture",
@@ -274,7 +274,7 @@ test("{§stream-observation-result}: invalid result liveness cannot advance publ
     }
 });
 
-test("KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
+test("{§markerless-first-page} KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
     const kill: KillStatement = {
         metadata: null,
         op: "KILL",

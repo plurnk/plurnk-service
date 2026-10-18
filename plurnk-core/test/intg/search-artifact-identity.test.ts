@@ -24,7 +24,7 @@ const edit = (pathname: string, body: string): ResolvedEditStatement => ({
     matcher: null, position: { line: 1, column: 1 },
 });
 
-test("identical entries attach one complete search artifact and both remain addressable", async () => {
+test("{§persistent-search-index} identical entries attach one complete search artifact and both remain addressable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `artifact-share-${crypto.randomUUID()}`);
@@ -66,7 +66,7 @@ test("identical entries attach one complete search artifact and both remain addr
     }
 });
 
-test("resolved binary classification participates in derivation identity (#93)", async () => {
+test("{§persistent-search-index} resolved binary classification participates in derivation identity (#93)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `classification-identity-${crypto.randomUUID()}`);
@@ -120,7 +120,7 @@ test("resolved binary classification participates in derivation identity (#93)",
     }
 });
 
-test("mimetype projection identity invalidates derived artifacts without defeating stable reuse (#175)", async () => {
+test("{§persistent-search-index} mimetype projection identity invalidates derived artifacts without defeating stable reuse (#175)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-identity-${crypto.randomUUID()}`);

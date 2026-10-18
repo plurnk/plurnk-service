@@ -7,7 +7,7 @@ import ExecEnv from "./exec-env.ts";
 // commands can read.
 const SHIPPED = "PATH,HOME,USER,LOGNAME,SHELL,PWD,TMPDIR,TERM,TZ,LANG,LC_*";
 
-test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
+test("{§exec-env-scoped} ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,HOME,MY_PROJECT_KEY,OPENAI_API_KEY,AWS_REGION,CLOUDFLARE_ACCOUNT_ID,ACME_TOKEN,PLURNK_*",
         PATH: "/usr/bin", HOME: "/home/u",      // standard shell — keep
@@ -63,13 +63,13 @@ test("ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
     assert.equal(scoped.LANG, "en_US.UTF-8", "exclude narrows only what it names");
 });
 
-test("ExecEnv.scoped: an empty policy admits nothing ambient", () => {
+test("{§exec-env-scoped} ExecEnv.scoped: an empty policy admits nothing ambient", () => {
     const scoped = ExecEnv.scoped({ PATH: "/usr/bin", SSH_AUTH_SOCK: "/run/ssh" });
     assert.deepEqual(scoped, {}, "the allowlist is declared in .env.defaults; an empty one is a cleared policy, not an unconfigured install");
 });
 
 // {§exec-env-scoped} Module-owned launches have a broader ambient base, not implicit provider credentials.
-test("ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
+test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
     const kept = ExecEnv.withoutOwnSecrets({
         PATH: "/usr/bin", npm_config_registry: "https://registry.npmjs.org/",
         HTTPS_PROXY: "http://proxy:3128",

@@ -25,7 +25,7 @@ const waitUntil = async (cond: () => boolean, timeoutMs = 10000): Promise<void> 
     while (!cond() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 5));
 };
 
-test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no notifier → no event", async () => {
+test("{§capability-ctx} DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no notifier → no event", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
