@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { markdownWrapColumns, wrapMarkdown } from "./wrapMarkdown.ts";
 
-describe("wrapMarkdown", () => {
+describe("{§html-wrap-columns} wrapMarkdown breaks prose at whitespace and leaves structure whole", () => {
     it("wraps prose at whitespace without losing text", () => {
         const source = "One two three four five six seven eight nine ten eleven twelve.";
         const wrapped = wrapMarkdown(source, 20);
@@ -52,7 +52,7 @@ describe("wrapMarkdown", () => {
     });
 });
 
-describe("markdownWrapColumns", () => {
+describe("{§html-wrap-columns} markdownWrapColumns reads the knob and refuses malformed values", () => {
     it("reads zero or a positive integer and rejects malformed configuration", () => {
         const prior = process.env.PLURNK_MIMETYPES_HTML_WRAP_COLUMNS;
         try {

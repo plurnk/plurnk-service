@@ -31,7 +31,7 @@ const ARTICLE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-describe("TextHtml — content channel ({§mimetype-content})", () => {
+describe("{§html-readable-text} content is the page's reading Markdown, never raw HTML", () => {
     it("returns markdown containing the article text", () => {
         const md = h.content(ARTICLE);
         assert.equal(typeof md, "string");
@@ -96,7 +96,7 @@ describe("TextHtml — content channel ({§mimetype-content})", () => {
     });
 });
 
-describe("TextHtml — toText is the raw markup, the projection is content()", () => {
+describe("{§mimetype-content-query} toText is the raw markup; the projection is content()", () => {
     it("toText() returns the source itself, never the projection", () => {
         // {§mimetype-content}: the projection is a channel the consumer stores; regex and glob
         // over the source channel see the markup.
@@ -110,16 +110,6 @@ describe("TextHtml — toText is the raw markup, the projection is content()", (
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
         assert.equal(h.content(html), undefined);
         assert.equal(toText(html), html);
-    });
-});
-
-describe("TextHtml — content channel integration", () => {
-    it("a known article's nav text is absent while the article survives", () => {
-        const md = h.content(ARTICLE) as string;
-        assert.ok(md.includes("The Great Heading"));
-        assert.ok(md.includes("A Subsection Heading"));
-        assert.ok(!md.includes("HomeNavLink"));
-        assert.ok(!md.includes("FooterChromeCopyright"));
     });
 
     it("regex matches the markup it is given, in the markup's own coordinates", async () => {

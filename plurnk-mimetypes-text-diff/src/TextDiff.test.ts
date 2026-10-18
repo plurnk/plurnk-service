@@ -34,79 +34,80 @@ type HunkNode = {
 };
 const deep = (src: string) => h.deepJson(src) as { type: "diff"; files: FileNode[] };
 
-describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode + binary)", () => {
-    const src = [
-        "diff --git a/src/edit.js b/src/edit.js",                  // 1
-        "index 1111111..2222222 100644",                          // 2
-        "--- a/src/edit.js",                                      // 3
-        "+++ b/src/edit.js",                                      // 4
-        "@@ -1,3 +1,4 @@",                                        // 5
-        " context line",                                          // 6
-        "-removed line",                                          // 7
-        "+added line one",                                        // 8
-        "+added line two",                                        // 9
-        " trailing context",                                      // 10
-        "diff --git a/src/new.js b/src/new.js",                   // 11
-        "new file mode 100644",                                  // 12
-        "index 0000000..3333333",                                // 13
-        "--- /dev/null",                                          // 14
-        "+++ b/src/new.js",                                      // 15
-        "@@ -0,0 +1,2 @@",                                        // 16
-        "+brand new",                                            // 17
-        "+second line",                                          // 18
-        "diff --git a/src/gone.js b/src/gone.js",                 // 19
-        "deleted file mode 100644",                              // 20
-        "index 4444444..0000000",                                // 21
-        "--- a/src/gone.js",                                      // 22
-        "+++ /dev/null",                                         // 23
-        "@@ -1,2 +0,0 @@",                                        // 24
-        "-old one",                                              // 25
-        "-old two",                                              // 26
-        "diff --git a/old/name.js b/new/name.js",                 // 27
-        "similarity index 95%",                                  // 28
-        "rename from old/name.js",                               // 29
-        "rename to new/name.js",                                 // 30
-        "index 5555555..6666666 100644",                         // 31
-        "--- a/old/name.js",                                     // 32
-        "+++ b/new/name.js",                                     // 33
-        "@@ -1 +1 @@",                                            // 34
-        "-was this",                                             // 35
-        "+now that",                                             // 36
-        "diff --git a/script.sh b/script.sh",                     // 37
-        "old mode 100644",                                       // 38
-        "new mode 100755",                                       // 39
-        "diff --git a/logo.png b/logo.png",                       // 40
-        "index 7777777..8888888 100644",                         // 41
-        "Binary files a/logo.png and b/logo.png differ",         // 42
-    ].join("\n");
+// A multi-file git diff: edit + new + delete + rename + mode-only + binary.
+const MULTI = [
+    "diff --git a/src/edit.js b/src/edit.js",                  // 1
+    "index 1111111..2222222 100644",                          // 2
+    "--- a/src/edit.js",                                      // 3
+    "+++ b/src/edit.js",                                      // 4
+    "@@ -1,3 +1,4 @@",                                        // 5
+    " context line",                                          // 6
+    "-removed line",                                          // 7
+    "+added line one",                                        // 8
+    "+added line two",                                        // 9
+    " trailing context",                                      // 10
+    "diff --git a/src/new.js b/src/new.js",                   // 11
+    "new file mode 100644",                                  // 12
+    "index 0000000..3333333",                                // 13
+    "--- /dev/null",                                          // 14
+    "+++ b/src/new.js",                                      // 15
+    "@@ -0,0 +1,2 @@",                                        // 16
+    "+brand new",                                            // 17
+    "+second line",                                          // 18
+    "diff --git a/src/gone.js b/src/gone.js",                 // 19
+    "deleted file mode 100644",                              // 20
+    "index 4444444..0000000",                                // 21
+    "--- a/src/gone.js",                                      // 22
+    "+++ /dev/null",                                         // 23
+    "@@ -1,2 +0,0 @@",                                        // 24
+    "-old one",                                              // 25
+    "-old two",                                              // 26
+    "diff --git a/old/name.js b/new/name.js",                 // 27
+    "similarity index 95%",                                  // 28
+    "rename from old/name.js",                               // 29
+    "rename to new/name.js",                                 // 30
+    "index 5555555..6666666 100644",                         // 31
+    "--- a/old/name.js",                                     // 32
+    "+++ b/new/name.js",                                     // 33
+    "@@ -1 +1 @@",                                            // 34
+    "-was this",                                             // 35
+    "+now that",                                             // 36
+    "diff --git a/script.sh b/script.sh",                     // 37
+    "old mode 100644",                                       // 38
+    "new mode 100755",                                       // 39
+    "diff --git a/logo.png b/logo.png",                       // 40
+    "index 7777777..8888888 100644",                         // 41
+    "Binary files a/logo.png and b/logo.png differ",         // 42
+].join("\n");
 
+describe("{§diff-symbols} file sections are modules and hunks are their fields", () => {
     it("emits one module symbol per file section (6 files)", () => {
-        const syms = h.extractRaw(src);
+        const syms = h.extractRaw(MULTI);
         const modules = syms.filter((s) => s.kind === "module");
         assert.equal(modules.length, 6);
     });
 
     it("names the rename module `old → new`", () => {
-        const syms = h.extractRaw(src);
+        const syms = h.extractRaw(MULTI);
         const names = syms.filter((s) => s.kind === "module").map((s) => s.name);
         assert.ok(names.includes("old/name.js → new/name.js"));
     });
 
     it("names the pure-deletion module by its old path", () => {
-        const syms = h.extractRaw(src);
+        const syms = h.extractRaw(MULTI);
         const names = syms.filter((s) => s.kind === "module").map((s) => s.name);
         assert.ok(names.includes("src/gone.js"));
     });
 
     it("names edit/new modules by their new path", () => {
-        const syms = h.extractRaw(src);
+        const syms = h.extractRaw(MULTI);
         const names = new Set(syms.filter((s) => s.kind === "module").map((s) => s.name));
         assert.ok(names.has("src/edit.js"));
         assert.ok(names.has("src/new.js"));
     });
 
     it("emits hunks as `field` symbols contained by their file module", () => {
-        const syms = h.extractRaw(src);
+        const syms = h.extractRaw(MULTI);
         const hunks = syms.filter((s) => s.kind === "field");
         // edit(1) + new(1) + delete(1) + rename(1); mode-only and binary have none.
         assert.equal(hunks.length, 4);
@@ -114,9 +115,11 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
         assert.ok(editHunk);
         assert.equal(editHunk.container, "src/edit.js");
     });
+});
 
+describe("{§diff-sections} git sections recover their paths with or without hunks", () => {
     it("recovers binary section paths from the diff --git line", () => {
-        const { files } = scanDiff(src);
+        const { files } = scanDiff(MULTI);
         const bin = files.find((f) => f.binary);
         assert.ok(bin);
         assert.equal(bin.newPath, "logo.png");
@@ -124,15 +127,17 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
     });
 
     it("recovers mode-only section paths with no hunk", () => {
-        const { files } = scanDiff(src);
+        const { files } = scanDiff(MULTI);
         const mode = files.find((f) => f.newPath === "script.sh");
         assert.ok(mode);
         assert.equal(mode.hunks.length, 0);
         assert.equal(mode.binary, false);
     });
+});
 
+describe("{§diff-tree} deepJson carries per-file counts and hunk coordinates", () => {
     it("carries per-file add/del counts in deepJson", () => {
-        const { files } = deep(src);
+        const { files } = deep(MULTI);
         const edit = files.find((f) => f.newPath === "src/edit.js")!;
         assert.equal(edit.additions, 2);
         assert.equal(edit.deletions, 1);
@@ -147,7 +152,7 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
     });
 
     it("carries hunk oldStart/newStart/counts in deepJson", () => {
-        const { files } = deep(src);
+        const { files } = deep(MULTI);
         const edit = files.find((f) => f.newPath === "src/edit.js")!;
         assert.deepEqual(edit.hunks[0], {
             type: "hunk",
@@ -157,7 +162,7 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
     });
 });
 
-describe("TextDiff — plain `diff -u` (no `diff --git` line)", () => {
+describe("{§diff-sections} a bare ---/+++ pair opens a section without a diff --git line", () => {
     const src = [
         "--- original.txt\t2026-01-01 00:00:00.000 +0000",
         "+++ modified.txt\t2026-01-02 00:00:00.000 +0000",
@@ -167,16 +172,11 @@ describe("TextDiff — plain `diff -u` (no `diff --git` line)", () => {
         "+new",
     ].join("\n");
 
-    it("opens a file section from the bare ---/+++ pair", () => {
+    it("opens a file section from the bare ---/+++ pair, timestamp tails stripped", () => {
         const { files } = scanDiff(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].oldPath, "original.txt");
         assert.equal(files[0].newPath, "modified.txt");
-    });
-
-    it("strips the timestamp tail off the ---/+++ lines", () => {
-        const { files } = scanDiff(src);
-        assert.equal(files[0].newPath, "modified.txt"); // no trailing date
     });
 
     it("counts the single hunk's add/del", () => {
@@ -187,7 +187,7 @@ describe("TextDiff — plain `diff -u` (no `diff --git` line)", () => {
     });
 });
 
-describe("TextDiff — combined `diff --cc` with conflict markers", () => {
+describe("{§diff-combined} a combined diff reads N prefix columns against one summed budget", () => {
     // Two parents → `@@@` fence, 2 old ranges + 1 new range. Conflict-marker
     // lines (<<<<<<<, =======, >>>>>>>) appear as additions in the new column.
     const src = [
@@ -223,7 +223,7 @@ describe("TextDiff — combined `diff --cc` with conflict markers", () => {
     });
 });
 
-describe("TextDiff — `-U1` diff with function-context heading", () => {
+describe("{§diff-symbols} a hunk is named by its heading text, else its new-file coordinates", () => {
     const src = [
         "diff --git a/greet.js b/greet.js",
         "--- a/greet.js",
@@ -263,7 +263,7 @@ describe("TextDiff — `-U1` diff with function-context heading", () => {
     });
 });
 
-describe("TextDiff — mid-hunk truncation closes gracefully", () => {
+describe("{§diff-line-budget} an unsatisfied budget closes at the end of the document", () => {
     // The header promises 5 new lines but the diff is cut off after 2.
     const src = [
         "--- a/big.txt",
@@ -283,7 +283,7 @@ describe("TextDiff — mid-hunk truncation closes gracefully", () => {
     });
 });
 
-describe("TextDiff — interleaved garbage is skipped", () => {
+describe("{§diff-sections} lines outside any section are skipped", () => {
     const src = [
         "Some commit prose before the diff.",
         "Signed-off-by: Someone <x@y.z>",
@@ -308,7 +308,7 @@ describe("TextDiff — interleaved garbage is skipped", () => {
     });
 });
 
-describe("TextDiff — the `--`-content-deletion trap (justifies the hand-roll)", () => {
+describe("{§diff-line-budget} a deleted line beginning `---` is content inside an open hunk", () => {
     // A hunk DELETING a line whose content starts with `---`. Without the line
     // budget this `--- old config` reads as a new file header. With the budget,
     // it is authoritatively a deletion inside the open hunk.
@@ -343,7 +343,7 @@ describe("TextDiff — the `--`-content-deletion trap (justifies the hand-roll)"
     });
 });
 
-describe("TextDiff — `\\ No newline at end of file` annotation", () => {
+describe("{§diff-line-budget} the no-newline annotation spends no budget", () => {
     const src = [
         "--- a/f.txt",
         "+++ b/f.txt",
@@ -361,7 +361,7 @@ describe("TextDiff — `\\ No newline at end of file` annotation", () => {
     });
 });
 
-describe("TextDiff — empty / edge input", () => {
+describe("{§diff-sections} input with no section projects nothing", () => {
     it("returns [] symbols for empty input", () => {
         assert.deepEqual(h.extractRaw(""), []);
     });

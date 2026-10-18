@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-text-html
 
-`text/html` AND `application/xhtml+xml` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Two faces: **structural** extraction via [parse5](https://www.npmjs.com/package/parse5) (symbols, deep-json/deep-xml, real-DOM xpath via [@xmldom/xmldom](https://www.npmjs.com/package/@xmldom/xmldom) + [xpath](https://www.npmjs.com/package/xpath)) and **readable** projection — the page's main content as clean reading markdown via [@mozilla/readability](https://www.npmjs.com/package/@mozilla/readability) and the package's own `domToMarkdown` serializer over a [linkedom](https://www.npmjs.com/package/linkedom) DOM.
+`text/html` and `application/xhtml+xml` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Structural channels come from [parse5](https://www.npmjs.com/package/parse5), with XPath over the parsed tree via [xpath](https://www.npmjs.com/package/xpath); the readable projection comes from [@mozilla/readability](https://www.npmjs.com/package/@mozilla/readability) and the package's own Markdown serializer over a [linkedom](https://www.npmjs.com/package/linkedom) DOM.
 
 ## install
 
@@ -10,15 +10,16 @@ npm i @plurnk/plurnk-mimetypes-text-html
 
 ## what it does
 
-- `content(content)` - the **content channel** ({§mimetype-content}): the page's markup-free reading markdown. Main-content extraction via Readability strips nav, ads, and chrome; `domToMarkdown` renders the article body as markdown. Prose wraps at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` (default `100`; `0` disables) so line-scoped reads remain useful on dense pages. Non-article pages (apps, forms, fragments, very short HTML) degrade to best-effort markdown of the `<body>` - never raw HTML, never a throw. Empty/whitespace input means absent.
-- `extractRaw(content)` — h1–h6 headings as `heading` symbols (with `level`), `<title>` as an h1 fallback when no headings exist, and code blocks as `module` symbols. Source line numbers come from parse5's location info.
-- `deepJson(content)` — the parse5 DOM as a nested node tree, with source-algebra attributes under the `attrs` convention (framework projects this to the deep-xml channel).
-- `query(content, dialect, pattern)` — overrides xpath to dispatch against the real parsed DOM (XPath 1.0), with source regions from parse5. Structural queries and regex/glob address the markup itself; the readable Markdown is `content()`, which the service stores as the entry's `readable` channel and matches separately. Computed scalars remain locator-only.
-- `validate(content)` — no-op (HTML is forgiving).
+- `content(content)` — the page's reading Markdown ({§html-readable-text}, {§html-markdown-serializer}), wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` ({§html-wrap-columns}); the service stores it as the entry's `readable` channel ({§mimetype-content}).
+- `extractRaw(content)` — headings, the `<title>` fallback and code blocks as symbols ({§html-symbols}).
+- `deepJson(content)` — the DOM as nested nodes ({§html-tree}).
+- `query(content, dialect, pattern)` — XPath and JSONPath over the parsed tree with source regions ({§html-source-regions}); regex and glob address the markup itself.
 
-## two faces, one handler
+## configuration
 
-The structural channels (`extractRaw`/`deepJson`/`query` xpath) stay parse5-based with source positions — they answer "where is this tag, on what line." The content channel answers a different question — "what does this page *say*" — and for that the raw markup is noise. Readability + `domToMarkdown` denoise it into reading markdown. Web-page denoising belongs here under {§mimetype-content}, because the readable projection is a pure function of the HTML bytes (whatever a browser scheme rendered and serialized, or a file on disk) and belongs with the mimetype that owns HTML.
+| Variable | Default | Meaning |
+|---|---|---|
+| `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` | `100` | Prose wrap width in columns for the readable projection; `0` disables ({§html-wrap-columns}). |
 
 ## license
 

@@ -6,18 +6,8 @@ import {
 } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes";
 
-// text/x-ini (INI / config) handler — Tier 4, no parser dep.
-//
-// `[section]` headers, `key = value` / `key: value` entries, `;` and `#`
-// comments. Covers the Python tooling cluster (setup.cfg, tox.ini, pytest.ini,
-// .editorconfig, .pylintrc) plus generic .ini/.cfg. Sections are `module`
-// symbols spanning to the next section; keys are `field` symbols contained by
-// their section (keys before any section are top-level fields). deepJson is the
-// nested `{ section: { key: value } }` object, a jsonpath target.
-//
-// v1 is single-line: indented continuation lines (setup.cfg multi-line values)
-// are not folded into the preceding value — they are skipped rather than
-// guessed. The raw body is directly readable, so there is no content projection.
+// text/x-ini handler: a single-line scan ({§ini-tree}); symbols are {§ini-symbols} and
+// structural queries answer with lexical spans ({§ini-regions}).
 export default class Ini extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const out: MimeSymbol[] = [];

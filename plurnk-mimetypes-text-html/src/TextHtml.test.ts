@@ -16,7 +16,7 @@ async function symbolsOf(html: string | Uint8Array) {
     return h.extractRaw(html);
 }
 
-describe("TextHtml — heading extraction", () => {
+describe("{§html-symbols} headings are symbols with their level and flattened text", () => {
     it("emits <h1>-<h6> as heading symbols with level from the tag", async () => {
         const html = "<html><body><h1>Top</h1><h2>Section</h2><h3>Sub</h3></body></html>";
         const syms = await symbolsOf(html);
@@ -59,9 +59,16 @@ describe("TextHtml — heading extraction", () => {
     it("returns [] for empty input", async () => {
         assert.deepEqual(h.extractRaw(""), []);
     });
+
+    it("accepts Uint8Array content (decoded as utf-8)", async () => {
+        const html = "<h1>From Bytes</h1>";
+        const bytes = new TextEncoder().encode(html);
+        const syms = await symbolsOf(bytes);
+        assert.equal(syms[0].name, "From Bytes");
+    });
 });
 
-describe("TextHtml — container + columns ({§mimetype-symbol})", () => {
+describe("{§mimetype-symbol} container + columns", () => {
     it("headings carry ancestor-heading container paths", async () => {
         const html = "<h1>A</h1><h2>B</h2><h3>C</h3><h2>D</h2>";
         const syms = h.extractRaw(html);
@@ -93,7 +100,7 @@ describe("TextHtml — container + columns ({§mimetype-symbol})", () => {
     });
 });
 
-describe("TextHtml — <title> fallback", () => {
+describe("{§html-symbols} <title> stands in for a missing <h1>", () => {
     it("promotes <title> to a level-1 heading when no <h1> exists", async () => {
         const html = "<html><head><title>Page Title</title></head><body><h2>S</h2></body></html>";
         const syms = await symbolsOf(html);
@@ -119,7 +126,7 @@ describe("TextHtml — <title> fallback", () => {
     });
 });
 
-describe("TextHtml — code blocks", () => {
+describe("{§html-symbols} <pre> blocks are modules named by their language class", () => {
     it("emits <pre><code> as a module symbol named 'code' when no language class", async () => {
         const html = "<h1>X</h1><pre><code>const x = 1;</code></pre>";
         const syms = await symbolsOf(html);
@@ -151,22 +158,14 @@ describe("TextHtml — code blocks", () => {
     });
 });
 
-describe("TextHtml — content shape", () => {
-    it("accepts Uint8Array content (decoded as utf-8)", async () => {
-        const html = "<h1>From Bytes</h1>";
-        const bytes = new TextEncoder().encode(html);
-        const syms = await symbolsOf(bytes);
-        assert.equal(syms[0].name, "From Bytes");
-    });
-
+describe("{§mimetype-validation} validate is the no-op default", () => {
     it("validate is a no-op (HTML is forgiving by spec)", () => {
         assert.doesNotThrow(() => h.validate("<not really><valid html>"));
         assert.doesNotThrow(() => h.validate(""));
     });
-
 });
 
-describe("TextHtml — xpath query", () => {
+describe("{§html-source-regions} xpath addresses the parse5 tree with its source spans", () => {
     it("{§mimetype-content-query} synthetic HTML containers have no invented source coordinates", async () => {
         const out = await h.query("<p>Content</p>", "jsonpath", "$..children[?(@.type == 'head')]");
         assert.equal(out.length, 1);
@@ -256,7 +255,7 @@ describe("TextHtml — xpath query", () => {
     });
 });
 
-describe("TextHtml — regex/jsonpath inheritance", () => {
+describe("{§mimetype-content-query} regex sees the source markup; jsonpath sees the DOM tree", () => {
     it("inherits regex query over the source markup", async () => {
         // {§mimetype-content}: the readable projection is a channel of its own; the source
         // channel matches as the text it is, comments included.
@@ -278,7 +277,7 @@ describe("TextHtml — regex/jsonpath inheritance", () => {
     });
 });
 
-describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
+describe("{§html-tree} deepJson is the parsed DOM as nested nodes", () => {
     const handler = new TextHtml(metadata);
 
     it("returns a document root with nested element children", async () => {
@@ -315,7 +314,7 @@ describe("TextHtml — deepJson ({§mimetype-channel-architecture})", () => {
     });
 });
 
-it("#449: an unbalanced template partial that crashes Readability still projects readable text", () => {
+it("{§html-readable-text} an unbalanced template partial that crashes Readability still projects readable text", () => {
     // Verbatim member content from the corpus (scriggo test/compare header partial):
     // stray closers and template actions walk Readability into a null tagName.
     const partial = "\n<header>\n\n  <div class=\"centered\">\n    <div class=\"search\">\n      <div id=\"search-panel\" class=\"panel\">\n        <div>\n          <input type=\"text\" name=\"keywords\" class=\"design-search-keywords\" placeholder=\"{Search...}\" size=\"15\">\n          <div class=\"search-button icon-search main-button\">\n          </div>\n          </form>\n        </div>\n      </div>\n    </div>\n\n    <div class=\"logo\">\n    </div>\n\n    <div class=\"cart\">\n      </a>\n      {{ render \"/partials/mini-cart.html\" }}\n    </div>\n  </div>\n\n</header>\n";

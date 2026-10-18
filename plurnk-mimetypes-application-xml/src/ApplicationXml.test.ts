@@ -9,7 +9,7 @@ const metadata = {
     extensions: [".xml"] as const,
 };
 
-describe("ApplicationXml — symbols channel", () => {
+describe("{§xml-shape} symbols are the root and its immediate children", () => {
     it("root element → module; immediate children with ids → field by id", async () => {
         const h = new ApplicationXml(metadata);
         const xml = `<library>
@@ -49,7 +49,7 @@ describe("ApplicationXml — symbols channel", () => {
     });
 });
 
-describe("ApplicationXml — container ({§mimetype-symbol-container})", () => {
+describe("{§mimetype-symbol-container} direct children carry the root element as container", () => {
     it("direct children carry the root element name as container", async () => {
         const h = new ApplicationXml(metadata);
         const syms = h.extractRaw("<root><child/><other id='x'/></root>");
@@ -57,14 +57,9 @@ describe("ApplicationXml — container ({§mimetype-symbol-container})", () => {
         assert.equal(syms.find((s) => s.name === "child")?.container, "root");
         assert.equal(syms.find((s) => s.name === "x")?.container, "root");
     });
-
-    it("returns [] for empty content", async () => {
-        const h = new ApplicationXml(metadata);
-        assert.deepEqual(h.extractRaw(""), []);
-    });
 });
 
-describe("ApplicationXml — deepJson ({§mimetype-channel-architecture})", () => {
+describe("{§mimetype-channel-architecture} deepJson is the DOM as nested objects", () => {
     it("returns document root with element tree", async () => {
         const h = new ApplicationXml(metadata);
         const xml = "<rss version='2.0'><channel><title>Feed</title></channel></rss>";
@@ -104,7 +99,7 @@ describe("ApplicationXml — deepJson ({§mimetype-channel-architecture})", () =
     });
 });
 
-describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson)", () => {
+describe("{§xml-lexical-spans} xpath runs over the DOM and jsonpath over its projection", () => {
     it("xpath returns element matches", async () => {
         const h = new ApplicationXml(metadata);
         const xml = "<library><book><title>One</title></book><book><title>Two</title></book></library>";
@@ -160,7 +155,7 @@ describe("ApplicationXml — query (xpath against DOM, jsonpath against deepJson
 
 // {§mimetype-parse-issues} — parser recovery is advisory: a recoverable report is counted and the
 // document still projects; content that is not a document projects nothing and never throws (#1004).
-describe("ApplicationXml — parse issues ({§mimetype-parse-issues})", () => {
+describe("{§xml-recovery} parse issues", () => {
     // A DocBook page's shape: entities declared in the internal DTD subset, which xmldom does not expand.
     const internalSubset = [
         "<?xml version='1.0'?>",

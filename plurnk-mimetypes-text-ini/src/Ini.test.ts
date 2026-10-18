@@ -17,7 +17,7 @@ const CFG = [
     `python_requires = >=3.10`,
 ].join("\n");
 
-describe("Ini — sections and keys as symbols", () => {
+describe("{§ini-symbols} sections are modules and keys are fields", () => {
     it("sections are modules, keys are fields contained by their section", () => {
         const syms = h().extractRaw(CFG);
         const meta = syms.find((s) => s.name === "metadata");
@@ -34,7 +34,7 @@ describe("Ini — sections and keys as symbols", () => {
     });
 });
 
-describe("Ini — deepJson nested object", () => {
+describe("{§ini-tree} deepJson is the nested section object", () => {
     it("builds { section: { key: value } } with top-level keys at root", () => {
         const tree = h().deepJson(CFG) as Record<string, unknown>;
         assert.equal(tree.root, "true");

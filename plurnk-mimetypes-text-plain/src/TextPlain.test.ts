@@ -14,7 +14,7 @@ const streamMetadata = {
     extensions: [] as const,
 };
 
-describe("TextPlain — text/plain (prose)", () => {
+describe("{§plain-text-defaults} text/plain is BaseHandler's defaults", () => {
     it("instantiates with text/plain metadata", () => {
         const h = new TextPlain(plainMetadata);
         assert.equal(h.mimetype, "text/plain");
@@ -38,7 +38,7 @@ describe("TextPlain — text/plain (prose)", () => {
     });
 });
 
-describe("TextPlain — text/stream (live data)", () => {
+describe("{§plain-text-defaults} text/stream is the same class under its own name", () => {
     it("instantiates with text/stream metadata and reports its own mimetype", () => {
         const h = new TextPlain(streamMetadata);
         assert.equal(h.mimetype, "text/stream");
@@ -52,7 +52,7 @@ describe("TextPlain — text/stream (live data)", () => {
     });
 });
 
-describe("TextPlain — query (inherited)", () => {
+describe("{§mimetype-query} the inherited default dispatch serves both names", () => {
     it("regex against text body works on both mimetypes", async () => {
         const plain = new TextPlain(plainMetadata);
         const stream = new TextPlain(streamMetadata);

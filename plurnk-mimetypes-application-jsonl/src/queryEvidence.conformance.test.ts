@@ -6,7 +6,7 @@ import Handler from "./Jsonl.ts";
 const h = new Handler({"mimetype":"application/jsonl","glyph":"🧾","extensions":[".jsonl",".ndjson"]});
 const src = "{\"name\":\"a\",\"v\":1}\n{\"name\":\"b\",\"v\":2}\n";
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§jsonl-records} query evidence distinguishes exact records from exact field evidence", () => {
     it("jsonpath distinguishes exact records from exact field evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {

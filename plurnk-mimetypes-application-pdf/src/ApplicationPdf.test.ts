@@ -5,7 +5,7 @@ import { buildPdf } from "./buildPdf.ts";
 
 const handler = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] });
 
-test("{§mimetype-pdf-facts} validate accepts the %PDF- magic, with or without a BOM, and refuses anything else", () => {
+test("{§pdf-magic} validate accepts the %PDF- magic, with or without a BOM, and refuses anything else", () => {
     const pdf = buildPdf({ title: "T" });
     handler.validate(pdf);
     handler.validate(new Uint8Array([0xef, 0xbb, 0xbf, ...pdf]));
@@ -21,7 +21,7 @@ test("{§mimetype-pdf-facts} facts are the page tree's count and the byte size; 
     assert.deepEqual(handler.deepJson(pdf), { pages: 1, bytes: pdf.length });
 });
 
-test("{§mimetype-pdf-facts} a compressed page tree yields no page count, only the size", () => {
+test("{§pdf-facts-line} a compressed page tree yields no page count, only the size", () => {
     const opaque = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<< /Type /ObjStm /N 3 >>\nstream\n \nendstream\nendobj\n%%EOF\n");
     assert.deepEqual(handler.facts(opaque), { pages: null, bytes: opaque.length });
     assert.equal(handler.content(opaque), `PDF document, ${opaque.length} bytes`);

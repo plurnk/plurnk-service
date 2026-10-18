@@ -7,7 +7,7 @@ import Handler from "./TextMarkdown.ts";
 const h = new Handler({"mimetype":"text/markdown","glyph":"📝","extensions":[".md",".markdown"]});
 const src = "# Alpha\n\nintro\n\n## Beta\n";
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§mimetype-query-conformance} blocks are exact regions and scalars enclosing in both dialects", () => {
     it("jsonpath distinguishes exact block and enclosing scalar evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {

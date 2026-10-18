@@ -8,19 +8,15 @@ const metadata = {
     extensions: [".md", ".markdown"] as const,
 };
 
-describe("TextMarkdown", () => {
-    it("instantiates with metadata", () => {
-        const h = new TextMarkdown(metadata);
-        assert.equal(h.mimetype, "text/markdown");
-        assert.equal(h.glyph, "📝");
-    });
-
+describe("{§mimetype-validation} validate is the no-op default", () => {
     it("validate is a no-op (any string is valid markdown)", () => {
         const h = new TextMarkdown(metadata);
         assert.doesNotThrow(() => h.validate(""));
         assert.doesNotThrow(() => h.validate("not really markdown @@@"));
     });
+});
 
+describe("{§markdown-symbols} headings and code blocks are the symbols", () => {
     it("extracts a single ATX heading", () => {
         const h = new TextMarkdown(metadata);
         const symbols = h.extractRaw("# Title\n");
@@ -127,9 +123,9 @@ describe("TextMarkdown", () => {
         assert.equal(symbols[0].name, "Heading");
     });
 
-    it("returns empty array for content with no headings or code blocks", () => {
+    it("returns empty array for prose with no headings or code blocks", () => {
         const h = new TextMarkdown(metadata);
-        assert.deepEqual(h.extractRaw("Just a paragraph with no structure."), []);
+        assert.deepEqual(h.extractRaw("Some prose without headings.\nMore prose. Still no structure."), []);
     });
 
     it("returns empty array for empty input", () => {
@@ -151,14 +147,10 @@ describe("TextMarkdown", () => {
         assert.ok(out.includes("## Section"));
         assert.ok(out.includes("### Subsection"));
     });
+});
 
-    it("extractRaw returns [] for prose with no headings or code blocks (poem case)", async () => {
-        const h = new TextMarkdown(metadata);
-        const poem = "Some prose without headings.\nMore prose. Still no structure.";
-        assert.deepEqual(h.extractRaw(poem), []);
-    });
-
-    it("{§mimetype-symbol-container}: headings carry ancestor-heading container paths", async () => {
+describe("{§mimetype-symbol-container} containers are the open ancestor-heading path", () => {
+    it("headings carry ancestor-heading container paths", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n### C\n\n## D\n";
         const syms = h.extractRaw(src);
@@ -169,20 +161,22 @@ describe("TextMarkdown", () => {
         assert.equal(byName.get("D")!.container, "A", "level-2 D closes B and C");
     });
 
-    it("{§mimetype-symbol-container}: code blocks carry the innermost open heading as container", async () => {
+    it("code blocks carry the innermost open heading as container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n```ts\nconst x = 1;\n```\n";
         const syms = h.extractRaw(src);
         assert.equal(syms.find((s) => s.kind === "module")!.container, "A.B");
     });
 
-    it("{§mimetype-symbol-container}: code block before any heading has no container", async () => {
+    it("code block before any heading has no container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "```ts\nconst x = 1;\n```\n\n# After\n";
         const syms = h.extractRaw(src);
         assert.equal("container" in syms.find((s) => s.kind === "module")!, false);
     });
+});
 
+describe("{§markdown-tree} deepJson is the block-token tree", () => {
     it("deepJson returns the marked AST as a document tree with line annotations", async () => {
         const h = new TextMarkdown(metadata);
         const tree = await h.deepJson("# Top\n\nA paragraph.\n\n```ts\nconst x = 1;\n```\n") as {
@@ -203,8 +197,10 @@ describe("TextMarkdown", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
     });
+});
 
-    it("{§mimetype-summary}: derives the first paragraph directly under the first exact Summary H2", () => {
+describe("{§mimetype-summary} summary is frontmatter description, else the Summary paragraph", () => {
+    it("derives the first paragraph directly under the first exact Summary H2", () => {
         const h = new TextMarkdown(metadata);
         const source = [
             "# Tool",
@@ -223,7 +219,7 @@ describe("TextMarkdown", () => {
         assert.equal(h.summary(source), "Read one issue and its\ndiscussion.");
     });
 
-    it("{§mimetype-summary}: ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {
+    it("ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("# Summary\n\nWrong depth."), undefined);
         assert.equal(h.summary("### Summary\n\nWrong depth."), undefined);
@@ -232,7 +228,7 @@ describe("TextMarkdown", () => {
         assert.equal(h.summary("## Summary\n\n### Detail\n\nNot direct."), undefined);
     });
 
-    it("{§mimetype-summary}: prefers standard frontmatter descriptions without altering Markdown", () => {
+    it("prefers standard frontmatter descriptions without altering Markdown", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("---\r\ndescription: Read bundled references\r\n---\r\n## Summary\n\nDetails."), "Read bundled references");
         assert.equal(h.summary("---\ndescription: >-\n  Read bundled\n  references\n---\n"), "Read bundled references");
@@ -243,16 +239,20 @@ describe("TextMarkdown", () => {
         assert.equal(h.summary("```md\n---\ndescription: fenced\n---\n```"), undefined);
     });
 
-    it("{§mimetype-summary}: recognizes a semantic setext H2", () => {
+    it("recognizes a semantic setext H2", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("Summary\n-------\n\nA compact description."), "A compact description.");
     });
+});
 
-    it("{§mimetype-channel-architecture}: jsonpath queries the deep-json markdown AST", async () => {
+describe("{§mimetype-query} structural dialects query the tree, regex the raw body", () => {
+    const md = "# Project\n\nIntro line.\n\n## Build\n\nRun npm ci.\nThen npm test.\n\n## Testing\n\nUse node --test.\n\n## Style\n\nDouble quotes.\n";
+
+    it("jsonpath queries the deep-json markdown AST", async () => {
         const h = new TextMarkdown(metadata);
         const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");
         // Find all heading nodes via filter expression — full-tree reach per
-        // the deep-json contract.
+        // the deep-json contract ({§mimetype-channel-architecture}).
         const headings = await h.query(src, "jsonpath", "$..children[?(@.type=='heading')]");
         assert.equal(headings.length, 3);
         const names = headings.map((m) => (m.matched as { text: string }).text);
@@ -269,14 +269,10 @@ describe("TextMarkdown", () => {
         const src = "# Top\n\nSome body with codename: phoenix in it.";
         const out = await h.query(src, "regex", "codename: (\\w+)");
         assert.equal(out.length, 1);
-        // Anonymous captures per {§mimetype-query}: array of capture values only
-        // (the full match itself is not included).
+        // Anonymous captures: array of capture values only (the full match
+        // itself is not included).
         assert.deepEqual(out[0].matched, ["phoenix"]);
     });
-});
-
-describe("TextMarkdown structural queries ({§mimetype-query})", () => {
-    const md = "# Project\n\nIntro line.\n\n## Build\n\nRun npm ci.\nThen npm test.\n\n## Testing\n\nUse node --test.\n\n## Style\n\nDouble quotes.\n";
 
     it("xpath selects headings by level through the content attribute and by text", async () => {
         const h = new TextMarkdown(metadata);

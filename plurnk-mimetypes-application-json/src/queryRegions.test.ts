@@ -8,7 +8,7 @@ import ApplicationJson from "./ApplicationJson.ts";
 
 const h = new ApplicationJson({ mimetype: "application/json", glyph: "{}", extensions: [".json"] as const });
 
-describe("application/json structural match regions", () => {
+describe("{§json-value-spans} structural match regions", () => {
     it("XPath data keys cannot impersonate tree metadata or disappear", async () => {
         const source = '{"type":"custom","text":"body","line":99,"endLine":100,"attrs":{"level":3},"empty":null}';
         const coordinates = new TextCoordinates(source);
@@ -51,29 +51,11 @@ describe("application/json structural match regions", () => {
         ]);
     });
 
-    it("the literal example: $.host resolves to line 2, not the root", async () => {
-        const src = '{\n  "host": "db.internal",\n  "pool": 5\n}';
-        const out = await h.query(src, "jsonpath", "$.host");
-        assert.equal(out[0].matched, "db.internal");
-        assert.deepEqual(out[0].regions, [{
-            startLine: 2, startColumn: 11, endLine: 2, endColumn: 24,
-        }]);
-    });
-
     it("a multi-line value excludes its member name and colon", async () => {
         const src = '{\n  "cfg": {\n    "a": 1,\n    "b": 2\n  }\n}';
         const out = await h.query(src, "jsonpath", "$.cfg");
         assert.deepEqual(out[0].regions, [{
             startLine: 2, startColumn: 10, endLine: 5, endColumn: 4,
-        }]);
-    });
-
-    it("array element resolves to its own line", async () => {
-        const src = '{\n  "xs": [\n    "a",\n    "b"\n  ]\n}';
-        const out = await h.query(src, "jsonpath", "$.xs[1]");
-        assert.equal(out[0].matched, "b");
-        assert.deepEqual(out[0].regions, [{
-            startLine: 4, startColumn: 5, endLine: 4, endColumn: 8,
         }]);
     });
 

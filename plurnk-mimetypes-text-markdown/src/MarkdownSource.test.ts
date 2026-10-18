@@ -6,7 +6,7 @@ import TextMarkdown from "./TextMarkdown.ts";
 const handler = new TextMarkdown({ mimetype: "text/markdown", glyph: "", extensions: [".md"] });
 
 for (const separator of ["\n", "\r\n", "\r"]) {
-    test(`Markdown block coordinates preserve source after definitions (${JSON.stringify(separator)})`, async () => {
+    test(`{§markdown-block-regions} block coordinates preserve source after definitions (${JSON.stringify(separator)})`, async () => {
         const source = ["[a]: /one", "", "[a]: /two", "", "# 😀 Title", "", "Setext", "------", "", "> nested **text**", ""].join(separator);
         const coordinates = new TextCoordinates(source);
         for (const [dialect, pattern] of [["jsonpath", "$..[?(@.type=='heading')]"], ["xpath", "//heading"]] as const) {

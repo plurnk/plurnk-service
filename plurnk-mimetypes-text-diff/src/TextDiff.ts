@@ -1,36 +1,8 @@
 import { BaseHandler, TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
-// text/x-diff handler (Tier 4 hand-roll, no parser dependency).
-//
-// Why hand-rolled — tree-sitter-diff is empirically disqualified. A unified
-// diff is rigidly line-oriented, and the one fact that disambiguates it is
-// NON-context-free: the hunk header `@@ -a,b +c,d @@` declares a LINE BUDGET
-// (b old slots + d new slots). Only by tracking remaining budget can a `-`
-// line whose content begins with `--` (e.g. deleting `--- old config`) be
-// known to be a deletion rather than the start of a new file header. A
-// context-free grammar can't count that budget, so tree-sitter-diff
-// mis-classifies; and on combined/merge diffs (`diff --cc`, `@@@`) it ERRORs
-// outright. A focused line scanner has neither problem. A 2026-06 probe with
-// a ~53-LOC prototype matched `git diff --shortstat`
-// byte-exact on a 10,894-line real diff.)
-//
-// Symbol model: each file section → `module` (name = new path, or `old → new`
-// for renames, or old path for pure deletions). Each hunk → `field` (a member
-// of the file; hunks aren't callable), named by git's section-heading text
-// when present (`function greet(name) {` — name-joinable to source entries),
-// else by its new-file coordinates `@@ +c,d`. line/endLine span the section /
-// hunk WITHIN THE DIFF DOCUMENT (not the target file).
-//
-// deepJson carries the target-file ranges + per-file stats for jsonpath: a
-// `{ type:"diff", files:[{ type:"file", ..., hunks:[{ type:"hunk", ... }] }] }`
-// tree that projects cleanly to deep-xml (each object's `type` names the
-// element; oldStart/newStart/counts/heading become queryable child elements).
-//
-// References are deferred (refs-free for v1). A future file-path use-edge is
-// plausible — entry paths are in-corpus, so a diff's touched paths could link
-// to the entries they patch — but it is NOT built here (precision over
-// speculation).
+// text/x-diff handler: a hand-written line scanner whose one piece of state is the hunk
+// line budget ({§diff-line-budget}). Symbols are {§diff-symbols}; deepJson is {§diff-tree}.
 export default class TextDiff extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const { files } = scanDiff(toText(content));

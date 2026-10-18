@@ -8,7 +8,7 @@ const h = new TextHtml({ mimetype: "text/html", glyph: "H", extensions: [".html"
 const html = "<html>\n<body>\n<div>\n<p>x</p>\n</div>\n</body>\n</html>";
 const regions = [{ startLine: 3, startColumn: 1, endLine: 5, endColumn: 7 }];
 
-describe("HTML structural match evidence", () => {
+describe("{§html-source-regions} both structural dialects address the source markup", () => {
     it("{§mimetype-content-query} both structural dialects address the source markup", async () => {
         await assertQueryEvidenceConformance(h, [
             {
@@ -51,7 +51,7 @@ for (const { source, pattern, selected } of [
     { source: '😀\r\n<p>😀&amp;</p>', pattern: '//p/text()', selected: ['😀&amp;'] },
     { source: '<script>if (a < b) f();</script>', pattern: '//script/text()', selected: ['if (a < b) f();'] },
 ]) {
-    it(`XPath ${pattern} follows the HTML parser's exact source bounds`, async () => {
+    it(`{§html-source-regions} XPath ${pattern} follows the HTML parser's exact source bounds`, async () => {
         const matches = await h.query(source, "xpath", pattern);
         const coordinates = new TextCoordinates(source);
         assert.deepEqual(matches.map((match) => {
@@ -62,7 +62,7 @@ for (const { source, pattern, selected } of [
     });
 }
 
-it("an implied HTML element has no invented source region", async () => {
+it("{§html-source-regions} an implied HTML element has no invented source region", async () => {
     const [body] = await h.query("<p>text</p>", "xpath", "//body");
     assert.equal(body.matching, "//body");
     assert.equal(body.regions, undefined);

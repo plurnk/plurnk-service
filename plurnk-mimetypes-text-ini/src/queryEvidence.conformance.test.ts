@@ -6,7 +6,7 @@ import Handler from "./Ini.ts";
 const h = new Handler({"mimetype":"text/x-ini","glyph":"⚙️","extensions":[".ini",".cfg","setup.cfg","tox.ini","pytest.ini",".editorconfig",".flake8",".pylintrc"]});
 const src = "[server]\nhost = x\nport = 5\n";
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§mimetype-query-conformance} both structural dialects report exact INI spans", () => {
     it("jsonpath reports the exact value span", async () => {
         await assertQueryEvidenceConformance(h, [{
             source: src,

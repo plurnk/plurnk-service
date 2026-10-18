@@ -3,21 +3,8 @@ import { Lexer, type Token } from "marked";
 import { parseDocument } from "yaml";
 import MarkdownSource from "./MarkdownSource.ts";
 
-// text/markdown handler. marked's lexer handles ATX and setext headings,
-// leading whitespace edge cases, and code-fence positions.
-//
-// Symbols emitted:
-//   - heading: every heading at every depth, with `level` from token.depth
-//   - module:  every fenced code block, named by its language tag (or "code"
-//              when no language), with line range covering the full fence
-//
-// container ({§mimetype-symbol-container}): the dotted path of the open ancestor
-// headings — a lower `level` opens an ancestor scope; a heading at level N
-// closes every open heading at level >= N. Top-level symbols omit the key.
-// Heading names are used verbatim as path segments (may contain dots).
-// Source spans come from the lexer callbacks, not rendered Markdown.
-//
-// validate() inherits BaseHandler's no-op default (any string is valid markdown).
+// text/markdown handler over marked's lexer. Symbols are {§markdown-symbols}; deepJson is
+// {§markdown-tree}; block coordinates come from the lexer callbacks ({§markdown-block-regions}).
 export default class TextMarkdown extends BaseHandler {
     override summary(content: HandlerContent): string | undefined {
         if (typeof content !== "string") return undefined;
@@ -58,14 +45,7 @@ export default class TextMarkdown extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel ({§mimetype-channel-architecture}). The markdown AST as nested objects — heading,
-    // paragraph, list, code block, blockquote, etc. — preserves enough
-    // structure for jsonpath like `$..[?(@.type=='code' && @.lang=='ts')]` or
-    // `$..[?(@.type=='heading' && @.level==1)]`. Each node carries `type`, `line`, `endLine`,
-    // plus its native marked fields (depth/text/lang/items/etc.).
-    //
-    // Returned as `{ type: "document", children: [...] }` so it presents as a
-    // single rooted tree (matches the deep-xml projection: <document>...</document>).
+    // {§markdown-tree}: one rooted tree, so the deep-xml projection is <document>...</document>.
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
         const source = new MarkdownSource(content);

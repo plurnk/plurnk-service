@@ -10,7 +10,7 @@ const src = notebook({
     metadata: {}, nbformat: 4, nbformat_minor: 5,
 }, 1);
 
-describe("query-evidence conformance (both dialects)", () => {
+describe("{§ipynb-source} query evidence carries notebook-JSON regions on both dialects", () => {
     it("jsonpath: a cell property carries its source region", async () => {
         await assertQueryEvidenceConformance(h, [{
             source: src, dialect: "jsonpath", pattern: "$.cells[0].cell_type", verdict: "exact",

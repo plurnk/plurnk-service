@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-application-jsonl
 
-`application/jsonl` (JSON Lines / NDJSON) mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Hand-rolled, no parser dependency.
+`application/jsonl` (JSON Lines / NDJSON) mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem.
 
 ## install
 
@@ -10,13 +10,12 @@ npm i @plurnk/plurnk-mimetypes-application-jsonl
 
 ## what it does
 
-One JSON value per line — training data, eval sets, fine-tune files, chat/agent logs. The structural definition of a JSONL dataset is its **record schema**, not its rows (a file can be millions of lines), so:
+One JSON value per line: training data, eval sets, fine-tune files, chat and agent logs.
 
-- `extractRaw(content)` — the schema: each distinct top-level key across records becomes a `field` symbol at the line it first appears. Scale-safe (bounded by schema width, not record count), and it answers "what is this dataset" — `{prompt, completion, score}`.
-- `deepJson(content)` — the parsed records array, a jsonpath target (`$[5].completion`), computed only on demand.
-- `query(content, dialect, pattern)` — jsonpath dispatches against the records array; regex/glob against the raw text.
+- `extractRaw(content)` emits the record schema, one `field` per distinct top-level key, so symbols stay bounded by schema width rather than record count ({§jsonl-schema}).
+- `deepJson(content)` is the records array; JSONPath and XPath locate a record on its line and a nested value within it ({§jsonl-records}).
 
-Lenient by design: blank lines are skipped, and a line that doesn't parse is skipped (a trailing newline or a partial write doesn't poison the file). The raw body is already readable JSON-per-line, so text scopes address its physical lines. JSONPath locates matching records but never changes the text-region coordinate system. References are not applicable.
+The raw body is already readable JSON-per-line, so there is no content projection and text matchers address its physical lines.
 
 ## license
 

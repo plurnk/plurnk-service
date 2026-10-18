@@ -28,7 +28,7 @@ const WEBP_VP8X = new Uint8Array([
     0xff, 0x03, 0x00, 0x7f, 0x02, 0x00, // canvas 1024 × 640 (minus one)
 ]);
 
-describe("Image — validate", () => {
+describe("{§mimetype-image} validate checks the header magic and nothing else", () => {
     it("accepts each format by its header magic and refuses garbage", () => {
         assert.doesNotThrow(() => png.validate(PNG));
         assert.doesNotThrow(() => jpeg.validate(JPEG));
@@ -44,7 +44,7 @@ describe("Image — validate", () => {
     });
 });
 
-describe("Image — facts and body", () => {
+describe("{§mimetype-image} the body and deepJson are the header's facts", () => {
     it("reads dimensions from each header and states them as the body", () => {
         assert.deepEqual(png.facts(PNG), { format: "png", width: 640, height: 480, bytes: PNG.length });
         assert.equal(png.content(PNG), `PNG image, 640×480 px, ${PNG.length} bytes`);

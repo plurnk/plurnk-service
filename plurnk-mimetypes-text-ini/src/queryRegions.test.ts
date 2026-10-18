@@ -1,4 +1,3 @@
-// {§mimetype-query}: assignment values retain their own lexical source spans.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Ini from "./Ini.ts";
@@ -6,7 +5,7 @@ import Ini from "./Ini.ts";
 const h = new Ini({ mimetype: "text/x-ini", glyph: "⚙", extensions: [".ini"] as const });
 const src = "[server]\nhost = db.internal\nport = 5432\n\n[log]\nlevel = info\n";
 
-describe("INI JSONPath match regions", () => {
+describe("{§ini-regions} values and sections resolve to their own lexical source spans", () => {
     it("a section replacing a global key retains only the section's source", async () => {
         const source = "group = old\n[group]\nkey = value";
         assert.deepEqual(h.deepJson(source), { group: { key: "value" } });

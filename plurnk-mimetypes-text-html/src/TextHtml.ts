@@ -19,24 +19,8 @@ import * as xpath from "xpath";
 import { htmlToMarkdown } from "./htmlToMarkdown.ts";
 import { markdownWrapColumns } from "./wrapMarkdown.ts";
 
-// text/html + application/xhtml+xml handler. Parses with parse5 and emits
-// structural symbols.
-//
-// Symbols emitted (with source positions from parse5's
-// sourceCodeLocationInfo — 1-indexed line/endLine/column/endColumn):
-//   - <h1>-<h6>          → heading, level from tag
-//   - <title>            → heading level 1, only if no <h1> at document root
-//   - <pre><code class="language-X">  → module named X
-//   - <pre><code>        → module named "code"
-//
-// Container (SPEC §3): a heading carries the dotted path of its open
-// ancestor headings by level (document order, markdown-style — HTML headings
-// don't nest in the DOM). Code-block modules carry the qualified path of the
-// innermost open heading. Top-level symbols and the title-as-h1 fallback
-// carry no container key.
-//
-// Pages with no headings, no title, and no code blocks produce an empty
-// symbol list — the honest channel for unstructured markup.
+// text/html + application/xhtml+xml handler. Symbols are {§html-symbols}; deepJson is
+// {§html-tree}; structural queries address the parse5 tree ({§html-source-regions}).
 
 type Element = DefaultTreeAdapterMap["element"];
 type ChildNode = DefaultTreeAdapterMap["childNode"];

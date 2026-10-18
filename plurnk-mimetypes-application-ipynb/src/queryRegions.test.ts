@@ -16,7 +16,7 @@ const nb = notebook(
     1,
 );
 
-describe("ipynb structural match evidence", () => {
+describe("{§ipynb-source} structural matches carry notebook-JSON regions", () => {
     it("every cell match retains its locator and actual JSON source region", async () => {
         const out = await h.query(nb, "jsonpath", "$.cells[*]");
         assert.equal(out.length, 2);
@@ -36,7 +36,7 @@ describe("ipynb structural match evidence", () => {
 
 // {§mimetype-content} — the readable projection is a channel the consumer stores; regex over the
 // source channel sees the notebook JSON itself, in the JSON's own coordinates.
-it("regex runs over the notebook source, never the Markdown projection", async () => {
+it("{§mimetype-content-query} regex runs over the notebook source, never the Markdown projection", async () => {
     const heading = await h.query(nb, "regex", "# T");
     assert.equal(heading.length, 1);
     const key = await h.query(nb, "regex", "cell_type");

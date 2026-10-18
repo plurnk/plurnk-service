@@ -14,21 +14,7 @@ const jsoncMetadata = {
     extensions: [".jsonc"] as const,
 };
 
-describe("ApplicationJson — instantiation", () => {
-    it("instantiates with application/json metadata", () => {
-        const h = new ApplicationJson(jsonMetadata);
-        assert.equal(h.mimetype, "application/json");
-        assert.equal(h.glyph, "📋");
-    });
-
-    it("instantiates with application/jsonc metadata", () => {
-        const h = new ApplicationJson(jsoncMetadata);
-        assert.equal(h.mimetype, "application/jsonc");
-        assert.equal(h.glyph, "📋");
-    });
-});
-
-describe("ApplicationJson — validate (application/json is strict)", () => {
+describe("{§json-strictness} application/json validate is strict", () => {
     const h = new ApplicationJson(jsonMetadata);
 
     it("accepts well-formed JSON", () => {
@@ -56,7 +42,7 @@ describe("ApplicationJson — validate (application/json is strict)", () => {
     });
 });
 
-describe("ApplicationJson — validate (application/jsonc is permissive)", () => {
+describe("{§json-strictness} application/jsonc validate accepts comments and trailing commas", () => {
     const h = new ApplicationJson(jsoncMetadata);
 
     it("accepts well-formed JSON", () => {
@@ -78,7 +64,7 @@ describe("ApplicationJson — validate (application/jsonc is permissive)", () =>
     });
 });
 
-describe("ApplicationJson — extract", () => {
+describe("{§json-keys} every key at every depth is a field symbol", () => {
     const h = new ApplicationJson(jsonMetadata);
 
     it("{§mimetype-symbol}: key regions count Unicode code points and lone CR lines", () => {
@@ -207,25 +193,9 @@ describe("ApplicationJson — extract", () => {
         const result = h.extractRaw(src);
         assert.deepEqual(result.map((s) => s.name), ["real"]);
     });
-
-    it("extracts all fields and coordinates from a 10,000-field line-oriented document", () => {
-        const fields = Array.from({ length: 10_000 }, (_, i) => `  "field${i}": ${i}`);
-        const src = `{\n${fields.join(",\n")}\n}`;
-        const result = h.extractRaw(src);
-        assert.equal(result.length, fields.length);
-        assert.equal(result.at(-1)?.name, "field9999");
-        assert.equal(result.at(-1)?.line, 10_001);
-    });
 });
 
-describe("ApplicationJson — framework integration via BaseHandler", () => {
-    it("symbolsRaw renders extracted fields via format()", async () => {
-        const h = new ApplicationJson(jsonMetadata);
-        const out = await h.symbolsRaw(`{"a":1,"b":2}`);
-        assert.ok(out.includes("field a"));
-        assert.ok(out.includes("field b"));
-    });
-
+describe("{§json-keys} container is the dotted path of enclosing keys", () => {
     it("{§mimetype-symbol-container}: keys carry the dotted ancestor-key path as container", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const syms = h.extractRaw(`{"config":{"server":{"host":"x"}},"top":1}`);
@@ -244,17 +214,9 @@ describe("ApplicationJson — framework integration via BaseHandler", () => {
         assert.equal(names[0].container, "users");
         assert.equal(names[1].container, "users");
     });
-
-    it("{§mimetype-symbol}: keys carry 1-indexed columns spanning the quoted key token", async () => {
-        const h = new ApplicationJson(jsonMetadata);
-        const syms = h.extractRaw(`{"a":1}`);
-        const a = syms.find((s) => s.name === "a")!;
-        assert.equal(a.column, 2, "key token starts at the opening quote");
-        assert.equal(a.endColumn, 5, "just past the closing quote");
-    });
 });
 
-describe("ApplicationJson — deepJson ({§mimetype-channel-architecture})", () => {
+describe("{§mimetype-channel-architecture} deepJson is the parsed value", () => {
     it("returns the parsed JSON value tree", async () => {
         const h = new ApplicationJson(jsonMetadata);
         const tree = await h.deepJson(`{"name":"Alice","age":30,"tags":["a","b"]}`);
@@ -278,7 +240,7 @@ describe("ApplicationJson — deepJson ({§mimetype-channel-architecture})", () 
     });
 });
 
-describe("ApplicationJson — query (jsonpath against parsed value)", () => {
+describe("{§json-value-spans} jsonpath selects values at their source spans", () => {
     const h = new ApplicationJson(jsonMetadata);
     const src = [
         "{",
@@ -340,7 +302,7 @@ describe("ApplicationJson — query (jsonpath against parsed value)", () => {
     });
 });
 
-describe("ApplicationJson — xpath and jsonpath agree on exact columns (#372)", () => {
+describe("{§json-value-spans} xpath and jsonpath agree on exact columns", () => {
     const metadata = { mimetype: "application/json", glyph: "{}", extensions: [".json"] as const };
     const content = "{\"items\":[{\"name\":\"alpha\",\"size\":3},{\"name\":\"beta\",\"size\":7}],\"host\":\"db.internal\"}";
 

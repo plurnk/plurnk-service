@@ -37,7 +37,7 @@ const NB = notebook({
     ],
 });
 
-describe("Ipynb — content channel (notebook → reading markdown)", () => {
+describe("{§ipynb-reading} content is the notebook as reading Markdown", () => {
     it("markdown cells verbatim, code cells fenced in the kernel language", () => {
         const md = h().content(NB) as string;
         assert.match(md, /# Analysis/);
@@ -58,7 +58,7 @@ describe("Ipynb — content channel (notebook → reading markdown)", () => {
     });
 });
 
-describe("Ipynb — symbols index into the projection", () => {
+describe("{§ipynb-cells} symbols index into the reading projection", () => {
     it("markdown headings become heading symbols with levels", () => {
         const syms = h().extractRaw(NB);
         const analysis = syms.find((s) => s.name === "Analysis");
@@ -89,7 +89,7 @@ describe("Ipynb — symbols index into the projection", () => {
     });
 });
 
-describe("Ipynb — deepJson + validate", () => {
+describe("{§ipynb-source} deepJson is the notebook and validate is the JSON gate", () => {
     it("deepJson is the parsed notebook (jsonpath target)", () => {
         const tree = h().deepJson(NB) as { cells: unknown[] };
         assert.equal(tree.cells.length, 4);

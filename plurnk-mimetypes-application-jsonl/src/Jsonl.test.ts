@@ -12,7 +12,7 @@ const DATA = [
     `{"prompt":"x","completion":"y"}`,
 ].join("\n") + "\n";
 
-describe("Jsonl — record schema as symbols", () => {
+describe("{§jsonl-schema} record schema as symbols", () => {
     it("emits one field per distinct top-level key, at first occurrence", () => {
         const syms = h().extractRaw(DATA);
         assert.deepEqual(syms.map((s) => s.name), ["prompt", "completion", "score"]);
@@ -22,7 +22,7 @@ describe("Jsonl — record schema as symbols", () => {
     });
 });
 
-describe("Jsonl — deepJson is the records array", () => {
+describe("{§jsonl-records} deepJson is the records array", () => {
     it("parsed records, jsonpath-addressable", () => {
         const records = h().deepJson(DATA) as Array<Record<string, unknown>>;
         assert.equal(records.length, 3);

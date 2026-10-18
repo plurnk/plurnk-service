@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-text-plain
 
-`text/plain` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem.
+`text/plain` and `text/stream` mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem.
 
 ## install
 
@@ -8,19 +8,9 @@
 npm install @plurnk/plurnk-mimetypes-text-plain
 ```
 
-plurnk-service discovers this handler automatically via its `plurnk.kind: "mimetype"` declaration in `package.json`.
-
 ## what it does
 
-Nothing structural. text/plain has no symbols to extract — [`BaseHandler`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes)'s defaults (empty `extractRaw`, no-op `validate`, derived `symbolsRaw`) are exactly right.
-
-## development
-
-```sh
-npm install
-npm run build
-npm test
-```
+Nothing structural: plain text has no symbols to extract, so the handler is `BaseHandler`'s defaults under two registered names ({§plain-text-defaults}). Regex and glob match the raw body, which is readable as it is.
 
 ## license
 
