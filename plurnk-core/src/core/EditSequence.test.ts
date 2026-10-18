@@ -32,7 +32,7 @@ for (const separator of ["\n", "\r\n", "\r"]) {
         { marks: [2], body: "TWO\nextra", oldLine: 3, newLine: 4 },
         { marks: [2, 2, 2, 3], body: "😀", oldLine: 3, newLine: 3 },
         { marks: [3, 1, 3, 1], body: "before\n", oldLine: 3, newLine: 4 },
-    ]) test(`{§edit-anchor-continuity}: ${JSON.stringify(separator)} <${fixture.marks}> preserves an untouched line`, () => {
+    ]) test(`{§edit-anchor-continuity}: ${JSON.stringify(separator)} <${fixture.marks.join(",")}> preserves an untouched line`, () => {
         const source = original.replaceAll("\n", separator);
         const sequence = new EditSequence();
         const hash = LineAnchors.tokens(identity, source)[fixture.oldLine - 1];

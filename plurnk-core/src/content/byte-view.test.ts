@@ -44,7 +44,7 @@ for (const { marks, expected } of [
     { marks: [0], expected: [9, 0, 1, 2, 3] },
     { marks: [-1], expected: [0, 1, 2, 3, 9] },
     { marks: [1, -1], expected: [9] },
-]) test(`{§binary-parity} byte splice <${marks}> preserves every other byte`, () => {
+]) test(`{§binary-parity} byte splice <${marks.join(",")}> preserves every other byte`, () => {
     const result = ByteView.splice(new Uint8Array([0, 1, 2, 3]), [{ marker: { marks } as LineMarker, bytes: new Uint8Array([9]) }]);
     assert.ok("bytes" in result, JSON.stringify(result));
     assert.deepEqual([...result.bytes], expected);

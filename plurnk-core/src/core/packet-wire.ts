@@ -236,7 +236,7 @@ export default class PacketWire {
         const rows = Array.isArray(failures) ? failures as FailurePointer[] : [];
         const pointers = rows
             .filter((row) => typeof row.status === "number" && typeof row.coordinate === "string")
-            .map((row) => JSON.stringify({ status: row.status, path: `log:///${row.coordinate}` }));
+            .map((row) => JSON.stringify({ status: row.status, path: `log:///${String(row.coordinate)}` }));
         return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 

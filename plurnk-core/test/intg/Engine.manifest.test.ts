@@ -207,7 +207,7 @@ test("{§scheme-catalog-aside} catalog projects a bounded aside on only its exac
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
         const tool = catalog.find(([channel]) => channel.path === "worker:///tool.md");
-        assert.equal([...tool![0].aside!].length, 256);
+        assert.equal(Array.from(tool![0].aside!).length, 256);
         assert.equal(tool![0].aside, `${"x".repeat(255)}…`);
         assert.equal("aside" in tool![1], false, "one channel's aside never labels a sibling channel");
     } finally { await db.close(); }

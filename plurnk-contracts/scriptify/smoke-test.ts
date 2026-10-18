@@ -51,7 +51,7 @@ try {
     const sourceSchemas = (await readdir(join(contractsDir, "schema"))).toSorted();
     const shippedSchemas = (await readdir(join(tempDir, "node_modules", "@plurnk", "plurnk-contracts", "dist", "schema"))).toSorted();
     if (JSON.stringify(sourceSchemas) !== JSON.stringify(shippedSchemas)) {
-        throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas}] vs source [${sourceSchemas}]`);
+        throw new Error(`dist/schema diverges from schema/: shipped [${shippedSchemas.join(", ")}] vs source [${sourceSchemas.join(", ")}]`);
     }
     process.stdout.write(`[smoke] dist/schema mirrors schema/ (${sourceSchemas.length} files)\n`);
 
@@ -113,7 +113,7 @@ console.log("OK: wire contracts are consumable through one installed entrypoint.
 } catch (e) {
     await cleanup();
     const err = e as { message?: string; stdout?: string; stderr?: string };
-    process.stderr.write(`[smoke] FAIL: ${err.message ?? e}\n`);
+    process.stderr.write(`[smoke] FAIL: ${err.message ?? String(e)}\n`);
     if (err.stdout) process.stderr.write(`[stdout] ${err.stdout}\n`);
     if (err.stderr) process.stderr.write(`[stderr] ${err.stderr}\n`);
     process.exit(1);

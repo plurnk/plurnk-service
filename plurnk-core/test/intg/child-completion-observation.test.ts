@@ -93,8 +93,8 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal((await f.db.engine_worker_has_undelivered_child_term.get({ worker_id: f.parent })), undefined);
 
     const curated = await f.run(f.parent, f.parentLoop,
-        frame(`READ (${completions[0].path}) <1,-1>`) + "\n\n"
-        + frame(`KILL (${completions[0].logPath}) <2,-1>`));
+        frame(`READ (${String(completions[0].path)}) <1,-1>`) + "\n\n"
+        + frame(`KILL (${String(completions[0].logPath)}) <2,-1>`));
     const rows = await f.db.test_log_entries_by_loop.all<{ turn_id: number; op: string; status_rx: number; rx: string; attrs: string }>({ loop_id: f.parentLoop });
     const actions = rows.filter((row) => row.turn_id === curated.result.turnId && !LogEntryProjection.isEmission(row));
     assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["READ", 200], ["KILL", 200]]);

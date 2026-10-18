@@ -27,7 +27,7 @@ test("{§proposal-disposition}: server disposition, the turn's producer and decl
         ["reject", ["request_approval"], CLIENT_OPERATION, { decision: "reject", outcome: "policy_veto" }],
     ] as const) {
         process.env.PLURNK_SERVICE_PROPOSALS = policy;
-        assert.deepEqual(ProposalPolicies.disposition(tools, turn), expected, `${policy}, ${turn.clientOperation ? "a client operation" : "a model turn"}, [${tools}]`);
+        assert.deepEqual(ProposalPolicies.disposition(tools, turn), expected, `${policy}, ${turn.clientOperation ? "a client operation" : "a model turn"}, [${tools.join(", ")}]`);
     }
 });
 

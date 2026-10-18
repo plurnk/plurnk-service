@@ -53,7 +53,7 @@ type CatalogEntryState = {
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
     if (value.startsWith("```")) return value.replaceAll("\\n", "\n");
-    const points = [...value];
+    const points = Array.from(value);
     const shown = EntryManifest.summaryCodePoints();
     return points.length <= shown
         ? value

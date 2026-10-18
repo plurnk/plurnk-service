@@ -47,7 +47,7 @@ test("live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the 
         assert.equal(typeof ready?.baseUrl, "string", "the A2A fixture published its base URL");
         const args = [
             "run", "--frozen", "pytest", "tests/compatibility/",
-            `--sut-host=${ready.baseUrl}`, "--transport=http_json", "--tb=short", "-q", "-rxXs",
+            `--sut-host=${String(ready.baseUrl)}`, "--transport=http_json", "--tb=short", "-q", "-rxXs",
             `--compatibility-report=${join(run.runDir, "compatibility")}`,
             `--html=${join(run.runDir, "report.html")}`, "--self-contained-html",
             `--junitxml=${join(run.runDir, "junit.xml")}`,

@@ -73,7 +73,7 @@ export default class FencePairing {
         const ends = new Map<number, BlockEnd>();
         for (const [line, end] of result.ends) {
             ends.set(lineStarts[line], end.kind === "end" ? end
-                : { ...end, offset: end.line < lineStarts.length ? lineStarts[end.line] : [...input].length });
+                : { ...end, offset: end.line < lineStarts.length ? lineStarts[end.line] : Array.from(input).length });
         }
         return {
             ends,
@@ -100,7 +100,7 @@ export default class FencePairing {
         let previous = "";
         for (const text of raw) {
             lineStarts.push(start);
-            start += [...text].length + 1;
+            start += Array.from(text).length + 1;
             const line = FencePairing.#line(text.replace(/\r$/u, ""), options);
             // {§quotation}: the orphan is the closer of a heading written mid-line, in prose, that opened nothing —
             // a fence run on the line above that does not start it. A fence under a real closer is a surplus fence.

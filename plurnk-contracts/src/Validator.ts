@@ -330,7 +330,7 @@ export default class Validator {
         const entry = (value as EntryReadResult).entry;
         if (entry === null) return result;
         for (const [name, channel] of Object.entries(entry.channels)) {
-            const returnedLength = [...channel.content].length;
+            const returnedLength = Array.from(channel.content).length;
             if (channel.contentOffset + returnedLength !== channel.contentLength) {
                 return {
                     valid: false,

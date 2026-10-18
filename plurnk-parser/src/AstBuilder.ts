@@ -1145,7 +1145,7 @@ export default class AstBuilder {
     static #liftInlineFlags(pattern: string, flags: string, pos: Position): { pattern: string; flags: string } {
         const inline = /^\(\?([ims]+)\)/u.exec(pattern);
         if (inline === null) return { pattern, flags };
-        const lifted = [...new Set([...flags, ...inline[1]])].join("");
+        const lifted = Array.from(new Set(flags + inline[1])).join("");
         AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
             `\`${inline[0]}\` was read as the \`${inline[1]}\` flag; an ECMAScript regex takes its flags after the closing \`/\`.`, "warning"));
         return { pattern: pattern.slice(inline[0].length), flags: lifted };

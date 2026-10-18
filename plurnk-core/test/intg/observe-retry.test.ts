@@ -54,7 +54,7 @@ test("observe: an invalid first emission retries under the turn without failing 
         assert.equal(generates.length, 2, "the invalid attempt and the retry are separate provider spans");
         const attempts = generates.map((s) => Number(s.attributes.attempt)).toSorted((a, b) => a - b);
         assert.deepEqual(attempts, [1, 2]);
-        assert.ok(generates.every((span) => span.name === `chat ${span.attributes["gen_ai.request.model"]}`));
+        assert.ok(generates.every((span) => span.name === `chat ${String(span.attributes["gen_ai.request.model"])}`));
 
         const turn = spans.find((s) => s.name === "loop.turn");
         assert.ok(turn !== undefined);

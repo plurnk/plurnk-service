@@ -232,7 +232,7 @@ export const parse = (input) => PlurnkParser.parse(input);
 } catch (e) {
     await cleanup();
     const err = e as { message?: string; stdout?: string; stderr?: string };
-    process.stderr.write(`[smoke] FAIL: ${err.message ?? e}\n`);
+    process.stderr.write(`[smoke] FAIL: ${err.message ?? String(e)}\n`);
     if (err.stdout) process.stderr.write(`[stdout] ${err.stdout}\n`);
     if (err.stderr) process.stderr.write(`[stderr] ${err.stderr}\n`);
     process.exit(1);

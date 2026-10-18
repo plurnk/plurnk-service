@@ -29,7 +29,7 @@ const nameOf = (file: string, fields: Record<string, unknown>): string => {
     const { name } = fields;
     if (typeof name !== "string" || name.length === 0) throw new Error(`${file}: Agent Skill frontmatter requires name`);
     if (!SKILL_NAME.test(name)) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} is invalid`);
-    if ([...name].length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
+    if (Array.from(name).length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
     return name;
 };
 
@@ -44,6 +44,6 @@ export const parseSkill = (file: string, folder: string, source: string): SkillD
     if (name !== folder) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} must match folder ${JSON.stringify(folder)}`);
     const { description } = fields;
     if (typeof description !== "string" || description.trim().length === 0) throw new Error(`${file}: Agent Skill frontmatter requires description`);
-    if ([...description].length > 1024) throw new Error(`${file}: Agent Skill description exceeds 1024 characters`);
+    if (Array.from(description).length > 1024) throw new Error(`${file}: Agent Skill description exceeds 1024 characters`);
     return { name, description, metadata: fields, body: source.slice(header.length), source };
 };

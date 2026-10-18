@@ -1048,7 +1048,7 @@ export default class AiSdkProvider implements Provider {
                         kind: "output_unaccounted",
                         level: "warn",
                         message: `${usage.outputTokens} output tokens billed; ${visible} visible across content and reasoning.`,
-                        position: [...raw.content].length,
+                        position: Array.from(raw.content).length,
                     });
                 }
             } catch (cause) {

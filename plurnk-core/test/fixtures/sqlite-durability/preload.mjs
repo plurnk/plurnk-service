@@ -4,7 +4,7 @@ import SqlRite from "@possumtech/sqlrite";
 // Only the test SQL registry is extended; launcher options pass through unchanged.
 const open = SqlRite.open.bind(SqlRite);
 SqlRite.open = async (options) => {
-    const db = await open({ ...options, dir: [...options.dir, import.meta.dirname] });
+    const db = await open({ ...options, dir: [].concat(options.dir ?? [], import.meta.dirname) });
     try {
         const writer = await db.durability_writer.get();
         const readers = [];

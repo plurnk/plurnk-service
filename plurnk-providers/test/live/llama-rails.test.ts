@@ -73,7 +73,7 @@ test("live llama-server returns exact pre-projection grammar evidence", { requir
     assert.equal(response.assistant.content, "PLURNK-RAILS-LIVE");
     assert.deepEqual(response.grammarEvidence, {
         input,
-        contentStart: [...prefix].length,
+        contentStart: Array.from(prefix).length,
         transported: true,
     });
 });
@@ -92,7 +92,7 @@ test("live llama-server preserves an empty grammar-required reasoning channel", 
     assert.equal(response.assistant.content, "PLURNK-EMPTY-RAILS-LIVE");
     assert.deepEqual(response.grammarEvidence, {
         input,
-        contentStart: [...prefix].length,
+        contentStart: Array.from(prefix).length,
         transported: true,
     });
 });

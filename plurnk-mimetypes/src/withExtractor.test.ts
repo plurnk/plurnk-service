@@ -221,11 +221,11 @@ describe("withExtractor — addRef (ANTLR refs grind)", () => {
         v.bindContent(source);
         v.addSymbol("function", "all", {
             start: { start: 0 },
-            stop: { stop: [...source].length - 1 },
+            stop: { stop: Array.from(source).length - 1 },
         } as never);
         v.addSymbol("variable", "end", {
-            start: { start: [...source].length },
-            stop: { stop: [...source].length - 1 },
+            start: { start: Array.from(source).length },
+            stop: { stop: Array.from(source).length - 1 },
         } as never);
         assert.deepEqual(v.symbols.map(({ line, column, endLine, endColumn }) => ({
             line,

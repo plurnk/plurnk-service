@@ -84,6 +84,6 @@ test("[catalog] a fenced invocation-form summary lists every tool while long pro
         const menuRow = rows.find(({ path }) => path === "worker:///menu.md");
         assert.equal(menuRow?.aside, menu.replaceAll("\\n", "\n"), "the fenced witness is shown whole, every tool named, its newline restored");
         const proseRow = rows.find(({ path }) => path === "worker:///prose.md");
-        assert.ok(proseRow?.aside !== undefined && [...proseRow.aside].length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
+        assert.ok(proseRow?.aside !== undefined && Array.from(proseRow.aside).length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
     } finally { await db.close(); }
 });

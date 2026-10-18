@@ -124,10 +124,12 @@
         // the two checkers agree (#1162).
         "typescript/no-unsafe-type-assertion": "warn",
         "typescript/no-unnecessary-type-assertion": "warn",
-        "typescript/no-unsafe-enum-comparison": "warn",
+        // A string enum compared with one of its own literals is checked by tsc (TS2367 on any other literal); the literal
+        // is the wire name the protocol documents.
+        "typescript/no-unsafe-enum-comparison": "off",
         "typescript/no-base-to-string": "warn",
-        "typescript/no-misused-spread": "warn",
-        "typescript/restrict-template-expressions": "warn"
+        "typescript/no-misused-spread": "error",
+        "typescript/restrict-template-expressions": "error"
     },
     "overrides": [
         {
@@ -150,13 +152,14 @@
             }
         },
         {
-            // Untyped scripts: the rule cannot see element types.
+            // Untyped scripts: these rules cannot see the types they judge.
             "files": [
                 "**/*.mjs",
                 "**/*.js"
             ],
             "rules": {
-                "typescript/require-array-sort-compare": "off"
+                "typescript/require-array-sort-compare": "off",
+                "typescript/restrict-template-expressions": "off"
             }
         },
         {

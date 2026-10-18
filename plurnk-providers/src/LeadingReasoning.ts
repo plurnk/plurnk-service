@@ -42,12 +42,12 @@ export default class LeadingReasoning {
             this.#pending = this.#pending.slice(opening.length);
             this.#closing = closing;
             this.#projected = true;
-            this.#contentStart = [...opening].length;
+            this.#contentStart = Array.from(opening).length;
         }
         const end = this.#pending.indexOf(this.#closing);
         if (end !== -1) {
             const delta = this.#emit(this.#pending.slice(0, end));
-            this.#contentStart += [...this.#closing].length;
+            this.#contentStart += Array.from(this.#closing).length;
             this.#content = this.#pending.slice(end + this.#closing.length);
             this.#pending = "";
             this.#closed = true;
@@ -71,7 +71,7 @@ export default class LeadingReasoning {
 
     #emit(delta: string): string {
         this.#reasoning += delta;
-        this.#contentStart += [...delta].length;
+        this.#contentStart += Array.from(delta).length;
         return delta;
     }
 

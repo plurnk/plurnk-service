@@ -95,7 +95,7 @@ export default class NativeToolCalls {
         const text = input.slice(block.from, block.to);
         const markup = /^(?:\[TOOL_CALLS\]|<\|[a-z_]+\|>|<[^\n>]{0,40}>?)/u.exec(text)![0];
         const lineStart = input.lastIndexOf("\n", block.from - 1) + 1;
-        return { line: block.startLine + 1, column: [...input.slice(lineStart, block.from)].length, markup, form: NativeToolCalls.#form(text, executors) };
+        return { line: block.startLine + 1, column: Array.from(input.slice(lineStart, block.from)).length, markup, form: NativeToolCalls.#form(text, executors) };
     }
 
     // The fenced form of what a block of markup asks for, as the receipt teaches it.

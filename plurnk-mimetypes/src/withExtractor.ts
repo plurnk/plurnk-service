@@ -167,7 +167,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
                 };
                 if (typeof ctx.start?.column === "number") symbol.column = ctx.start.column + 1;
                 if (typeof ctx.stop?.column === "number") {
-                    symbol.endColumn = ctx.stop.column + [...(ctx.stop.text ?? "")].length + 1;
+                    symbol.endColumn = ctx.stop.column + Array.from((ctx.stop.text ?? "")).length + 1;
                 }
                 return symbol;
             }
@@ -195,7 +195,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
                     line: startLine,
                     column: (ctx.start?.column ?? 0) + 1,
                     endLine: ctx.stop?.line ?? startLine,
-                    endColumn: (ctx.stop?.column ?? 0) + [...(ctx.stop?.text ?? "")].length + 1,
+                    endColumn: (ctx.stop?.column ?? 0) + Array.from((ctx.stop?.text ?? "")).length + 1,
                     ...(container !== undefined && { container }),
                     ...extra,
                 };

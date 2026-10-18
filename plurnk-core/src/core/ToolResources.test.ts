@@ -158,7 +158,7 @@ test("a large runtime's inventory summary names every tool", () => {
     });
     const runtimeDoc = resources[0]?.content ?? "";
     const summary = /^## Summary\n\n(.*)$/m.exec(runtimeDoc)?.[1] ?? "";
-    assert.ok([...summary].length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
+    assert.ok(Array.from(summary).length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
     assert.match(summary, new RegExp(`^\`\`\`gitea \\(${targets.join("\\|")}\\)`), "every tool is named, in declaration order");
     assert.doesNotMatch(summary, /…/);
 

@@ -315,9 +315,9 @@ export default class PacketBuilder {
             const emission = turns.get(String(row.coordinate));
             if (emission !== undefined) {
                 flush();
-                logSections.push({ name: `emission-history/${row.coordinate}`, slot: "assistant", header: null, content: emission });
+                logSections.push({ name: `emission-history/${String(row.coordinate)}`, slot: "assistant", header: null, content: emission });
             }
-            if (items.length === 0 && logSections.length > 0) name = `log/${row.coordinate}`;
+            if (items.length === 0 && logSections.length > 0) name = `log/${String(row.coordinate)}`;
             items.push(renderedLog.records[index]);
             const native = nativeRows.get(String(row.coordinate));
             if (native !== undefined) {

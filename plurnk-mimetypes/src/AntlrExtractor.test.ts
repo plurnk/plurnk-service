@@ -182,7 +182,7 @@ describe("AntlrExtractor.deepJson — duck-typed ANTLR parse tree walk", () => {
         }
     }
     function term(text: string, line: number, start: number): unknown {
-        return { symbol: { line, text, type: 1, start, stop: start + [...text].length - 1 } };
+        return { symbol: { line, text, type: 1, start, stop: start + Array.from(text).length - 1 } };
     }
 
     it("walks rule contexts emitting type from constructor.name (stripped of Context)", async () => {

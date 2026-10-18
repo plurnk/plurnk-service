@@ -22,7 +22,7 @@ for (const [name, text, maxLines, maxChars, expected] of [
             const result = await ReadResolve.resolve({ content: text, mimetype: "text/plain", lineMarker: tail.marker });
             assert.equal(result.status, 200);
             assert.equal(result.content, expected, "the advertised scope retrieves exactly the selected bytes");
-            assert.ok([...expected.replaceAll("\r\n", "\n")].length <= maxChars);
+            assert.ok(Array.from(expected.replaceAll("\r\n", "\n")).length <= maxChars);
         } finally {
             if (original === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
             else process.env.PLURNK_SERVICE_PREVIEW_CHARS = original;

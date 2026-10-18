@@ -1385,7 +1385,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     assert.equal(response.assistant.content, "````SEND\ndone\n````");
     assert.deepEqual(response.grammarEvidence, {
         input: content,
-        contentStart: [..."<think>🧠reason</think>"].length,
+        contentStart: Array.from("<think>🧠reason</think>").length,
         transported: true,
     });
 });
@@ -1649,7 +1649,7 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§p
     assert.equal(res.assistant.content, "x");
     assert.deepEqual(res.grammarEvidence, {
         input: grammarInput,
-        contentStart: [..."<|channel>thought\ncon🙂sider<channel|>"].length,
+        contentStart: Array.from("<|channel>thought\ncon🙂sider<channel|>").length,
         transported: true,
     });
     assert.equal(res.meta?.railsVerdict, undefined, "the provider represents evidence but does not grade itself");
@@ -1666,7 +1666,7 @@ test("template reasoning projects a leading think envelope without losing gramma
     assert.equal(res.assistant.content, "x");
     assert.deepEqual(res.grammarEvidence, {
         input,
-        contentStart: [..."<think>\ncon🙂sider</think>"].length,
+        contentStart: Array.from("<think>\ncon🙂sider</think>").length,
         transported: true,
     });
 });
@@ -1708,7 +1708,7 @@ test("template reasoning preserves an empty grammar-required channel as exact ev
     assert.equal(res.assistant.content, "x");
     assert.deepEqual(res.grammarEvidence, {
         input,
-        contentStart: [..."<|channel>thought\n<channel|>"].length,
+        contentStart: Array.from("<|channel>thought\n<channel|>").length,
         transported: true,
     });
 });

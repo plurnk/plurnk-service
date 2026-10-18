@@ -46,7 +46,7 @@ for (const binary of [false, true]) {
 }
 
 for (const marks of [[0, 0], [0, -2], [0, 1, 1, 2], [1, 0, 1, 2]] satisfies LineMarker["marks"][]) {
-    test(`{§read-zero-start}: <${marks}> does not guess another invalid coordinate`, async () => {
+    test(`{§read-zero-start}: <${marks.join(",")}> does not guess another invalid coordinate`, async () => {
         const result = await project(marks, "one\ntwo");
         assert.equal(result.status, 416);
         assert.equal(result.scopeNormalizations, undefined);

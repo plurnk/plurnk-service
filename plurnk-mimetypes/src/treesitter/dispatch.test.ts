@@ -44,7 +44,7 @@ describe("tree-sitter registry — dispatch wiring", () => {
         assert.equal(result.ok, true);
         assert.equal(result.mimetype, "text/x-python");
         const names = (result.symbols ?? []).map((s) => `${s.kind} ${s.name}`);
-        assert.ok(names.includes("class Foo"), `expected class Foo in ${names}`);
-        assert.ok(names.includes("method bar"), `expected method bar in ${names}`);
+        assert.ok(names.includes("class Foo"), `expected class Foo in ${names.join(", ")}`);
+        assert.ok(names.includes("method bar"), `expected method bar in ${names.join(", ")}`);
     });
 });

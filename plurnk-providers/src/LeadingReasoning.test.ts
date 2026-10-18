@@ -18,7 +18,7 @@ test("{§provider-tagged-reasoning}: every delimiter split preserves exact reaso
                 const settled = LeadingReasoning.project(input, "", envelopes);
                 assert.equal(settled.reasoning, expected);
                 assert.equal(settled.content, ended ? suffix : "");
-                assert.equal(settled.contentStart, [...input].length - [...settled.content].length);
+                assert.equal(settled.contentStart, Array.from(input).length - Array.from(settled.content).length);
             }
         }
     }

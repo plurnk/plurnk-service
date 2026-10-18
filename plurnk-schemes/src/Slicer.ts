@@ -213,7 +213,7 @@ export default class Slicer {
         const pastEof = endLine > lines.length;
         const resolvedEndLine = pastEof ? lines.length : endLine;
         const endLineData = lines[resolvedEndLine - 1];
-        const maxEndColumn = [...content.slice(endLineData.start, endLineData.contentEnd)].length + 1;
+        const maxEndColumn = Array.from(content.slice(endLineData.start, endLineData.contentEnd)).length + 1;
         const endColumn = pastEof ? maxEndColumn : Math.min(rawEndColumn, maxEndColumn);
         let start: number;
         let end: number;
@@ -236,7 +236,7 @@ export default class Slicer {
         const [startLine, startColumn, endLine, endColumn] = marks as [number, number, number, number];
         const endOf = (line: number): number => {
             const data = lines[Math.min(Math.max(line, 1), lines.length) - 1];
-            return [...content.slice(data.start, data.contentEnd)].length + 1;
+            return Array.from(content.slice(data.start, data.contentEnd)).length + 1;
         };
         const resolvedStart = startLine === -1 ? lines.length : startLine;
         const resolvedEnd = endLine === -1 ? lines.length : endLine;
@@ -358,7 +358,7 @@ export default class Slicer {
         if (last === undefined) {
             return { error: `End line ${endLine} cannot select from empty content.` };
         }
-        const endColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
+        const endColumn = Array.from(content.slice(last.start, last.contentEnd)).length + 1;
         const requested: ScopeNormalization["requested"] = [startLine, startColumn, requestedEndLine];
         const canonical: ScopeNormalization["canonical"] = [startLine, startColumn, resolvedEndLine, endColumn];
         return {

@@ -13,6 +13,7 @@ import ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 
 const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
+    // oxlint-disable-next-line typescript/no-misused-spread -- a test seam: the statements are own properties of the database; one is replaced
     db: { ...db, proposal_record_decision: db.proposal_record_decision ?? { run: async () => ({ changes: 1 }) } } as Db,
     schemes: new SchemeRegistry(),
     notices: { push() {} } as unknown as NoticeChannel,

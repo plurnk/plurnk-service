@@ -357,13 +357,13 @@ const removedTextOf = (lines: readonly string[]): string => {
     const shown = Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES", 0);
     return lines.length <= shown ? lines.join("\n") : `${lines.slice(0, shown).join("\n")}\n… ${lines.length - shown} more lines`;
 };
-const codePointCount = (content: string): number => [...content].length;
+const codePointCount = (content: string): number => Array.from(content).length;
 
 const codePointOffset = (content: string, jsOffset: number): number =>
     codePointCount(content.slice(0, jsOffset));
 
 const jsOffsetFromCodePoints = (content: string, offset: number): number =>
-    [...content].slice(0, offset).join("").length;
+    Array.from(content).slice(0, offset).join("").length;
 
 const coordinateAt = (
     content: string,
@@ -417,7 +417,7 @@ const codePointEffects = (
                 removed,
                 inserted: effect.inserted,
                 context: "",
-                ...(effect.inserted === 0 && removed > 0 ? { removedText: removedTextOf([...original].slice(effect.sourceStart, effect.sourceEnd).join("").split("\n")) } : {}),
+                ...(effect.inserted === 0 && removed > 0 ? { removedText: removedTextOf(Array.from(original).slice(effect.sourceStart, effect.sourceEnd).join("").split("\n")) } : {}),
                 resultStartLine: updatedStart.line,
                 resultEndLine: updatedEnd.line,
             };

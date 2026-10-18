@@ -85,7 +85,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(explicit.range, "<38,40> of 40 lines");
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
-            const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
+            const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${String(terminal.logPath)}`));
             const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`READ (${String(terminal.path)}) <38,40>`));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);

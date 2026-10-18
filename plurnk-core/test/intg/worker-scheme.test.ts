@@ -263,7 +263,7 @@ for (const op of ["WORK", "FORK"] as const) {
             assert.deepEqual(results.map(({ body }) => String(body)).toSorted(), ["c4e56789", "d5f67890"]);
             for (const result of results) {
                 const { worker, message, ...rest } = result.attrs as { worker?: unknown; message?: unknown };
-                assert.deepEqual([worker, rest], [`worker://${result.body}`, {}], "the receipt names the worker it created");
+                assert.deepEqual([worker, rest], [`worker://${String(result.body)}`, {}], "the receipt names the worker it created");
                 assert.match(String(message), /^message:\/\//u, "and the message it sent");
             }
             assert.equal(calls.length, 3);

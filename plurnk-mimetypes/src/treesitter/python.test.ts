@@ -23,7 +23,7 @@ describe("text/x-python via tree-sitter registry", () => {
                 const refs = await h.references(source);
                 const call = refs.find((ref) => ref.name === "to_python");
                 const lines = source.split(/\r\n|\n/);
-                const column = [...lines.at(-1)!.slice(0, lines.at(-1)!.indexOf("to_python"))].length + 1;
+                const column = Array.from(lines.at(-1)!.slice(0, lines.at(-1)!.indexOf("to_python"))).length + 1;
                 assert.deepEqual(call, {
                     name: "to_python", kind: "call", line: lines.length, column,
                     endLine: lines.length, endColumn: column + "to_python".length, container: "kwargs",

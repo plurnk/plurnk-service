@@ -94,7 +94,7 @@ export default class TextCoordinates {
         const offsets = this.#offsetsForLine(lineNumber - 1);
         const offset = offsets[column - 1];
         if (offset === undefined) {
-            const text = [...this.#content.slice(line.start, line.contentEnd)];
+            const text = Array.from(this.#content.slice(line.start, line.contentEnd));
             const preview = text.length > LINE_PREVIEW_CODEPOINTS
                 ? `${text.slice(0, LINE_PREVIEW_CODEPOINTS - 1).join("")}…`
                 : text.join("");
