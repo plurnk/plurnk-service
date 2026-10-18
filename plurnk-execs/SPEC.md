@@ -441,22 +441,14 @@ at boot; changing package membership or configuration requires a restart.
 | `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
 | `packageName` | Package that owns and default-exports the executor implementation.                                 |
 
-The framework validates and carries the summary source, invocation, and supplemental
-details as separate facts. A `{ from: "tools" }` summary is valid only for a
-runtime implementing {§executor-tool-registry}; the consumer resolves it from
-the exact effective tool set, after capability attenuation, so a denied tool
-cannot survive in the runtime's orientation line. The inventory renders as
-one compact executable fence naming `runtime (target|...)`, with the optional
-purpose as a trailing aside and body line breaks represented by literal `\n`;
-an authored string remains a description, without expanding its tool inventory.
-The consumer deterministically renders the
-model-facing tool document from either the static invocation or the executor's exact
-{§executor-tool-registry}; authors never duplicate Summary or Invocation in
-prose. A
-multi-tag package appears at most once in `Discovery.packageAttributions`, and
-only when at least one of its tags survives discovery policy. An instantiated
-executor may add attempt-time tags through the shared runtime `attributions` function
-({§extension-attribution}).
+The framework validates and carries the summary source, invocation, and supplemental details as separate facts; authors never duplicate Summary or Invocation in prose.
+
+| Fact | Rule |
+| --- | --- |
+| A `{ from: "tools" }` summary | valid only for a runtime implementing {§executor-tool-registry}; the consumer resolves it from the exact effective tool set, after capability attenuation, so a denied tool cannot survive in the runtime's orientation line |
+| The inventory | renders as one compact executable fence naming `runtime (target\|...)`, with the optional purpose as a trailing aside and body line breaks represented by literal `\n`; an authored string remains a description, without expanding its tool inventory |
+| Rendering | the consumer deterministically renders the model-facing tool document from either the static invocation or the executor's exact {§executor-tool-registry} |
+| Attributions | a multi-tag package appears at most once in `Discovery.packageAttributions`, and only when at least one of its tags survives discovery policy; an instantiated executor may add attempt-time tags through the shared runtime `attributions` function ({§extension-attribution}) |
 
 A package `docs/<tag>.md` remains a valid standalone Markdown document. When
 its first line is the exact authoring title `# <tag>`, discovery removes that
@@ -543,41 +535,24 @@ an on-demand sibling `.json` catalog linked from the runtime document.
 Definitions remain inspection data, not an additional source of execution authority.
 Registries without definitions and empty registries publish no catalog.
 
-§executor-tool-document **Tool documents are the model-facing executor
-directory.** A general runtime's document carries exact H2 `Summary` and
-`Invocation` sections plus its executable witness. Its Summary is that compact
-invocation witness in plain text, with the authored description as an
-operation aside on its invocation line and a literal `\n` before a
-one-line body. The bundled subprocess interpreters declare concrete inline-program
-examples; their catalog summaries include the program body without a script target.
-An exact registry instead renders one compact runtime document whose Summary is
-authored or derived from its effective tools. Its H2 `Tools` contains one
-executable fence per tool, naming the runtime and exact target, with its aside
-and input preview. A schema-backed invocation
-links from its aside to an exact `.json` child document (`application/json`) containing the full description and
-original input JSON Schema, noting any omitted optional top-level properties as `(+N opt)` before the schema pointer. Non-schema invocations retain their authored witness
-and supplemental details.
-Supplemental `details` follows framework-owned sections and cannot own identity,
-invocation, or admission. The consumer chooses resource addresses, materializes
-the documents, and exposes each Summary through ordinary FIND metadata. No
-executor table or executor-specific discovery protocol exists.
+§executor-tool-document **Tool documents are the model-facing executor directory.** The consumer chooses resource addresses, materializes the documents, and exposes each Summary through ordinary FIND metadata. No executor table or executor-specific discovery protocol exists. Supplemental `details` follows framework-owned sections and cannot own identity, invocation, or admission.
 
-§executor-input-schema-preview Schema-backed previews emit a compact, valid
-JSON skeleton containing only explicitly required top-level fields. Each required
-field takes a minimal default value matching its declared JSON type: `""` for string,
-`0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object;
-an undeclared type is `null`. A required field declaring a closed set of strings
-(`enum`) uses its first choice as its default value, so common invocations require
-no verb guesswork (#762). A top-level `anyOf` contributes its first branch's required
-fields, so a schema that requires one of several inputs previews one valid form. Nested
-objects and arrays stay empty; optional fields, references, other constraints, and other
-conditional branches are not interpreted. When declared top-level properties exceed the
-required set, the aside signals their presence with `(+N opt)`.
-The preview is not a complete signature or validation promise. Its schema link
-provides the complete original schema, including descriptions, definitions,
-references, and constraints; repository-owned referenced schemas are included
-unchanged alongside it. Documentation performs no network reference resolution.
-Output schemas are not input teaching.
+| Document | Contents |
+| --- | --- |
+| A general runtime's | exact H2 `Summary` and `Invocation` sections plus its executable witness; its Summary is that compact invocation witness in plain text, with the authored description as an operation aside on its invocation line and a literal `\n` before a one-line body; the bundled subprocess interpreters declare concrete inline-program examples, and their catalog summaries include the program body without a script target |
+| An exact registry's | one compact runtime document whose Summary is authored or derived from its effective tools; its H2 `Tools` contains one executable fence per tool, naming the runtime and exact target, with its aside and input preview |
+| A schema-backed invocation | links from its aside to an exact `.json` child document (`application/json`) containing the full description and original input JSON Schema, noting any omitted optional top-level properties as `(+N opt)` before the schema pointer |
+| A non-schema invocation | retains its authored witness and supplemental details |
+
+§executor-input-schema-preview **Schema-backed previews emit a compact, valid JSON skeleton containing only explicitly required top-level fields.** The preview is not a complete signature or validation promise. Its schema link provides the complete original schema, including descriptions, definitions, references, and constraints; repository-owned referenced schemas are included unchanged alongside it. Documentation performs no network reference resolution. Output schemas are not input teaching.
+
+| Required field | Default in the skeleton |
+| --- | --- |
+| By declared JSON type | `""` for string, `0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object; an undeclared type is `null` |
+| A closed set of strings (`enum`) | its first choice, so common invocations require no verb guesswork (#762) |
+| A top-level `anyOf` | contributes its first branch's required fields, so a schema that requires one of several inputs previews one valid form |
+| Nested objects and arrays | stay empty; optional fields, references, other constraints, and other conditional branches are not interpreted |
+| Declared top-level properties beyond the required set | the aside signals their presence with `(+N opt)` |
 
 Runtime-name admission is one identity contract:
 
@@ -635,7 +610,14 @@ package discovery also returns them in `Discovery.disabled`.
 Workspace and loop admission remain consumer concerns;
 the framework does not define a second Active/Available state machine.
 
-§executor-spawn-account **Every subprocess runtime spawns as one configured account.** `PLURNK_EXECS_SPAWN_USER` names the account each subprocess runtime's child runs as: an account name, resolved once through the host's account database with `getent passwd`, or `uid[:gid]` taken as written; unset, the daemon's own. A host without `getent` names the account as `uid[:gid]`. The child's environment names it, `HOME`, `USER` and `LOGNAME` following a named account, applied after the composed environment the service hands over and before the spawn. Availability probes run as the same account, so a runtime the account cannot execute is not advertised. A value that resolves to no account is an invalid configuration at the spawn, named by the knob: a name the database does not hold `names no account on this host`; a lookup that did not run, exited otherwise or answered another record `was not resolved`, with what the lookup did, and is never reported as an absent account. An account the daemon may not assume fails the spawn with the host's error; nothing runs as the daemon's own account in its place. The key sits outside the runtime policy grammar above; the privilege to assume the account is the daemon's to have, nothing here grants it.
+§executor-spawn-account **Every subprocess runtime spawns as one configured account.** `PLURNK_EXECS_SPAWN_USER` names the account each subprocess runtime's child runs as: an account name, resolved once through the host's account database with `getent passwd`, or `uid[:gid]` taken as written; unset, the daemon's own. A host without `getent` names the account as `uid[:gid]`. The key sits outside the runtime policy grammar above; the privilege to assume the account is the daemon's to have, nothing here grants it.
+
+| Fact | Rule |
+| --- | --- |
+| The child's environment | names it, `HOME`, `USER` and `LOGNAME` following a named account, applied after the composed environment the service hands over and before the spawn |
+| Availability probes | run as the same account, so a runtime the account cannot execute is not advertised |
+| A value that resolves to no account | an invalid configuration at the spawn, named by the knob: a name the database does not hold `names no account on this host`; a lookup that did not run, exited otherwise or answered another record `was not resolved`, with what the lookup did, and is never reported as an absent account |
+| An account the daemon may not assume | fails the spawn with the host's error; nothing runs as the daemon's own account in its place |
 
 ## §executor-default-inventory Current installed set
 

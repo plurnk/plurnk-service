@@ -212,17 +212,15 @@ case-insensitively, and body/header disagreement fails instead of guessing.
 For `tasks/get`, `tasks/update`, and `tasks/cancel`, `Mcp-Name` is the encoded
 `taskId` required by the Tasks extension.
 
-§mcp-header-declarations **A tool with an invalid `x-mcp-header` declaration is never called.** Before
-either request leg of a tool call, Tasks or direct, the tool's `inputSchema` is scanned for
-`x-mcp-header` declarations: each sits on a property reached through `properties` alone, never under
-`items`, `additionalProperties`, a combinator, a conditional, `$defs` or a `$ref` target; names a
-non-empty RFC 9110 token that is unique case-insensitively; and types `string`, `integer` or `boolean`,
-never `number` (SEP-2243). The definition the caller supplies is the one scanned; otherwise the server's
-listing supplies it, and a Tasks call whose listing lacks the tool fails as unlisted. A definition that
-breaks any of these refuses the call with `tool-header-invalid` ({§problems-mcp}) naming the tool and
-the declaration, and no request is sent. A direct call never waits on a failed listing
-({§mcp-catalog-deadline}): with no definition at hand there is nothing to scan and no routing header to
-derive, so it proceeds as a plain `tools/call`.
+§mcp-header-declarations **A tool with an invalid `x-mcp-header` declaration is never called.** Before either request leg of a tool call, Tasks or direct, the tool's `inputSchema` is scanned for `x-mcp-header` declarations. A definition that breaks any rule below refuses the call with `tool-header-invalid` ({§problems-mcp}) naming the tool and the declaration, and no request is sent.
+
+| Rule | What |
+| --- | --- |
+| Placement | each sits on a property reached through `properties` alone, never under `items`, `additionalProperties`, a combinator, a conditional, `$defs` or a `$ref` target |
+| Name | a non-empty RFC 9110 token that is unique case-insensitively |
+| Type | `string`, `integer` or `boolean`, never `number` (SEP-2243) |
+| The definition scanned | the one the caller supplies; otherwise the server's listing supplies it, and a Tasks call whose listing lacks the tool fails as unlisted |
+| A direct call | never waits on a failed listing ({§mcp-catalog-deadline}): with no definition at hand there is nothing to scan and no routing header to derive, so it proceeds as a plain `tools/call` |
 
 ## §mcp-errors Error allocation
 
@@ -256,7 +254,7 @@ originating distinction in its canonical Problem/result path.
 | {§mcp-server-settings} | Independent behavior settings do not change connection definitions. |
 | {§mcp-module} | The MCP family beneath the coordinator |
 | {§mcp-launch-environment} | Ambient inheritance and explicit bindings are distinct. |
-| {§mcp-management-actions} | MCP is one family of workspace Functionality ({§functionality-coordinator}). |
+| {§mcp-management-actions} | MCP is one family of workspace Functionality |
 | {§mcp-registry-discovery} | `discover` searches the MCP Registry. |
 | {§mcp-preparation-diagnostics} | Unavailable preparation reports observations. |
 | {§oauth-continuation} | A URL-only HTTP definition is sufficient to reach the client sign-in handoff. |
@@ -431,36 +429,32 @@ environment change; there is no automatic restart or stale-configuration state. 
 have no local process environment; their native header and authorization references use the
 same workspace-composed operator environment.
 
-§mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
-coordinator publishes `workspace.mcp.list | add | replace | enable | disable | remove`, with `discover`
-while a registry is configured, and the model's
-`mcp` runtime with the common semantics, durable state, and publication; this module
-registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add`, `replace` ({§functionality-replacement}), and `remove` change workspace state ({§mcp-definitions}), and
-`discover` searches the MCP Registry ({§mcp-registry-discovery}). `prepare` connects the enabled set, reusing
-unchanged live attachments, and returns one runtime and resource facet per connected server,
-one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity,
-capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or
-`authorization-required` with its URL), and a snapshot in three phases: `publish` adopts the connected
-set and consumes or records pending authorizations, synchronously; `commit` closes connections the new
-set no longer uses; `abort` closes only what the attempt opened.
+§mcp-management-actions **MCP is one family of workspace Functionality** ({§functionality-coordinator}). The coordinator publishes `workspace.mcp.list | add | replace | enable | disable | remove`, with `discover` while a registry is configured, and the model's `mcp` runtime with the common semantics, durable state, and publication; this module registers the family adapter and owns protocol truth beneath it.
 
-§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery
-while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty,
-the family has no `discover` ({§functionality-discover-advertisement}). Its one input, `query`,
-asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at
-its latest version, whose names match. Each npm, PyPI, NuGet or OCI package with a stdio transport
-becomes a stdio entry run as the registry's own examples run it (`npx -y`, `uvx`, `dnx`, or
-`docker run -i --rm` passing each declared variable through), and each Streamable HTTP remote becomes a
-URL entry with its non-secret literal headers. An entry that needs a person's input first, such as a
-template variable or a required argument with no value, has none. A candidate is a complete definition;
-its summary names the environment variables and headers the
-server needs, and its provenance names the registry and the server's `name@version`.
+| Verb | What |
+| --- | --- |
+| `available` | the configured service baseline |
+| `add`, `replace` ({§functionality-replacement}), `remove` | change workspace state ({§mcp-definitions}) |
+| `discover` | searches the MCP Registry ({§mcp-registry-discovery}) |
+| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime and resource facet per connected server, one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
+| `publish` | adopts the connected set and consumes or records pending authorizations, synchronously |
+| `commit` | closes connections the new set no longer uses |
+| `abort` | closes only what the attempt opened |
+
+§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty, the family has no `discover` ({§functionality-discover-advertisement}). Its one input, `query`, asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at its latest version, whose names match.
 
 | Discovery, admission, or installation condition | Problem | Status |
 |---|---|---|
 | The registry is unreachable, fails, or answers malformed | `discover-failed`, retryable | 502 |
 | The complete connection definition is invalid | `definition-invalid` | 400 |
 | The alias differs from the definition's name | `alias-mismatch` | 400 |
+
+| Registry server | Candidate |
+| --- | --- |
+| Each npm, PyPI, NuGet or OCI package with a stdio transport | a stdio entry run as the registry's own examples run it (`npx -y`, `uvx`, `dnx`, or `docker run -i --rm` passing each declared variable through) |
+| Each Streamable HTTP remote | a URL entry with its non-secret literal headers |
+| One that needs a person's input first, such as a template variable or a required argument with no value | none |
+| Every candidate | a complete definition; its summary names the environment variables and headers the server needs, and its provenance names the registry and the server's `name@version` |
 
 Protocol continuations remain MCP-registered workspace actions beneath the
 common grammar:
@@ -540,29 +534,15 @@ sequenceDiagram
     MCP-->>Model: active tools through normal publication
 ```
 
-`oauth.begin` prepares an authorization attempt without enabling the alias or
-waiting for workspace quiescence. It returns `202` with an `authorization.url`
-when consent is required, `202` without that field when an accepted connection
-awaits publication, or `200` when tools are already active. These results name
-the alias, not a capability snapshot. The adapter retains one pending candidate
-per `(workspace, alias)` holding the connection and one workspace residency
-lease. An unchanged publication preserves that independent attempt; a new
-challenge supersedes it ({§oauth-lifetime}).
-Concurrent begin requests for one alias are refused; a later begun attempt
-supersedes the prior one unless its grant is already accepted and awaiting
-publication. An in-flight begin cannot attach after disable,
-remove or definition replacement. `oauth.complete` accepts the complete callback URL so state, `code`, and
-`iss` remain one parsing unit. Grant acceptance returns without waiting for
-workspace quiescence; it is not a configuration mutation and cannot re-enable
-an alias. The existing catalog-refresh path prepares and publishes the current
-enabled definitions, then consumes the candidate and releases its lease.
-The accepted result does not claim tool readiness: `list` reports the current
-published snapshot, including any subsequent preparation failure. A callback
-for a superseded attempt fails as invalid; a
-committed attachment that no longer matches the pending definition fails
-with a conflict instead of replaying a stale snapshot. A missing, expired,
-mismatched, or replayed callback fails without exposing attacker-owned OAuth
-error text.
+`oauth.begin` prepares an authorization attempt without enabling the alias or waiting for workspace quiescence; `oauth.complete` accepts the complete callback URL so state, `code`, and `iss` remain one parsing unit.
+
+| Fact | Rule |
+| --- | --- |
+| `oauth.begin` returns | `202` with an `authorization.url` when consent is required, `202` without that field when an accepted connection awaits publication, or `200` when tools are already active; these results name the alias, not a capability snapshot |
+| The pending candidate | the adapter retains one per `(workspace, alias)` holding the connection and one workspace residency lease; an unchanged publication preserves that independent attempt, and a new challenge supersedes it ({§oauth-lifetime}) |
+| Concurrent begins | concurrent begin requests for one alias are refused; a later begun attempt supersedes the prior one unless its grant is already accepted and awaiting publication; an in-flight begin cannot attach after disable, remove or definition replacement |
+| Grant acceptance | returns without waiting for workspace quiescence; it is not a configuration mutation and cannot re-enable an alias; the existing catalog-refresh path prepares and publishes the current enabled definitions, then consumes the candidate and releases its lease; the accepted result does not claim tool readiness: `list` reports the current published snapshot, including any subsequent preparation failure |
+| A bad callback | one for a superseded attempt fails as invalid; a committed attachment that no longer matches the pending definition fails with a conflict instead of replaying a stale snapshot; a missing, expired, mismatched, or replayed callback fails without exposing attacker-owned OAuth error text |
 
 | Callback boundary | Result |
 |---|---|

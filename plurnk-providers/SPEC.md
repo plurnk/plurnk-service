@@ -41,7 +41,7 @@ not a Worker entrypoint.
 | --- | --- |
 | {§provider-interface} | `Provider` exposes immutable model facts and one generation operation: |
 | {§provider-prompt-measurement} | `PromptTokenMeasurement` is a discriminated request-level result: |
-| {§provider-capacity-admission} | `assessRequestCapacity` intersects every known physical input constraint: independent `maxInputTokens` and… |
+| {§provider-capacity-admission} | `assessRequestCapacity` intersects every known physical input constraint |
 | {§provider-monetary-evidence} | One precedence path converts each physical provider request into {§provider-cost} evidence before the request… |
 | {§provider-cache-identity} | `generate` requires a non-empty, stable, opaque `workerId`. |
 | {§provider-call-kind} | `callKind` is either `emission` (the response is a PLURNK turn emission) or `bare` (the response is… |
@@ -111,19 +111,20 @@ provided its detail names the cause; one unable to quantify anything returns
 `unavailable`. A malformed measurement is a provider contract violation and
 fails hard.
 
-§provider-capacity-admission `assessRequestCapacity` intersects every known
-physical input constraint: independent `maxInputTokens` and
-`contextWindow - outputFloor`, the input wall ({§provider-output-floor}). Its result is `admit`, `reject`, or `defer` and
-retains the complete limit and measurement evidence. Exact fit admits; exact
-overflow of the wall rejects; a prompt between the curation reservation and the wall is admitted with its grant flexed down. A proven upper bound admits only when it fits. Unknown limits,
-an upper bound above a limit, estimates, and unavailable measurements defer to
-the upstream provider as capacity oracle. The curation reservation's intersection, `maxInputTokens` and `contextWindow - outputBudget`, is
-exposed as `inputCapacity`, the line Core packs the room against; the wall's, as `inputWall`; `null` means the available limits cannot establish
-one. A known combined context and output budget must leave positive input
-capacity. Consumers may display or use that fact as policy, but MUST NOT
-substitute their own content heuristic for request-shaped admission. A consumer
-may assess a request before sending it; `generate` repeats the assessment as its
-own guard.
+§provider-capacity-admission **`assessRequestCapacity` intersects every known physical input constraint** — independent `maxInputTokens` and `contextWindow - outputFloor`, the input wall ({§provider-output-floor}) — and answers `admit`, `reject`, or `defer`, retaining the complete limit and measurement evidence. A consumer may assess a request before sending it; `generate` repeats the assessment as its own guard. Consumers may display or use that fact as policy, but MUST NOT substitute their own content heuristic for request-shaped admission.
+
+| Measurement | Verdict |
+| --- | --- |
+| Exact fit | admit |
+| Exact overflow of the wall | reject |
+| A prompt between the curation reservation and the wall | admitted with its grant flexed down |
+| A proven upper bound | admits only when it fits |
+| Unknown limits, an upper bound above a limit, estimates, and unavailable measurements | defer to the upstream provider as capacity oracle |
+
+| Exposed | Meaning |
+| --- | --- |
+| `inputCapacity` | the curation reservation's intersection, `maxInputTokens` and `contextWindow - outputBudget`: the line Core packs the room against |
+| `inputWall` | the wall's; `null` means the available limits cannot establish one; a known combined context and output budget must leave positive input capacity |
 
 `tokenize` is the separate content-token capability and exists only when the
 endpoint exposes its real vocabulary. Content tokenization does not substitute
@@ -580,21 +581,15 @@ model request.
 
 ### §provider-input-modalities Native input parts
 
-A provider declares `inputModalities`, the set of native non-text inputs its model
-accepts, from the catalog's input modalities (Models.dev `modalities.input` minus
-`text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the
-model is unknown). A user `ChatMessage` may then carry text beside the AI SDK's
-current `{ type: "file", data: bytes, mediaType }` part; `mediaType` distinguishes
-an image, PDF, audio, or future native input without a second internal part shape. The
-AI SDK transport forwards those parts as the model's native file inputs; it
-alone serializes the canonical model and messages before provider extension
-fields are merged. System and assistant messages stay text, and prompt-token estimates count text
-only, the provider's reported usage owning each part's cost. A pool declares a
-modality only when every backend does; the Mock declares them by option and
-records every request it receives. Which parts actually ride a request is the
-service's decision per attachment ({§packet-attachment-parts} in the core specification).
-An accepted modality does not imply every codec/container is supported: SDK or endpoint
-format rejections remain provider errors, never silent omission or a text-only substitute.
+A provider declares `inputModalities`, the set of native non-text inputs its model accepts, from the catalog's input modalities (Models.dev `modalities.input` minus `text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the model is unknown). Which parts actually ride a request is the service's decision per attachment ({§packet-attachment-parts} in the core specification).
+
+| Fact | Rule |
+| --- | --- |
+| The part | a user `ChatMessage` may carry text beside the AI SDK's current `{ type: "file", data: bytes, mediaType }` part; `mediaType` distinguishes an image, PDF, audio, or future native input without a second internal part shape |
+| The transport | the AI SDK transport forwards those parts as the model's native file inputs; it alone serializes the canonical model and messages before provider extension fields are merged |
+| Other messages | system and assistant messages stay text, and prompt-token estimates count text only, the provider's reported usage owning each part's cost |
+| Pools and the Mock | a pool declares a modality only when every backend does; the Mock declares them by option and records every request it receives |
+| Codecs | an accepted modality does not imply every codec/container is supported: SDK or endpoint format rejections remain provider errors, never silent omission or a text-only substitute |
 
 ### §model-fact-resolution Model fact precedence
 
@@ -878,16 +873,12 @@ request-accounting row. Capacity failures are not connectivity failures and are
 never retried by the provider scheduler; bounded packet recovery belongs to the
 consumer.
 
-§provider-flexed-allowance **The grant is the window's remainder, between the floor and the model's limit.** The
-configured output budget is the reservation curation packs the input against
-(`window − outputBudget`), and it is the only allowance the model is ever
-shown — the packet's disclosed `tokensResponseMax` stays the configured reservation
-so the response discipline it teaches never varies. The wire grants the remainder: with an exact prompt count
-(llama-server's input-token endpoint) `window − promptTokens − 256`, clamped to no less than the
-output floor and no more than the model's own output limit, so a response overflowing the disclosed reservation
-completes whenever the window's unclaimed room can hold it, and a prompt that ate into the reservation still leaves the floor. Every other
-measurement kind — and any pool — grants the reservation, clamped by the same remainder taken from the prompt's estimate so the wire never asks the window for more than it has; an estimate proves
-nothing about the true remainder, so it never rejects.
+§provider-flexed-allowance **The grant is the window's remainder, between the floor and the model's limit.** The configured output budget is the reservation curation packs the input against (`window − outputBudget`), and it is the only allowance the model is ever shown — the packet's disclosed `tokensResponseMax` stays the configured reservation so the response discipline it teaches never varies.
+
+| Prompt measurement | The wire grants |
+| --- | --- |
+| An exact prompt count (llama-server's input-token endpoint) | `window − promptTokens − 256`, clamped to no less than the output floor and no more than the model's own output limit, so a response overflowing the disclosed reservation completes whenever the window's unclaimed room can hold it, and a prompt that ate into the reservation still leaves the floor |
+| Every other measurement kind, and any pool | the reservation, clamped by the same remainder taken from the prompt's estimate so the wire never asks the window for more than it has; an estimate proves nothing about the true remainder, so it never rejects |
 
 §provider-output-floor **The floor is the wall's other side.** `PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped as `10%`, is the least response room any request keeps, capped by the output budget; `window − floor`, intersected with `maxInputTokens`, is the physical input wall exposed as `inputWall`. A request under the curation reservation is the ordinary case; a request between the reservation and the wall is admitted with its grant flexed down to the remainder; an exact prompt over the wall is rejected before I/O; an estimate over the wall defers to the upstream provider as capacity oracle with its grant at the floor. Core consults the wall, never the reservation, to end a loop ({§context-wall} in the core contract). A response exceeding even the grant is cut,
 and the notice names the true per-call grant (`capacity.responseMax` on the
@@ -1057,19 +1048,16 @@ The latter retains SDK response bodies/chunks and the dispatched request body
 under {§provider-dispatched-request}, without requesting extra model output.
 Neither changes unconditional accounting or failed-response evidence.
 
-§provider-wire-emission **The emission is retained as the wire carried it, on every
-response.** Beside the normalized `content` and `reasoning`, the transport record keeps
-`wire`: the number of raw chunks, the chunks that carried no field at all, every delta or
-message field the stream carried with the number of chunks carrying it, tool calls merged
-by index with their arguments as streamed, the finish reasons seen, and the verbatim text
-of every string field the record does not already hold. Nothing is opt-in and nothing is
-reinterpreted: a blank emission reads as thirteen chunks that carried nothing, or as a
-tool-call section the model emitted into a channel the protocol does not read, instead of
-being guessed at from token counts. Frames outside the recognized OpenAI-compatible
-envelope remain verbatim in `wire.unmappedChunks`; the recorder never discards an
-unrecognized/native payload or invents another provider parser. This required
-evidence is independent of the optional complete `rawBody` dataset capture.
-Covered by `aiSdkTransport.test.ts` and core's `Digest.wire-evidence.test.ts`.
+§provider-wire-emission **The emission is retained as the wire carried it, on every response.** Beside the normalized `content` and `reasoning`, the transport record keeps `wire`. Nothing is opt-in and nothing is reinterpreted: a blank emission reads as thirteen chunks that carried nothing, or as a tool-call section the model emitted into a channel the protocol does not read, instead of being guessed at from token counts. This required evidence is independent of the optional complete `rawBody` dataset capture. Covered by `aiSdkTransport.test.ts` and core's `Digest.wire-evidence.test.ts`.
+
+| `wire` holds | What |
+| --- | --- |
+| Chunks | the number of raw chunks, and the chunks that carried no field at all |
+| Fields | every delta or message field the stream carried with the number of chunks carrying it |
+| Tool calls | merged by index with their arguments as streamed |
+| Finish reasons | those seen |
+| Text | the verbatim text of every string field the record does not already hold |
+| `wire.unmappedChunks` | frames outside the recognized OpenAI-compatible envelope, verbatim; the recorder never discards an unrecognized/native payload or invents another provider parser |
 
 §provider-usage-refusal **The provider's bookkeeping is not the exchange.** Usage
 normalization is exact; a refusal never fails or retries the response. The same
