@@ -136,6 +136,19 @@ type TurnCallMetadata = {
     model: string;
 };
 
+// What the parse of an emission's content yields, before the reasoning operations join it.
+type ParsedContent = {
+    ops: PlurnkStatement[];
+    contentStatementCount: number;
+    parseErrors: ParseErrorInfo[];
+    parseNotices: Notice[];
+    fabrications: ParseErrorInfo[];
+    outside: string[];
+    hasUnparsedTail: boolean;
+    operationOmitted: boolean;
+};
+type ParsedErrorItem = Extract<ReturnType<typeof PlurnkParser.parse>["items"][number], { kind: "error" }>;
+
 type SplitProviderResponse = {
     packetAssistant: PacketAssistant;
     sourceBacked: boolean;
@@ -1881,102 +1894,12 @@ export default class TurnRunner {
     #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
-        const ops: PlurnkStatement[] = [];
-        const parseErrors: ParseErrorInfo[] = [];
-        let contentStatementCount = 0;
-        let hasUnparsedTail = false;
-        let operationOmitted = false;
-        const parseNotices: Notice[] = [];
-        const fabrications: ParseErrorInfo[] = [];
-        const outside: string[] = [];
-        if (preParsedOps !== undefined) {
-            ops.push(...preParsedOps);
-            contentStatementCount = preParsedOps.length;
-        } else {
-            // {§observability-boundary} — the parse is observed without its input;
-            // only the resulting statement count is attributable.
-            const parsed = observedSync("contracts.parse", {}, (span) => {
-                // {§executor-heading}: explicit invocations parse without registration; available names
-                // also admit slotless headings. Dispatch resolves the then-current workspace registry.
-                const result = PlurnkParser.parse(assistant.content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
-                span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
-                return result;
-            });
-            // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
-            // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
-            // its text as its outside source and stays an empty turn ({§empty-turn}). Echoed emission
-            // headings are announcements, not annotation, and are dropped ({§fabricated-log-entry}).
-            const fenced = parsed.items.filter((item) => item.kind === "statement").length;
-            let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
-            const flushSpan = (): void => {
-                if (span === null) return;
-                const body = span.body.join("\n\n");
-                if (body.length > 0) {
-                    if (fenced > 0) {
-                        ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: span.position });
-                        contentStatementCount += 1;
-                    } else outside.push(body);
-                }
-                span = null;
+        const { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
+            ? TurnRunner.#parseContent(assistant.content, executors, wellFormed)
+            : {
+                ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], parseNotices: [], fabrications: [],
+                outside: [], hasUnparsedTail: false, operationOmitted: false,
             };
-            for (const item of parsed.items) {
-                if (item.kind !== "text") flushSpan();
-                if (item.kind === "statement") {
-                    ops.push(item.statement);
-                    contentStatementCount += 1;
-                }
-                else if (item.kind === "text") {
-                    // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
-                    const fabricated = FabricatedLog.find(item.content);
-                    if (fabricated !== null) {
-                        fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
-                        continue;
-                    }
-                    const body = FabricatedLog.stripEchoes(item.content);
-                    if (body.length === 0) continue;
-                    span ??= { body: [], position: item.position };
-                    span.body.push(body);
-                }
-                else if (item.kind === "error") {
-                    const err = (item as { error?: PlurnkParseError }).error;
-                    if (err instanceof PlurnkParseError) {
-                        operationOmitted ||= err.operationOmitted;
-                        if (err.severity === "warning") {
-                            parseNotices.push({
-                                source: "grammar",
-                                kind: "parse_advisory",
-                                level: "warn",
-                                directive: DIRECTIVE.advisory,
-                                message: err.message,
-                                position: {
-                                    type: "content-offset",
-                                    line: err.line,
-                                    column: err.column,
-                                },
-                                parserSource: err.source,
-                            });
-                        } else {
-                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source,
-                                ...(err.recovery === undefined ? {} : { recovery: err.recovery }),
-                                ...(item.attempt === undefined ? {} : { attempt: item.attempt }) });
-                        }
-                    } else {
-                        const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
-                        parseErrors.push({ message: msg, line: 0, column: 0, source: "parser" });
-                    }
-                }
-            }
-            flushSpan();
-            // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
-            // nothing was read. The statements that closed before it are ordinary facts and run; the
-            // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
-            // lost its boundary before any statement closed has nothing admissible and is resampled.
-            const tail = parsed.unparsedTail;
-            if (tail !== undefined) {
-                hasUnparsedTail = true;
-                parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
-            }
-        }
         const reasoning = assistant.reasoning ?? null;
         const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning, (warning) => {
             parseNotices.push({
@@ -2023,6 +1946,110 @@ export default class TurnRunner {
             outside: outside.length === 0 ? null : outside.join("\n\n"),
             emissionStatements,
         };
+    }
+
+    // {§outside-text} {§fabricated-log-entry} {§unparsed-tail-boundary} An emission's content parsed into its
+    // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
+    // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
+    static #parseContent(content: string, executors: readonly string[], wellFormed: BodyCheck | undefined): ParsedContent {
+        const ops: PlurnkStatement[] = [];
+        const parseErrors: ParseErrorInfo[] = [];
+        let contentStatementCount = 0;
+        let hasUnparsedTail = false;
+        let operationOmitted = false;
+        const parseNotices: Notice[] = [];
+        const fabrications: ParseErrorInfo[] = [];
+        const outside: string[] = [];
+        // {§observability-boundary} — the parse is observed without its input;
+        // only the resulting statement count is attributable.
+        const parsed = observedSync("contracts.parse", {}, (span) => {
+            // {§executor-heading}: explicit invocations parse without registration; available names
+            // also admit slotless headings. Dispatch resolves the then-current workspace registry.
+            const result = PlurnkParser.parse(content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
+            span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
+            return result;
+        });
+        // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
+        // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
+        // its text as its outside source and stays an empty turn ({§empty-turn}). Echoed emission
+        // headings are announcements, not annotation, and are dropped ({§fabricated-log-entry}).
+        const fenced = parsed.items.filter((item) => item.kind === "statement").length;
+        let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
+        const flushSpan = (): void => {
+            if (span === null) return;
+            const body = span.body.join("\n\n");
+            if (body.length > 0) {
+                if (fenced > 0) {
+                    ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: span.position });
+                    contentStatementCount += 1;
+                } else outside.push(body);
+            }
+            span = null;
+        };
+        for (const item of parsed.items) {
+            if (item.kind !== "text") flushSpan();
+            if (item.kind === "statement") {
+                ops.push(item.statement);
+                contentStatementCount += 1;
+            }
+            else if (item.kind === "text") {
+                // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
+                const fabricated = FabricatedLog.find(item.content);
+                if (fabricated !== null) {
+                    fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
+                    continue;
+                }
+                const body = FabricatedLog.stripEchoes(item.content);
+                if (body.length === 0) continue;
+                span ??= { body: [], position: item.position };
+                span.body.push(body);
+            }
+            else if (item.kind === "error") {
+                operationOmitted ||= TurnRunner.#admitParseError(item, parseErrors, parseNotices);
+            }
+        }
+        flushSpan();
+        // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
+        // nothing was read. The statements that closed before it are ordinary facts and run; the
+        // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
+        // lost its boundary before any statement closed has nothing admissible and is resampled.
+        const tail = parsed.unparsedTail;
+        if (tail !== undefined) {
+            hasUnparsedTail = true;
+            parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
+        }
+        return { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted };
+    }
+
+    // One parse error by its severity: an advisory is a grammar Notice beside the turn; an error is a diagnostic
+    // the model sees, with its recovery and the attempt it came from. Returns whether an operation was omitted.
+    static #admitParseError(item: ParsedErrorItem, parseErrors: ParseErrorInfo[], parseNotices: Notice[]): boolean {
+            const err = (item as { error?: PlurnkParseError }).error;
+            if (err instanceof PlurnkParseError) {
+                    if (err.severity === "warning") {
+                    parseNotices.push({
+                        source: "grammar",
+                        kind: "parse_advisory",
+                        level: "warn",
+                        directive: DIRECTIVE.advisory,
+                        message: err.message,
+                        position: {
+                            type: "content-offset",
+                            line: err.line,
+                            column: err.column,
+                        },
+                        parserSource: err.source,
+                    });
+                } else {
+                    parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source,
+                        ...(err.recovery === undefined ? {} : { recovery: err.recovery }),
+                        ...(item.attempt === undefined ? {} : { attempt: item.attempt }) });
+                }
+            } else {
+                const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
+                parseErrors.push({ message: msg, line: 0, column: 0, source: "parser" });
+            }
+        return err instanceof PlurnkParseError && err.operationOmitted;
     }
 
     // #note12 — extension reference docs are materialized beneath
