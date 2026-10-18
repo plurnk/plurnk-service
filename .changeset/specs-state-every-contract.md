@@ -19,4 +19,6 @@
 "@plurnk/plurnk-mimetypes-text-plain": patch
 ---
 
-Specifications: every extension handler states its contract in `SPEC.md` (shipped); READMEs reduced to usage; new tags for the aliases cascade, result-shape guards, the card read per wake and the llama-server effort posture.
+Specifications: every extension handler states its contract in a shipped
+`SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
+result-shape guards, the card read per wake and the llama-server effort posture.
