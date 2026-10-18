@@ -7,7 +7,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import { assertResourceEffects, editReceipt, EditCollision, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
+import { assertResourceEffects, editReceipt, EditCollision, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
 import ByteView from "../content/byte-view.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import { contentHash } from "./content-hash.ts";
@@ -20,7 +20,7 @@ import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
 import FileSnapshot from "./FileSnapshot.ts";
 import FileMaterialization from "./file-materialization.ts";
-import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
+import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds, DeferredMoveSource } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
@@ -803,6 +803,10 @@ export default class ResourceTransfers {
     }
 
 
+    // {§move-decomposition} A MOVE settles in two halves under one row. When the destination was written before
+    // the proposal, the proposal was the source's own KILL; when the source was deferred, the proposal was the
+    // destination's write and an accepted one retires the source now. Either way a settlement carries the
+    // destination's effects, and a refusal after the destination was written says so.
     async settleMoveProposal({
         statement,
         result,
@@ -818,68 +822,12 @@ export default class ResourceTransfers {
     }): Promise<ProposalSettlement> {
         if (statement.op !== "MOVE") return settlement;
         const attrs = result.attrs as OrchestrationProposalAttrs | undefined;
-        const destinationWritten = attrs?.moveDestinationWritten;
-        if (destinationWritten !== undefined) {
-            const destinationEffects = attrs?.moveDestinationEffects === undefined
+        if (attrs?.moveDestinationWritten !== undefined) {
+            const destinationEffects = attrs.moveDestinationEffects === undefined
                 ? []
                 : assertResourceEffects(attrs.moveDestinationEffects);
-            if (settlement.resolution.decision !== "accept") {
-                const decision = settlement.resolution.decision;
-                return {
-                    resolution: settlement.resolution,
-                    applied: MutationEffects.moveFailureAfterDestination(
-                        MutationEffects.failure(
-                            "move-source-not-applied",
-                            decision === "cancel" ? 499 : 409,
-                            `The MOVE destination was written, but source removal was ${decision === "cancel" ? "cancelled" : "rejected"}.`,
-                            {},
-                            {
-                                retryable: false,
-                            },
-                        ),
-                        destinationWritten,
-                        destinationEffects,
-                    ),
-                };
-            }
-            if (settlement.applied === undefined) {
-                return {
-                    resolution: settlement.resolution,
-                    applied: MutationEffects.moveFailureAfterDestination(
-                        MutationEffects.failure(
-                            "proposal-apply-missing",
-                            500,
-                            "The source scheme accepted its MOVE proposal without applying the source mutation.",
-                            {},
-                            {
-                                stage: "proposal-application",
-                                retryable: false,
-                            },
-                        ),
-                        destinationWritten,
-                        destinationEffects,
-                    ),
-                };
-            }
-            if (settlement.applied.status >= 400) {
-                return {
-                    resolution: settlement.resolution,
-                    applied: MutationEffects.moveFailureAfterDestination(
-                        settlement.applied,
-                        destinationWritten,
-                        destinationEffects,
-                    ),
-                };
-            }
-            return MutationEffects.withSettlementEffects(
-                settlement,
-                [
-                    ...destinationEffects,
-                    ...MutationEffects.settlementEffects(settlement),
-                ],
-            );
+            return ResourceTransfers.#settleSourceAfterDestination(settlement, attrs.moveDestinationWritten, destinationEffects);
         }
-
         const deferred = attrs?.moveSource;
         if (
             deferred === undefined
@@ -888,22 +836,61 @@ export default class ResourceTransfers {
         ) {
             return settlement;
         }
+        return this.#retireDeferredMoveSource(statement, settlement, deferred, ctx, ids);
+    }
+
+    // The source half of a MOVE whose destination was already written: the settlement carries the destination's
+    // effects, or names the destination as written beside a removal that was rejected, cancelled or never applied.
+    static #settleSourceAfterDestination(
+        settlement: ProposalSettlement,
+        destinationWritten: string,
+        destinationEffects: readonly ResourceEffect[],
+    ): ProposalSettlement {
+        const failed = (applied: DispatchResult): ProposalSettlement => ({
+            resolution: settlement.resolution,
+            applied: MutationEffects.moveFailureAfterDestination(applied, destinationWritten, destinationEffects),
+        });
+        if (settlement.resolution.decision !== "accept") {
+            const decision = settlement.resolution.decision;
+            return failed(MutationEffects.failure(
+                "move-source-not-applied",
+                decision === "cancel" ? 499 : 409,
+                `The MOVE destination was written, but source removal was ${decision === "cancel" ? "cancelled" : "rejected"}.`,
+                {},
+                {
+                    retryable: false,
+                },
+            ));
+        }
+        if (settlement.applied === undefined) return failed(ResourceTransfers.#applyMissing("source"));
+        if (settlement.applied.status >= 400) return failed(settlement.applied);
+        return MutationEffects.withSettlementEffects(
+            settlement,
+            [
+                ...destinationEffects,
+                ...MutationEffects.settlementEffects(settlement),
+            ],
+        );
+    }
+
+    // The deferred source half of a MOVE whose destination the accepted proposal has just written: the source is
+    // resolved again against its recorded identity and removed — through its own accepted proposal when the
+    // removal proposes — and a refusal anywhere names the destination as written.
+    async #retireDeferredMoveSource(
+        statement: MoveStatement,
+        settlement: ProposalSettlement,
+        deferred: DeferredMoveSource,
+        ctx: PlurnkSchemeContext,
+        ids: ProposalIds,
+    ): Promise<ProposalSettlement> {
         if (settlement.applied === undefined) {
-            return {
-                resolution: settlement.resolution,
-                applied: MutationEffects.failure(
-                    "proposal-apply-missing",
-                    500,
-                    "The destination scheme accepted its MOVE proposal without applying the destination mutation.",
-                    {},
-                    {
-                        stage: "proposal-application",
-                        retryable: false,
-                    },
-                ),
-            };
+            return { resolution: settlement.resolution, applied: ResourceTransfers.#applyMissing("destination") };
         }
         const destinationEffects = MutationEffects.settlementEffects(settlement);
+        const failed = (applied: DispatchResult): ProposalSettlement => ({
+            resolution: settlement.resolution,
+            applied: MutationEffects.moveFailureAfterDestination(applied, deferred.destination, destinationEffects),
+        });
 
         const resolvedSource = await this.#selection.resolveResourceSelection(
             {
@@ -915,16 +902,7 @@ export default class ResourceTransfers {
             ctx,
             "read",
         );
-        if (MutationEffects.isDispatchResult(resolvedSource)) {
-            return {
-                resolution: settlement.resolution,
-                applied: MutationEffects.moveFailureAfterDestination(
-                    resolvedSource,
-                    deferred.destination,
-                    destinationEffects,
-                ),
-            };
-        }
+        if (MutationEffects.isDispatchResult(resolvedSource)) return failed(resolvedSource);
         if (
             resolvedSource.scheme !== deferred.scheme
             || resolvedSource.authority !== deferred.authority
@@ -948,16 +926,7 @@ export default class ResourceTransfers {
             ctx,
             deferred.lineAnchorPrecondition,
         );
-        if (removed.status >= 400) {
-            return {
-                resolution: settlement.resolution,
-                applied: MutationEffects.moveFailureAfterDestination(
-                    removed,
-                    deferred.destination,
-                    destinationEffects,
-                ),
-            };
-        }
+        if (removed.status >= 400) return failed(removed);
         if (removed.status !== 202) {
             return MutationEffects.withSettlementEffects(
                 settlement,
@@ -978,41 +947,28 @@ export default class ResourceTransfers {
             removed,
             initialSourceSettlement,
         );
-        if (sourceSettlement.applied === undefined) {
-            return {
-                resolution: settlement.resolution,
-                applied: MutationEffects.moveFailureAfterDestination(
-                    MutationEffects.failure(
-                        "proposal-apply-missing",
-                        500,
-                        "The source scheme accepted its MOVE proposal without applying the source mutation.",
-                        {},
-                        {
-                            stage: "proposal-application",
-                            retryable: false,
-                        },
-                    ),
-                    deferred.destination,
-                    destinationEffects,
-                ),
-            };
-        }
-        if (sourceSettlement.applied.status >= 400) {
-            return {
-                resolution: settlement.resolution,
-                applied: MutationEffects.moveFailureAfterDestination(
-                    sourceSettlement.applied,
-                    deferred.destination,
-                    destinationEffects,
-                ),
-            };
-        }
+        if (sourceSettlement.applied === undefined) return failed(ResourceTransfers.#applyMissing("source"));
+        if (sourceSettlement.applied.status >= 400) return failed(sourceSettlement.applied);
         return MutationEffects.withSettlementEffects(
             settlement,
             [
                 ...destinationEffects,
                 ...MutationEffects.settlementEffects(sourceSettlement),
             ],
+        );
+    }
+
+    // An accepted MOVE proposal whose scheme applied nothing is the settlement's 500.
+    static #applyMissing(scheme: "source" | "destination"): DispatchResult {
+        return MutationEffects.failure(
+            "proposal-apply-missing",
+            500,
+            `The ${scheme} scheme accepted its MOVE proposal without applying the ${scheme} mutation.`,
+            {},
+            {
+                stage: "proposal-application",
+                retryable: false,
+            },
         );
     }
 
