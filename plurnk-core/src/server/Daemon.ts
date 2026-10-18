@@ -119,6 +119,16 @@ type LoopGenerationPolicy = {
     effort: Effort;
 };
 
+// The callbacks the Daemon hands its engine and drain supervisor, by the types those owners declare.
+type EngineCallbacks = ConstructorParameters<typeof Engine>[0];
+type InjectWorker = NonNullable<EngineCallbacks["injectWorker"]>;
+type InjectWorkerArgs = Parameters<InjectWorker>[0];
+type InjectWorkerResult = Awaited<ReturnType<InjectWorker>>;
+type DrainCallbacks = ConstructorParameters<typeof DrainSupervisor>[0];
+type InjectionCompatibilityArgs = Parameters<DrainCallbacks["assertInjectionCompatibility"]>[0];
+type DrainRunLoopArgs = Parameters<DrainCallbacks["runLoop"]>[0];
+type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
+
 // {§module-discovery} — a registered module and its owner, the package it came from.
 interface RegisteredModule {
     readonly module: DaemonModule<HostSetupSeam>;
@@ -294,75 +304,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             outsideEventNotify: (workspaceId, event) => this.notifyOutsideEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
-            // worker:// loop-start primitive — spawn/fork/irc deliver through
-            // Daemon.inject (active sister → fold; idle → enqueue + drain). The
-            // daemon owns provider + the law-file system prompt; the worker scheme
-            // handler carries neither. Fire-and-forget: the returned drain runs
-            // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments, opener }) => {
-                await this.#assertModelWorker(workspaceId, workerId);
-                const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
-                if (sender === undefined || sender.workspace_id !== workspaceId) {
-                    throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
-                }
-                const source = await this.#messageSource(workspaceId, sourceLoopId, sender.worker_id, workerId);
-                const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
-                let providerSpec: ProviderSpec;
-                let childProviderSpec: ProviderSpec | null;
-                let effort: Effort;
-                if (spawn !== true) {
-                    // {§worker-model-selection} — the voice door addresses an
-                    // existing worker. Its own durable generation policy is the
-                    // receiver's identity; the daemon default and sender do not
-                    // overwrite it merely because a new loop must be minted.
-                    const targetPolicy = await this.#workerModels.resolveWorkerModel(workerId, undefined);
-                    if (targetPolicy === null) {
-                        throw new Error(`injectWorker: worker ${workerId} has no resolvable model route`);
-                    }
-                    providerSpec = targetPolicy.providerSpec;
-                    effort = targetPolicy.effort;
-                    childProviderSpec = await this.#workerModels.resolveWorkerSpawnModel(workerId, undefined);
-                } else {
-                    const parentPolicy = await this.#providerPolicyForLoop(sourceLoopId);
-                    providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
-                    effort = parentPolicy.effort;
-                    // {§worker-model-selection} — lineage inheritance by value:
-                    // the child begins with the spawning loop's effective spawn
-                    // model and no separate override of its own.
-                    childProviderSpec = null;
-                    // {§worker-effort-source} — inherited by value, chosen by nobody on this worker.
-                    await this.#workerModels.persistGenerationPolicy(workerId, {
-                        model_route_id: await routeForSpec(this.#db, providerSpec),
-                        spawn_model_route_id: null,
-                        effort: effort,
-                        effort_source: "default" });
-                }
-                // {§env-option} — a created worker's explicit overrides replace copied values and enable them.
-                // Names were admitted at the operation; a refusal here is a defect and throws.
-                for (const [alias, value] of Object.entries(environment ?? {})) {
-                    await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
-                    await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
-                }
-                const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
-                    const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
-                    return this.inject({
-                        workspaceId,
-                        workerId,
-                        prompt: delivered.body,
-                        evidence: delivered.evidence,
-                        sourceLoopId,
-                        ...(source === undefined ? {} : { source }),
-                        ...(opener === undefined ? {} : { opener }),
-                        providerSpec,
-                        effort,
-                        childProviderSpec,
-                        systemPrompt });
-                });
-                // {§worker-obligations} — the message's durable address, as Open Work names it.
-                const message = await this.#db.drain_message_path.get<{ path: string }>({ id: messageId });
-                if (message === undefined) throw new Error(`injectWorker: message ${messageId} has no address`);
-                return { action, loopId, message: message.path };
-            },
+            injectWorker: (args) => this.#injectWorker(args),
             withWorkspaceTurn: (workspaceId, workerId, run, signal) => this.#workspaceGate.withTurn(workspaceId, workerId, run, signal),
             // {§functionality-hotload} — skills and plugins change out of band.
             // Republish under the workspace turn gate before packet assembly so
@@ -396,63 +338,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 MessageAbandonment.complete(this.#engine, this.#db, workspaceId, workerId, loopId, status),
             lifecycle: this.#lifecycle,
             injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress, opener) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress, opener),
-            assertInjectionCompatibility: async ({
-                loopId,
-                providerSpec,
-                providerSpecExplicit,
-                effort,
-                childProviderSpec,
-                turnCeiling }) => {
-                // An omitted selector keeps the loop's durable provider; only an
-                // explicit selection is checked against it (a deliberate switch).
-                if (providerSpecExplicit !== false) {
-                    await this.#assertLoopProvider(loopId, providerSpec);
-                }
-                await this.#assertLoopEffort(loopId, effort);
-                if (childProviderSpec !== undefined) {
-                    await this.#assertLoopChildProvider(loopId, childProviderSpec);
-                }
-                await this.#assertLoopMaxTurns(
-                    loopId,
-                    turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
-                );
-            },
-            runLoop: async ({
-                workspaceId,
-                workerId,
-                loopId,
-                maxTurns,
-                prompt,
-                systemPrompt,
-                signal,
-                onSettled }) => {
-                // The drain callback is the final provider/model boundary. Every
-                // admission path, including boot recovery, terminates here.
-                await this.#assertModelWorker(workspaceId, workerId);
-                const releaseCapabilities = await this.#residency.acquire(workspaceId);
-                try {
-                    // Worker settings can change while Functionality remains
-                    // resident. Reconcile the worker-private discovery surface
-                    // at the same pre-inference boundary used for activation.
-                    await this.#residency.reconcile(workspaceId);
-                    const { provider: loopProvider, childProvider } = await this.#providersForLoop(loopId);
-                    return await this.#engine.runLoop({
-                        provider: loopProvider,
-                        childProvider,
-                        workspaceId,
-                        workerId,
-                        loopId,
-                        maxTurns,
-                        messages: [
-                            { role: "system", content: systemPrompt },
-                            { role: "user", content: prompt },
-                        ],
-                        signal,
-                        onSettled });
-                } finally {
-                    releaseCapabilities();
-                }
-            },
+            assertInjectionCompatibility: (args) => this.#assertInjectionCompatibility(args),
+            runLoop: (args) => this.#runDrainLoop(args),
             loopUsage: (loopId) => this.#engine.loopUsage(loopId),
             loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
             discardLoopNotices: (loopId) => this.#engine.discardLoopNotices(loopId),
@@ -477,6 +364,124 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
         this.#workerModels = new WorkerModelResolver({ db: this.#db });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
+    }
+
+    // worker:// loop-start primitive — spawn/fork/irc deliver through Daemon.inject (active sister → fold; idle →
+    // enqueue + drain). The daemon owns provider + the law-file system prompt; the worker scheme handler carries
+    // neither. Fire-and-forget: the returned drain runs independently (the sister is its own worker).
+    // {§machine-processes}
+    async #injectWorker({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments, opener }: InjectWorkerArgs): Promise<InjectWorkerResult> {
+        await this.#assertModelWorker(workspaceId, workerId);
+        const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
+        if (sender === undefined || sender.workspace_id !== workspaceId) {
+            throw new Error(`injectWorker: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
+        }
+        const source = await this.#messageSource(workspaceId, sourceLoopId, sender.worker_id, workerId);
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
+        let providerSpec: ProviderSpec;
+        let childProviderSpec: ProviderSpec | null;
+        let effort: Effort;
+        if (spawn !== true) {
+            // {§worker-model-selection} — the voice door addresses an
+            // existing worker. Its own durable generation policy is the
+            // receiver's identity; the daemon default and sender do not
+            // overwrite it merely because a new loop must be minted.
+            const targetPolicy = await this.#workerModels.resolveWorkerModel(workerId, undefined);
+            if (targetPolicy === null) {
+                throw new Error(`injectWorker: worker ${workerId} has no resolvable model route`);
+            }
+            providerSpec = targetPolicy.providerSpec;
+            effort = targetPolicy.effort;
+            childProviderSpec = await this.#workerModels.resolveWorkerSpawnModel(workerId, undefined);
+        } else {
+            const parentPolicy = await this.#providerPolicyForLoop(sourceLoopId);
+            providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
+            effort = parentPolicy.effort;
+            // {§worker-model-selection} — lineage inheritance by value:
+            // the child begins with the spawning loop's effective spawn
+            // model and no separate override of its own.
+            childProviderSpec = null;
+            // {§worker-effort-source} — inherited by value, chosen by nobody on this worker.
+            await this.#workerModels.persistGenerationPolicy(workerId, {
+                model_route_id: await routeForSpec(this.#db, providerSpec),
+                spawn_model_route_id: null,
+                effort: effort,
+                effort_source: "default" });
+        }
+        // {§env-option} — a created worker's explicit overrides replace copied values and enable them.
+        // Names were admitted at the operation; a refusal here is a defect and throws.
+        for (const [alias, value] of Object.entries(environment ?? {})) {
+            await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
+            await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
+        }
+        const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
+            const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
+            return this.inject({
+                workspaceId,
+                workerId,
+                prompt: delivered.body,
+                evidence: delivered.evidence,
+                sourceLoopId,
+                ...(source === undefined ? {} : { source }),
+                ...(opener === undefined ? {} : { opener }),
+                providerSpec,
+                effort,
+                childProviderSpec,
+                systemPrompt });
+        });
+        // {§worker-obligations} — the message's durable address, as Open Work names it.
+        const message = await this.#db.drain_message_path.get<{ path: string }>({ id: messageId });
+        if (message === undefined) throw new Error(`injectWorker: message ${messageId} has no address`);
+        return { action, loopId, message: message.path };
+    }
+
+    // {§worker-model-selection} An omitted selector keeps the loop's durable provider; only an explicit selection is
+    // checked against it (a deliberate switch). Effort, the spawn model and an explicit turn ceiling are checked alike.
+    async #assertInjectionCompatibility({ loopId, providerSpec, providerSpecExplicit, effort, childProviderSpec, turnCeiling }: InjectionCompatibilityArgs): Promise<void> {
+        // An omitted selector keeps the loop's durable provider; only an
+        // explicit selection is checked against it (a deliberate switch).
+        if (providerSpecExplicit !== false) {
+            await this.#assertLoopProvider(loopId, providerSpec);
+        }
+        await this.#assertLoopEffort(loopId, effort);
+        if (childProviderSpec !== undefined) {
+            await this.#assertLoopChildProvider(loopId, childProviderSpec);
+        }
+        await this.#assertLoopMaxTurns(
+            loopId,
+            turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
+        );
+    }
+
+    // The drain callback is the final provider/model boundary. Every admission path, including boot recovery,
+    // terminates here.
+    async #runDrainLoop({ workspaceId, workerId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
+        // The drain callback is the final provider/model boundary. Every
+        // admission path, including boot recovery, terminates here.
+        await this.#assertModelWorker(workspaceId, workerId);
+        const releaseCapabilities = await this.#residency.acquire(workspaceId);
+        try {
+            // Worker settings can change while Functionality remains
+            // resident. Reconcile the worker-private discovery surface
+            // at the same pre-inference boundary used for activation.
+            await this.#residency.reconcile(workspaceId);
+            const { provider: loopProvider, childProvider } = await this.#providersForLoop(loopId);
+            return await this.#engine.runLoop({
+                provider: loopProvider,
+                childProvider,
+                workspaceId,
+                workerId,
+                loopId,
+                maxTurns,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: prompt },
+                ],
+                signal,
+                onSettled });
+        } finally {
+            releaseCapabilities();
+        }
     }
 
 
