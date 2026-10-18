@@ -847,22 +847,14 @@ and never re-fetch a match.
 
 **Git is the substrate and the repository is the boundary:**
 
-- §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a
-  project file is exactly one of three things: **invisible**, **added**, or **tracked
-  by git**. There is no fourth category. Membership — what the model can READ and
-  FIND, what is materialized into the store, what a packet can ship to a provider — is
-  the allowlist `(tracked ∪ include ∪ created) − exclude` and nothing else. No file is a member because
-  it exists on disk, because git does not ignore it, or because a model would find it
-  convenient: ambient admission of untracked files is prohibited, so a workspace rooted
-  in a home directory or a monorepo exposes exactly what was committed or added (the
-  non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite). Every
-  exception is a named clause in the register ({§membership-model-universe}), admits
-  files by an exact record with recorded provenance, and never by `git add`; the one
-  exception that admits on a read is the operator's own ruling, `PLURNK_MEMBERS_AUTO_ADD`
-  ({§membership-auto-add}, #1154), and its knob is the guard.
-  Changing this clause, the register, or the composition is an operator ruling recorded
-  on the issue that lands it — never an implementation convenience, never a side effect
-  of making a file visible to solve the problem at hand.
+- §membership-baseline **The baseline contract — chiseled (#400).** To a workspace a project file is exactly one of three things: **invisible**, **added**, or **tracked by git**. There is no fourth category. Membership — what the model can READ and FIND, what is materialized into the store, what a packet can ship to a provider — is the allowlist `(tracked ∪ include ∪ created) − exclude` and nothing else. Changing this clause, the register, or the composition is an operator ruling recorded on the issue that lands it — never an implementation convenience, never a side effect of making a file visible to solve the problem at hand.
+
+  | Rule | What |
+  | --- | --- |
+  | No ambient admission | no file is a member because it exists on disk, because git does not ignore it, or because a model would find it convenient: ambient admission of untracked files is prohibited, so a workspace rooted in a home directory or a monorepo exposes exactly what was committed or added (the non-member rule, {§fs-write-nonmember}: no read, no leak, no overwrite) |
+  | Every exception | a named clause in the register ({§membership-model-universe}), admits files by an exact record with recorded provenance, and never by `git add` |
+  | The one exception that admits on a read | the operator's own ruling, `PLURNK_MEMBERS_AUTO_ADD` ({§membership-auto-add}, #1154), and its knob is the guard |
+
 - §membership-model-universe **The exception register — files in the model's universe.**
   Admitted by exact creation records (`source: "create"`, origin `constraint`), never
   staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
@@ -2567,42 +2559,22 @@ READ uses the common resource selector ({§bulk-resource-targeting}, {§read-fan
   channel's as `sourceMimetype`, so a consumer can still run the channel's
   handlers over a whole-resource `<1,-1>` read.
 - §log-range-miss-names-stream A 416 on a log execution item addresses the row's invocation (its authored call body, often empty or one line), while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 carries it as the `stream` extension; its detail and recovery stay the generic slicer's, naming no cause ({§diagnostic-observation}).
-- §read-pattern **A pattern selects the lines a READ renders.** With a heading
-  matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
-  READ: the matcher runs over the channel's complete text — a regex anchors
-  each line, so `^` and `$` are the line's ends, while matches may span lines — and every line a match touches,
-  in source order, is the visible selection. The scope still bounds it: a scoped
-  READ renders exactly the selected lines the scope holds; a whole-resource one
-  pages through the selected lines under the ordinary preview bound, never showing
-  an unselected line. Selected lines keep their physical ordinals and their
-  ordinary anchors, so a pattern READ is a coordinate source for EDIT and KILL. The
-  result carries `matched`, the count of selected lines inside the scope. Zero
-  matches is an empty read (204, `matched: 0`), never a failure. Full-text and
-  graph matches project their located occurrences through the same line
-  presentation. A matcher its mimetype cannot run answers the
-  matcher's own 415/400 ({§matcher-dispatch}). A selected value with neither
-  exact nor enclosing source coordinates answers 422 `pattern-source-unlocated`;
-  READ does not substitute an unrelated ancestor or the whole resource.
-- §read-fan-out **A READ over a glob reads every matching path.** `READ (pets_*.md)`
-  and `READ (pets_*.md) /dogs/i` keep their glob ({§read-find-normalization} in the
-  contracts SPEC) and dispatch fans them out: the ordinary FIND over the same
-  target and metadata — the matcher FIND when there is a matcher, the catalog
-  survey otherwise — enumerates the paths without a receipt of its own, and each
-  path on its resource page is read as an ordinary exact READ with the authored
-  scope, matcher and aside ({§read-selection-projection}, {§read-pattern}), one
-  receipt row per path in the FIND's order, so every rendered line keeps its path,
-  physical ordinal and anchor and remains a coordinate source for EDIT and KILL.
-  Rows use the shared `attrs.fanout` identity ({§bulk-resource-targeting}), so a
-  client can group the exact receipts under the authored statement.
-  Without a scope each path uses {§markerless-first-page}; with a pattern
-  only the matching lines, `grep -n` style. The authored statement contributes
-  `rowsWritten`, the receipt count, to its turn's sequence. No path is one 204
-  receipt on the authored glob (`matched: 0` when a pattern selected nothing); a
-  FIND failure is that failure on the authored glob. The FIND's resource page bounds
-  the fan-out: when more paths matched than its page selected, one
-  `read_fanout_bounded` notice names both counts. A separate command ceiling may
-  further limit dispatch ({§bulk-resource-targeting}). Every dialect follows this same READ fan-out;
-  none substitutes a FIND receipt for the requested content.
+- §read-pattern **A pattern selects the lines a READ renders.** With a heading matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a READ: the matcher runs over the channel's complete text — a regex anchors each line, so `^` and `$` are the line's ends, while matches may span lines — and every line a match touches, in source order, is the visible selection. Full-text and graph matches project their located occurrences through the same line presentation. A matcher its mimetype cannot run answers the matcher's own 415/400 ({§matcher-dispatch}). A selected value with neither exact nor enclosing source coordinates answers 422 `pattern-source-unlocated`; READ does not substitute an unrelated ancestor or the whole resource.
+
+  | Fact | Rule |
+  | --- | --- |
+  | The scope | still bounds it: a scoped READ renders exactly the selected lines the scope holds; a whole-resource one pages through the selected lines under the ordinary preview bound, never showing an unselected line |
+  | Selected lines | keep their physical ordinals and their ordinary anchors, so a pattern READ is a coordinate source for EDIT and KILL |
+  | `matched` | the count of selected lines inside the scope; zero matches is an empty read (204, `matched: 0`), never a failure |
+
+- §read-fan-out **A READ over a glob reads every matching path.** `READ (pets_*.md)` and `READ (pets_*.md) /dogs/i` keep their glob ({§read-find-normalization} in the contracts SPEC) and dispatch fans them out: the ordinary FIND over the same target and metadata — the matcher FIND when there is a matcher, the catalog survey otherwise — enumerates the paths without a receipt of its own, and each path on its resource page is read as an ordinary exact READ with the authored scope, matcher and aside ({§read-selection-projection}, {§read-pattern}), one receipt row per path in the FIND's order. Every dialect follows this same READ fan-out; none substitutes a FIND receipt for the requested content.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Rows | every rendered line keeps its path, physical ordinal and anchor and remains a coordinate source for EDIT and KILL; rows use the shared `attrs.fanout` identity ({§bulk-resource-targeting}), so a client can group the exact receipts under the authored statement; the authored statement contributes `rowsWritten`, the receipt count, to its turn's sequence |
+  | Each path | without a scope uses {§markerless-first-page}; with a pattern only the matching lines, `grep -n` style |
+  | No path | one 204 receipt on the authored glob (`matched: 0` when a pattern selected nothing); a FIND failure is that failure on the authored glob |
+  | The bound | the FIND's resource page bounds the fan-out: when more paths matched than its page selected, one `read_fanout_bounded` notice names both counts; a separate command ceiling may further limit dispatch ({§bulk-resource-targeting}) |
 
 §read-pattern-evidence **A patterned READ's evidence: match regions survive line-oriented presentation.** A patterned
 READ retains `matches` ({§matcher-selection-signal}) for findings intersecting its
@@ -3586,22 +3558,13 @@ accounting and model-visible failure evidence remain separately owned by
   different empty programs are not a repeated cycle merely because neither contained
   operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
   token or private retry is invented here.
-- §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.**
-  Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout
-  (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the
-  engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model
-  never declared. What a terminal may not do is discard the last thing the model said. When the
-  loop's last inference turn performed no authored operation in either response or
-  reasoning and kept text, its Problem Details
-  carries the extension member `unconcluded`, the
-  `ops://<worker>/<loop>/<turn>` address of that emission. It is a citation, never the bytes
-  ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides
-  wholesale into a parent's packet). The member is named for what it is — an emission left
-  unconcluded — and never `answer`: the harness cannot warrant that text is complete or final,
-  because its obligations did not settle under {§loop-completion}. Earlier deliveries remain delivered;
-  the citation neither sends them again nor destroys them. A terminal whose last inference
-  turn performed authored operations carries no `unconcluded`: an absent member is not an
-  empty one. Attachment is owned by the one terminal seam.
+- §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.** Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model never declared. What a terminal may not do is discard the last thing the model said. Attachment is owned by the one terminal seam.
+
+  | The loop's last inference turn | The terminal's Problem Details |
+  | --- | --- |
+  | Performed no authored operation in either response or reasoning and kept text | carries the extension member `unconcluded`, the `ops://<worker>/<loop>/<turn>` address of that emission: a citation, never the bytes ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides wholesale into a parent's packet); named for what it is — an emission left unconcluded — and never `answer`, because the harness cannot warrant that text is complete or final when its obligations did not settle under {§loop-completion}; earlier deliveries remain delivered, and the citation neither sends them again nor destroys them |
+  | Performed authored operations | carries no `unconcluded`: an absent member is not an empty one |
+
 - §metadata-ignored **Metadata a scheme does not take is ignored, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (a warning,
@@ -3690,7 +3653,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 | {§workspace-env} | Workspace environment. |
 | {§exec-env-scoped} | Command environment admission. |
 | {§env-option} | The op's environment. |
-| {§exec-hold-until-concluded} | The turn-hold exception |
+| {§exec-hold-until-concluded} | The turn-hold exception: an in-flight stream of a held runtime pauses the cycle. |
 | {§exec-entry-sink} | The entry() sink |
 <!-- /map -->
 
@@ -4037,23 +4000,23 @@ the host supplies a filtered ambient base through {§module-seam-slices}, while 
 MCP bindings resolve under {§mcp-launch-environment}. The env family's reservation does not
 filter those explicit bindings or create a second approval path.
 
-- §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]`
-  ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values.
-  On an executor fence it is that process's environment over the Worker's own
-  ({§env-functionality}) — the layer nearest the spawn, never entering the registry; a runtime
-  that runs in-process has no process environment to change. A capability manager may
-  retain explicit launch overrides when adding a process-backed definition; it never
-  persists the composed ambient environment. On
-  WORK and FORK it is the child's starting environment: after the copy the child inherits
-  ({§functionality-scope}), each supplied name replaces its copied definition as an enabled child-owned entry
-  through the family's `replace` and `enable`,
-  so a parent hands down its registry and overrides specific names for one child in one heading.
-  Names follow the family's admission — a name a shell can export, never plurnk's own — and a
-  refusal names the key and the reason at the operation, before anything runs or is created; a
-  key WORK or FORK does not take is refused the same way. The durable row redacts the block
-  wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's
-  provenance as the modifier's.
-- §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence, optionally followed by WAIT; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
+- §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]` ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values. Names follow the family's admission — a name a shell can export, never plurnk's own — and a refusal names the key and the reason at the operation, before anything runs or is created; a key WORK or FORK does not take is refused the same way. The durable row redacts the block wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's provenance as the modifier's.
+
+  | On | `env` is |
+  | --- | --- |
+  | An executor fence | that process's environment over the Worker's own ({§env-functionality}) — the layer nearest the spawn, never entering the registry; a runtime that runs in-process has no process environment to change; a capability manager may retain explicit launch overrides when adding a process-backed definition, but never persists the composed ambient environment |
+  | WORK and FORK | the child's starting environment: after the copy the child inherits ({§functionality-scope}), each supplied name replaces its copied definition as an enabled child-owned entry through the family's `replace` and `enable`, so a parent hands down its registry and overrides specific names for one child in one heading |
+
+- §exec-hold-until-concluded **The turn-hold exception: an in-flight stream of a held runtime pauses the cycle.** For runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles, with zero grammar or teaching surface: the model emits an executor fence, optionally followed by WAIT, and the wake-shaped world simply arrives one packet sooner.
+
+  | Rule | What |
+  | --- | --- |
+  | Limited to | seconds-bounded runtimes whose final result the engine controls end-to-end |
+  | Bounded | by `PLURNK_SERVICE_EXEC_HOLD_MS`, and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls) |
+  | A bare entry | holds ALL of a runtime's spawns |
+  | A `<runtime>:<effect>` suffix (`github:read`) | holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation |
+  | Default | conservative: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in |
+
 - §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address. Web acquisition and materialization are the `https` handler's {§web-materialization-contract}, reached through the scheme registry; core names no extension package.
 
   | Input / effect | Consumer behavior |
@@ -6183,7 +6146,14 @@ flowchart TD
 - §membership-binary-sniff **Binary truth beats a text label.** Filesystem source acquisition, including tracked members and installed skill resources, inspects up to the first 8192 bytes when extension detection does not identify a binary type. NUL marks `application/octet-stream`; existing binary types retain their declared type. Member projections follow {§membership-source-projection}; installed skill projections follow {§skills-resources}.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** A settled channel's `content_hash` (SHA-256) is its body's identity in the content store ({§content-store}); a writer may bind it, a bound hash must match the content, and an active stream has none until it settles. `weight` is stored beside that content and is never keyed or recomputed by model.
-- §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Complete totals and known subtotals remain distinct under {§provider-accounting}; unknown requests cannot impersonate free requests, and missing usage never becomes zero. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
+- §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
+
+  | Fact | Rule |
+  | --- | --- |
+  | Each record | preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero |
+  | Ownership | `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation, so emissions, BARE calls, rejected responses, retries, failovers, and errors remain cardinal and ordered |
+  | Derivation | turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge; the baseline stores no floating-point money, denormalized totals, or rollup triggers |
+  | Cost | a documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`; complete totals and known subtotals remain distinct under {§provider-accounting}, unknown requests cannot impersonate free requests, and missing usage never becomes zero |
 
 Each physical request also retains {§provider-request-evidence}, atomically
 with its accounting settlement. Failure does not discard received fragments.
