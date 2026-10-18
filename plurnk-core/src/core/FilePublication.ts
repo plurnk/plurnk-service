@@ -21,7 +21,8 @@ export default class FilePublication {
             const staged = join(directory, "content");
             let identity: BigIntStats;
             {
-                await using handle = await fs.open(staged, "wx", 0o600);
+                // A created file takes the ordinary creation mode: 0o666 under the process umask, applied by the kernel at open.
+                await using handle = await fs.open(staged, "wx", 0o666);
                 identity = await handle.stat({ bigint: true });
                 await handle.writeFile(bytes);
                 const source = baseline === null ? null : await FileSnapshot.observe(requested);
@@ -29,7 +30,7 @@ export default class FilePublication {
                 if (source !== null && (current.uid !== source.stats.uid || current.gid !== source.stats.gid)) {
                     await handle.chown(Number(source.stats.uid), Number(source.stats.gid));
                 }
-                await handle.chmod(source === null ? 0o666 & ~process.umask() : Number(source.stats.mode & 0o7777n));
+                if (source !== null) await handle.chmod(Number(source.stats.mode & 0o7777n));
                 await handle.sync();
             }
             if (baseline !== null) {

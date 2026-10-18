@@ -206,6 +206,7 @@ const resolveDefinition = (
             url,
             ...(headers === undefined ? {} : { headers }),
             clientCredentials: true,
+            // oxlint-disable-next-line typescript/no-deprecated -- {§oauth-client-credentials} keeps `issuer` optional; without one the SDK's unbound overload, which it deprecates, is the declared behaviour
             authProvider: new ClientCredentialsProvider({
                 clientId: authorization.clientId,
                 clientSecret: secret,

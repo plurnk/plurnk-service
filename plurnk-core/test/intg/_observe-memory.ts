@@ -3,7 +3,7 @@
 // global provider registration stays isolated to this file's specimens.
 
 import { context, trace } from "@opentelemetry/api";
-import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 export interface MemoryTracing {
@@ -12,9 +12,9 @@ export interface MemoryTracing {
 }
 
 export const mountMemoryTracing = async (onStart?: SpanProcessor["onStart"]): Promise<MemoryTracing> => {
-    // The SDK initializes the async-hooks context manager at start();
+    // The SDK installs its context manager at start();
     // the deterministic mount must mirror it or context never crosses `await`.
-    const contextManager = new AsyncHooksContextManager();
+    const contextManager = new AsyncLocalStorageContextManager();
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
     const exporter = new InMemorySpanExporter();

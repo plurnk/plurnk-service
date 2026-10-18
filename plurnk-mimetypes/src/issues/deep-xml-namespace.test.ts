@@ -29,7 +29,7 @@ describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even w
         // ParseError: Attribute line redefined.
         const errors: unknown[] = [];
         new DOMParser({
-            errorHandler: (level, msg) => { if (level !== "warning") errors.push(msg); },
+            onError: (level, msg) => { if (level !== "warning") errors.push(msg); },
         }).parseFromString(xml, "text/xml");
         assert.equal(errors.length, 0, `parse errors: ${errors.join("; ")}`);
     });
@@ -42,7 +42,7 @@ describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even w
         const xml = projectJsonToXml(json);
         const errors: unknown[] = [];
         new DOMParser({
-            errorHandler: (level, msg) => { if (level !== "warning") errors.push(msg); },
+            onError: (level, msg) => { if (level !== "warning") errors.push(msg); },
         }).parseFromString(xml, "text/xml");
         assert.equal(errors.length, 0);
     });
@@ -63,7 +63,7 @@ describe("{§mimetype-channel-architecture} — C1: deep-xml is valid XML even w
         // Parse must succeed — no duplicate-attribute errors.
         const errors: unknown[] = [];
         new DOMParser({
-            errorHandler: (level, msg) => { if (level !== "warning") errors.push(msg); },
+            onError: (level, msg) => { if (level !== "warning") errors.push(msg); },
         }).parseFromString(xml, "text/xml");
         assert.equal(errors.length, 0);
         // Both versions must be present and distinguishable.

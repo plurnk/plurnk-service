@@ -12,8 +12,8 @@ const errorSchema = z.object({
         type: z.string().nullish(),
         param: z.unknown().nullish(),
         code: z.union([z.string(), z.number()]).nullish(),
-    }).passthrough(),
-}).passthrough();
+    }).loose(),
+}).loose();
 
 const retryDirective = (
     status: number | undefined,
@@ -410,14 +410,15 @@ const executeModelOnce = async (
             ...common,
             include: { responseBody: true },
         });
-        const rawBody = result.response.body;
+        const { finalStep } = result;
+        const rawBody = finalStep.response.body;
         const values = [rawBody];
         const evidence = extractEvidence(values);
         const accountingUsage = wireUsageEvidenceOf(values);
-        const reasoningText = evidence.reasoning || result.reasoningText || "";
+        const reasoningText = evidence.reasoning || finalStep.reasoningText || "";
         const rawFinishReason = result.rawFinishReason;
         return {
-            model: result.response.modelId,
+            model: finalStep.response.modelId,
             content: result.text,
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
@@ -432,14 +433,14 @@ const executeModelOnce = async (
                     ? {}
                     : { charge: wireChargeEvidenceOf(values) }),
                 ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
-                ...(result.providerMetadata === undefined
+                ...(finalStep.providerMetadata === undefined
                     ? {}
-                    : { providerMetadata: result.providerMetadata }),
+                    : { providerMetadata: finalStep.providerMetadata }),
                 response: {
-                    id: result.response.id,
-                    ...(result.response.headers === undefined
+                    id: finalStep.response.id,
+                    ...(finalStep.response.headers === undefined
                         ? {}
-                        : { headers: result.response.headers }),
+                        : { headers: finalStep.response.headers }),
                 },
             },
             ...(request.captureRawBody ? { rawBody } : {}),
@@ -449,7 +450,7 @@ const executeModelOnce = async (
 
     const result = streamText({
         ...common,
-        includeRawChunks: true,
+        include: { rawChunks: true },
         onError: () => {},
     });
     const rawChunks: unknown[] = [];
@@ -459,7 +460,7 @@ const executeModelOnce = async (
     let partialReasoning = "";
     let partialResponse: ProviderChargeEvidence["response"] | undefined;
     try {
-        for await (const part of result.fullStream) {
+        for await (const part of result.stream) {
             if (part.type === "raw") {
                 rawChunks.push(part.rawValue);
             }
@@ -481,14 +482,11 @@ const executeModelOnce = async (
         const evidence = extractEvidence(rawChunks);
         const accountingUsage = wireUsageEvidenceOf(rawChunks);
         const content = await result.text;
-        const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
+        const [finalStep, warnings] = await Promise.all([result.finalStep, result.warnings]);
+        const { response, providerMetadata } = finalStep;
+        const reasoningText = evidence.reasoning || finalStep.reasoningText || "";
         const rawFinishReason = await result.rawFinishReason;
         const unifiedFinishReason = await result.finishReason;
-        const [response, providerMetadata, warnings] = await Promise.all([
-            result.response,
-            result.providerMetadata,
-            result.warnings,
-        ]);
         return {
             model: response.modelId,
             content,

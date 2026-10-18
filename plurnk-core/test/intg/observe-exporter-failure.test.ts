@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { context, trace } from "@opentelemetry/api";
-import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import type { ExportResult } from "@opentelemetry/core";
 import { BasicTracerProvider, SimpleSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
@@ -26,7 +26,7 @@ test("observe: an exploding exporter cannot change the loop result or daemon lif
 // Register the failing exporter for this process and run exactly one real loop;
 // the daemon/lifecycle assertions run while the exporter is live.
 const explosionProofLoop = async (): Promise<boolean> => {
-    const contextManager = new AsyncHooksContextManager();
+    const contextManager = new AsyncLocalStorageContextManager();
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
     const provider = new BasicTracerProvider({

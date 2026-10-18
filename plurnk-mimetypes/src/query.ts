@@ -127,7 +127,7 @@ export function queryJsonpathObject(
     // deepJson is JSON-shaped by {§mimetype-channel-architecture}; the cast is the seam.
     const results = query.query(obj as JSONValue).nodes.map((n) => ({
         value: n.value,
-        path: n.path,
+        path: n.getPath({ form: "canonical" }),
         pointer: String(n.toPointer()),
     }));
 

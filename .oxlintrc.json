@@ -30,9 +30,7 @@
         // A binding a closure reads before its one assignment (`t.after(() => owner?.stop())`) stays `let`.
         "eslint/prefer-const": ["error", { "ignoreReadBeforeAssign": true }],
         "unicorn/prefer-node-protocol": "error",
-        // 23 deprecations on 2026-10-18 (AI SDK `finalStep`/`stream`/`include`, zod `looseObject`, `process.umask()`,
-        // MCP `ClientCredentialsProvider`, xmldom `errorHandler`, otel `AsyncHooksContextManager`): batch 2 of #1162.
-        "typescript/no-deprecated": "warn",
+        "typescript/no-deprecated": "error",
         "typescript/no-explicit-any": "error",
         // An unused parameter an interface or a destructuring still has to name starts with `_`.
         "eslint/no-unused-vars": [
