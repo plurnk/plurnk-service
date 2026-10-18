@@ -47,8 +47,11 @@ export default class FileAddress {
     }
 
     // {§fs-canonical-name} A resource name must never render as a channel, alias or selector.
+    // {§file-path-normalization} Inside the root a key renders literally; beyond it, as the absolute path it names.
+    // Either spelling resolves back to the same key.
     static render(key: string, projectRoot: string | null): string {
-        const bare = Namespace.literalSpelling(key);
+        const beyond = projectRoot !== null && (key === ".." || key.startsWith("../"));
+        const bare = beyond ? FileAddress.#absolute(key, projectRoot) : Namespace.literalSpelling(key);
         const ambiguous = /[#<\p{Cc}]|%2[89]/iu.test(bare) || bare.trim() !== bare
             || /^[a-z][a-z0-9+.-]*:\/\//iu.test(bare)
             || PathSyntax.hasGlob(bare);
@@ -59,6 +62,11 @@ export default class FileAddress {
         // URL permits literal '*'; our target slot uses it as a collection selector.
         const address = url.href.replaceAll("*", "%2A");
         return PathSyntax.escapeTarget(PathSyntax.encodeParens(address));
+    }
+
+    static #absolute(key: string, projectRoot: string): string {
+        const absolute = resolve(projectRoot, key);
+        return key.endsWith("/") && !absolute.endsWith("/") ? `${absolute}/` : absolute;
     }
 
     static renderSelector(key: string, target: ParsedPath): string {

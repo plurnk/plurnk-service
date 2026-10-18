@@ -33,7 +33,7 @@ Your `add` is admitted against the operator's ceiling
 | --- | --- |
 | `none` | nothing — every `add` from the model is refused `403 model-scope` |
 | `root` | paths inside the project root |
-| `namespace` | those plus canonical `../` paths outside the root |
+| `namespace` | those plus paths beyond the root, which are spelled absolute |
 
 The scope refuses an `add` you author from a turn; a client's `/members add`
 and the operator's `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bound
@@ -78,10 +78,10 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 - **Excluded by `!glob`**: an exclusion outranks every inclusion, and a model
   definition cannot lift it; only the user can.
 
-- **Outside the project root** (`../notes.md`, or an absolute path beyond the
-  root): a model definition can admit it under `namespace` scope, but not
-  `root` or `none`; client and operator definitions are not bound by the model's
-  scope. Ignore rules and exclusions still apply as described above.
+- **Beyond the project root** (an absolute path such as `/srv/shared/notes.md`,
+  which is how such a path is spelled; `../notes.md` names the same place): a
+  model definition can admit it under `namespace` scope, but not `root` or
+  `none`; client and operator definitions are not bound by the model's scope. Ignore rules and exclusions still apply as described above.
   File operands beginning with `~/`
   resolve from the daemon user's home; `./~/` names a literal project
   directory. Members globs remain project-relative, not home shorthand.

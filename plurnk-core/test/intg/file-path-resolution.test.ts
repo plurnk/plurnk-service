@@ -311,10 +311,18 @@ test("{§fs-home} {§file-path-normalization} normalization notices follow autho
                 });
                 assert.equal(result.status, projectRoot === homedir() ? 200 : 404, `${projectRoot}: ${origin} ~/probe.txt`);
             }
+            // {§file-path-normalization} Inside the root the key; beyond it the absolute path, never a climb.
             const homeKey = projectRoot === null ? null : relative(projectRoot, join(homedir(), "probe.txt"));
+            const homeAddress = homeKey !== null && homeKey.startsWith("../") ? join(homedir(), "probe.txt") : homeKey;
             assert.deepEqual(notices.filter(({ kind }) => kind === "path_normalized"), projectRoot !== null && projectRoot !== "/" ? [{
-                source: "scheme:file", kind: "path_normalized", level: "warn", directive: "YOU SHOULD address the resolved path.", message: `Path resolved to '${homeKey}'.`,
+                source: "scheme:file", kind: "path_normalized", level: "warn", directive: "YOU SHOULD address the resolved path.", message: `Path resolved to '${homeAddress}'.`,
             }] : []);
+            notices.length = 0;
+            // An absolute spelling of a path beyond the root is already its canonical address: no notice.
+            const beyond = join(projectRoot === homedir() ? "/" : homedir(), `plurnk-beyond-${crypto.randomUUID()}.md`);
+            const miss = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(PlurnkParser.frame(`READ (${beyond})`, null))[0]! });
+            assert.equal(miss.status, 404, `${projectRoot}: ${beyond}`);
+            assert.deepEqual(notices.filter(({ kind }) => kind === "path_normalized"), [], `${projectRoot}: an absolute spelling beyond the root earns no notice`);
         }
     } finally { await db.close(); }
 });

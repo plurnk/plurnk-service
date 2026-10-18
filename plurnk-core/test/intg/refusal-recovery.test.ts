@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -77,13 +77,15 @@ test("{§membership-read-refusal} every file miss names its member key and carri
     }
 });
 
-test("{§membership-read-refusal} a key beyond the root is told it is outside the root, never offered FIND, EDIT or admission", async (t) => {
-    const { dispatch } = await runtime(t);
-    for (const source of ["````READ (../outside/delete_tests.log)````", "````FIND (../outside/delete_tests.log)````", "````KILL (../outside/delete_tests.log)````"]) {
+test("{§membership-read-refusal} {§file-path-normalization} a key beyond the root is told it is outside the root, by its absolute address, never offered FIND, EDIT or admission", async (t) => {
+    const { dispatch, root } = await runtime(t);
+    const address = resolve(root, "../outside/delete_tests.log");
+    for (const source of ["````READ (../outside/delete_tests.log)````", "````FIND (../outside/delete_tests.log)````", "````KILL (../outside/delete_tests.log)````", `\`\`\`\`READ (${address})\`\`\`\``]) {
         const { status, problem } = await dispatch(source);
         assert.equal(status, 404, source);
-        assert.equal(problem.detail, "No member of this workspace is at '../outside/delete_tests.log'.", `${source}: the address's membership, nothing about the disk`);
-        assert.equal(problem.recovery, "'../outside/delete_tests.log' is outside the project root: only a members definition under the operator's namespace scope admits it.", source);
+        assert.equal(problem.detail, `No member of this workspace is at '${address}'.`, `${source}: the address's membership, nothing about the disk`);
+        assert.equal(problem.target, address, `${source}: beyond the root the address is absolute, never a climb`);
+        assert.equal(problem.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, source);
     }
 });
 
@@ -92,10 +94,12 @@ test("{§fs-home} {§membership-read-refusal} home, literal and absolute misses 
     const homeKey = relative(root, homedir());
     for (const [spelling, key] of [["~/plurnk-missing.md", `${homeKey}/plurnk-missing.md`], ["~", homeKey], ["~/", homeKey]]) {
         const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
+        // {§file-path-normalization} The home directory lies beyond this root, so its address is absolute.
+        const address = key.startsWith("../") ? resolve(root, key) : key;
         assert.equal(miss.status, 404, spelling);
-        assert.equal(miss.problem.detail, `No member of this workspace is at '${key}'.`);
-        assert.equal(miss.problem.target, key);
-        assert.equal(miss.problem.recovery, `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
+        assert.equal(miss.problem.detail, `No member of this workspace is at '${address}'.`);
+        assert.equal(miss.problem.target, address);
+        assert.equal(miss.problem.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
     }
     for (const [spelling, key] of [["./~/missing.md", "~/missing.md"], ["./~", "~"], ["~someone/notes.md", "~someone/notes.md"]]) {
         const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
@@ -104,12 +108,13 @@ test("{§fs-home} {§membership-read-refusal} home, literal and absolute misses 
         assert.equal(miss.problem.target, spelling, "the literal member address can be reused");
         assert.equal(miss.problem.recovery, FILE_MISS_RECOVERY);
     }
-    // An absolute path beyond the root is its `../` key and carries the outside-root recovery.
+    // An absolute path beyond the root is spelled back as itself and carries the outside-root recovery.
     const outsideName = `plurnk-outside-${crypto.randomUUID()}.md`;
+    const outsideAddress = resolve(root, "..", outsideName);
     const outside = await dispatch(`\`\`\`\`READ (${join(root, "..", outsideName)})\`\`\`\``);
     assert.equal(outside.status, 404);
-    assert.equal(outside.problem.detail, `No member of this workspace is at '../${outsideName}'.`, "the key, never the absolute spelling");
-    assert.equal(outside.problem.recovery, `'../${outsideName}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
+    assert.equal(outside.problem.detail, `No member of this workspace is at '${outsideAddress}'.`, "the absolute address, never a climb");
+    assert.equal(outside.problem.recovery, `'${outsideAddress}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
     // An absolute path inside the root is its in-root key and keeps the in-root recovery.
     const inside = await dispatch(`\`\`\`\`READ (${join(root, "missing.py")})\`\`\`\``);
     assert.equal(inside.status, 404);

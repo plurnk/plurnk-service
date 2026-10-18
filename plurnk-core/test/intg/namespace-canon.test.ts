@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type { FindStatement, ReadStatement, LineMarker, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
@@ -121,7 +121,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
         assert.equal(rows?.n, 1, "one identity under every spelling");
         const outside = await readFileScheme(readStmt("/src/main.js"), ctx);
         assert.equal(outside.status, 404, "an absolute miss never falls back to the in-root member");
-        assert.equal(outside.problem?.target, relative(root, "/src/main.js"));
+        assert.equal(outside.problem?.target, "/src/main.js", "{§file-path-normalization} beyond the root the address is the absolute path, never a climb");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -304,7 +304,7 @@ test("{§file-find-directory}: directory recognition does not probe outside-root
         const result = await new File().find(statement, ctx);
         assert.equal(result.status, 404, "an unmounted outside directory is not recognized from disk");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
-        assert.equal(result.problem?.detail, `No member of this workspace is at '${target}'.`);
+        assert.equal(result.problem?.detail, `No member of this workspace is at '${resolve(root, target)}'.`, "{§file-path-normalization} named by its absolute address");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
@@ -320,8 +320,9 @@ test("{§membership-read-refusal}: beyond the root a miss is the same sentence w
         for (const [result, name] of [[there, present], [notThere, absent]] as const) {
             assert.equal(result.status, 404);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
-            assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, `'../${name}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
+            const address = resolve(root, "..", name);   // {§file-path-normalization} absolute beyond the root
+            assert.equal(result.problem?.detail, `No member of this workspace is at '${address}'.`, "about the address's membership: it neither claims absence nor hints at presence");
+            assert.equal(result.problem?.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
         }
         // The disk beyond the root stays dark: swap the names and the two answers are one answer,
         // apart from where each refused read was recorded.

@@ -199,6 +199,8 @@ export default class File extends CoreSchemeAdapterBase {
     // membership and never of the disk. Inside the root occupancy is not secret ({§fs-write-nonmember}),
     // and an occupied path says so. Beyond it the disk stays dark: nothing is looked at, and the
     // sentence is true whether or not a file is there — it neither claims absence nor hints at presence.
+    static #beyondRoot(key: string): boolean { return key === ".." || key.startsWith("../"); }
+
     async missRefusal(pathname: string, core: PlurnkSchemeContext, fields: Record<string, null>): Promise<SchemeResultBase | null> {
         const root = await FileAddress.projectRoot(core);
         if (root === null) return null;
@@ -213,21 +215,24 @@ export default class File extends CoreSchemeAdapterBase {
         // {§membership-read-refusal} — admission is the recovery for an untracked file; a file the
         // repository ignores no model definition admits, so its refusal says who can (#1005).
         const ignored = occupied && await GitMembership.isIgnored(core.db, core.workspaceId, key, undefined) === true;
+        const address = entryAddress("file", "", key, root);
+        // {§file-path-normalization} The miss names the key inside the root and the absolute address beyond it.
+        const named = File.#beyondRoot(key) ? address : key;
         return Results.failure(
             "scheme:file",
             occupied ? "entry-not-member" : "entry-not-found",
             404,
             occupied
                 ? `'${key}' exists on disk but is not a member of this workspace.`
-                : missDetail("file", key),
+                : missDetail("file", named),
             fields,
             {
-                target: entryAddress("file", "", key, root),
+                target: address,
                 recovery: occupied
                     ? ignored
                         ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
                         : "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body."
-                    : fileMissRecovery(key),
+                    : fileMissRecovery(named),
                 retryable: false,
             },
         ) as SchemeResultBase;
@@ -860,7 +865,10 @@ export default class File extends CoreSchemeAdapterBase {
             const { code, detail, extensions } = File.#directoryFacts(rel, "KILL", root);
             return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
         }
-        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, missExtensions("file", entryAddress("file", "", rel, root))) as DeleteEntryResult;
+        if (member === undefined) {
+            const address = entryAddress("file", "", rel, root);
+            return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", File.#beyondRoot(rel) ? address : rel), {}, missExtensions("file", address)) as DeleteEntryResult;
+        }
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel) as DeleteEntryResult;
         const baseline = FileSnapshot.decode(member.synced_sig);

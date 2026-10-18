@@ -86,11 +86,12 @@ export function entryAddress(scheme: string, authority: string, pathname: string
     return renderAddress({ scheme, authority, pathname });
 }
 
-// {§membership-read-refusal} — a key beyond the root (`../tmp/x`) is past every door the miss recovery
-// names under the default scopes; the sentence holds under every members scope.
-export function fileMissRecovery(key: string): string {
-    if (key.startsWith("../")) {
-        return `'${key}' is outside the project root: only a members definition under the operator's namespace scope admits it.`;
+// {§membership-read-refusal} — an address beyond the root (spelled absolute, {§file-path-normalization}; a bare
+// `../` key where no root renders it) is past every door the miss recovery names under the default scopes; the
+// sentence holds under every members scope.
+export function fileMissRecovery(address: string): string {
+    if (address.startsWith("/") || address === ".." || address.startsWith("../")) {
+        return `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`;
     }
     return FILE_MISS_RECOVERY;
 }

@@ -451,7 +451,8 @@ export default class Dispatcher {
         return execution;
     }
 
-    // {§file-path-normalization} Authored operands, once, before internal fan-out.
+    // {§file-path-normalization} Authored operands, once, before internal fan-out: an absolute or home spelling
+    // whose canonical address reads differently — the key inside the root, the absolute path beyond it.
     async #noticeFilePaths({ statement, origin, workspaceId, workerId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "workerId" | "loopId">): Promise<void> {
         if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "NOTE") return;
         const targets = statement.op === "COPY" || statement.op === "MOVE"
@@ -470,7 +471,7 @@ export default class Dispatcher {
             const key = Namespace.canonicalizeSpelling(pathname, root);
             if (key === null) continue;
             const address = renderTarget({ scheme: null, pathname: key }, root, target);
-            if (address?.startsWith("file://")) continue;
+            if (address === null || address.startsWith("file://") || address === pathname) continue;
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "scheme:file", kind: "path_normalized", level: "warn",
                 directive: "YOU SHOULD address the resolved path.",

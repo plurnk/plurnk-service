@@ -51,6 +51,12 @@ test("{§fs-canonical-name} rendered file addresses preserve literal names and d
     assert.equal(FileAddress.render("a(b)", "/project"), "a%28b%29");
     assert.equal(FileAddress.render("a#b", "/project"), "file:///project/a%23b");
     assert.throws(() => FileAddress.render("a#b", null), /requires its project root/u);
+    // {§file-path-normalization} A key beyond the root is the absolute path it names; the spelling round-trips.
+    for (const [key, spelling] of [["../shared/a.md", "/shared/a.md"], ["../../tmp/x/", "/tmp/x/"], ["..", "/"], ["../a#b", "file:///a%23b"]]) {
+        assert.equal(FileAddress.render(key, "/project"), spelling, key);
+    }
+    assert.equal(Namespace.canonicalizeSpelling("/shared/a.md", "/project"), "../shared/a.md");
+    assert.equal(FileAddress.render("../shared/a.md", null), "../shared/a.md", "without a root there is nothing to resolve against");
 });
 
 test("{§file-url} URI-encoded glob characters remain data beside authored selectors", () => {
