@@ -1,4 +1,5 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
+import LineAnchors from "../content/line-anchors.ts";
 import type { CopyStatement, EditStatement, LineMarker, MoveStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -913,6 +914,7 @@ export default class ResourceTransfers {
         ids: ProposalIds;
     }): Promise<ProposalSettlement> {
         if (statement.op !== "MOVE") return settlement;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§move-decomposition}: a MOVE's proposal attrs are the orchestration attrs this module wrote when it decomposed the MOVE
         const attrs = result.attrs as OrchestrationProposalAttrs | undefined;
         if (attrs?.moveDestinationWritten !== undefined) {
             const destinationEffects = attrs.moveDestinationEffects === undefined
@@ -1006,11 +1008,15 @@ export default class ResourceTransfers {
             );
         }
 
+        const { lineMarker } = resolvedSource;
+        if (!LineAnchors.isResolvedMarker(lineMarker)) {
+            throw new InvalidOperationResultError("A deferred MOVE source's resolved line scope names an anchor.");
+        }
         const removed = await this.removeMoveSource(
             statement,
             {
                 ...resolvedSource,
-                lineMarker: resolvedSource.lineMarker as LineMarker | null,
+                lineMarker,
                 ...(deferred.matchedScopes === undefined ? {} : { matchedScopes: deferred.matchedScopes }),
                 ...(deferred.bytePrecondition === undefined ? {} : { bytePrecondition: deferred.bytePrecondition }),
                 ...(deferred.fileRevision === undefined ? {} : { fileRevision: deferred.fileRevision }),

@@ -29,6 +29,10 @@ export interface CapabilityDenial {
     readonly scope: CapabilityScope;
 }
 
+// RuntimeTag is Lowercase<string>: a runtime the registry or a family's manager names is lowercase by
+// {§executor-runtime-declaration} and the functionality family name rule.
+const isLowercase = (name: string): name is RuntimeTag => name === name.toLowerCase();
+
 export default class CapabilityResolver {
     // {§pinned-wording-core} The owner ring is the one refusal the model can act on.
     static readonly UNATTENDED_RECOVERY =
@@ -239,9 +243,9 @@ export default class CapabilityResolver {
         const readable = entryBearing || coreRepresentationProvider(handler) !== null;
         // An execution observing this scheme is keyed by its runtime: the registered runtimes when a
         // registry is present, else the runtimes the policies themselves name.
-        const runtimes = this.#executors()?.availableRuntimes(workspaceId)
-            ?? policies.flatMap((policy) => [...(policy.only ?? []), ...(policy.deny ?? [])]).map((selector) => selector.operation).filter(isExecutionOp);
-        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...runtimes as readonly RuntimeTag[]];
+        const runtimes = (this.#executors()?.availableRuntimes(workspaceId)
+            ?? policies.flatMap((policy) => [...(policy.only ?? []), ...(policy.deny ?? [])]).map((selector) => selector.operation)).filter(isExecutionOp);
+        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...runtimes];
         if (readable && observers.some((operation) => allows(operation, "observe"))) return true;
         if ((entryBearing || typeof handler.find === "function") && allows("FIND", "observe")) return true;
         if (!manifest.writableBy.includes("model")) return false;
@@ -287,12 +291,13 @@ export default class CapabilityResolver {
     }
 
     #runtimeDescriptor(runtime: string, tool: string | null, workspaceId: number): CapabilityDescriptor {
+        if (!isLowercase(runtime)) throw new TypeError(`'${runtime}' names no runtime: runtime tags and family names are lowercase.`);
         const traits = [...new Set([
             ...this.#traits("exec", workspaceId),
             ...this.#traits(runtime, workspaceId),
         ])].toSorted();
         return {
-            operation: runtime as RuntimeTag,
+            operation: runtime,
             scheme: "exec",
             runtime,
             access: traits.includes("interaction") ? "interact" : "execute",

@@ -27,24 +27,6 @@ export default class TerminalResult {
             : { status: 200, content, mimetype });
     }
 
-    static assert(value: unknown, subject: string): SchemeResult {
-        try {
-            return Results.assert(value as SchemeResult);
-        } catch (cause) {
-            throw new Error(`${subject} does not contain a valid terminal result`, { cause });
-        }
-    }
-
-    static parse(serialized: string, subject: string): SchemeResult {
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(serialized) as unknown;
-        } catch (cause) {
-            throw new Error(`${subject} does not contain a valid terminal result`, { cause });
-        }
-        return TerminalResult.assert(parsed, subject);
-    }
-
     static present(
         result: SchemeResult,
         options: {

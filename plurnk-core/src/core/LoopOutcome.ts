@@ -6,7 +6,6 @@
 import type { Db } from "./Db.ts";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
-import TerminalResult from "./TerminalResult.ts";
 
 export interface LoopOutcome {
     readonly resource: string;
@@ -28,7 +27,8 @@ export const loopOutcome = async (
     }>({ workspace_id: workspaceId, worker_name: worker, loop_seq: sequence });
     if (row === undefined) return null;
     const resource = loopAddress(worker, sequence);
-    const terminal = row.terminal_result === null ? null : TerminalResult.parse(row.terminal_result, resource);
+    // {§validation-topology}: chapter 3's loops_terminal_result_contract holds the stored result's shape.
+    const terminal = row.terminal_result === null ? null : Results.fromRow(row.terminal_result);
     // A loop that ended badly reports how it ended, even when it answered earlier: the failure is
     // the news. Otherwise its answer is what it said.
     if (terminal !== null && Results.isErrorStatus(terminal.status)) {

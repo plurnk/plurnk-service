@@ -79,7 +79,8 @@ export default class TurnMaterialization {
                 || r.rx === null || r.mimetype_rx === null || r.status_rx === null || r.state === null) continue;
             const termination = r.kind === "loop_termination";
             const terminal = termination
-                ? TerminalResult.parse(r.rx, `ambient loop-termination event ${r.event_id}`)
+                // {§validation-topology}: the ambient event's CHECK holds a termination's body as a JSON object with its status.
+                ? Results.fromRow(r.rx)
                 : null;
             if (terminal !== null && terminal.status !== r.status_rx) {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);

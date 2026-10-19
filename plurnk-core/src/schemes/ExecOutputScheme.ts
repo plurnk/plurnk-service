@@ -1,11 +1,11 @@
 import type { FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type Exec from "./Exec.ts";
-import EntryFind, { type FindResult } from "./_entry-find.ts";
+import EntryFind from "./_entry-find.ts";
 import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
-import Results, { type SchemeResultBase } from "../core/results.ts";
+import Results, { type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 import type { RuntimeSchemeFacet,
     EditBatchResult,
     EntryAddress,
@@ -80,10 +80,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         return this.#facet.prepareRepresentation?.(request, await this.#facetContext(ctx, request.target)) ?? { status: 200 };
     }
 
-    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<SchemeResult> {
         const facet = this.#facet;
         if (facet?.find !== undefined && this.#claimedPath(statement)) {
-            return await facet.find(statement, await this.#facetContext(ctx)) as FindResult;
+            return await facet.find(statement, await this.#facetContext(ctx));
         }
         if (statement.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
             "Stored execution output does not accept FIND metadata.", {
@@ -93,7 +93,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         // A facet without a find of its own is searched as ordinary entries, under its own
         // representation and after whatever it prepares.
         const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
-        if (prepared !== undefined && prepared.status >= 300) return prepared as FindResult;
+        if (prepared !== undefined && prepared.status >= 300) return prepared;
         const core = this.coreContext(ctx);
         return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {});
     }

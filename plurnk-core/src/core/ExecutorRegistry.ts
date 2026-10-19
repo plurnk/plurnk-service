@@ -259,6 +259,7 @@ export default class ExecutorRegistry {
             };
             try {
                 const timeoutMs = probeTimeoutMs ?? ExecutorRegistry.validateConfiguration();
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§executor-module-slice}: an installed runtime package's default export constructs its Executor; the host binds to the contract
                 const mod = await load(info.packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
                 const executor = new mod.default({ runtime: info.runtime, glyph: info.glyph });
                 const availability = await ExecutorRegistry.#probe(executor, timeoutMs);
