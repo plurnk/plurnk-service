@@ -20,7 +20,6 @@ import { namedModelWorker } from "./_workers.ts";
 import {
     Validator,
     type ApplicationActionContext,
-    type OperationResult,
     type PlurnkStatement,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
@@ -89,7 +88,7 @@ interface RpcResponse {
 }
 
 const rpcProblem = (response: RpcResponse): ProblemDetails => {
-    const result = Validator.assertOperationResult(response.result as OperationResult);
+    const result = Validator.assertOperationResult(response.result);
     assert.ok(result.problem !== undefined);
     return result.problem;
 };

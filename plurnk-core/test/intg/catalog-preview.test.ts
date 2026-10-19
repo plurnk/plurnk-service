@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { Shell } from "@plurnk/plurnk-execs";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -292,7 +292,7 @@ test("{§actor-boundary-catalog-preview} an empty workspace executes all eight o
                     assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",
                         `${name} reference depth is visible with an orienting aside`);
                     const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
-                    const reference = Validator.assertEntryReadResult(response.result as EntryReadResult);
+                    const reference = Validator.assertEntryReadResult(response.result);
                     assert.equal(reference.status, 200);
                     assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.aside.replace(/\s+/g, " ")),
                         `${name} orientation comes from the readable reference, without pinning its prose`);

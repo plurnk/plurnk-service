@@ -2,7 +2,7 @@ import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
-import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
@@ -36,7 +36,7 @@ test("{§send-premature-terminate} loop.run accepts immediately (100); the loop'
             assert.deepEqual(result.attributions, [], "attribution remains a top-level terminal projection, separate from usage");
 
             const read = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
-            const materialized = Validator.assertEntryReadResult(read.result as EntryReadResult);
+            const materialized = Validator.assertEntryReadResult(read.result);
             assert.equal(materialized.status, 200);
             assert.equal(materialized.entry?.channels.body?.content, "Paris");
         } finally { ws.close(); }

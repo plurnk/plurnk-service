@@ -9,7 +9,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
-import { Validator, type FunctionalityListResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Validator, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
@@ -224,7 +224,7 @@ test("{§mcp-launch-environment} native definitions bind credentials explicitly,
             MCP_ENV_MARKER: marker("missing"), BOUND_VALUE: "${ABSENT_CREDENTIAL}",
         }) } }), (cause: unknown) => {
             assert.ok(cause instanceof Error && "problem" in cause);
-            const problem = Validator.assertProblemDetails(cause.problem as ProblemDetails);
+            const problem = Validator.assertProblemDetails(cause.problem);
             assert.equal(problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
             assert.equal(problem.status, 502);
             assert.ok(cause.cause instanceof Error);
@@ -282,7 +282,7 @@ for (const { policy, decision } of [
             const result = await pending;
             if (decision === "reject") {
                 assert.equal(result.status, 400);
-                const problem = Validator.assertProblemDetails(result.problem as ProblemDetails);
+                const problem = Validator.assertProblemDetails(result.problem);
                 assert.equal(problem.type, "https://problems.plurnk.xyz/proposal/rejected");
                 assert.deepEqual((await list()).definitions, []);
                 await assert.rejects(readFile(marker), { code: "ENOENT" }, "a rejected launch never starts the server");
@@ -339,7 +339,7 @@ test("{§mcp-launch-environment} {§mcp-server-settings} a bearer setting resolv
         const before = received.length;
         await assert.rejects(invoke("mcp", "enable", { alias: "authorized" }), (error: unknown) => {
             assert.ok(error instanceof Error && "problem" in error);
-            const problem = Validator.assertProblemDetails(error.problem as ProblemDetails);
+            const problem = Validator.assertProblemDetails(error.problem);
             assert.equal(problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
             assert.equal(problem.status, 502);
             assert.ok(error.cause instanceof Error);

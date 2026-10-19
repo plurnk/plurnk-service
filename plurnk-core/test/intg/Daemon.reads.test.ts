@@ -30,7 +30,7 @@ const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): P
     });
 
 const entryRead = (response: RpcResponse): EntryReadResult =>
-    Validator.assertEntryReadResult(response.result as EntryReadResult);
+    Validator.assertEntryReadResult(response.result);
 
 // The integration harness calls the in-process seam. {§rpc}
 const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T>): Promise<T> => {

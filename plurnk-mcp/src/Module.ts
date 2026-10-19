@@ -7,9 +7,12 @@ import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
 import { isDeepStrictEqual } from "node:util";
 import { SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
+import { CompleteRequestParamsSchema } from "@modelcontextprotocol/core";
 import type { PluginContext } from "./PluginConfiguration.ts";
 import { type Notice,
     Problems,
+    Validator,
+    isRecord,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -232,10 +235,7 @@ export const closeConnections = async (
     }
 };
 
-const objectOf = (value: unknown): Record<string, unknown> | null =>
-    typeof value === "object" && value !== null && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : null;
+const objectOf = (value: unknown): Record<string, unknown> | null => isRecord(value) ? value : null;
 
 const assertActionKeys = (
     params: Readonly<Record<string, unknown>>,
@@ -275,6 +275,19 @@ const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapabilityI
 
 const sameBinding = (left: McpBinding, right: McpBinding): boolean =>
     isDeepStrictEqual([left.definition, left.context], [right.definition, right.context]);
+
+// The coordinator hands this module its own admitted definitions back as the contract's objects: the
+// definition is read through its schema, the plugin context through the two paths it names.
+const isPluginContext = (value: object): value is PluginContext =>
+    "root" in value && typeof value.root === "string" && "data" in value && typeof value.data === "string";
+const pluginContextOf = (value: object): PluginContext => {
+    if (!isPluginContext(value)) throw new TypeError("An MCP binding's plugin context names its root and data paths.");
+    return value;
+};
+const bindingOf = (value: FunctionalityPreparedDefinition): McpBinding => ({
+    definition: Validator.assertMcpServerDefinition(value.definition),
+    ...(value.context === undefined ? {} : { context: pluginContextOf(value.context) }),
+});
 
 const statusOf = (error: unknown): number | null => {
     if (typeof error !== "object" || error === null) return null;
@@ -623,7 +636,8 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#retainWorkspace.set(workspaceId, preparation.retain);
         const previous = (preparation.previous as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
         for (const [name, attachment] of previous) {
-            const nextDefinition = enabled.get(name) as McpBinding | undefined;
+            const next = enabled.get(name);
+            const nextDefinition = next === undefined ? undefined : bindingOf(next);
             if (nextDefinition === undefined || force === name || !sameBinding(attachment, nextDefinition)) {
                 const activeRequests = attachmentConnection(attachment)?.activeRequests ?? 0;
                 if (activeRequests > 0) throw actionError(
@@ -643,7 +657,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             // workspace waits for its slowest server, not for the sum of them.
             const plans = [...enabled].map(([name, value]) => {
                 const key = this.#pendingKey(workspaceId, name);
-                const binding = value as McpBinding;
+                const binding = bindingOf(value);
                 const existing = previous.get(name);
                 const pending = this.#pending.get(key);
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
@@ -970,16 +984,17 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { workspaceId, name: server, retryable: false },
             );
         }
-        const ref = objectOf(params.ref);
-        const argument = objectOf(params.argument);
-        if (ref === null || argument === null) {
-            throw actionError("completion-parameters-invalid", 400, "MCP completion requires 'ref' and 'argument' objects.", { retryable: false });
-        }
-        return attachment.connection.complete({
-            ref: ref as never,
-            argument: argument as never,
-            ...(objectOf(params.context) === null ? {} : { context: params.context as never }),
+        // The protocol's own schema proves the completion's parameters; a context that is not an object is not sent.
+        const completion = CompleteRequestParamsSchema.safeParse({
+            ref: params.ref,
+            argument: params.argument,
+            ...(objectOf(params.context) === null ? {} : { context: params.context }),
         });
+        if (!completion.success) {
+            const issues = completion.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
+            throw actionError("completion-parameters-invalid", 400, `MCP completion parameters do not match the protocol: ${issues}.`, { retryable: false });
+        }
+        return attachment.connection.complete(completion.data);
     }
 
     // A live catalog change republishes the unchanged state; the dirty alias
