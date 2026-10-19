@@ -75,6 +75,7 @@ export default class LiveSubscription {
             }
             try { wake?.({ ...identity, result, summary }); } catch (cause) { failures.push(cause); }
         }
+        registry.delivered(subscriptionId);
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) throw new AggregateError(failures, `Subscription ${subscriptionId} post-close delivery failed`);
     }

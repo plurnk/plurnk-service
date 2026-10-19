@@ -107,7 +107,7 @@ for (const settledBy of ["another view's answer", "the loop's cancellation"] as 
             await daemon.cancelWorker({ workspaceId, workerId });
         }
         await holding;
-        assert.equal(finished, settledBy === "another view's answer" ? "success" : "cancelled", "the held connection finishes");
+        assert.equal(finished, "success", "the held connection finishes when its gate settles, however it settled");
         assert.deepEqual(holder.pendingInterrupts, [], "and the official client's pending interrupts are clear");
         const status = await settled();
         assert.equal(status < 400, settledBy === "another view's answer", `the gate settled once, as ${settledBy} settled it (${status})`);

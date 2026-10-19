@@ -5,6 +5,7 @@ export default class LiveSubscriptions {
     readonly #cancellations = new Map<number, Promise<boolean>>();
     readonly #holders = new Map<number, number>();
     readonly #asked = new Set<number>();
+    readonly #conclusions = new Map<number, PromiseWithResolvers<void>>();
 
     register(subscriptionId: number, handle: SubscriptionHandle, holderWorkerId?: number): void {
         if (this.#handles.has(subscriptionId)) {
@@ -29,6 +30,23 @@ export default class LiveSubscriptions {
 
     wasAsked(subscriptionId: number): boolean {
         return this.#asked.has(subscriptionId);
+    }
+
+    // {§subscription-finalization} Settles once the subscription's close is committed and delivered; at once for an
+    // id with no live subscription.
+    concluded(subscriptionId: number): Promise<void> {
+        if (!this.#handles.has(subscriptionId)) return Promise.resolve();
+        let conclusion = this.#conclusions.get(subscriptionId);
+        if (conclusion === undefined) {
+            conclusion = Promise.withResolvers<void>();
+            this.#conclusions.set(subscriptionId, conclusion);
+        }
+        return conclusion.promise;
+    }
+
+    delivered(subscriptionId: number): void {
+        this.#conclusions.get(subscriptionId)?.resolve();
+        this.#conclusions.delete(subscriptionId);
     }
 
     // {§subscription-finalization} A failed durable close retains the owner but permits another attempt.

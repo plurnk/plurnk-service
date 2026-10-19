@@ -156,6 +156,15 @@ export default class LoopLifecycle {
             : Results.fromRow(row.terminal_result);
     }
 
+    // {§worker-cancel-trigger} Whether the loop's terminal is a cancellation's.
+    async cancelled(loopId: number): Promise<boolean> {
+        const row = await this.#db.lifecycle_loop_status.get<{ terminated_by: string | null }>({
+            loop_id: loopId,
+        });
+        if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
+        return row.terminated_by === "cancel";
+    }
+
     // {§loop-status-notice} {§notifications-loop-terminated} — Unix milliseconds, as the status gauge carries them.
     async observation(loopId: number): Promise<{ claimedAt: number | null; terminatedAt: number | null; packetCount: number }> {
         const row = await this.#db.lifecycle_loop_observation.get<{ claimedAt: string | null; terminatedAt: string | null; packetCount: number }>({

@@ -32,6 +32,7 @@ const supervisor = (
     loopAttributions: async () => [],
     discardLoopNotices: () => {},
     cancelSubscription: async () => false,
+    subscriptionConcluded: async () => {},
     hasActiveStreams: () => false,
     readSystemPrompt,
     emitLogEntry: async () => {},

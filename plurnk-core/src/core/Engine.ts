@@ -510,6 +510,10 @@ export default class Engine {
         return this.#liveSubscriptions.cancel(subscriptionId);
     }
 
+    subscriptionConcluded(subscriptionId: number): Promise<void> {
+        return this.#liveSubscriptions.concluded(subscriptionId);
+    }
+
     discardLoopNotices(loopId: number): void {
         this.#notices.delete(loopId);
     }

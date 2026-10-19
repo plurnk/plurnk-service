@@ -137,6 +137,7 @@ export default class DrainSupervisor {
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
     readonly #discardLoopNotices: (loopId: number) => void;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
+    readonly #subscriptionConcluded: (subscriptionId: number) => Promise<void>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -167,6 +168,7 @@ export default class DrainSupervisor {
         loopAttributions,
         discardLoopNotices,
         cancelSubscription,
+        subscriptionConcluded,
         hasActiveStreams,
         readSystemPrompt,
         emitLogEntry,
@@ -182,6 +184,7 @@ export default class DrainSupervisor {
         loopAttributions: (loopId: number) => Promise<string[]>;
         discardLoopNotices: (loopId: number) => void;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
+        subscriptionConcluded: (subscriptionId: number) => Promise<void>;
         hasActiveStreams: (workerId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -198,6 +201,7 @@ export default class DrainSupervisor {
         this.#loopAttributions = loopAttributions;
         this.#discardLoopNotices = discardLoopNotices;
         this.#cancelSubscription = cancelSubscription;
+        this.#subscriptionConcluded = subscriptionConcluded;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
@@ -394,7 +398,7 @@ export default class DrainSupervisor {
                     currentLoopId = null;
                     continue;
                 }
-                const loopResult = await this.#concludeLoop(scope, loopRow.id, result);
+                const { loopResult, announced } = await this.#concludeLoop(scope, loopRow.id, result);
                 loopsDrained++;
                 lastResult = loopResult;
                 if (!first.settled) {
@@ -405,7 +409,7 @@ export default class DrainSupervisor {
                 // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
                 // never silently dropped ({§message-loop-containment}).
                 await this.reconcileOrphanedMessages(workerId, loopRow.id);
-                await this.#abandonUnanswered(workspaceId, workerId, loopRow.id, result.result.status);
+                if (announced) await this.#abandonUnanswered(workspaceId, workerId, loopRow.id, result.result.status);
                 currentLoopId = null;
             }
         } catch (err) {
@@ -496,24 +500,20 @@ export default class DrainSupervisor {
     }
 
     // A loop's terminal: usage, attributions and turns gathered, loop/terminated published, and the result
-    // the drain reports.
-    async #concludeLoop(scope: DrainScope, loopId: number, result: { result: SchemeResult; hitMaxTurns: boolean }): Promise<DrainLoopResult> {
+    // the drain reports. A loop a cancellation retired is announced by that cancellation instead.
+    async #concludeLoop(
+        scope: DrainScope,
+        loopId: number,
+        result: { result: SchemeResult; hitMaxTurns: boolean },
+    ): Promise<{ loopResult: DrainLoopResult; announced: boolean }> {
         const { workspaceId, workerId } = scope;
-        const [usage, attributions, turnIds] = await Promise.all([
+        const [usage, attributions, turnIds, cancelled] = await Promise.all([
             this.#loopUsage(loopId),
             this.#loopAttributions(loopId),
             this.#lifecycle.turnIds(loopId),
+            this.#lifecycle.cancelled(loopId),
         ]);
-        await this.#publishTermination(workspaceId, {
-            workerId,
-            loopId: loopId,
-            result: result.result,
-            hitMaxTurns: result.hitMaxTurns,
-            turnIds,
-            usage,
-            attributions,
-        });
-        return {
+        const loopResult = {
             loopId: loopId,
             turnIds,
             result: result.result,
@@ -521,6 +521,8 @@ export default class DrainSupervisor {
             usage,
             attributions,
         };
+        if (!cancelled) await this.#publishTermination(workspaceId, { workerId, ...loopResult });
+        return { loopResult, announced: !cancelled };
     }
 
     // {§methods-loop-cancel} loop.cancel / shutdown aborted the live drain. A cancellation is the loop's
@@ -603,25 +605,15 @@ export default class DrainSupervisor {
                         retryable: false,
                     },
                 );
-            const settled = await this.#lifecycle.finish(currentLoopId, failure)
-                ?? await this.#lifecycle.result(currentLoopId);
-            if (settled === null) {
-                throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
+            const finished = await this.#lifecycle.finish(currentLoopId, failure);
+            // A loop a cancellation retired is that cancellation's to announce.
+            if (finished !== null || !await this.#lifecycle.cancelled(currentLoopId)) {
+                const settled = finished ?? await this.#lifecycle.result(currentLoopId);
+                if (settled === null) {
+                    throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
+                }
+                await this.#announce(workspaceId, workerId, currentLoopId, settled);
             }
-            const [usage, attributions] = await Promise.all([
-                this.#loopUsage(currentLoopId),
-                this.#loopAttributions(currentLoopId),
-            ]);
-            await this.#publishTermination(workspaceId, {
-                workerId,
-                loopId: currentLoopId,
-                result: settled,
-                hitMaxTurns: false,
-                turnIds: await this.#lifecycle.turnIds(currentLoopId),
-                usage,
-                attributions,
-            });
-            await this.#abandonUnanswered(workspaceId, workerId, currentLoopId, settled.status);
         }
         if (!first.settled) {
             first.settled = true;
@@ -716,40 +708,50 @@ export default class DrainSupervisor {
     async #cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<void> {
         const owner = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId });
         if (owner === undefined) throw new Error(`cancellation worker ${workerId} does not exist`);
-        const { cancelled, subscriptions } = await this.#withAdmissionLock(owner.workspace_id, async () => {
+        const { cancelled, subscriptions, drains } = await this.#withAdmissionLock(owner.workspace_id, async () => {
             const tree = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
-            const open = (await Promise.all(tree.workerIds.map((id) =>
-                ChannelWrite.findOpenSubscriptionsForWorker(this.#db, id)))).flat();
+            const open = await Promise.all(tree.workerIds.map(async (id) =>
+                [id, await ChannelWrite.findOpenSubscriptionsForWorker(this.#db, id)] as const));
+            const draining = new Map<number, Promise<unknown>>();
             for (const targetWorkerId of tree.workerIds) {
                 for (const [loopId, timer] of this.#loopTimers) {
                     if (timer.workerId === targetWorkerId) this.#clearLoopTimer(loopId);
                 }
                 const scope = this.#workerAborts.get(targetWorkerId);
                 if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
+                const drain = this.#activeDrains.get(targetWorkerId);
+                if (drain !== undefined) draining.set(targetWorkerId, drain.promise);
             }
-            return { cancelled: tree, subscriptions: open };
+            return { cancelled: tree, subscriptions: new Map(open), drains: draining };
         });
-        await Promise.all(subscriptions.map(({ id }) => this.#cancelSubscription(id)));
+        await Promise.all([...subscriptions.values()].flat().map(({ id }) => this.#cancelSubscription(id)));
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({
                 worker_id: targetWorkerId,
             });
             if (row === undefined) continue;
-            const [usage, attributions] = await Promise.all([
-                this.#loopUsage(loopId),
-                this.#loopAttributions(loopId),
-            ]);
-            await this.#publishTermination(row.workspace_id, {
-                workerId: targetWorkerId,
-                loopId,
-                result,
-                hitMaxTurns: false,
-                turnIds: await this.#lifecycle.turnIds(loopId),
-                usage,
-                attributions,
-            });
-            await this.#abandonUnanswered(row.workspace_id, targetWorkerId, loopId, result.status);
+            const announce = (): Promise<void> => this.#announce(row.workspace_id, targetWorkerId, loopId, result);
+            // {§notifications-loop-terminated} What a retired loop held settles as its worker's drain unwinds the turn
+            // and its streams close; the terminal follows both. The caller is not held: it may be that turn.
+            const drain = drains.get(targetWorkerId);
+            const held = [
+                ...drain === undefined ? [] : [drain],
+                ...(subscriptions.get(targetWorkerId) ?? []).map(({ id }) => this.#subscriptionConcluded(id)),
+            ];
+            if (held.length === 0) await announce();
+            else void this.#trackSettlement(Promise.allSettled(held).then(announce), `announce(${loopId})`);
         }
+    }
+
+    // A terminal loop's loop/terminated, then what it left unanswered answered for it.
+    async #announce(workspaceId: number, workerId: number, loopId: number, result: SchemeResult): Promise<void> {
+        const [usage, attributions, turnIds] = await Promise.all([
+            this.#loopUsage(loopId),
+            this.#loopAttributions(loopId),
+            this.#lifecycle.turnIds(loopId),
+        ]);
+        await this.#publishTermination(workspaceId, { workerId, loopId, result, hitMaxTurns: false, turnIds, usage, attributions });
+        await this.#abandonUnanswered(workspaceId, workerId, loopId, result.status);
     }
 
     // {§message-abandonment} — after a loop's end is durable and published, whatever it left unanswered is

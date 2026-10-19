@@ -48,7 +48,7 @@ WHERE id = $loop_id AND status IN (100, 102, 202)
 RETURNING terminal_result;
 
 -- PREP: lifecycle_loop_status
-SELECT status, terminal_result FROM loops WHERE id = $loop_id;
+SELECT status, terminal_result, terminated_by FROM loops WHERE id = $loop_id;
 
 -- PREP: lifecycle_loop_observation
 -- {§loop-status-notice} {§notifications-loop-terminated}: the loop's own stamps and packet count, the
