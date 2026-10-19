@@ -295,6 +295,7 @@ export default class RunHandler {
                 },
                 ...(status === undefined ? {} : { status }),
             }),
+            status,
         ));
         // {§agui-message-acceptance} A message Run on a thread it reattached may present a snapshot once its message is
         // admitted; what reaches it before then is held as a sync Run's is.

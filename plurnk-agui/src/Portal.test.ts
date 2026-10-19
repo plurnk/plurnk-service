@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import Portal from "./Portal.ts";
+import Portal, { type ThreadHandle } from "./Portal.ts";
 import { spendState, stateSnapshot, statusState } from "./AguiPlus.ts";
 import type {
     ApplicationLoopProjection,
@@ -195,7 +195,8 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     settled();
     await drain();
     assert.equal(events.length, 0, "nothing patches a gauge the client does not hold yet");
-    events.push(...portal.runStarted(thread, stateSnapshot({ status: statusState(null, null, spendState(accounting(1))) })));
+    const status = statusState(null, null, spendState(accounting(1)));
+    events.push(...portal.runStarted(thread, stateSnapshot({ status }), status));
     await drain();
     assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
     assert.deepEqual(spends(), [2], "the spend that settled while the snapshot was read follows it");
@@ -690,7 +691,7 @@ test("{§agui-proposal-resolve} a queued descendant gate precedes a later contro
     const independent: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    let thread: unknown = null;
+    let thread: ThreadHandle | null = null;
     thread = portal.openThread({
         workspaceId: 3,
         workerId: 10,
@@ -699,7 +700,7 @@ test("{§agui-proposal-resolve} a queued descendant gate precedes a later contro
         emit: (events, interrupts = []) => {
             controlling.push(...events);
             gates.push(...interrupts);
-            if (interrupts.length > 0) portal.closeRun(3, thread);
+            if (interrupts.length > 0 && thread !== null) portal.closeRun(3, thread);
         },
     });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });

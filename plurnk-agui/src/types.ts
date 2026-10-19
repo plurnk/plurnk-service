@@ -14,7 +14,7 @@ export type {
     ToolMessage,
     UserMessage,
 } from "@ag-ui/core";
-import type { LogEntryWire, OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
+import { isRecord, type LogEntryWire, type OperationResult, type ProposalProjection, type ProviderAccounting } from "@plurnk/plurnk-contracts";
 
 // The daemon event shapes this module consumes from the typed in-process seam.
 // Core owns the shapes; this module owns their external AG-UI projection.
@@ -22,6 +22,9 @@ import type { LogEntryWire, OperationResult, ProposalProjection, ProviderAccount
 export interface LogEntryNotification {
     entry: LogEntryWire;
 }
+// What the Portal proves before it hands the row to a translator: a record carrying a row record. The row's own
+// fields are the wire's ({§methods-log-entry-wire}), read as the translator reads them.
+export const isLogEntryNotification = (value: unknown): value is LogEntryNotification => isRecord(value) && isRecord(value.entry);
 
 export type ProposalNotification = ProposalProjection;
 

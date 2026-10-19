@@ -7,7 +7,7 @@
 
 import EventRouter from "./EventRouter.ts";
 import { aliveChildren, inboxState, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
-import { Problems, Validator, selectWorkerLoop } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, isRecord, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
@@ -19,7 +19,7 @@ import type {
     OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
+import { EventType, isLogEntryNotification, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
@@ -138,8 +138,24 @@ export type PortalPort = Pick<
     | "cancelLoop"
 >;
 
+// A Run's handle on the thread the Portal opened for it: opaque to the Run, which hands it back to every Portal call,
+// and the Portal's key to the thread. A private field makes the type nominal; only the Portal mints one.
+export class ThreadHandle {
+    readonly #threadId: string;
+
+    constructor(threadId: string) {
+        this.#threadId = threadId;
+    }
+
+    get threadId(): string {
+        return this.#threadId;
+    }
+}
+
 export default class Portal {
     #seam: PortalPort;
+    // The thread behind each handle this Portal issued; a handle it did not issue binds nothing.
+    readonly #issued = new WeakMap<ThreadHandle, Thread>();
     // A workspace may have several simultaneous AG-UI Runs. The worker/loop carried by
     // each notification selects its owner; a Run is not a second broadcast subscription.
     #threads = new Map<number, Set<Thread>>();
@@ -159,12 +175,29 @@ export default class Portal {
         );
     }
 
+    #bound(handle: ThreadHandle): Thread {
+        const thread = this.#issued.get(handle);
+        if (thread === undefined) throw new Error(`thread '${handle.threadId}' holds a handle this Portal did not issue`);
+        return thread;
+    }
+
+    // A notification's fields as the daemon publishes them ({§notifications-envelope-carries-workspaceid}): a record or
+    // nothing, each field proved where read.
+    static #loopIdOf(params: unknown): number | null {
+        return isRecord(params) && typeof params.loopId === "number" ? params.loopId : null;
+    }
+
+    static #entryOf(params: unknown): Readonly<Record<string, unknown>> | null {
+        return isRecord(params) && isRecord(params.entry) ? params.entry : null;
+    }
+
     // One subscription for the whole module: render each event only to its owning Run.
     start(): void {
         this.#hitl.start();
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId === null) return; // global (workspace/created) handled out-of-band
-            if (method === "loop/terminated") this.#terminalsDue.add((params as TerminatedNotification).loopId);
+            const terminated = method === "loop/terminated" ? Portal.#loopIdOf(params) : null;
+            if (terminated !== null) this.#terminalsDue.add(terminated);
             // {§agui-proposal-resolve} {§agui-subagents} A workspace's events reach its Runs in the order the daemon
             // published them: while a descendant's topology or loop is being read, every later event waits for it.
             if (this.#deliveryTails.has(workspaceId)) {
@@ -178,7 +211,8 @@ export default class Portal {
 
     // Returns the descendants' events still being read for some Run's presentation, when there are any.
     #routeNotification(workspaceId: number, method: string, params: unknown): Promise<void> | undefined {
-        if (method === "loop/terminated") this.#terminalsDue.delete((params as TerminatedNotification).loopId);
+        const terminated = method === "loop/terminated" ? Portal.#loopIdOf(params) : null;
+        if (terminated !== null) this.#terminalsDue.delete(terminated);
         const observing: Array<Promise<void>> = [];
         for (const thread of this.#threads.get(workspaceId) ?? []) {
             if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(thread);
@@ -187,8 +221,8 @@ export default class Portal {
                 observing.push(this.#observeDescendant(workspaceId, thread, actor, method, params));
                 continue;
             }
-            if (thread.descendants && method === "loop/terminated") {
-                const concluded = Portal.#concluded(thread, params as TerminatedNotification);
+            if (thread.descendants && terminated !== null) {
+                const concluded = Portal.#concluded(thread, terminated, isRecord(params) ? params.result : undefined);
                 if (concluded !== null) {
                     if (concluded.length > 0) thread.emit(concluded);
                     continue;
@@ -199,12 +233,12 @@ export default class Portal {
                 continue;
             }
             if (method === "loop/packet" && thread.loopId === null) {
-                const loopId = (params as { loopId?: unknown }).loopId;
-                if (typeof loopId === "number") thread.loopId = loopId;
+                const loopId = Portal.#loopIdOf(params);
+                if (loopId !== null) thread.loopId = loopId;
             }
             if (method === "loop/terminated") {
-                const loopId = (params as { loopId?: unknown }).loopId;
-                if (typeof loopId !== "number") continue;
+                const loopId = Portal.#loopIdOf(params);
+                if (loopId === null) continue;
                 if (thread.loopId === null || thread.resolvingInterrupts) {
                     thread.pendingTerminations.push(params);
                     continue;
@@ -238,19 +272,21 @@ export default class Portal {
     // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "worker") return false;
-        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown; op?: unknown; origin?: unknown }; notice?: { source?: unknown; kind?: unknown } };
+        const payload = isRecord(params) ? params : {};
         if (method === "loop/terminated" || method === "loop/packet") {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
         }
         if (method === "notice/event") {
+            const notice = isRecord(payload.notice) ? payload.notice : null;
             return typeof payload.workerId === "number"
-                && payload.notice?.source === "engine:turn" && payload.notice.kind === "turn_generated";
+                && notice !== null && notice.source === "engine:turn" && notice.kind === "turn_generated";
         }
         if (method === "log/entry") {
             // {§agui-message-acceptance} An arrival row moves a message out of the inbox.
-            return payload.entry?.worker_id === thread.workerId
-                && (payload.entry.op === "WORK" || payload.entry.op === "FORK" || payload.entry.op === "KILL"
-                    || (payload.entry.op === "SEND" && payload.entry.origin === "_plurnk"));
+            const entry = Portal.#entryOf(params);
+            return entry !== null && entry.worker_id === thread.workerId
+                && (entry.op === "WORK" || entry.op === "FORK" || entry.op === "KILL"
+                    || (entry.op === "SEND" && entry.origin === "_plurnk"));
         }
         return false;
     }
@@ -303,8 +339,7 @@ export default class Portal {
     // notices stay the bound Worker's alone.
     static #observedActor(thread: Thread, method: string, params: unknown): number | null {
         if (method !== "log/entry" && method !== "stream/event" && method !== "stream/concluded") return null;
-        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown } };
-        const actor = method === "log/entry" ? payload.entry?.worker_id : payload.workerId;
+        const actor = method === "log/entry" ? Portal.#entryOf(params)?.worker_id : isRecord(params) ? params.workerId : undefined;
         if (typeof actor !== "number" || actor === thread.workerId || thread.unrelated.has(actor)) return null;
         return actor;
     }
@@ -322,7 +357,8 @@ export default class Portal {
             thread.unrelated.add(actor);
             return;
         }
-        const subagent = method === "log/entry" ? await this.#rowSubagent(thread, node, (params as LogEntryNotification).entry.loop_id) : null;
+        const entry = method === "log/entry" ? Portal.#entryOf(params) : null;
+        const subagent = entry !== null && typeof entry.loop_id === "number" ? await this.#rowSubagent(thread, node, entry.loop_id) : null;
         if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
         // {§agui-delegation-observation} A subagent's start introduces its worker; any other descendant is introduced once
         // before its first event.
@@ -331,7 +367,7 @@ export default class Portal {
         thread.introduced.add(actor);
         const out = subagent === null
             ? [...introduction, ...thread.router.route(method, params)]
-            : [...Portal.#present(subagent), ...subagent.translator.logEntry(params as LogEntryNotification)];
+            : isLogEntryNotification(params) ? [...Portal.#present(subagent), ...subagent.translator.logEntry(params)] : [];
         if (out.length > 0) thread.emit(out);
     }
 
@@ -417,10 +453,10 @@ export default class Portal {
 
     // {§agui-subagents} A subagent's loop concluded: an open segment ends now, an unstarted one when it is presented;
     // null for a loop that is no subagent of this Run.
-    static #concluded(thread: Thread, terminal: TerminatedNotification): AguiEvent[] | null {
-        const subagent = thread.subagents.get(terminal.loopId);
+    static #concluded(thread: Thread, loopId: number, result: unknown): AguiEvent[] | null {
+        const subagent = thread.subagents.get(loopId);
         if (subagent === undefined) return null;
-        subagent.result = Validator.assertOperationResult(terminal.result);
+        subagent.result = Validator.assertOperationResult(result);
         return subagent.segment === "open" ? Portal.#end(subagent, subagent.result) : [];
     }
 
@@ -444,8 +480,8 @@ export default class Portal {
 
     // {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays: each descendant loop a call in view opened,
     // with the rows `history` reads from its worker's log.
-    async subagentHistory(thread: unknown, history: (workerId: number) => Promise<Array<Record<string, unknown>>>): Promise<SubagentHistory> {
-        const bound = thread as Thread;
+    async subagentHistory(thread: ThreadHandle, history: (workerId: number) => Promise<Array<Record<string, unknown>>>): Promise<SubagentHistory> {
+        const bound = this.#bound(thread);
         if (!bound.descendants || bound.workerId === null) return [];
         bound.tree = await this.#descendantTree(bound.workspaceId, bound.workerId);
         const parts: Array<SubagentHistory[number]> = [];
@@ -476,16 +512,17 @@ export default class Portal {
     // obligation ({§worker-obligations}) and opens nothing.
     static #openedStream(method: string, params: unknown): string | null {
         if (method === "log/entry") {
-            const entry = (params as { entry?: { rx?: { status?: number }; attrs?: { stream?: unknown; detached?: unknown } | null } }).entry;
-            if (entry?.rx?.status !== 200 && entry?.rx?.status !== 202) return null;
-            const attrs = entry.attrs;
-            return typeof attrs?.stream === "string" && attrs.detached !== true ? attrs.stream : null;
+            const entry = Portal.#entryOf(params);
+            const rx = entry !== null && isRecord(entry.rx) ? entry.rx : null;
+            if (rx === null || (rx.status !== 200 && rx.status !== 202)) return null;
+            const attrs = entry !== null && isRecord(entry.attrs) ? entry.attrs : null;
+            return attrs !== null && typeof attrs.stream === "string" && attrs.detached !== true ? attrs.stream : null;
         }
         return method === "stream/event" ? Portal.#streamTarget(params) : null;
     }
 
     static #streamTarget(params: unknown): string {
-        const target = (params as { target?: unknown }).target;
+        const target = isRecord(params) ? params.target : undefined;
         if (typeof target !== "string") throw new Error(`A stream notification names no target: ${JSON.stringify(params)}`);
         return target;
     }
@@ -496,12 +533,8 @@ export default class Portal {
     static #ownsNotification(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope === "result") return false;
         const operation = thread.notificationScope === "operation";
-        const payload = params as {
-            workerId?: unknown;
-            loopId?: unknown;
-            parentWorkerId?: unknown;
-            entry?: { worker_id?: unknown; loop_id?: unknown };
-        };
+        const payload = isRecord(params) ? params : {};
+        const entry = Portal.#entryOf(params);
         const owns = (workerId: unknown, loopId?: unknown): boolean =>
             typeof workerId === "number"
             && workerId === thread.workerId
@@ -510,7 +543,7 @@ export default class Portal {
                 : thread.loopId === null || typeof loopId !== "number" || loopId === thread.loopId);
         switch (method) {
             case "workspace/preparation": return true;
-            case "log/entry": return owns(payload.entry?.worker_id, payload.entry?.loop_id);
+            case "log/entry": return owns(entry?.worker_id, entry?.loop_id);
             case "loop/terminated": return !operation && owns(payload.workerId, payload.loopId);
             case "loop/packet":
             case "reasoning/event":
@@ -531,7 +564,7 @@ export default class Portal {
     static #holdUnannounced(thread: Thread, method: string, params: unknown): void {
         if (thread.notificationScope !== "operation" || thread.loopId === null) return;
         if (method !== "stream/event" && method !== "stream/concluded") return;
-        if ((params as { workerId?: unknown }).workerId !== thread.workerId) return;
+        if (!isRecord(params) || params.workerId !== thread.workerId) return;
         const target = Portal.#streamTarget(params);
         const held = thread.unannounced.get(target) ?? { event: null, concluded: null };
         thread.unannounced.set(target, method === "stream/event" ? { ...held, event: params } : { ...held, concluded: params });
@@ -563,7 +596,7 @@ export default class Portal {
         // {§agui-shutdown} Module close follows core settlement; remaining Runs are
         // transport lifetimes, not unfinished worker obligations to await again.
         for (const threads of this.#threads.values()) {
-            for (const thread of threads) this.failThread(thread, runErrorEvents(serviceStoppingProblem()));
+            for (const thread of threads) this.#failThread(thread, runErrorEvents(serviceStoppingProblem()));
         }
         this.#threads.clear();
     }
@@ -713,7 +746,7 @@ export default class Portal {
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
     // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
     // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
+    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): ThreadHandle {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -762,46 +795,45 @@ export default class Portal {
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
         set.add(t);
-        return t;
+        const handle = new ThreadHandle(args.threadId);
+        this.#issued.set(handle, t);
+        return handle;
     }
 
-    closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
+    closeRun(workspaceId: number, handle: ThreadHandle): void { this.#threads.get(workspaceId)?.delete(this.#bound(handle)); }
 
     // {§agui-run-disconnect} A disconnect ends this Run's delivery and nothing else: the work it submitted,
     // observed or resumed runs on under its own lifetime.
-    disconnect(thread: unknown): void {
-        const bound = thread as Thread;
-        bound.disconnected = true;
+    disconnect(thread: ThreadHandle): void {
+        this.#bound(thread).disconnected = true;
     }
 
     // {§agui-broadcast-fan} An operation Run observes the Loop its dispatch opened, from before any statement runs.
-    bindOperation(thread: unknown, loop: { readonly workerId: number; readonly loopId: number }): void {
-        const bound = thread as Thread;
+    bindOperation(thread: ThreadHandle, loop: { readonly workerId: number; readonly loopId: number }): void {
+        const bound = this.#bound(thread);
         bound.workerId = loop.workerId;
         bound.loopId = loop.loopId;
     }
 
-    // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch.
-    runStarted(thread: unknown, state?: AguiEvent): AguiEvent[] {
-        const bound = thread as Thread;
+    // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch: the caller
+    // that built the snapshot names the status it put there.
+    runStarted(thread: ThreadHandle, state?: AguiEvent, status?: AguiStatusState): AguiEvent[] {
+        const bound = this.#bound(thread);
         const events = bound.router.runStarted(state);
-        const status = state?.type === EventType.STATE_SNAPSHOT
-            ? (state.snapshot as { plurnk?: { status?: AguiStatusState } }).plurnk?.status
-            : undefined;
         if (status !== undefined) this.#presentGauge(bound, status);
         return events;
     }
 
     // A whole-gauge replacement: the client's gauge is this status from here on.
-    replaceStatus(thread: unknown, status: AguiStatusState): AguiEvent[] {
-        this.#presentGauge(thread as Thread, status);
+    replaceStatus(thread: ThreadHandle, status: AguiStatusState): AguiEvent[] {
+        this.#presentGauge(this.#bound(thread), status);
         return [stateDelta([{ op: "replace", path: "/plurnk/status", value: status }])];
     }
 
     // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
-    replay(thread: unknown, entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
+    replay(thread: ThreadHandle, entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
         return [
-            ...(thread as Thread).router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
+            ...this.#bound(thread).router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
             ...subagents.flatMap(({ subagent }) => Portal.#present(subagent)),
         ];
     }
@@ -813,8 +845,8 @@ export default class Portal {
     }
 
     // The Run finishes with `events`, and `result` as its result when it has one.
-    finishThread(thread: unknown, events: AguiEvent[], result?: unknown): void {
-        const bound = thread as Thread;
+    finishThread(thread: ThreadHandle, events: AguiEvent[], result?: unknown): void {
+        const bound = this.#bound(thread);
         if (bound.openStreams.size > 0) {
             bound.deferredFinish = { events, result };
             return;
@@ -822,9 +854,12 @@ export default class Portal {
         this.#finishThread(bound, events, result);
     }
 
-    failThread(thread: unknown, events: AguiEvent[]): void {
-        const bound = thread as Thread;
-        bound.emit([...bound.router.fail(), ...events]);
+    failThread(thread: ThreadHandle, events: AguiEvent[]): void {
+        this.#failThread(this.#bound(thread), events);
+    }
+
+    #failThread(thread: Thread, events: AguiEvent[]): void {
+        thread.emit([...thread.router.fail(), ...events]);
     }
 
     // {§agui-oauth-revocation} — every Run admitted under the family ends with the given events; the
@@ -833,7 +868,7 @@ export default class Portal {
         for (const threads of this.#threads.values()) {
             for (const thread of threads) {
                 if (thread.family !== family) continue;
-                this.failThread(thread, events);
+                this.#failThread(thread, events);
                 threads.delete(thread);
             }
         }
@@ -862,7 +897,7 @@ export default class Portal {
     #bindLoop(thread: Thread, loopId: number): boolean {
         thread.loopId = loopId;
         const terminal = thread.pendingTerminations.find(
-            (params) => (params as { loopId?: unknown }).loopId === loopId,
+            (params) => Portal.#loopIdOf(params) === loopId,
         );
         thread.pendingTerminations = [];
         if (terminal === undefined) return false;
@@ -875,25 +910,26 @@ export default class Portal {
     // stopped-world is re-presented first; otherwise an active Loop stays attached
     // and an idle worker settles immediately. Returns true only while this
     // thread remains attached to independently-owned live work.
-    async synchronize(workspaceId: number, thread: unknown, waitForWork = false): Promise<boolean> {
-        const bound = thread as Thread;
+    async synchronize(workspaceId: number, thread: ThreadHandle, waitForWork = false): Promise<boolean> {
+        const bound = this.#bound(thread);
         if (bound.workerId === null) throw new Error("a synchronization Run reached the Portal without its worker");
         if (await this.#resurfaceControlled(workspaceId, bound)) return false;
         const loop = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
             .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
         if (loop === null) {
             if (waitForWork) return true;
-            this.finishThread(bound, []);
+            this.#finishThread(bound, [], undefined);
             return false;
         }
         return !this.#bindLoop(bound, loop.id);
     }
 
     // {§agui-message-acceptance} Submit the prompt: durable in Core before the Run presents anything.
-    async submit(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number }> {
-        const bound = thread as Thread;
+    async submit(thread: ThreadHandle, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number }> {
+        const bound = this.#bound(thread);
         // {§agui-snapshot} The submitting Run's client holds its own message; every other Run receives it.
-        const submitted = (args.envelope?.message as { id?: unknown } | undefined)?.id;
+        const message = args.envelope?.message;
+        const submitted = isRecord(message) ? message.id : undefined;
         if (typeof submitted === "string") bound.router.submitted(submitted);
         return { loopId: (await this.#seam.runLoop(args)).loopId };
     }
@@ -901,8 +937,8 @@ export default class Portal {
     // Observe the loop the submission joined or started (fire-and-forget — the outcome streams via the subscription as
     // loop/terminated). {§agui-message-before-gate} — the prompt is durable in Core before any pending stopped-world is
     // re-presented.
-    async attach(thread: unknown, workspaceId: number, ack: { loopId: number }): Promise<{ loopId: number } | null> {
-        const bound = thread as Thread;
+    async attach(thread: ThreadHandle, workspaceId: number, ack: { loopId: number }): Promise<{ loopId: number } | null> {
+        const bound = this.#bound(thread);
         // {§agui-run-disconnect} Admitted: a Run whose connection closed meanwhile delivers nothing and cancels nothing.
         if (bound.disconnected) return null;
         if (!this.#threads.get(workspaceId)?.has(bound)) return null;
@@ -912,7 +948,7 @@ export default class Portal {
     }
 
     // Submit and attach in one step: a Run that presents nothing between them.
-    async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
+    async run(thread: ThreadHandle, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
         return await this.attach(thread, args.workspaceId, await this.submit(thread, args));
     }
 
@@ -920,8 +956,8 @@ export default class Portal {
 
     // A standard resume AG-UI Run binds to its presentation's continuation before
     // releasing every addressed interrupt.
-    async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
-        const bound = thread as Thread;
+    async resolve(workspaceId: number, thread: ThreadHandle, entries: ResumeEntry[]): Promise<void> {
+        const bound = this.#bound(thread);
         if (bound.owner === null) throw new Error("an observer cannot resolve interrupts");
         bound.resolvingInterrupts = true;
         const continuations = entries.map(({ interruptId }) => this.#continuations.get(interruptId));
@@ -985,7 +1021,7 @@ export default class Portal {
         }
         if (this.#threads.get(workspaceId)?.has(bound)) {
             const surfaced = await this.#resurfaceControlled(workspaceId, bound);
-            if (!surfaced && bound.loopId === null) this.finishThread(bound, []);
+            if (!surfaced && bound.loopId === null) this.#finishThread(bound, [], undefined);
         }
     }
 }

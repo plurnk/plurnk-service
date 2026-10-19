@@ -1,6 +1,6 @@
-import SqlRiteSync from "@possumtech/sqlrite/sync";
 import StoredPacket from "../core/StoredPacket.ts";
-import type { SqlRiteSyncPreparedStatements as SyncPrep } from "@possumtech/sqlrite";
+// The root module exports the sync class, and the generated typings name every statement on it ({§persistence-via-sqlrite}).
+import { SqlRiteSync } from "@possumtech/sqlrite";
 import type {
     DigestEvidence, EvidenceRows, ErrorEvidence, PacketEvidence, TurnRow,
     WorkspaceRow, WorkerRow, LoopRow, TurnAttemptRow, InferenceCallRow, ModelCallRow,
@@ -14,7 +14,7 @@ import FabricatedLog from "../core/FabricatedLog.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
-import type { ParsedPath } from "@plurnk/plurnk-contracts";
+import { Validator, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "../core/provider-accounting.ts";
 
 const describeNonError = (value: unknown): string => {
@@ -25,6 +25,20 @@ const describeNonError = (value: unknown): string => {
         return String(value);
     }
 };
+
+// The target a statement authored, when the stored text is a path the grammar names; a row whose stored target is not
+// renders without its authored spelling.
+const authoredPath = (text: string | null): ParsedPath | null => {
+    if (text === null) return null;
+    const value: unknown = JSON.parse(text);
+    return Validator.validateParsedPath(value).valid ? Validator.assertParsedPath(value) : null;
+};
+
+// A settled request's ledger row names its outcome and cost kind; one that does not has no accounting to read.
+const settledRow = (row: Omit<ProviderRequestRow, "accounting">): ProviderRequestStorageRow | null =>
+    row.state === "settled" && row.outcome !== null && row.cost_kind !== null
+        ? { ...row, outcome: row.outcome, cost_kind: row.cost_kind }
+        : null;
 
 const errorEvidence = (value: unknown, seen = new Set<unknown>()): ErrorEvidence => {
     if (seen.has(value)) return { name: "Error", message: "Circular error cause" };
@@ -65,32 +79,32 @@ export default class EvidenceReader implements DigestEvidence {
     rows(): EvidenceRows {
         const db = this.#db;
         const decisions = new Map(
-            (db.digest_proposal_decisions as SyncPrep<NonNullable<LogRow["proposalDecision"]> & { log_entry_id: number }>).all()
+            db.digest_proposal_decisions.all<NonNullable<LogRow["proposalDecision"]> & { log_entry_id: number }>()
                 .map(({ log_entry_id, ...decision }) => [log_entry_id, decision]),
         );
         const rows = {
-            workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow & { project_root: string | null }>).all(),
-            workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
-            loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
-            turns: (db.digest_turns as SyncPrep<Omit<TurnRow, "packetEchoes">>).all(),
-            inferenceCalls: (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all(),
-            modelCalls: (db.digest_model_calls as SyncPrep<ModelCallRow>).all(),
-            turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
-            providerRequests: (db.digest_provider_requests as SyncPrep<Omit<ProviderRequestRow, "accounting">>).all(),
-            logEntries: (db.digest_log_entries as SyncPrep<Omit<LogRow, "target"> & { target_tx: string | null }>).all(),
-            editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
-            emissionRows: (db.digest_emissions as SyncPrep<EmissionRow>).all(),
-            reasoningRows: (db.digest_reasonings as SyncPrep<ReasoningRow>).all(),
-            curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
-            workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
-            opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
-            environmentRows: (db.digest_execution_environments as SyncPrep<ExecutionEnvironmentRow>).all(),
-            searchState: (db.digest_channel_search_state as SyncPrep<SearchStateRow>).get(),
-            derivationState: (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get(),
-            dispositionCounts: (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all(),
-            dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
-            storage: (db.digest_storage as SyncPrep<StorageRow>).get(),
-            storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
+            workspaces: db.digest_workspaces.all<WorkspaceRow & { project_root: string | null }>(),
+            workers: db.digest_workers.all<WorkerRow>(),
+            loops: db.digest_loops.all<LoopRow>(),
+            turns: db.digest_turns.all<Omit<TurnRow, "packetEchoes">>(),
+            inferenceCalls: db.digest_inference_calls.all<InferenceCallRow>(),
+            modelCalls: db.digest_model_calls.all<ModelCallRow>(),
+            turnAttempts: db.digest_turn_attempts.all<TurnAttemptRow>(),
+            providerRequests: db.digest_provider_requests.all<Omit<ProviderRequestRow, "accounting">>(),
+            logEntries: db.digest_log_entries.all<Omit<LogRow, "target"> & { target_tx: string | null }>(),
+            editRows: db.digest_edit_statements.all<EditRow>(),
+            emissionRows: db.digest_emissions.all<EmissionRow>(),
+            reasoningRows: db.digest_reasonings.all<ReasoningRow>(),
+            curationEffects: db.digest_curation_effects.all<LogCurationEffectRow>(),
+            workerRollupRows: db.digest_worker_rollups.all<WorkerRollupRow>(),
+            opMixRows: db.digest_worker_op_mix.all<OpMixRow>(),
+            environmentRows: db.digest_execution_environments.all<ExecutionEnvironmentRow>(),
+            searchState: db.digest_channel_search_state.get<SearchStateRow>(),
+            derivationState: db.digest_derivation_state.get<DerivationStateRow>(),
+            dispositionCounts: db.digest_channel_disposition_counts.all<DispositionCountRow>(),
+            dispositions: db.digest_channel_dispositions.all<DispositionRow>(),
+            storage: db.digest_storage.get<StorageRow>(),
+            storageTables: db.digest_storage_tables.all<StorageTableRow>(),
         };
         if (rows.storage === undefined) throw new Error("the database reported no storage facts");
         if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("search aggregate returned no row");
@@ -103,14 +117,13 @@ export default class EvidenceReader implements DigestEvidence {
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.
             turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: EvidenceReader.#echoes(turn.program) + FabricatedLog.echoes(turn.outside ?? "") })),
             logEntries: rows.logEntries.map(({ target_tx, ...row }) => ({
-                ...row, target: renderTarget(row, workerRoots.get(row.worker_id) ?? null,
-                    target_tx === null ? null : JSON.parse(target_tx) as ParsedPath),
+                ...row, target: renderTarget(row, workerRoots.get(row.worker_id) ?? null, authoredPath(target_tx)),
                 ...(decisions.has(row.id) ? { proposalDecision: decisions.get(row.id) } : {}),
             })),
-            providerRequests: rows.providerRequests.map((row) => ({
-                ...row,
-                accounting: row.state === "settled" ? providerRequestFromStorageRow(row as ProviderRequestStorageRow) : null,
-            })),
+            providerRequests: rows.providerRequests.map((row) => {
+                const settled = settledRow(row);
+                return { ...row, accounting: settled === null ? null : providerRequestFromStorageRow(settled) };
+            }),
         };
     }
 
@@ -119,7 +132,7 @@ export default class EvidenceReader implements DigestEvidence {
         this.#lastPacket = undefined;
         let evidence: PacketEvidence = { packet: null, packetFailure: null };
         if (turn.has_packet === 1) {
-            const row = (this.#db.digest_turn_packet as SyncPrep<{ packet: string; packet_bag: string }>).get({ turn_id: turn.id });
+            const row = this.#db.digest_turn_packet.get<{ packet: string; packet_bag: string }>({ turn_id: turn.id });
             if (row === undefined) throw new Error(`turn ${turn.id} packet disappeared`);
             try {
                 const packet = StoredPacket.parse(row.packet, `digest turn ${turn.id}`);
@@ -149,18 +162,18 @@ export default class EvidenceReader implements DigestEvidence {
     }
 
     response(modelCallId: number): string | null {
-        return (this.#db.digest_model_response as SyncPrep<{ response: string }>).get({ model_call_id: modelCallId })?.response ?? null;
+        return this.#db.digest_model_response.get<{ response: string }>({ model_call_id: modelCallId })?.response ?? null;
     }
 
     request(requestId: number): string | null {
-        const row = (this.#db.digest_provider_request_evidence as SyncPrep<{ evidence?: string | null }>).get({ request_id: requestId });
+        const row = this.#db.digest_provider_request_evidence.get<{ evidence?: string | null }>({ request_id: requestId });
         if (row === undefined) throw new Error(`provider request ${requestId} disappeared`);
         return row.evidence ?? null;
     }
 
     reasoning(turn: TurnRow): string | null {
         if (turn.has_reasoning === 0) return null;
-        const row = (this.#db.digest_turn_reasoning as SyncPrep<{ content: string }>).get({ turn_id: turn.id });
+        const row = this.#db.digest_turn_reasoning.get<{ content: string }>({ turn_id: turn.id });
         if (row === undefined) throw new Error(`turn ${turn.id} reasoning source disappeared`);
         return row.content;
     }
