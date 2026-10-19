@@ -37,6 +37,9 @@ export const isProgress = (statement: PlurnkStatement, status: number): boolean 
 
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 
+// A NOTE's result without the source coordinate storage assigned it ({§engine-cycle-evidence}).
+const withoutResource = ({ resource: _resource, ...observed }: OperationResult): OperationResult => observed;
+
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
     ? result
     : { ...result, problem: Object.fromEntries(Object.entries(result.problem).filter(([key]) => key !== "instance")) };
@@ -58,9 +61,7 @@ export default class StrikeRail {
             const result = results?.[index];
             // {§engine-cycle-evidence}: NOTE's assigned source coordinate is storage,
             // not an observation; its complete authored content remains in operation.
-            const evidence = statement.op === "NOTE" && result !== undefined
-                ? Object.fromEntries(Object.entries(result).filter(([key]) => key !== "resource")) as OperationResult
-                : result;
+            const evidence = statement.op === "NOTE" && result !== undefined ? withoutResource(result) : result;
             return [[operation, observedResult(evidence)]];
         });
         const canonical = JSON.stringify(activity, (_key, value) =>

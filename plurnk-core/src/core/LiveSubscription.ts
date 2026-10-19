@@ -42,7 +42,7 @@ export default class LiveSubscription {
         const asked = this.#options.registry.wasAsked(this.#options.identity.subscriptionId);
         const concluded = (produced: ChannelProducerResult): ChannelProducerResult => {
             if (!asked || produced.status !== 499) return produced;
-            const exitCode = (produced as { exitCode?: unknown }).exitCode;
+            const { exitCode } = produced;
             return typeof exitCode === "number" ? { status: 200, exitCode } : { status: 200 };
         };
         this.#terminal = {

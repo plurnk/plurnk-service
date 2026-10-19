@@ -1,4 +1,4 @@
-import { TurnDisposition, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecution, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -25,6 +25,16 @@ import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution,
 
 // SEND recipients and delegation own their input; resource operations use the manifest.
 const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK"]);
+
+// The exec scheme's turn settlement: its own hook, read where a turn settles.
+const settlesTurnSpawns = (handler: object | undefined): handler is {
+    settleTurnSpawns(workerId: number, turnId: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
+} => handler !== undefined && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function";
+
+// {§edit-batch-merges} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
+const mergedRules = (result: DispatchResult): string[] => Array.isArray(result.merged)
+    ? result.merged.flatMap((merge: unknown) => isRecord(merge) && typeof merge.rule === "string" ? [merge.rule] : [])
+    : [];
 
 export default class AdmittedTurnExecutor {
     readonly #db: Db;
@@ -207,20 +217,10 @@ export default class AdmittedTurnExecutor {
 
         const settleTurn = async (): Promise<void> => {
             await recordRecoverableParseErrors();
-            const execHandler = this.#schemes.get("exec") as {
-                settleTurnSpawns?: (
-                    workerId: number,
-                    turnId: number,
-                    timeoutMs: number,
-                    signal?: AbortSignal,
-                ) => Promise<boolean>;
-            } | undefined;
-            await execHandler?.settleTurnSpawns?.(
-                workerId,
-                turnId,
-                readOptimisticSettlementMs(),
-                signal,
-            );
+            const execHandler = this.#schemes.get("exec");
+            if (settlesTurnSpawns(execHandler)) {
+                await execHandler.settleTurnSpawns(workerId, turnId, readOptimisticSettlementMs(), signal);
+            }
         };
 
         const emissionIndices = new Map(emission?.statements.map((statement, index) => [statement, index]));
@@ -333,7 +333,7 @@ export default class AdmittedTurnExecutor {
             results.push(result);
             if (!TurnDisposition.is(statement)) realCommands += commandsExecuted;
             droppedCount += commandsOmitted;
-            rowSequence += (result.rowsWritten as number | undefined) ?? 1;
+            rowSequence += Results.rowsWritten(result);
             if (failOnOperationError && result.status >= 400 && !isContextReceipt(result)) {
                 throw new OperationFailureError(result);
             }
@@ -348,13 +348,13 @@ export default class AdmittedTurnExecutor {
             }
             // {§edit-batch-merges} — every applied resolution is also a notice, so the row's
             // `merged` fact is never the only place it is said.
-            for (const merge of (result as { merged?: readonly { rule: string }[] }).merged ?? []) {
+            for (const rule of mergedRules(result)) {
                 this.#notices.push(workspaceId, workerId, loopId, {
                     source: "engine:slicer",
                     kind: "edit_merged",
                     level: "warn",
                     directive: "YOU SHOULD verify the merged EDIT before building on it.",
-                    message: `EDIT resolution applied: ${merge.rule}; the row's merged fact has the coordinates.`,
+                    message: `EDIT resolution applied: ${rule}; the row's merged fact has the coordinates.`,
                 });
             }
             if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);

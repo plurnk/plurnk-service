@@ -8,13 +8,14 @@ export const FILE_CREATE_SCOPES = ["none", "root", "namespace"] as const;
 export type FileCreateScope = typeof FILE_CREATE_SCOPES[number];
 
 const rank = new Map<FileCreateScope, number>(FILE_CREATE_SCOPES.map((scope, index) => [scope, index]));
+const isFileCreateScope = (value: unknown): value is FileCreateScope => FILE_CREATE_SCOPES.some((scope) => scope === value);
 
 export default class FileCreationPolicy {
     static parse(value: unknown, name: string): FileCreateScope {
-        if (typeof value !== "string" || !rank.has(value as FileCreateScope)) {
+        if (!isFileCreateScope(value)) {
             throw new TypeError(`${name} must be one of ${FILE_CREATE_SCOPES.join(", ")}; got ${JSON.stringify(value)}`);
         }
-        return value as FileCreateScope;
+        return value;
     }
 
     static serviceScope(env: NodeJS.ProcessEnv = process.env): FileCreateScope {

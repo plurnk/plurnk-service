@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import { isRecord, type Notice } from "@plurnk/plurnk-contracts";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
@@ -23,8 +23,10 @@ export default class AmbientMembers {
 
     // The files an accepted admission proposal admits, or null when the result proposes none.
     static admissionOf(result: unknown): readonly string[] | null {
-        const admission = ((result as { attrs?: unknown } | null)?.attrs as { admission?: { files?: unknown } } | undefined)?.admission;
-        return Array.isArray(admission?.files) && admission.files.every((file) => typeof file === "string") ? admission.files : null;
+        const attrs = isRecord(result) ? result.attrs : undefined;
+        const admission = isRecord(attrs) ? attrs.admission : undefined;
+        const files = isRecord(admission) ? admission.files : undefined;
+        return Array.isArray(files) && files.every((file): file is string => typeof file === "string") ? files : null;
     }
 
     static seam(args: {

@@ -1,4 +1,5 @@
 import type { LineMarker, MatcherBody, TextLineMarker, TextRegion } from "@plurnk/plurnk-contracts";
+import LineAnchors from "./line-anchors.ts";
 import { binaryInputMaximum, queryRegex, queryGlob } from "@plurnk/plurnk-mimetypes";
 import { Matcher, Results, type MatchResult, type ByteSource, type SchemeResult } from "@plurnk/plurnk-schemes";
 import PatternEdits from "./pattern-edits.ts";
@@ -20,11 +21,11 @@ export default class ByteView {
     }
 
     static marker(marker: TextLineMarker | null): { marker: LineMarker | null } | { result: SchemeResult } {
-        if (marker?.marks.some((mark) => typeof mark !== "number")) return { result: Results.failure(
+        if (!LineAnchors.isResolvedMarker(marker)) return { result: Results.failure(
             "engine:dispatcher", "range-not-satisfiable", 416,
             "Native byte scopes use numeric byte positions, not textual anchors.", {}, { unit: "byte", retryable: false },
         ) };
-        return { marker: marker as LineMarker | null };
+        return { marker };
     }
 
     // Bytes as one character each, so a text pattern matches a byte sequence and every character

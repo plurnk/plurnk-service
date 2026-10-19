@@ -70,7 +70,7 @@ const compactDefinitionTables = (markdown: string): string => {
             return rawLine;
         }
         if (fenceRun !== undefined) {
-            fence = { marker: fenceRun[0] as "`" | "~", length: fenceRun.length };
+            fence = { marker: fenceRun.startsWith("`") ? "`" : "~", length: fenceRun.length };
             inTable = false;
             dividerIndex = -1;
             return rawLine;

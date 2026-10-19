@@ -1,7 +1,6 @@
-import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 
-const objectOf = (value: unknown): JsonSchema =>
-    typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonSchema : {};
+const objectOf = (value: unknown): JsonSchema => isRecord(value) ? value : {};
 
 const defaultValue = (property: JsonSchema): unknown => {
     const choices = property.enum;

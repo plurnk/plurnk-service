@@ -28,10 +28,12 @@ export default class ReadResolve {
     static #previewMarker(content: string, visibleLines: readonly number[] | undefined): LineMarker {
         const preview = BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker;
         if (visibleLines === undefined || visibleLines.length === 0) return preview;
-        return { marks: preview.marks.map((mark, index) => {
-            if (preview.marks.length === 4 && index % 2 === 1) return mark;
-            return visibleLines[Math.min(mark, visibleLines.length) - 1];
-        }) as LineMarker["marks"] };
+        // A region's columns stay as written; each line mark maps onto its visible source line.
+        const visible = (mark: number, index: number): number => preview.marks.length === 4 && index % 2 === 1
+            ? mark
+            : visibleLines[Math.min(mark, visibleLines.length) - 1];
+        const [first, ...rest] = preview.marks;
+        return { marks: [visible(first, 0), ...rest.map((mark, index) => visible(mark, index + 1))] };
     }
 
     static async resolve(opts: {

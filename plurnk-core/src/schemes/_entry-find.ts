@@ -120,6 +120,7 @@ const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocatio
 // label describes the same visible-body cost shown in the packet, a region reads in the one scope
 // notation ({§packet-extent-metadata}), and a location names its channel only off the default.
 const scoped = (key: string, value: unknown): unknown => key === "region" || key === "enclosingRegion"
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an item's region fields hold the TextRegions this module built; an entries walk does not carry which key holds which type
     ? ScopeFormat.region(value as TextRegion)
     : value;
 const renderFindContent = (items: readonly MatchItem[], defaultChannel: string | undefined): string => renderJsonResult(
@@ -220,7 +221,7 @@ export const projectFindResult = (
     const results = page.items ?? [];
     const returnedItemsWeightTotal = locationMode
         ? itemsWeightTotal
-        : results.reduce((sum, item) => sum + findItemWeight(item as CatalogResource), 0);
+        : results.reduce((sum, item) => sum + (Array.isArray(item) ? findItemWeight(item) : 0), 0);
     return {
         status: 200,
         content: renderFindContent(results, defaultChannel), // {§find-result-projection} {§json-result-rendering}

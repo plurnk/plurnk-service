@@ -7,14 +7,15 @@ export default class ReplyMetadata {
         { completion: 200 | 499 | null; metadata: string[] | null } | { failure: SchemeResult } {
         const read = MetadataOptions.read(metadata, "message:reply");
         if ("failure" in read) return read;
-        const codes = read.elements.filter((value) => typeof value === "number");
-        if (codes.length > 1 || codes.some((value) => value !== 200 && value !== 499)) {
+        const numbers = read.elements.filter((value) => typeof value === "number");
+        const codes = numbers.filter((value): value is 200 | 499 => value === 200 || value === 499);
+        if (numbers.length > 1 || codes.length !== numbers.length) {
             return { failure: Results.failure("message:reply", "completion-invalid", 400,
                 "A reply accepts one completion code: 200 or 499.", {}, { retryable: false }) };
         }
         const options = read.elements.filter((value) => typeof value !== "number");
         return {
-            completion: (codes[0] as 200 | 499 | undefined) ?? null,
+            completion: codes.at(0) ?? null,
             metadata: options.length === 0 ? null : [options.map((value) => JSON.stringify(value)).join(",")],
         };
     }

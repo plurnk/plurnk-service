@@ -30,6 +30,11 @@ export default class KillHandler {
 
     readonly #liveSubscriptions: LiveSubscriptions;
 
+    // {§worker-scheme} The worker scheme's entry deletion: its own hook, beside the handler surface.
+    static #killsEntries(handler: object | undefined): handler is SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> } {
+        return handler !== undefined && "killEntry" in handler && typeof handler.killEntry === "function";
+    }
+
     constructor({ db, schemes, liveSubscriptions, cancelWorker, resolveDataEntryAddress, boundEntryContext, handlerContext, deleteEntry, failure }: {
         db: Db;
         schemes: SchemeRegistry;
@@ -120,9 +125,12 @@ export default class KillHandler {
             // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker") as SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
+                const workerHandler = this.#schemes.get("worker");
                 if (manifest?.category !== "data") {
                     throw new InvalidOperationResultError("Registered scheme 'worker' is not entry-bearing.");
+                }
+                if (!KillHandler.#killsEntries(workerHandler)) {
+                    throw new InvalidOperationResultError("Registered scheme 'worker' has no killEntry hook.");
                 }
                 const resolved = await this.#resolveDataEntryAddress({
                     target: path,

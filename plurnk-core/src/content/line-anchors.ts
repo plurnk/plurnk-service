@@ -74,13 +74,14 @@ export default class LineAnchors {
     // boundary admits; one that still does is the boundary violation `assertResolved` names.
     static resolved(statement: EditStatement): ResolvedEditStatement {
         const { lineMarker } = statement;
-        if (!LineAnchors.#isResolvedMarker(lineMarker)) {
+        if (!LineAnchors.isResolvedMarker(lineMarker)) {
             throw new TypeError("An unresolved line anchor crossed the core-to-scheme boundary.");
         }
         return { ...statement, lineMarker };
     }
 
-    static #isResolvedMarker(marker: TextLineMarker | null): marker is LineMarker | null {
+    // A marker whose every mark is a line number: what the extension boundary admits.
+    static isResolvedMarker(marker: TextLineMarker | null): marker is LineMarker | null {
         return marker === null || marker.marks.every((mark) => typeof mark === "number");
     }
 

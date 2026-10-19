@@ -20,7 +20,7 @@
 // Git resolution uses native Git (subprocess + hermeticGitEnv,
 // AbortSignal-respecting).
 
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
@@ -154,7 +154,7 @@ export default class GitMembership {
         } catch (cause) {
             // {§membership-git-hermetic} — a repository git refuses as another account's is not "no repository":
             // the daemon was pointed at it and cannot read it, which the operator must hear.
-            const raw = (cause as { stderr?: unknown }).stderr;
+            const raw = isRecord(cause) ? cause.stderr : undefined;
             const stderr = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : "";
             if (/dubious ownership/u.test(stderr)) {
                 throw new Error(`Git refuses the repository at '${dir}' as owned by another account; point the workspace at the repository root or own it. ${stderr.split("\n")[0]}`, { cause });
@@ -217,7 +217,7 @@ export default class GitMembership {
             });
             return true;
         } catch (cause) {
-            if ((cause as { code?: number }).code === 1) return false;
+            if (isRecord(cause) && cause.code === 1) return false;
             throw new Error(`Git ignore classification failed for '${key}'.`, { cause });
         }
     }
@@ -478,9 +478,9 @@ export default class GitMembership {
         // A path that left Git/include membership also left disk truth (for example an untracked
         // deletion or staged rename). An exclusion is policy, not a filesystem occurrence, and is
         // therefore silent.
-        const removed: FsDivergence[] = gone
-            .filter(({ pathname, prior }) => prior !== null && !candidateSet.has(pathname))
-            .map(({ id, pathname, prior }) => ({ pathname, entryId: id, channel: "body", before: prior as string, after: "" }));
+        const removed = gone.flatMap(({ id, pathname, prior }): FsDivergence[] => prior !== null && !candidateSet.has(pathname)
+            ? [{ pathname, entryId: id, channel: "body", before: prior, after: "" }]
+            : []);
         return { members: desired, removed, ...(refusedFilter === null ? {} : { refusedFilter }) };
     }
 

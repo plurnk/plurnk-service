@@ -1,5 +1,6 @@
 // Materializing one tracked member from disk into its body channel, text or binary. Split out of GitMembership.
 import { join } from "node:path";
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -11,37 +12,39 @@ import type { ByteSource } from "../content/byte-view.ts";
 
 const ABSENT_SIG = "absent";
 
-const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null => {
-    const attributes = JSON.parse(encoded) as unknown;
-    if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
-        throw new TypeError("GitMembership: entry attributes must be a JSON object");
-    }
-    const candidate = (attributes as { sourceProjection?: unknown }).sourceProjection;
-    if (candidate === undefined) return null;
-    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
-        throw new TypeError("GitMembership: sourceProjection must be a JSON object");
-    }
-    const projection = candidate as Partial<SourceProjectionMetadata>;
+// A stored source projection, checked field by field: the record it was read from is the metadata.
+function assertSourceProjection(projection: Record<string, unknown>): asserts projection is Record<string, unknown> & SourceProjectionMetadata {
+    const { mimetype, identity, disposition, facts, maximumBytes, observedBytes } = projection;
     if (
-        typeof projection.mimetype !== "string"
-        || projection.mimetype.length === 0
-        || typeof projection.identity !== "string"
-        || projection.identity.length === 0
-        || !["projected", "unavailable", "input-limit"].includes(projection.disposition ?? "")
+        typeof mimetype !== "string" || mimetype.length === 0
+        || typeof identity !== "string" || identity.length === 0
+        || (disposition !== "projected" && disposition !== "unavailable" && disposition !== "input-limit")
+        || (maximumBytes !== undefined && !isSafeInteger(maximumBytes))
+        || (observedBytes !== undefined && !isSafeInteger(observedBytes))
     ) {
         throw new TypeError("GitMembership: sourceProjection metadata is malformed");
     }
-    if (projection.facts !== undefined && (projection.facts === null || typeof projection.facts !== "object" || Array.isArray(projection.facts))) {
+    if (facts !== undefined && !isRecord(facts)) {
         throw new TypeError("GitMembership: sourceProjection facts must be a JSON object");
     }
-    const hasLimit = Number.isSafeInteger(projection.maximumBytes)
-        && (projection.maximumBytes ?? 0) > 0
-        && Number.isSafeInteger(projection.observedBytes)
-        && (projection.observedBytes ?? 0) > (projection.maximumBytes ?? 0);
-    if ((projection.disposition === "input-limit") !== hasLimit) {
+    const hasLimit = isSafeInteger(maximumBytes) && maximumBytes > 0 && isSafeInteger(observedBytes) && observedBytes > maximumBytes;
+    if ((disposition === "input-limit") !== hasLimit) {
         throw new TypeError("GitMembership: sourceProjection input-limit evidence is malformed");
     }
-    return projection as SourceProjectionMetadata;
+}
+
+const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null => {
+    const attributes: unknown = JSON.parse(encoded);
+    if (!isRecord(attributes)) {
+        throw new TypeError("GitMembership: entry attributes must be a JSON object");
+    }
+    const projection = attributes.sourceProjection;
+    if (projection === undefined) return null;
+    if (!isRecord(projection)) {
+        throw new TypeError("GitMembership: sourceProjection must be a JSON object");
+    }
+    assertSourceProjection(projection);
+    return projection;
 };
 
 export default class MembershipMaterialization {
@@ -153,9 +156,7 @@ export default class MembershipMaterialization {
                     mimetype: projected.sourceMimetype,
                     identity: projected.projectionIdentity,
                     disposition: "projected",
-                    ...(projected.facts !== null && typeof projected.facts === "object" && !Array.isArray(projected.facts)
-                        ? { facts: projected.facts as Readonly<Record<string, unknown>> }
-                        : {}),
+                    ...(isRecord(projected.facts) ? { facts: projected.facts } : {}),
                 };
             }
         } catch (cause) {
@@ -222,9 +223,9 @@ export default class MembershipMaterialization {
                 syncedSig: revision === null ? ABSENT_SIG : JSON.stringify(revision),
             });
             const content = entry.channels.body?.content ?? "";
-            const projection = entry.attributes?.sourceProjection as SourceProjectionMetadata | undefined;
+            const projection = entry.attributes?.sourceProjection;
             const changed = diskChanged && prior?.content != null && (revision === null || prior.content !== content)
-                && (projection === undefined || projection.disposition === "projected");
+                && (projection === undefined || (isRecord(projection) && projection.disposition === "projected"));
             if ((changed || prior?.synced_sig === ABSENT_SIG && revision !== null) && result.entryId !== null) {
                 return { pathname, entryId: result.entryId, channel: "body", before: prior?.content ?? "", after: content };
             }

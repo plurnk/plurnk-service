@@ -69,11 +69,13 @@ export interface CoreRepresentationProvider {
     ): Promise<CoreRepresentationResolution>;
 }
 
-export const coreRepresentationProvider = (handler: unknown): CoreRepresentationProvider | null =>
+// A core adapter that resolves its own representation: the one hook, read where it is consumed.
+const providesCoreRepresentation = (handler: unknown): handler is CoreSchemeAdapterBase & CoreRepresentationProvider =>
     handler instanceof CoreSchemeAdapterBase
-    && typeof (handler as Partial<CoreRepresentationProvider>).resolveCoreRepresentation === "function"
-        ? handler as unknown as CoreRepresentationProvider
-        : null;
+    && "resolveCoreRepresentation" in handler && typeof handler.resolveCoreRepresentation === "function";
+
+export const coreRepresentationProvider = (handler: unknown): CoreRepresentationProvider | null =>
+    providesCoreRepresentation(handler) ? handler : null;
 
 // Core-owned adapters are also exercised directly by service integration tests.
 // Production dispatch supplies SchemeCtx; direct core tests may supply the

@@ -115,11 +115,11 @@ export default class ExecEntrySink {
         if (content === null) {
             if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
             materialized = this.#deps.fetchWeb(fetchAddress.url, { signal });
-        } else if (typeof content === "string" && requestedPath !== null) {
+        } else if (typeof content === "string" && requestedPath !== null && sink.mimetype !== undefined) {
             materialized = Promise.resolve({
                 url: fetchAddress?.url ?? "http://localhost",
                 body: content,
-                mimetype: sink.mimetype as string,
+                mimetype: sink.mimetype,
                 allowConfiguredMaterializer: false,
             });
         }

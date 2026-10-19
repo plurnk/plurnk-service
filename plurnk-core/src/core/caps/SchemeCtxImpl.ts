@@ -90,12 +90,15 @@ export default class SchemeCtxImpl implements SchemeCtx {
         }
     }
 
+    // A capability a non-data scheme lacks: an object every member read of which throws.
     static #unavailable(scheme: string, capability: string): never {
-        return new Proxy({}, {
+        const unavailable = new Proxy({}, {
             get() {
                 throw new Error(`Non-data scheme '${scheme}' cannot use the '${capability}' capability.`);
             },
-        }) as never;
+        });
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every member read throws, so the stand-in is never observed as the capability it fills
+        return unavailable as never;
     }
 
     static editPreconditionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): LineAnchorPrecondition | null {

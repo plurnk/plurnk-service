@@ -29,7 +29,7 @@ export default class EffectPolicy {
     }
 
     static validateConfiguration(): void {
-        for (const effect of Object.keys(KNOBS) as Effect[]) EffectPolicy.decide(effect);
+        for (const effect of Object.keys(KNOBS).filter(EffectPolicy.isEffect)) EffectPolicy.decide(effect);
     }
 
     static decide(effect: Effect): ExecPolicy {

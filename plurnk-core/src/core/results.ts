@@ -7,15 +7,14 @@ import type {
 export type { ChannelProducerResult, EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, RepresentationPreparationResult, SchemeResult, SchemeResultBase };
 
 // A failed result: an error status with the Problem that explains it.
-const isFailed = (result: SchemeResult): result is SchemeResult & { readonly problem: ProblemDetails } =>
-    _Results.isErrorStatus(result.status) && result.problem !== undefined;
+export type FailedResult = SchemeResult & { readonly problem: ProblemDetails };
 
 export class OperationFailureError extends Error {
-    readonly result: SchemeResult & { readonly problem: ProblemDetails };
+    readonly result: FailedResult;
 
     constructor(result: SchemeResult, options: { cause?: unknown } = {}) {
         const checked = _Results.assert(result);
-        if (!isFailed(checked)) {
+        if (!Results.isFailed(checked)) {
             throw new TypeError("OperationFailureError requires a failed operation result");
         }
         super(
@@ -73,6 +72,15 @@ export default class Results {
     }
 
     static assert<T extends SchemeResult>(result: T): T { return _Results.assert(result); }
+
+    static isFailed(result: SchemeResult): result is FailedResult {
+        return _Results.isErrorStatus(result.status) && result.problem !== undefined;
+    }
+
+    // The log rows an operation wrote: the result says when more than its own row landed.
+    static rowsWritten(result: SchemeResult): number {
+        return typeof result.rowsWritten === "number" ? result.rowsWritten : 1;
+    }
 
     // {§validation-topology} — a result read back from a row is parsed, never re-asserted: the
     // row's text is the result the gate admitted when it was written.

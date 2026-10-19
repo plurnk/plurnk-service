@@ -1,4 +1,4 @@
-import { TurnDisposition, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecution, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
 // Durable operation recording: one log row per dispatched statement, split out of Dispatcher.
 import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import ExecutionOutputs from "./ExecutionOutputs.ts";
@@ -60,8 +60,8 @@ export default class LogWriter {
         emissionIndex?: number;
     }): Promise<number> {
         if (isExecution(statement) && result.status === 202 && result.attrs !== undefined) {
-            const attrs = result.attrs as Record<string, unknown>;
-            if (attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
+            const { attrs } = result;
+            if (!isRecord(attrs) || attrs.pathname !== "") throw new Error("Prepared execution must have an unclaimed output address.");
             attrs.pathname = await ExecutionOutputs.claim(this.#db, workspaceId, execRouteOf(statement).runtime);
         }
         const record = await this.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId, emissionIndex });
@@ -94,9 +94,7 @@ export default class LogWriter {
         // for review and the scheme consumes on accept. A WAIT is
         // parked, not proposed (#isProposal) → state='resolved'.
         const isProposed = this.#isProposal(statement, result);
-        const attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
-            ? { ...(result.attrs as Record<string, unknown>) }
-            : {};
+        const attrsObj: Record<string, unknown> = isRecord(result.attrs) ? { ...result.attrs } : {};
         if (Object.hasOwn(attrsObj, "emissionIndex")) throw new Error("Result attrs collide with content-operation provenance.");
         if (emissionIndex !== undefined) attrsObj.emissionIndex = emissionIndex;
         if (curationPlan !== null) {
@@ -132,7 +130,7 @@ export default class LogWriter {
             attrsObj.stream = `${execRouteOf(statement).runtime}://${attrsObj.pathname}`;
             if (seqs === undefined) throw new Error("Execution provenance has no loop/turn coordinate.");
             attrsObj.coordinate = { loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence };
-            (result.attrs as Record<string, unknown>).coordinate = attrsObj.coordinate;
+            if (isRecord(result.attrs)) result.attrs.coordinate = attrsObj.coordinate;
         }
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(durableStatement);

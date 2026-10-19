@@ -118,15 +118,15 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     }
 
     async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
-        const record = input as { alias?: unknown; definition?: unknown };
+        const record: Readonly<Record<string, unknown>> = isRecord(input) ? input : {};
         const alias = typeof record.alias === "string" ? record.alias : "";
         if (!NAME.test(alias)) {
             throw actionError("name-invalid", 400,
                 `'${alias}' is not a name a shell can export.`, { retryable: false });
         }
         if (ExecEnv.ownSecretTest()(alias)) throw reservedNameError(alias);
-        const definition = record.definition as { value?: unknown } | undefined;
-        if (typeof definition?.value !== "string") {
+        const { definition } = record;
+        if (!isRecord(definition) || typeof definition.value !== "string") {
             throw actionError("value-invalid", 400, `'${alias}' needs a string value.`, { retryable: false });
         }
         return { alias, definition: { value: definition.value } };

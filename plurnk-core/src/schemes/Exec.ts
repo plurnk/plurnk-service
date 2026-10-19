@@ -1,6 +1,6 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { errnoCode, PathSyntax } from "@plurnk/plurnk-contracts";
-import { type ExecStatement, type FindStatement, type KillStatement, type SendStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
+import { errnoCode, isExecutionOp, PathSyntax } from "@plurnk/plurnk-contracts";
+import { type ExecStatement, type FindStatement, type KillStatement, type SendStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
     InvalidOperationResultError,
@@ -738,8 +738,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (!EffectPolicy.isEffect(effect)) {
             throw new InvalidOperationResultError("The accepted execution proposal is missing its canonical effect fact.");
         }
+        if (!isExecutionOp(runtime)) {
+            throw new InvalidOperationResultError(`The accepted execution proposal names runtime '${runtime}', which is not a runtime tag.`);
+        }
         const invocation: ExecStatement = {
-            runtime: runtime as RuntimeTag, aside: null, metadata: null,
+            runtime, aside: null, metadata: null,
             target: attrs.resourceSource ? parsePath(attrs.resourceSource) : target === null ? null : parsePath(target),
             lineMarker: null, body, position: { line: 1, column: 1 },
         };
@@ -836,7 +839,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             };
             return Results.assert({ ...read, outcome: "scheme_source_read_failed", ...(problem === undefined ? {} : { problem }) });
         }
-        const content = (read as { content?: unknown }).content;
+        const { content } = read;
         if (typeof content !== "string") {
             return Results.failure(
                 "scheme:exec",

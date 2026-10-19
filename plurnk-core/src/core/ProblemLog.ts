@@ -1,6 +1,5 @@
-import type { ProblemDetails } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import Results, { type SchemeResult } from "./results.ts";
+import Results, { type FailedResult, type SchemeResult } from "./results.ts";
 import type { WriterTier } from "./scheme-types.ts";
 import LogBody from "./LogBody.ts";
 
@@ -19,7 +18,7 @@ export interface RecordProblem {
 
 export interface MintedProblem {
     readonly id: number;
-    readonly result: SchemeResult & { readonly problem: ProblemDetails };
+    readonly result: FailedResult;
 }
 
 // Owns durable actionless failures. Instrumentation may observe the resulting row,
@@ -45,11 +44,10 @@ export default class ProblemLog {
             throw new Error(`ProblemLog.record: no coordinate for loop=${input.loopId} turn=${input.turnId}`);
         }
 
-        const result = structuredClone(Results.assert(input.result));
-        if (!Results.isErrorStatus(result.status) || result.problem === undefined) {
+        const failure = structuredClone(Results.assert(input.result));
+        if (!Results.isFailed(failure)) {
             throw new TypeError("ProblemLog.record requires a failed operation result");
         }
-        const failure = result as SchemeResult & { readonly problem: ProblemDetails };
         Results.attachInstance(
             failure,
             `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${input.sequence}/error`,

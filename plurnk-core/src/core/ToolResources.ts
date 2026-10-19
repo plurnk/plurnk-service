@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, type JsonSchema, isExecution } from "@plurnk/plurnk-contracts";
+import { PathSyntax, isExecution, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 import type {
@@ -66,9 +66,7 @@ const invocationRows = (
 
 const optionalPropertyCount = (schema?: JsonSchema): number => {
     if (typeof schema !== "object" || schema === null) return 0;
-    const properties = typeof schema.properties === "object" && schema.properties !== null && !Array.isArray(schema.properties)
-        ? schema.properties as Record<string, unknown>
-        : {};
+    const properties = isRecord(schema.properties) ? schema.properties : {};
     const required = ToolInputSchema.requiredFields(schema);
     return Object.keys(properties).filter((key) => !required.includes(key)).length;
 };

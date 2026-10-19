@@ -34,6 +34,10 @@ type LoopResult = {
 // How often a held turn looks again for its hold spawns; the hold itself is the panel's.
 const HOLD_POLL_MS = 150;
 
+// {§exec-hold-until-concluded} The exec scheme's hold probe: its own hook, read where a loop holds.
+const holdsSpawns = (handler: object | undefined): handler is { hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean } =>
+    handler !== undefined && "hasActiveHoldSpawns" in handler && typeof handler.hasActiveHoldSpawns === "function";
+
 export default class LoopDriver {
     readonly #loopSignals: Map<number, AbortSignal>;
     readonly #db: Db;
@@ -201,13 +205,13 @@ export default class LoopDriver {
                     return await ruleTerminal(failure, "max_turns");
                 }
 
-                const execHandler = this.#schemes.get("exec") as { hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
+                const execHandler = this.#schemes.get("exec");
                 // {§exec-hold-until-concluded} — hold matching runtime/effect
                 // streams until conclusion or the fail-open cap, then resume the
                 // ordinary cycle without altering stream state.
                 const holdSet = new Set(Knob.list("PLURNK_SERVICE_EXEC_HOLD"));
                 const holdCapMs = Knob.integer("PLURNK_SERVICE_EXEC_HOLD_MS", 0);
-                if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
+                if (holdSet.size > 0 && holdCapMs > 0 && holdsSpawns(execHandler)) {
                     const holdStart = Date.now();
                     while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {
                         await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });

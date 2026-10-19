@@ -217,7 +217,7 @@ export default class BareBatchRunner {
         );
         if (internalFailure !== undefined) throw internalFailure.reason;
         signal?.throwIfAborted();
-        return settlements.map((settlement) => (settlement as PromiseFulfilledResult<BareBatchResult>).value);
+        return settlements.filter((settlement) => settlement.status === "fulfilled").map(({ value }) => value);
     }
 
 }

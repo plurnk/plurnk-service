@@ -1,6 +1,6 @@
 import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../core/results.ts";
 
 // {§question-tool} — the native request-user-input runtime. The model asks the
@@ -65,10 +65,8 @@ export default class QuestionTool extends BaseExecutor {
                 { recovery: "Use the MCP2 form-elicitation shape: { message, requestedSchema }.", retryable: false },
             );
         }
-        const r = parsed as { message?: unknown; requestedSchema?: unknown } | null;
-        if (r === null || typeof r !== "object"
-            || typeof r.message !== "string" || r.message.length === 0
-            || typeof r.requestedSchema !== "object" || r.requestedSchema === null) {
+        if (!isRecord(parsed) || typeof parsed.message !== "string" || parsed.message.length === 0
+            || !isRecord(parsed.requestedSchema)) {
             setState("results", "errored");
             return Results.failure(
                 "executor:question",
@@ -83,9 +81,9 @@ export default class QuestionTool extends BaseExecutor {
         // The interaction schema describes the answer, not this executor's output.
         const request = Validator.assertClientInteractionRequest({
             toolName: "question",
-            arguments: { message: r.message, requestedSchema: r.requestedSchema },
-            message: r.message,
-            responseSchema: r.requestedSchema as Record<string, unknown>,
+            arguments: { message: parsed.message, requestedSchema: parsed.requestedSchema },
+            message: parsed.message,
+            responseSchema: parsed.requestedSchema,
         });
         // {§client-interaction-routing} An unsupported request is this operation's result.
         let resolution;

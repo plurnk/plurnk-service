@@ -4,7 +4,7 @@
 // loop; `turn` ends it at the worker's next pre-turn; `detached` outlives the loop and is nobody's
 // obligation. WAIT bounds observation rather than execution ({§worker-wait-timing}).
 const DURATION = /^([1-9]\d*)(s|m|h)$/u;
-const PER_UNIT = { s: 1, m: 60, h: 3600 } as const;
+const PER_UNIT: ReadonlyMap<string, number> = new Map([["s", 1], ["m", 60], ["h", 3600]]);
 
 export interface ExecLifetime {
     readonly timeoutSec?: number;
@@ -28,5 +28,7 @@ export const parseExecLifetime = (raw: unknown): ExecLifetime | { readonly inval
     if (raw === "detached") return { detached: true };
     const duration = DURATION.exec(raw);
     if (duration === null) return { invalid: `'${raw}' is not a lifetime; state ${LIFETIME_SYNTAX}.` };
-    return { timeoutSec: Number(duration[1]) * PER_UNIT[duration[2] as keyof typeof PER_UNIT] };
+    const perUnit = PER_UNIT.get(duration[2]);
+    if (perUnit === undefined) return { invalid: `'${raw}' is not a lifetime; state ${LIFETIME_SYNTAX}.` };
+    return { timeoutSec: Number(duration[1]) * perUnit };
 };

@@ -1,3 +1,4 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { FileByteSource, type ByteSource, type ChannelProducerResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
@@ -58,26 +59,23 @@ export default class FileMaterialization {
     }
 
     static fromAttributes(encoded: string): FileMaterializationMetadata | null {
-        const attributes = JSON.parse(encoded) as unknown;
-        if (attributes === null || typeof attributes !== "object" || Array.isArray(attributes)) {
+        const attributes: unknown = JSON.parse(encoded);
+        if (!isRecord(attributes)) {
             throw new TypeError("File materialization attributes must be a JSON object.");
         }
-        const candidate = (attributes as { sourceMaterialization?: unknown }).sourceMaterialization;
+        const candidate = attributes.sourceMaterialization;
         if (candidate === undefined) return null;
-        if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+        if (!isRecord(candidate)) {
             throw new TypeError("sourceMaterialization must be a JSON object.");
         }
-        const metadata = candidate as Partial<FileMaterializationMetadata>;
-        const validDisposition = metadata.disposition === "materialized" || metadata.disposition === "input-limit";
-        const validMaximum = Number.isSafeInteger(metadata.maximumBytes) && (metadata.maximumBytes ?? 0) > 0;
-        const validObserved = Number.isSafeInteger(metadata.observedBytes) && (metadata.observedBytes ?? -1) >= 0;
-        const limitConsistent = metadata.disposition === "input-limit"
-            ? (metadata.observedBytes ?? 0) > (metadata.maximumBytes ?? 0)
-            : (metadata.observedBytes ?? 0) <= (metadata.maximumBytes ?? 0);
-        if (!validDisposition || !validMaximum || !validObserved || !limitConsistent) {
+        const { disposition, maximumBytes, observedBytes } = candidate;
+        if ((disposition !== "materialized" && disposition !== "input-limit")
+            || !isSafeInteger(maximumBytes) || maximumBytes <= 0
+            || !isSafeInteger(observedBytes) || observedBytes < 0
+            || (disposition === "input-limit" ? observedBytes <= maximumBytes : observedBytes > maximumBytes)) {
             throw new TypeError("sourceMaterialization metadata is malformed.");
         }
-        return metadata as FileMaterializationMetadata;
+        return { disposition, maximumBytes, observedBytes };
     }
 
     static matchesCurrent(metadata: FileMaterializationMetadata, observedBytes: number): boolean {

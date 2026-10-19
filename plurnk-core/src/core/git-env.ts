@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -49,7 +50,7 @@ export const declaredFilterProgram = async (repository: string, signal?: AbortSi
         const first = stdout.split("\n").find((line) => line.length > 0);
         return first === undefined ? null : first.split(" ", 1)[0];
     } catch (cause) {
-        if ((cause as { code?: unknown }).code === 1) return null; // no such key
+        if (isRecord(cause) && cause.code === 1) return null; // no such key
         throw new Error(`Git configuration inspection failed for '${repository}'.`, { cause });
     }
 };

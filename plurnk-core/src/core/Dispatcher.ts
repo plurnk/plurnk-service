@@ -527,7 +527,7 @@ export default class Dispatcher {
             delete noteContext.fanout;
             delete noteContext.emissionIndex;
             await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
-            result = Results.assert({ ...result, rowsWritten: Dispatcher.#rowsWritten(result) + 1 });
+            result = Results.assert({ ...result, rowsWritten: Results.rowsWritten(result) + 1 });
         }
         return { ...execution, result };
     }
@@ -547,11 +547,6 @@ export default class Dispatcher {
     static #distillationOf(statement: PlurnkStatement): { body: string; target: string } | null {
         if (statement.op !== "KILL" || statement.target === null || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
         return statement.body.trim() === "" ? null : { body: statement.body, target: statement.target.raw };
-    }
-
-    // The rows a dispatch wrote: the result says when more than its own row landed.
-    static #rowsWritten(result: DispatchResult): number {
-        return typeof result.rowsWritten === "number" ? result.rowsWritten : 1;
     }
 
     // {§bulk-resource-targeting} — the paths a FIND matched: each catalog item's, never a scope group's.
@@ -642,7 +637,7 @@ export default class Dispatcher {
                 ...(context.fit === undefined ? {} : { fit: reserved(context.fit, admitted.length - index - 1) }),
             }, true);
             results.push(result);
-            rowsWritten += Dispatcher.#rowsWritten(result);
+            rowsWritten += Results.rowsWritten(result);
             if (context.failOnOperationError && result.status >= 400 && !isContextReceipt(result)) break;
         }
         if (results.length === 0) throw new Error("Dispatch requires an admitted operation.");

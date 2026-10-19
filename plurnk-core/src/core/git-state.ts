@@ -80,7 +80,8 @@ export default class GitState {
         const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.renderedPaths());
         if (untracked.length === 0) return;
         // {§membership-glob-in-sql} — one statement marks every rendered path.
-        const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1; source: string | null; glob: string | null }>({
+        // The source and the glob come from one constraint row: both are null, or neither is.
+        const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1 } & ({ source: null; glob: null } | { source: string; glob: string })>({
             workspace_id: workspaceId,
             paths: JSON.stringify(untracked.map((file) => file.path)),
         });
@@ -89,7 +90,7 @@ export default class GitState {
             const mark = byPath.get(file.path);
             if (mark === undefined) throw new Error(`git status: no membership mark for ${file.path}`);
             if (mark.registered === 0) { file.member = null; continue; }
-            file.member = mark.source === null ? "member" : mark.source === "create" ? "created" : mark.glob as string;
+            file.member = mark.source === null ? "member" : mark.source === "create" ? "created" : mark.glob;
         }
     }
 

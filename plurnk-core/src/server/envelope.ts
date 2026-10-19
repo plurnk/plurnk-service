@@ -47,6 +47,7 @@ export interface WorkerRow {
 
 export const projectWorkerRow = <T extends { loopObservations: string }>(row: T): Omit<T, "loopObservations"> & { lifecycle: WorkerLifecycle } => {
     const { loopObservations, ...rest } = row;
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: the worker query's loop observations, as its SQL aggregates them
     const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
     return { ...rest, lifecycle: lifecycleOfLoopStatus(selectWorkerLoop(loops)?.status) };
 };

@@ -1,4 +1,4 @@
-import type { TextLineMarker } from "@plurnk/plurnk-contracts";
+import { isSafeInteger, type TextLineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LineAnchors from "../content/line-anchors.ts";
 import ScopeFormat from "../content/scope-format.ts";
@@ -33,16 +33,11 @@ export default class LogVisibility {
         if (!Array.isArray(decoded)) {
             throw new TypeError("A log row's folded ranges must be an array.");
         }
-        const ranges: LogFoldRange[] = decoded.map((candidate) => {
-            if (
-                !Array.isArray(candidate)
-                || candidate.length !== 2
-                || !Number.isSafeInteger(candidate[0])
-                || !Number.isSafeInteger(candidate[1])
-            ) {
+        const ranges: LogFoldRange[] = decoded.map((candidate: unknown) => {
+            const [start, end]: readonly unknown[] = Array.isArray(candidate) && candidate.length === 2 ? candidate : [];
+            if (!isSafeInteger(start) || !isSafeInteger(end)) {
                 throw new TypeError("Each folded range must contain exactly two safe integer line coordinates.");
             }
-            const [start, end] = candidate as [number, number];
             if (start < 1 || (end !== -1 && end < start)) {
                 throw new TypeError(`Folded range <${start},${end}> is invalid.`);
             }
@@ -108,10 +103,10 @@ export default class LogVisibility {
             }
             marks = resolved;
         }
-        if (!marks.every((mark) => typeof mark === "number" && Number.isSafeInteger(mark))) {
+        if (!marks.every(isSafeInteger)) {
             return refuse("Log-body line scopes require integer coordinates.");
         }
-        const first = marks[0] as number;
+        const first = marks[0];
         if (marks.length === 1) {
             if (first < 1) {
                 return refuse(`<${first}> is not a line of a log body; lines are numbered from 1.`);
@@ -119,7 +114,7 @@ export default class LogVisibility {
             return { ok: true, range: first <= total ? [first, first] : null };
         }
 
-        const rawEnd = marks[1] as number;
+        const rawEnd = marks[1];
         const written = `<${first},${rawEnd}>`;
         // {§range-starts-at-one} — one rule with the file slicer: a range never starts at 0 and is
         // never clamped; the refusal is its 416 in its words, naming the forms a log body takes.
