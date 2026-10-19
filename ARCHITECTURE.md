@@ -441,6 +441,7 @@ the submitter the owner of the shared runtime.
 | A worker's model, effort and spawn model | `WorkerModels` owns the durable selection and the loop's immutable route snapshot ({§worker-model-selection}). |
 | Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-discovery}, {§module-http-mounts}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§worker-lifecycle-total-reap}). |
+| A message's delivery to a worker | `MessageDelivery` resolves the worker's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods-loop-run}, {§machine-processes}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | External conversation identity | The adapter interprets its protocol identifiers; core retains opaque worker references with referential integrity ({§worker-external-reference}). Connections and presentation remain client-interface state. |

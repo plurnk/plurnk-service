@@ -29,6 +29,7 @@ Core's internal owners compose without becoming new package or public seams:
 |-------|---------|
 | `Daemon` | Process lifecycle, dependency composition, notifications, and the external client façade. |
 | `DaemonModules` | The daemon's modules: composed and discovered, their HTTP mount claims, their setup/start/stop/close phases, and the actions they register. |
+| `MessageDelivery` | A message's delivery to a worker: the seam's `runLoop` and the worker scheme's `injectWorker`, the model and effort they resolve, the card they read, the message's preparation and source attribution, and the injection into the drain. |
 | `ClientOperations` | A person's client operations: each one an administrative loop in the runtime worker with its own cancellation scope, the statements it dispatches as client turns, its cancellation, and the rollback that runs as one. |
 | `WorkerModels` | A worker's model, effort and spawn override: the durable selection and its client get/set surface, the loop's immutable snapshot and the conflicts an injection may not introduce, and the catalog a client lists. |
 | `DrainSupervisor` | One worker's queue consumer, message admission and orphan recovery, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
