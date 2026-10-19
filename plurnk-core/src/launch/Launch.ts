@@ -69,6 +69,13 @@ type Ended = { code: number | null; signal: NodeJS.Signals | null };
 // database path and the route as JSON strings, so a path or route with spaces parses exactly.
 export const READINESS_LINE = /^plurnk-service agui=(\S+) db=("(?:[^"\\]|\\.)*") route=("(?:[^"\\]|\\.)*")$/mu;
 
+// A JSON string literal the readiness pattern admitted, as the daemon printed it.
+const quoted = (literal: string): string => {
+    const value: unknown = JSON.parse(literal);
+    if (typeof value !== "string") throw new TypeError("The readiness line quotes its path and route as JSON strings.");
+    return value;
+};
+
 const LOG_POLL_MS = 50;
 
 export default class Launch {
@@ -172,8 +179,8 @@ export default class Launch {
             url: ready[1],
             host: url.hostname,
             port: Number(url.port),
-            dbPath: JSON.parse(ready[2]) as string,
-            route: JSON.parse(ready[3]) as string,
+            dbPath: quoted(ready[2]),
+            route: quoted(ready[3]),
             child,
             stdout: () => stdout,
             stderr: () => stderr,

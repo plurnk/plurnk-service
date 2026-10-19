@@ -480,6 +480,7 @@ export default class Engine {
             // Request-shaped physical capacity from that same latest emission call.
             contextCapacity: row.context_capacity,
             // Latest turn's opaque provider metadata. {§meta-passthrough}
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: the metadata is read back as the row stored it
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 

@@ -129,7 +129,7 @@ export default class LoopLifecycle {
         });
         if (row === undefined) return null;
         await this.endExecution(loopId);
-        return Results.assert(JSON.parse(row.terminal_result) as SchemeResult);
+        return Results.fromRow(row.terminal_result);
     }
 
     static async address(db: Db, loopId: number): Promise<string> {
@@ -153,7 +153,7 @@ export default class LoopLifecycle {
         if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
         return row.terminal_result === null
             ? null
-            : Results.assert(JSON.parse(row.terminal_result) as SchemeResult);
+            : Results.fromRow(row.terminal_result);
     }
 
     // {§loop-status-notice} {§notifications-loop-terminated} — Unix milliseconds, as the status gauge carries them.
@@ -236,7 +236,7 @@ export default class LoopLifecycle {
             loops: loops.map(({ loop_id, worker_id, terminal_result }) => ({
                 loopId: loop_id,
                 workerId: worker_id,
-                result: Results.assert(JSON.parse(terminal_result) as SchemeResult),
+                result: Results.fromRow(terminal_result),
             })),
         };
     }

@@ -6,12 +6,16 @@ import type {
 
 export type { ChannelProducerResult, EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, RepresentationPreparationResult, SchemeResult, SchemeResultBase };
 
+// A failed result: an error status with the Problem that explains it.
+const isFailed = (result: SchemeResult): result is SchemeResult & { readonly problem: ProblemDetails } =>
+    _Results.isErrorStatus(result.status) && result.problem !== undefined;
+
 export class OperationFailureError extends Error {
     readonly result: SchemeResult & { readonly problem: ProblemDetails };
 
     constructor(result: SchemeResult, options: { cause?: unknown } = {}) {
         const checked = _Results.assert(result);
-        if (!_Results.isErrorStatus(checked.status) || checked.problem === undefined) {
+        if (!isFailed(checked)) {
             throw new TypeError("OperationFailureError requires a failed operation result");
         }
         super(
@@ -19,7 +23,7 @@ export class OperationFailureError extends Error {
             options.cause !== undefined ? { cause: options.cause } : undefined,
         );
         this.name = "OperationFailureError";
-        this.result = checked as SchemeResult & { readonly problem: ProblemDetails };
+        this.result = checked;
     }
 }
 
@@ -69,6 +73,13 @@ export default class Results {
     }
 
     static assert<T extends SchemeResult>(result: T): T { return _Results.assert(result); }
+
+    // {§validation-topology} — a result read back from a row is parsed, never re-asserted: the
+    // row's text is the result the gate admitted when it was written.
+    static fromRow(stored: string): SchemeResult {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
+        return JSON.parse(stored) as SchemeResult;
+    }
 
     // {§terminal-evidence} — extension members added to a failure already built. Only a failed
     // result carries a problem to extend; anything else is a contract violation, not a no-op.

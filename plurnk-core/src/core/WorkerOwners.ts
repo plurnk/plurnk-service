@@ -25,7 +25,7 @@ export default class WorkerOwners {
 
     static #project(row: OwnerRow | undefined, identity: string): WorkerOwner {
         if (row === undefined) throw new Error(`${identity} has no owner.`);
-        return Validator.assertWorkerOwner({ address: row.address, tools: JSON.parse(row.tools) as string[], interactive: row.interactive === 1 });
+        return Validator.assertWorkerOwner({ address: row.address, tools: JSON.parse(row.tools) as unknown, interactive: row.interactive === 1 });
     }
 
     static async read(db: Db, workerId: number): Promise<WorkerOwner> {

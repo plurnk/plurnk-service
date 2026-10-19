@@ -1,3 +1,5 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
+
 type ToolProtocol = "openai" | "messages" | "generate-content";
 
 // {§provider-native-tools-disabled} The SDK omits an empty tool set and its
@@ -20,6 +22,7 @@ export const withoutNativeToolsFetch = (
     fetch: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init),
 ): typeof globalThis.fetch => (input, init) => {
     if (typeof init?.body !== "string") throw new TypeError("Provider generation requires a serialized JSON request");
-    const body = JSON.parse(init.body) as Record<string, unknown>;
+    const body: unknown = JSON.parse(init.body);
+    if (!isRecord(body)) throw new TypeError("Provider generation requires a JSON object request");
     return fetch(input, { ...init, body: JSON.stringify(withoutNativeTools(body, protocol)) });
 };

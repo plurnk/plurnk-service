@@ -57,7 +57,7 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
-import { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
@@ -707,8 +707,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             waitUntil: row.waitUntil,
             invocation: row.invocation === null || row.invocationWorkerId === null ? null : { workerId: row.invocationWorkerId, address: row.invocation },
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
-            terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
+            terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
     // {§methods-workspace-prompts}: root-worker loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.

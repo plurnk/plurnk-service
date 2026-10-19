@@ -1,3 +1,4 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { link, open, readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
@@ -57,9 +58,9 @@ export default class DaemonLock {
 
     static async #read(path: string): Promise<LockRecord | null> {
         try {
-            const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<LockRecord>;
-            return Number.isInteger(parsed.pid) && typeof parsed.token === "string"
-                ? { pid: parsed.pid as number, token: parsed.token }
+            const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+            return isRecord(parsed) && isSafeInteger(parsed.pid) && typeof parsed.token === "string"
+                ? { pid: parsed.pid, token: parsed.token }
                 : null;
         } catch (cause) {
             if (DaemonLock.#hasCode(cause, "ENOENT")) return null;

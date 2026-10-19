@@ -21,7 +21,7 @@ export type MockAssistant = {
     // Provider-normalized encrypted reasoning fixture.
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries no parser dependency; plurnk-service
-    // casts these to PlurnkStatement[] on its side. Production providers never
+    // proves each against the statement schema on its side. Production providers never
     // include this field.
     ops?: unknown[];
 };

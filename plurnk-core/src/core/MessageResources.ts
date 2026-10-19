@@ -64,12 +64,14 @@ export default class MessageResources {
             id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; answers: string;
         }>({ workspace_id: args.workspaceId, worker_id: args.workerId, loop_id: args.loopId ?? null });
         return Promise.all(rows.map(async (row) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a message's evidence is read back as the row stored it
             const evidence = JSON.parse(row.evidence) as MessageEvidence;
             const attachments = await Promise.all((evidence.attachments ?? []).map(async (receipt) => ({
                 name: receipt.name, mediaType: receipt.mediaType, target: receipt.target,
                 bytes: await NativeContent.read(db, receipt.contentHash),
             })));
             return { id: row.id, loopId: row.loop_id, direction: row.direction, source: row.source, body: row.body,
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a message's answers are read back as the row stored them
                 answers: JSON.parse(row.answers) as string[],
                 ...(evidence.envelope === undefined ? {} : { envelope: evidence.envelope }), attachments };
         }));

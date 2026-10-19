@@ -1,4 +1,5 @@
 import TurnOps from "./TurnOps.ts";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import type PacketWire from "./packet-wire.ts";
@@ -19,6 +20,7 @@ export default class OperationHistory {
         const byTurn = new Map(entries.flatMap((entry) => {
             const program = typeof entry.id === "number" ? byId.get(entry.id) : undefined;
             return program === undefined ? [] : [[OperationHistory.#turn(entry),
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a frozen emission's executors are read back as the row stored them
                 TurnOps.parseInternal(program.content, { executors: JSON.parse(program.executors) as string[] })] as const];
         }));
         const operations = new Map<string, string>();
@@ -28,8 +30,7 @@ export default class OperationHistory {
         for (const entry of entries) {
             const program = byTurn.get(OperationHistory.#turn(entry));
             if (program === undefined || entry.origin !== "model") continue;
-            const attrs = entry.attrs as { emissionIndex?: unknown } | null;
-            const ordinal = attrs?.emissionIndex;
+            const ordinal = isRecord(entry.attrs) ? entry.attrs.emissionIndex : undefined;
             if (ordinal === undefined) continue;
             if (typeof ordinal !== "number" || !Number.isSafeInteger(ordinal) || ordinal < 0 || program[ordinal] === undefined) {
                 throw new Error("A receipt's content ordinal must address its frozen emission.");

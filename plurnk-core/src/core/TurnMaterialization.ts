@@ -226,7 +226,7 @@ export default class TurnMaterialization {
             // {§stream-observation-result} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
             // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
-            const produced = JSON.parse(ch.producer_result!) as SchemeResult;
+            const produced = Results.fromRow(ch.producer_result!);
             const { problem: _problem, ...facts } = produced;
             const terminal: SchemeResult = produced.status < 400 || failureRow.get(ch.subscription_id) === ch.publication_id
                 ? produced : { ...facts, status: 200 };

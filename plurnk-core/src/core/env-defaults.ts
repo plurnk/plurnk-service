@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -41,6 +41,7 @@ export default class EnvDefaults {
         // parseEnv never throws — it silently mints junk keys from malformed lines. Malformed =
         // any parsed key that isn't a valid env name; crash naming the owner — a broken defaults
         // file is a broken package, never a silently-degraded floor.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parseEnv's Dict typing admits undefined values its parser never yields
         const parsed = parseEnv(text) as Record<string, string>;
         const junk = Object.keys(parsed).filter((k) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
         if (junk.length > 0) throw new Error(`${owner}: malformed .env.defaults — invalid key(s): ${junk.map((k) => JSON.stringify(k)).join(", ")}`);
@@ -55,10 +56,10 @@ export default class EnvDefaults {
         for (const candidate of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
             if (!Meta.isTrusted(candidate.name)) continue;
             if (!candidate.name.startsWith("@plurnk/")) {
-                let pkg: { plurnk?: unknown };
-                try { pkg = JSON.parse(await readFile(join(candidate.dir, "package.json"), "utf8")) as { plurnk?: unknown }; }
+                let pkg: unknown;
+                try { pkg = JSON.parse(await readFile(join(candidate.dir, "package.json"), "utf8")); }
                 catch { continue; }
-                if (pkg.plurnk === undefined) continue; // not an ecosystem member
+                if (!isRecord(pkg) || pkg.plurnk === undefined) continue; // not an ecosystem member
             }
             members.push(candidate);
         }
@@ -116,7 +117,7 @@ export default class EnvDefaults {
             }
             return await EnvDefaults.#readDefaults(directory, owner);
         } catch (cause) {
-            throw new ConfigurationError(location, `${owner}: native .env.defaults is unavailable: ${(cause as Error).message}`, { cause });
+            throw new ConfigurationError(location, `${owner}: native .env.defaults is unavailable: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
         }
     }
 

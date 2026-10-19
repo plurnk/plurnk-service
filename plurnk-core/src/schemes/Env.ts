@@ -2,7 +2,7 @@
 // namespace. Every name in effect for the dispatching Worker's commands is a resource at
 // env:///NAME whose body is its value; a write is the family's own admission at the Worker's layer,
 // which for the runtime worker is the workspace's ({§actor-boundary-client-operations}).
-import type { FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import { isRecord, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import {
     Results,
     type EditBatchResult,
@@ -121,7 +121,8 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const stored = await ctx.entries.operations.find({ ...statement, matcher: null, lineMarker: { marks: [1, -1] } });
         if (stored.status === 200) {
             for (const item of stored.results) {
-                const path = Array.isArray(item) ? (item[0] as { path?: string }).path : undefined;
+                const first: unknown = Array.isArray(item) ? item[0] : undefined;
+                const path = isRecord(first) && typeof first.path === "string" ? first.path : undefined;
                 const pathname = path === undefined ? undefined : ADDRESS.exec(path)?.[1];
                 const name = pathname === undefined ? null : nameOf(pathname);
                 if (name !== null && env[name] === undefined) await ctx.entries.delete(`/${name}`);

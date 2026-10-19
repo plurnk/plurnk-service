@@ -1,7 +1,7 @@
 import StoredPacket, { type RequestPacket, type PacketAssistant } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION, Validator } from "@plurnk/plurnk-contracts";
 import WorkerOwners from "./WorkerOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -94,10 +94,10 @@ const workerCatalogTarget = (
 };
 
 const assertOpenPaths = (value: unknown, source: string): string[] => {
-    if (!Array.isArray(value) || value.some((path) => typeof path !== "string" || path.length === 0)) {
+    if (!Array.isArray(value) || !value.every((path): path is string => typeof path === "string" && path.length > 0)) {
         throw new TypeError(`${source}: expected an array of non-empty strings`);
     }
-    return value as string[];
+    return value;
 };
 
 // Per-emission action ceiling — OFF by default. `-1` (or unset/non-positive) = no cap:
@@ -1893,7 +1893,8 @@ export default class TurnRunner {
 
     #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
         const { assistant } = response;
-        const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
+        // A scripted provider's pre-parsed statements, each proven against the statement schema.
+        const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops) ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op)) : undefined;
         const { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
             ? TurnRunner.#parseContent(assistant.content, executors, wellFormed)
             : {

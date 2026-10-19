@@ -1,4 +1,4 @@
-import { TurnDisposition, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecutionOp, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -61,24 +61,27 @@ export default class LogBody {
         }
     }
 
-    static #contentBody(value: unknown, fallbackMimetype: string | undefined): ResolvedLogBody | null {
-        if (value === null || typeof value !== "object") return null;
-        const body = value as { content?: unknown; mimetype?: unknown; projection?: unknown; startLine?: unknown; lineOrdinals?: unknown };
-        if (typeof body.content !== "string") return null;
-        const { lineOrdinals } = body;
-        if (lineOrdinals !== undefined && (
-            !Array.isArray(lineOrdinals)
-            || lineOrdinals.length !== TextCoordinates.lineCount(body.content)
-            || lineOrdinals.some((line, index) => !Number.isSafeInteger(line) || line < 1 || (index > 0 && line <= lineOrdinals[index - 1]))
-        )) throw new TypeError("A sparse receipt requires one increasing source ordinal per body line.");
+    static #contentBody(body: unknown, fallbackMimetype: string | undefined): ResolvedLogBody | null {
+        if (!isRecord(body) || typeof body.content !== "string") return null;
+        const lineOrdinals = LogBody.#lineOrdinals(body.lineOrdinals, body.content);
         return {
             provenance: "returned",
             content: body.content,
             mimetype: body.projection === ByteView.PROJECTION ? "text/plain"
                 : typeof body.mimetype === "string" ? body.mimetype : (fallbackMimetype ?? "text/plain"),
             startLine: body.startLine === null ? null : (typeof body.startLine === "number" ? body.startLine : 1),
-            ...(lineOrdinals === undefined ? {} : { lineOrdinals: lineOrdinals as number[] }),
+            ...(lineOrdinals === undefined ? {} : { lineOrdinals }),
         };
+    }
+
+    // A sparse receipt's ordinals: one increasing source ordinal per body line, or none at all.
+    static #lineOrdinals(value: unknown, content: string): number[] | undefined {
+        if (value === undefined) return undefined;
+        if (!Array.isArray(value) || value.length !== TextCoordinates.lineCount(content)
+            || !value.every((line, index): line is number => isSafeInteger(line) && line >= 1 && (index === 0 || line > value[index - 1]))) {
+            throw new TypeError("A sparse receipt requires one increasing source ordinal per body line.");
+        }
+        return value;
     }
 
     static #receiptBody(receipts: readonly EditReceipt[]): ResolvedLogBody {

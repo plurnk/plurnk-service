@@ -2,6 +2,7 @@
 // Per SPEC {§crud} — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/KILL.
 
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { contentHash } from "../core/content-hash.ts";
 import EntryReadable from "./_entry-readable.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -91,12 +92,13 @@ export default class EntryCrud {
                 // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
                 ...(row.producer_result === null
                     ? {}
+                    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
                     : { producerResult: JSON.parse(row.producer_result) as ChannelProducerResult }),
             };
         }
 
-        const attributes = JSON.parse(entry.attributes) as unknown;
-        if (typeof attributes !== "object" || attributes === null || Array.isArray(attributes)) {
+        const attributes: unknown = JSON.parse(entry.attributes);
+        if (!isRecord(attributes)) {
             throw new TypeError(`Entry ${entry.id} contains invalid attributes.`);
         }
         return {
@@ -106,7 +108,7 @@ export default class EntryCrud {
                 channels,
                 ...(Object.keys(attributes).length === 0
                     ? {}
-                    : { attributes: attributes as Readonly<Record<string, unknown>> }),
+                    : { attributes }),
             },
         };
     }

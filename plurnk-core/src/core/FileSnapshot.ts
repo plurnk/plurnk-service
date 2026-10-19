@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import fs from "node:fs/promises";
 import type { BigIntStats } from "node:fs";
 import { createHash } from "node:crypto";
@@ -44,12 +44,12 @@ export default class FileSnapshot {
 
     static decode(encoded: string | null): FileRevision | null {
         if (encoded === null || encoded === "absent") return null;
-        const revision = JSON.parse(encoded) as FileRevision;
-        if (typeof revision.canonical !== "string" || typeof revision.fingerprint !== "string"
+        const revision: unknown = JSON.parse(encoded);
+        if (!isRecord(revision) || typeof revision.canonical !== "string" || typeof revision.fingerprint !== "string"
             || (revision.hash !== null && typeof revision.hash !== "string")) {
             throw new TypeError("A stored file revision is malformed.");
         }
-        return revision;
+        return { canonical: revision.canonical, fingerprint: revision.fingerprint, hash: revision.hash };
     }
 
     static matches(expected: FileRevision, observed: FileRevision): boolean {
@@ -107,7 +107,8 @@ export default class FileSnapshot {
         let length = 0;
         if (initial.size > 0n) {
             for await (const chunk of descriptor.createReadStream({ autoClose: false, start: 0, end: Number(initial.size) - 1 })) {
-                const bytes = chunk as Buffer;
+                if (!Buffer.isBuffer(chunk)) throw new TypeError("A file snapshot read a chunk that is not a Buffer.");
+                const bytes = chunk;
                 hash.update(bytes);
                 length += bytes.length;
                 if (maximumBytes !== null) chunks.push(bytes);

@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -18,19 +18,37 @@ const codeDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(codeDir, "..");
 const artifact = import.meta.url.endsWith(".ts") ? "source" : "dist";
 
-const readJson = async <T>(path: string): Promise<T> =>
-    JSON.parse(await readFile(path, "utf8")) as T;
+const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
+
+// The package manifest's identity: the installation's own file, so a mismatch is a violation.
+const packageIdentity = (value: unknown): { name: string; version: string } => {
+    if (!isRecord(value) || typeof value.name !== "string" || typeof value.version !== "string") {
+        throw new TypeError("package.json names a package and a version.");
+    }
+    return { name: value.name, version: value.version };
+};
+
+// build-info.json as `scripts/write-build-info.mjs` wrote it.
+const buildRecord = (value: unknown): Omit<BuildInfo, "artifact" | "path"> => {
+    if (!isRecord(value) || typeof value.package !== "string" || typeof value.version !== "string"
+        || (value.revision !== undefined && typeof value.revision !== "string")
+        || (value.dirty !== undefined && typeof value.dirty !== "boolean")) {
+        throw new TypeError("build-info.json names a package and a version, and may name a revision and whether the tree was dirty.");
+    }
+    return {
+        package: value.package,
+        version: value.version,
+        ...(value.revision === undefined ? {} : { revision: value.revision }),
+        ...(value.dirty === undefined ? {} : { dirty: value.dirty }),
+    };
+};
 
 export const getBuildInfo = async (): Promise<BuildInfo> => {
-    const pkg = await readJson<{ name: string; version: string }>(
-        resolve(packageRoot, "package.json"),
-    );
+    const pkg = packageIdentity(await readJson(resolve(packageRoot, "package.json")));
 
     if (artifact === "dist") {
         try {
-            const built = await readJson<Omit<BuildInfo, "artifact" | "path">>(
-                resolve(codeDir, "build-info.json"),
-            );
+            const built = buildRecord(await readJson(resolve(codeDir, "build-info.json")));
             return { ...built, artifact, path: packageRoot };
         } catch (error) {
             if (errnoCode(error) !== "ENOENT") throw error;
