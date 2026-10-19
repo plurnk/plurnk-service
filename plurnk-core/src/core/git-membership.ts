@@ -20,6 +20,7 @@
 // Git resolution uses native Git (subprocess + hermeticGitEnv,
 // AbortSignal-respecting).
 
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
@@ -419,7 +420,7 @@ export default class GitMembership {
             try {
                 if ((await stat(resolve(root, key))).isFile()) continue;
             } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+                if (errnoCode(cause) !== "ENOENT") throw cause;
             }
             await GitMembership.removeCreationRecord(db, workspaceId, key);
         }
@@ -652,7 +653,7 @@ export default class GitMembership {
             try {
                 if ((await stat(resolve(root, key))).isFile()) matches.push(key);
             } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+                if (errnoCode(cause) !== "ENOENT") throw cause;
             }
         }
         return matches;

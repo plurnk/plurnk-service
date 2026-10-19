@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
@@ -63,7 +64,7 @@ export default class InvocationMetadata {
         try {
             if ((await stat(cwd)).isDirectory()) return { status: 200, cwd, ...declared };
         } catch (cause) {
-            const code = (cause as NodeJS.ErrnoException).code;
+            const code = errnoCode(cause);
             if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
         }
         return Results.failure("executor:metadata", "cwd-not-found", 400,

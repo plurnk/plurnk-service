@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,7 +68,7 @@ export default class PlurnkSkill implements SkillTree {
         try {
             return (await stat(file)).isFile();
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+            if (errnoCode(cause) === "ENOENT") return false;
             throw cause;
         }
     }
@@ -79,7 +80,7 @@ export default class PlurnkSkill implements SkillTree {
                 .filter((entry) => entry.isFile() && entry.name.endsWith(".d.ts"))
                 .map((entry) => join(entry.parentPath, entry.name));
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
+            if (errnoCode(cause) === "ENOENT") return [];
             throw cause;
         }
     }

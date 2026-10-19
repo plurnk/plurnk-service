@@ -61,6 +61,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "Validator",
         "WORKER_NAME",
         "aguiConformanceReport",
+        "errnoCode",
         "formatJsonDocument",
         "isExecution",
         "isExecutionOp",

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isRecord, isSafeInteger } from "./guards.ts";
+import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 
 test("{§wire-entrypoint} isRecord admits exactly a non-null, non-array object", () => {
     assert.equal(isRecord({}), true);
@@ -15,5 +15,13 @@ test("{§wire-entrypoint} isSafeInteger admits exactly a safe integer", () => {
     assert.equal(isSafeInteger(Number.MAX_SAFE_INTEGER), true);
     for (const other of [1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53, "1", null, undefined, true]) {
         assert.equal(isSafeInteger(other), false, String(other));
+    }
+});
+
+test("{§wire-entrypoint} errnoCode reads the string code an error or object carries, and nothing else", () => {
+    assert.equal(errnoCode(Object.assign(new Error("gone"), { code: "ENOENT" })), "ENOENT");
+    assert.equal(errnoCode({ code: "ABORT_ERR" }), "ABORT_ERR");
+    for (const [index, other] of [new Error("plain"), { code: 2 }, "ENOENT", null, undefined, 3].entries()) {
+        assert.equal(errnoCode(other), undefined, `case ${index}`);
     }
 });

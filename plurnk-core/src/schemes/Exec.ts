@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax } from "@plurnk/plurnk-contracts";
 import { type ExecStatement, type FindStatement, type KillStatement, type SendStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
@@ -601,7 +601,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         try {
             kind = (await stat(inspected)).isDirectory() ? "directory" : "file";
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+            if (errnoCode(cause) !== "ENOENT") {
                 console.error(`Execution target classification failed for '${inspected}':`, cause);
                 return Results.failure(
                     "scheme:exec",

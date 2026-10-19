@@ -2,6 +2,9 @@ import { spawn } from "node:child_process";
 import { BaseExecutor, ErrorDetail, InvocationMetadata, Results, SpawnAccounts, SubprocessInput } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
+const errnoCode = (cause: unknown): string | undefined =>
+    typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : undefined;
+
 // jq executor — shells the system `jq` binary (no third-party JSON-filter lib).
 // Invocation model:
 //   body = the jq program (defaults to `.` identity if empty)
@@ -39,7 +42,7 @@ export default class Jq extends BaseExecutor {
             // {§executor-spawn-account} — probed as the account jq will run as.
             const child = spawn("jq", ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options() });
             child.stdout?.on("data", (c: Buffer) => { out += c.toString("utf8"); });
-            child.on("error", (err) => resolve((err as NodeJS.ErrnoException).code === "ABORT_ERR"
+            child.on("error", (err) => resolve(errnoCode(err) === "ABORT_ERR"
                 ? { available: false }
                 : { available: false, detail: "jq not on PATH" }));
             child.on("close", (code) => resolve(code === 0
@@ -90,7 +93,7 @@ export default class Jq extends BaseExecutor {
             child.stdout?.on("data", (c: Buffer) => write("results", c.toString("utf8")));
             child.stderr?.on("data", (c: Buffer) => { err += c.toString("utf8"); });
             child.on("error", (e) => {
-                if ((e as NodeJS.ErrnoException).code === "ABORT_ERR") {
+                if (errnoCode(e) === "ABORT_ERR") {
                     finish(Results.failure(
                         "executor:jq",
                         "cancelled",
@@ -112,7 +115,7 @@ export default class Jq extends BaseExecutor {
                     {},
                     {
                         stage: "spawn",
-                        errorCode: (e as NodeJS.ErrnoException).code,
+                        errorCode: errnoCode(e),
                         retryable: false,
                     },
                 ), "errored");

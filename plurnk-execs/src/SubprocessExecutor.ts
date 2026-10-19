@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { spawn } from "node:child_process";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
@@ -67,7 +68,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // {§executor-spawn-account} — probed as the account the runtime will run as.
             const child = spawn(bin, ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options() });
             child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
-            child.on("error", (err) => done((err as NodeJS.ErrnoException).code === "ABORT_ERR"
+            child.on("error", (err) => done(errnoCode(err) === "ABORT_ERR"
                 ? { available: false }
                 : { available: false, detail: `${bin} not found on PATH` }));
             child.on("close", (code) => done(code === 0
@@ -235,7 +236,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                     {
                         runtime,
                         stage: "spawn",
-                        errorCode: (err as NodeJS.ErrnoException).code,
+                        errorCode: errnoCode(err),
                         retryable: false,
                     },
                 ), "errored");

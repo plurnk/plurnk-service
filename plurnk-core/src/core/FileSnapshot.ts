@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import fs from "node:fs/promises";
 import type { BigIntStats } from "node:fs";
 import { createHash } from "node:crypto";
@@ -63,7 +64,7 @@ export default class FileSnapshot {
             const stats = await fs.stat(canonical, { bigint: true });
             return { canonical, stats, fingerprint: FileSnapshot.fingerprint(stats) };
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+            if (errnoCode(cause) === "ENOENT") return null;
             throw cause;
         }
     }
@@ -76,7 +77,7 @@ export default class FileSnapshot {
             try {
                 return join(await fs.realpath(cursor), ...tail);
             } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+                if (errnoCode(cause) !== "ENOENT") throw cause;
             }
             const parent = dirname(cursor);
             if (parent === cursor) throw new Error(`No existing ancestor contains '${requested}'.`);
@@ -94,7 +95,7 @@ export default class FileSnapshot {
         try {
             handle = await fs.open(observed.canonical, "r");
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+            if (errnoCode(cause) === "ENOENT") return null;
             throw cause;
         }
         await using descriptor = handle;

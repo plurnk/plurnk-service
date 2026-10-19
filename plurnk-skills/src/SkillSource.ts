@@ -1,6 +1,7 @@
 // {§skills-sources} — where an added Agent Skill comes from: a git remote on any forge, a folder, a
 // lone SKILL.md, or a zip or tar archive, read with git, tar and unzip. Fetching runs nothing it
 // fetched, and an installed skill holds nothing that points out of it.
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -121,7 +122,7 @@ export default class SkillSource {
         try {
             info = await stat(location);
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+            if (errnoCode(cause) === "ENOENT") {
                 throw actionError("source-missing", 404, `No folder or file is at '${source}'.`, { source, path: location, retryable: false });
             }
             throw actionError("source-unreadable", 422, `'${source}' cannot be read: ${messageOf(cause)}`, { source, path: location, retryable: false }, cause);

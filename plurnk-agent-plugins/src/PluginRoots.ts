@@ -3,6 +3,9 @@ import { join } from "node:path";
 import PluginDirectory, { type AgentPlugin } from "./PluginDirectory.ts";
 import { isFileError, type PluginReport } from "./PluginReport.ts";
 
+const errnoCode = (cause: unknown): string | undefined =>
+    typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : undefined;
+
 export interface PluginRoot {
     readonly scope: string;
     readonly directory: string;
@@ -17,7 +20,7 @@ export interface PluginDiscovery {
     readonly reports: readonly PluginReport[];
 }
 
-const missing = (cause: unknown): boolean => (cause as NodeJS.ErrnoException).code === "ENOENT";
+const missing = (cause: unknown): boolean => errnoCode(cause) === "ENOENT";
 
 // A dangling link is not a directory; any other failure surfaces.
 const isDirectory = async (path: string): Promise<boolean> => {

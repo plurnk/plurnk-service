@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -32,7 +33,7 @@ export const getBuildInfo = async (): Promise<BuildInfo> => {
             );
             return { ...built, artifact, path: packageRoot };
         } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            if (errnoCode(error) !== "ENOENT") throw error;
         }
     }
 

@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { constants } from "node:fs";
 import { access, mkdir, mkdtempDisposable, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -87,7 +88,7 @@ export default class OperatorConfig {
         try {
             await rename(stage.path, paths.configDir);
         } catch (cause) {
-            const code = (cause as NodeJS.ErrnoException).code;
+            const code = errnoCode(cause);
             if (code === "EEXIST" || code === "ENOTEMPTY") return false;
             throw cause;
         }

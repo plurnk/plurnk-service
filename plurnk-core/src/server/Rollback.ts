@@ -2,6 +2,7 @@
 // patch ({§log-mutation-patch}) is reversed against the file as it is now and written back as an
 // ordinary operation of the acting client, so every step is a proposal, a row and a patch of its
 // own; the first file that no longer holds what its mutation wrote stops the rollback where it is.
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { applyPatch, parsePatch, reversePatch, type StructuredPatch } from "diff";
@@ -89,7 +90,7 @@ export default class Rollback {
         try {
             current = await readFile(join(root, path), "utf8");
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            if (errnoCode(cause) !== "ENOENT") throw cause;
             current = null;
         }
         const created = file.hunks.every((hunk) => hunk.oldLines === 0);

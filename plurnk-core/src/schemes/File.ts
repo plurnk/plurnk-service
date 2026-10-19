@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
@@ -244,7 +245,7 @@ export default class File extends CoreSchemeAdapterBase {
     static async #occupant(root: string, key: string): Promise<Stats | null> {
         try { return await lstat(join(root, key)); }
         catch (cause) {
-            const { code } = cause as NodeJS.ErrnoException;
+            const code = errnoCode(cause);
             if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
             return null;
         }
@@ -308,7 +309,7 @@ export default class File extends CoreSchemeAdapterBase {
         try {
             canonical = await realpath(requested);
         } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+            if (errnoCode(err) !== "ENOENT") throw err;
             // A dangling final symlink occupies the name even though realpath cannot
             // follow it. Treat it as the same opaque existing non-member as O_EXCL.
             try {
@@ -325,7 +326,7 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 };
             } catch (occupancyCause) {
-                if ((occupancyCause as NodeJS.ErrnoException).code !== "ENOENT") throw occupancyCause;
+                if (errnoCode(occupancyCause) !== "ENOENT") throw occupancyCause;
             }
             canonical = await FileSnapshot.prospectivePath(requested);
             fileExists = false;
@@ -800,7 +801,7 @@ export default class File extends CoreSchemeAdapterBase {
             }
             if (current !== null) await rm(revision.canonical);
         } catch (rollbackCause) {
-            if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") {
+            if (errnoCode(rollbackCause) !== "ENOENT") {
                 rollbackErrors.push(rollbackCause);
             }
         }

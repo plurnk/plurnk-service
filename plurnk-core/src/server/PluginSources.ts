@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import Meta, { ConfigurationError, type PackageCandidate } from "@plurnk/plurnk-meta";
@@ -47,7 +48,7 @@ export default class PluginSources {
                 pluginPackages.add(dir);
                 readablePlugins.push(dir);
             } catch (cause) {
-                const code = (cause as NodeJS.ErrnoException).code;
+                const code = errnoCode(cause);
                 if (code !== "ENOENT" && code !== "ENOTDIR") {
                     configurationErrors.push(new ConfigurationError(location, `${location}: plugin manifest could not be inspected.`, { cause }));
                     pluginPackages.add(dir);

@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -203,7 +203,7 @@ const isFile = async (path: string): Promise<boolean> => {
     try {
         return (await stat(path)).isFile();
     } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+        if (errnoCode(cause) === "ENOENT") return false;
         throw cause;
     }
 };

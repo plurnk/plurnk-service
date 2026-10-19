@@ -1,4 +1,4 @@
-import { PathSyntax, type FindStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, type FindStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
 import {
     GeneratedByteSource,
@@ -64,7 +64,7 @@ export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements
             return refusal;
         }
         const target = `${this.manifest.name}://${address.authority}${address.pathname}`;
-        if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") {
+        if (errnoCode(cause) === "ENOENT") {
             return Results.failure(`scheme:${this.manifest.name}`, "entry-not-found", 404, `No resource exists at ${target}.`, {}, { target });
         }
         throw cause;

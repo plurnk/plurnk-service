@@ -2,6 +2,7 @@
 // line ({§startup-readiness-line}), hand back the address it published and a stop that is
 // SIGTERM-and-wait. It touches no filesystem state of its own beyond the caller's log file: what a
 // launcher keeps or removes after stop is that launcher's policy, never this helper's.
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
@@ -182,7 +183,7 @@ export default class Launch {
 
     static #sizeOf(path: string): number {
         try { return statSync(path).size; } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return 0;
+            if (errnoCode(cause) === "ENOENT") return 0;
             throw cause;
         }
     }

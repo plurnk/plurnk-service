@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,7 +35,7 @@ export default class EnvDefaults {
         let text: string;
         try { text = await readFile(join(dir, ".env.defaults"), "utf8"); }
         catch (cause) {
-            if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+            if (errnoCode(cause) === "ENOENT") return null;
             throw new Error(`${owner}: cannot read .env.defaults.`, { cause });
         }
         // parseEnv never throws — it silently mints junk keys from malformed lines. Malformed =

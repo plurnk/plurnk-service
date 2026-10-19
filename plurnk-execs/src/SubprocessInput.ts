@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import type { Writable } from "node:stream";
 import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInputMessage } from "./types.ts";
@@ -75,7 +76,7 @@ export default class SubprocessInput {
     #failure(cause: Error): SchemeResult {
         return Results.failure("executor:input", "input-write-failed", 502,
             "Stdin delivery failed; delivery may be partial.", {}, {
-                errorCode: (cause as NodeJS.ErrnoException).code,
+                errorCode: errnoCode(cause),
                 retryable: false,
             });
     }

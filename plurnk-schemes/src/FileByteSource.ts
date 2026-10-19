@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { open, stat } from "node:fs/promises";
 import type { ByteSource } from "./ByteSource.ts";
 
@@ -16,7 +17,7 @@ export default class FileByteSource implements ByteSource {
             if (!(await stat(file)).isFile()) throw new TypeError("The byte source is not a regular file.");
             return file;
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+            if (errnoCode(cause) === "ENOENT") return null;
             throw cause;
         }
     }

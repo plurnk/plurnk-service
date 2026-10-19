@@ -6,7 +6,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
-import { SKILL_NAME,
+import { errnoCode, SKILL_NAME,
     Validator,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
@@ -41,7 +41,7 @@ interface Snapshot {
 }
 
 const missing = (cause: unknown): false => {
-    if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return false;
+    if (errnoCode(cause) === "ENOENT") return false;
     throw cause;
 };
 const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), missing);
@@ -115,7 +115,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         try {
             entries = await readdir(dir, { withFileTypes: true });
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
+            if (errnoCode(cause) === "ENOENT") return [];
             throw new Error(`read ${scope} Agent Skills directory ${dir} failed`, { cause });
         }
         const installed: Installed[] = [];

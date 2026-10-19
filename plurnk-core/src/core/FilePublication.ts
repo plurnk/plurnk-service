@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import fs from "node:fs/promises";
 import type { BigIntStats } from "node:fs";
 import { dirname, join } from "node:path";
@@ -48,7 +49,7 @@ export default class FilePublication {
                     published = true;
                     await fs.unlink(staged);
                 } catch (cause) {
-                    if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+                    if (errnoCode(cause) !== "EEXIST") throw cause;
                     result = { status: "conflict" };
                 }
             }

@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -127,7 +128,7 @@ export const discoverDaemonModules = async (
             modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
             const owner = `module:${manifest.packageName}`;
-            if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
+            if (errnoCode(cause) === "ERR_MODULE_NOT_FOUND") {
                 configurationErrors.push({ owner, cause: new ConfigurationError(manifest.manifestPath,
                     `${manifest.packageName}: ${(cause as Error).message}`, { cause }) });
                 continue;

@@ -1,3 +1,4 @@
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import { SkillResourceError } from "@plurnk/plurnk-agent-skills";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam } from "@plurnk/plurnk-modules";
@@ -38,7 +39,7 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     static readonly #refusal: NonNullable<ResourceTreeSource["refusal"]> = (cause, address) => {
         const target = `skill://${address.authority}${address.pathname}`;
-        if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") {
+        if (errnoCode(cause) === "ENOENT") {
             return Results.failure("scheme:skill", "entry-not-found", 404, `No skill resource exists at ${target}.`, {}, { target });
         }
         if (!(cause instanceof SkillResourceError)) return null;

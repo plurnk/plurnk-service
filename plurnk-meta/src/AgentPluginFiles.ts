@@ -2,6 +2,9 @@ import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { validateManifest, type ManifestResult } from "./AgentPluginManifest.ts";
 
+const errnoCode = (cause: unknown): string | undefined =>
+    typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : undefined;
+
 // {§agent-plugins-containment} Shared by portable components and extension admission.
 export default class AgentPluginFiles {
     static inside(root: string, candidate: string): boolean {
@@ -13,7 +16,7 @@ export default class AgentPluginFiles {
         try {
             return await realpath(path);
         } catch (cause) {
-            const code = (cause as NodeJS.ErrnoException).code;
+            const code = errnoCode(cause);
             if (code === "ENOENT" || code === "ENOTDIR") return null;
             throw cause;
         }
@@ -33,7 +36,7 @@ export default class AgentPluginFiles {
         const authored = join(directory, "plugin.json");
         try { await lstat(authored); }
         catch (cause) {
-            const code = (cause as NodeJS.ErrnoException).code;
+            const code = errnoCode(cause);
             if (code === "ENOENT" || code === "ENOTDIR") return null;
             throw cause;
         }

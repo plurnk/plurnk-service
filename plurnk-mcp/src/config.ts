@@ -1,5 +1,5 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
-import { isRecord as isObject } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord as isObject } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
@@ -115,7 +115,7 @@ export const configuredDefinitions = async (
         try {
             contents = await readFile(file, "utf8");
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
+            if (errnoCode(cause) === "ENOENT") return;
             throw new ConfigurationError(file, `${file} could not be read.`, { cause });
         }
         let document: unknown;

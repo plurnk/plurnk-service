@@ -1547,7 +1547,7 @@ than alternate consumer entry points:
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§wire-entrypoint} | The package root exports generated wire types, `Problems`, `Validator` and the JSON value guards `isRecord`… |
+| {§wire-entrypoint} | The package root exports generated wire types, `Problems`, `Validator` and the value guards `isRecord`,… |
 | {§text-region} | 13.1 Text regions |
 | {§range-extent} | 13.2 Range extents |
 | {§entry-read-result} | 13.3 Client entry reads |
@@ -1568,7 +1568,7 @@ than alternate consumer entry points:
 <!-- /map -->
 
 §wire-entrypoint The package root exports generated wire types, `Problems`, `Validator` and
-the JSON value guards `isRecord` and `isSafeInteger` alongside the AST types. Their owning
+the value guards `isRecord`, `isSafeInteger` and `errnoCode` alongside the AST types. Their owning
 JSON Schemas are published through `@plurnk/plurnk-contracts/schema/*.json`, not re-exported
 as root values.
 
