@@ -758,28 +758,25 @@ export default class TurnRunner {
         const initializationStatements: Array<FindStatement | ReadStatement> = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations.
-        // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-        // worker:///_plurnk/AGENTS.md) gets one foisted READ on the worker's first
-        // loop, so local repo guidance is visible turn-0 content. Global policy
-        // stays in the system prompt; nothing else is force-read.
+        // {§turn0-agents-stunt} {§turn0-local-instructions} — the project AGENTS.md, then its AGENTS.local.md (materialized
+        // by LoopDocs under worker:///_plurnk/), each get one foisted READ on the worker's first loop, so local repo
+        // guidance is visible turn-0 content. Global policy stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
-            const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId,
-                scheme: "worker",
-                authority: "",
-                pathname: generatedPathname("/AGENTS.md"),
-            });
-            if (agentsEntry !== undefined) {
-                const agentsTarget: UrlPath = {
-                    kind: "url", raw: "worker:///_plurnk/AGENTS.md", scheme: "worker",
+            for (const name of ["/AGENTS.md", "/AGENTS.local.md"]) {
+                const pathname = generatedPathname(name);
+                const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: workspaceId, scheme: "worker", authority: "", pathname,
+                });
+                if (entry === undefined) continue;
+                const target: UrlPath = {
+                    kind: "url", raw: `worker://${pathname}`, scheme: "worker",
                     username: null, password: null, hostname: null, port: null,
-                    pathname: generatedPathname("/AGENTS.md"), query: null, fragment: null,
+                    pathname, query: null, fragment: null,
                 };
-                const agentsRead: ReadStatement = {
-                    op: "READ", aside: null, target: agentsTarget,
+                initializationStatements.push({
+                    op: "READ", aside: null, target,
                     metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
-                };
-                initializationStatements.push(agentsRead);
+                } satisfies ReadStatement);
             }
         }
         return {

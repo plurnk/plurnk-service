@@ -225,8 +225,13 @@ export default class GitMembership {
     // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
     // projected from disk, but the standard never outranks the operator's exclusions — a path the
     // active repository ignores, or an exclusion matches, contributes nothing.
+    // An exclusion (`!glob`) matches the path: it outranks every inclusion and every instruction standard.
+    static async excludedByConstraint(db: Db, workspaceId: number, key: string): Promise<boolean> {
+        return await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key }) !== undefined;
+    }
+
     static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
-        if (await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key }) !== undefined) return true;
+        if (await GitMembership.excludedByConstraint(db, workspaceId, key)) return true;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
         const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);

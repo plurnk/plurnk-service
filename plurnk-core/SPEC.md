@@ -336,6 +336,7 @@ plurnk-service may be starting there, and only `discover` says which.
 | {§actor-boundary-passive-wake} | Passive wake follows ownership. |
 | {§actor-boundary-self-hosting} | Use the actor path when the work has an operation; retain irreducible rails in the kernel. |
 | {§turn0-agents-stunt} | The project AGENTS.md is a turn-0 stunt. |
+| {§turn0-local-instructions} | The project AGENTS.md's local override rides turn 0 after it. |
 | {§actor-boundary-doc-injection} | Generated documents use the actor path. |
 | {§actor-boundary-catalog-preview} | Catalog preview. |
 | {§worker-initialization-entry} | Model-worker initialization is a real `_plurnk` operation turn. |
@@ -502,6 +503,13 @@ in the model's prior, and no other generated document is called it. Absent
 file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
+
+§turn0-local-instructions **The project AGENTS.md's local override rides turn 0 after it.** When
+`<projectRoot>/AGENTS.local.md` exists, LoopDocs materializes it as
+`worker:///_plurnk/AGENTS.local.md`, read from disk whatever its git status, since the
+convention ignores it, and the engine foists its READ into the model worker's first turn
+after the AGENTS.md READ. Only an exclusion hides it. Root only: a nested
+`AGENTS.local.md` is not projected. Absent file: no entry, no READ, nothing 404s.
 
 §actor-boundary-doc-injection **Generated documents use the actor path.** Workspace references and projected project instructions are materialized in `worker:///_plurnk/` through the runtime actor's ordinary maintenance turns. Their exact programs and operation evidence remain durable in that actor's log; generation is not a hidden database write.
 
@@ -860,7 +868,7 @@ and never re-fetch a match.
   | Admitted | As | The exceptions |
   | --- | --- | --- |
   | By exact creation records (`source: "create"`, origin `constraint`), never staged | members | (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination ({§membership-create-parents}) |
-  | By a published standard | projected instruction documents — never as members | (3) the project's `AGENTS.md` and nested `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status and materialized as `worker:///_plurnk/AGENTS.md` and `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member only when tracked or added, and the standard never overrides the operator's exclusions — an `AGENTS.md` the repository ignores or an exclusion matches is not projected |
+  | By a published standard | projected instruction documents — never as members | (3) the project's `AGENTS.md` and nested `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status and materialized as `worker:///_plurnk/AGENTS.md` and `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member only when tracked or added, and the standard never overrides the operator's exclusions — an `AGENTS.md` the repository ignores or an exclusion matches is not projected; the root `AGENTS.local.md`, which the convention ignores, is projected whatever its git status unless an exclusion matches ({§turn0-local-instructions}) |
   | By the model's own proposal | a `members` definition projected with source `model` | (4) a definition the model proposes through the `members` family ({§members-functionality}), admitted only under the operator's ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}) and never past the repository's ignore rules or an exclusion; (5) under `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND pattern matches, admitted as that same model definition of the exact path once the read's admission proposal is accepted ({§membership-auto-add}) |
 
 - §membership-git-membership The workspace owns the Git repository containing
