@@ -18,7 +18,7 @@ import Portal, { type PortalPort } from "./Portal.ts";
 import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
-import { Problems, Validator, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
@@ -26,13 +26,23 @@ import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import OAuthServer from "./OAuthServer.ts";
-import RunHandler, { type RunPort, type WorkerBinding } from "./RunHandler.ts";
+import RunHandler, { forwardedRefusal, type RunPort, type WorkerBinding } from "./RunHandler.ts";
 import ThreadAddress from "./ThreadAddress.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 
 export type { ModuleOptions } from "./config.ts";
+
+// The creation fields a Run forwards, typed as the daemon's creation contract types them; the daemon judges their sense.
+const forwardedProjectRoot = (value: unknown): string | null => {
+    if (typeof value !== "string" && value !== null) throw forwardedRefusal("projectRoot", "a string or null");
+    return value;
+};
+const forwardedSettings = (value: unknown): string | Readonly<Record<string, unknown>> => {
+    if (typeof value !== "string" && !isRecord(value)) throw forwardedRefusal("settings", "a string or an object");
+    return value;
+};
 
 // {§module-seam-slices} — the start seam: the calls the module makes itself, and each
 // collaborator's slice.
@@ -397,15 +407,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             const opts = forwarded ?? {};
             env = await this.#seam.createWorkspace({
                 name: workspace,
-                ...(Object.hasOwn(opts, "projectRoot")
-                    ? { projectRoot: opts.projectRoot as string | null }
-                    : {}),
-                ...(Object.hasOwn(opts, "constraints")
-                    ? { constraints: opts.constraints as Array<{ effect: string; glob: string }> }
-                    : {}),
-                ...(Object.hasOwn(opts, "settings")
-                    ? { settings: opts.settings as string | object }
-                    : {}),
+                ...(Object.hasOwn(opts, "projectRoot") ? { projectRoot: forwardedProjectRoot(opts.projectRoot) } : {}),
+                ...(Object.hasOwn(opts, "settings") ? { settings: forwardedSettings(opts.settings) } : {}),
             });
         }
         return { env, reattached };

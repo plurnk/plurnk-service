@@ -46,7 +46,7 @@ does not recompute them.
   | A name the daemon no longer holds | (a fresh database, a deleted worker) is minted anew by the next act addressed to it, with no history; the run-start status gauge then reports `loopId: null` where the previous run's reported a loop, which is how a client tells a new worker from a resumed one |
   | Process-local bindings | key on the workspace's identity and the `threadId`; equal thread names in different workspaces never share an envelope, Worker, replay, state, or active Run; `workspace.create` selects its `name` literally under the same acquisition rule, and a workspace label resembling a qualified thread address is still a label, not an instruction to attach by ID |
   | Concurrent first requests | acquire one envelope and worker binding; workspace acquisition is serialized across threads, retaining each request's create/attach contract: the creating request supplies settings, and other threads attach that workspace; failed acquisitions retain their cause and leave no failed cache entry preventing a later retry; explicit Core creation retains its name-conflict semantics, and protocol binding is not a second creation request |
-  | Workspace creation | a Run that may create its worker, or that binds none, may create the workspace; every other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace minted after the name and answered there |
+  | Workspace creation | a Run that may create its worker, or that binds none, may create the workspace; every other Run attaches only ({§agui-action-binding}): a workspace name that does not exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace minted after the name and answered there; a creating Run's `projectRoot` (a string or null) and `settings` (a string or an object) reach `workspace.create` as forwarded, and any other type is the Run's 400 `project-root-invalid` or `settings-invalid` |
   | A reply | to any retained thread reference of the bound worker, its qualified address, or its explicit workspace-selected name is speech in that worker's conversation; this changes neither the recorded message address nor its approval owner; arrivals from another thread spelling keep their log-coordinate identities and source labels ({§agui-snapshot}) |
 
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
@@ -1060,10 +1060,12 @@ reconstruct one from `RUN_ERROR`.
 | `invalid-json` | 400 | The request body is not valid JSON. |
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
 | `control-invalid` | 400 | control must be a boolean. |
-| `maxTurns-invalid` | 400 | maxTurns must be an integer. |
-| `openPaths-invalid` | 400 | openPaths must be an array of strings. |
+| `max-turns-invalid` | 400 | maxTurns must be an integer. |
+| `open-paths-invalid` | 400 | openPaths must be an array of strings. |
 | `selector-invalid` | 400 | selector must be a string. |
-| `childSelector-invalid` | 400 | childSelector must be a string or null. |
+| `child-selector-invalid` | 400 | childSelector must be a string or null. |
+| `project-root-invalid` | 400 | projectRoot must be a string or null. |
+| `settings-invalid` | 400 | settings must be a string or an object. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
 | `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |

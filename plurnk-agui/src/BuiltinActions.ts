@@ -10,10 +10,6 @@ import type { RunAgentInput } from "./types.ts";
 // {§agui-broadcast-fan} What a client operation's Run hears: the loop its dispatch opened, before any statement runs.
 export type OperationLoopListener = (loop: { readonly workerId: number; readonly loopId: number }) => void;
 
-// A workspace constraint as `workspace.create` admits it: an effect and the glob it applies to.
-const isConstraint = (value: unknown): value is { effect: string; glob: string } =>
-    isRecord(value) && typeof value.effect === "string" && typeof value.glob === "string";
-
 const operationOutcome = (result: OperationResult): ActionOutcome => {
     const exact = Validator.assertOperationResult(result);
     return exact.problem === undefined
@@ -166,7 +162,6 @@ export default class BuiltinActions {
                     }
                     const created = await this.#seam().createWorkspace({
                         ...(typeof p.projectRoot === "string" || p.projectRoot === null ? { projectRoot: p.projectRoot } : {}),
-                        ...(Array.isArray(p.constraints) && p.constraints.every(isConstraint) ? { constraints: p.constraints } : {}),
                         ...(typeof p.settings === "string" || isRecord(p.settings) ? { settings: p.settings } : {}),
                     });
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };

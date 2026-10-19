@@ -70,11 +70,12 @@ const worker = object({
 }, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle"]);
 const capabilityProjection = ref("CapabilityProjection");
 // {§worker-effort-source} — `source` says whether the effort was chosen or seeded.
-const effortResult = object({
+const effortProperties: Readonly<Record<string, JsonSchema>> = {
     effort: nullable(EFFORT),
     source: { enum: ["default", "explicit"] },
     supportedEfforts: array(EFFORT),
-}, ["effort", "source", "supportedEfforts"]);
+};
+const effortResult = object(effortProperties, ["effort", "source", "supportedEfforts"]);
 const action = (
     scope: AguiActionScope,
     inputSchema: JsonSchema,
@@ -159,10 +160,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "worker.effort.get": action("workspace", EMPTY, effortResult),
     "worker.effort.set": action("workspace", object({ effort: EFFORT }, ["effort"]), {
         ...effortResult,
-        properties: {
-            ...(effortResult.properties as Readonly<Record<string, JsonSchema>>),
-            policy: EFFORT,
-        },
+        properties: { ...effortProperties, policy: EFFORT },
     }),
     "workspace.capabilities.get": action("workspace", EMPTY, capabilityProjection),
     "workspace.capabilities.set": action("workspace", object({

@@ -136,7 +136,6 @@ export interface ApplicationPort extends HttpHost {
         readonly name?: string;
         readonly projectRoot?: string | null;
         readonly settings?: string | object;
-        readonly constraints?: Array<{ readonly effect: string; readonly glob: string }>;
     }): Promise<ClientEnvelope>;
     /** {§methods-workspace-attach} Read-only selection; folder defaults are derived by the daemon. */
     attachWorkspace(args:

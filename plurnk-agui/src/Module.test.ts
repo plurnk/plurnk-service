@@ -2298,6 +2298,71 @@ test("{§agui-thread-binding} explicit names select literally; workspace.attach 
     } finally { await mod.close(); }
 });
 
+test("{§problems-agui} a message Run's forwarded field of the wrong type is its 400, coded for the field in kebab case", async () => {
+    const { seam, loopRuns } = mockSeam();
+    existingWorkspace(seam, "forwarded");
+    const mod = await host(seam);
+    try {
+        const refusals = [
+            ["maxTurns", "three", "max-turns-invalid"],
+            ["openPaths", "/srv/project", "open-paths-invalid"],
+            ["selector", 7, "selector-invalid"],
+            ["childSelector", 7, "child-selector-invalid"],
+        ] as const;
+        for (const [field, value, code] of refusals) {
+            const events = await post(mod.address().port, { threadId: "forwarded", messages: [{ id: `message-${field}`, role: "user", content: "Continue." }],
+                forwardedProps: { plurnk: { workspace: "forwarded", [field]: value } } });
+            const problem = runProblem(events);
+            assert.deepEqual([problem?.status, problem?.type.split("/").at(-1)], [400, code], `${field} ${JSON.stringify(value)}`);
+        }
+        assert.deepEqual(loopRuns, [], "a refused Run submits nothing");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-thread-binding} a creating Run forwards projectRoot and settings as given and refuses any other type", async () => {
+    const created: Array<{ projectRoot?: string | null; settings?: string | object }> = [];
+    const { seam } = mockSeam();
+    const base = seam.createWorkspace.bind(seam);
+    seam.createWorkspace = async (args) => { created.push(args); return { ...(await base(args)), workspaceName: args.name ?? "workspace-1" }; };
+    seam.listWorkspaces = async () => [];
+    const mod = await host(seam);
+    try {
+        const port = mod.address().port;
+        const accepted: Array<{ projectRoot?: string | null; settings?: string | object }> = [
+            { projectRoot: "/srv/project" },
+            { projectRoot: null },
+            { settings: "PLURNK_EXAMPLE=1" },
+            { settings: { PLURNK_EXAMPLE: "1" } },
+        ];
+        for (const [index, fields] of accepted.entries()) {
+            const run = await post(port, { threadId: `forwarded-${index}`, workerId: "r1", forwardedProps: { plurnk: {
+                workspace: `forwarded-${index}`, ...fields, action: { kind: "workspace.workers" },
+            } } });
+            assert.equal(run.at(-1)?.type, "RUN_FINISHED", JSON.stringify(fields));
+        }
+        assert.deepEqual(created.map(({ projectRoot, settings }) => ({
+            ...(projectRoot === undefined ? {} : { projectRoot }),
+            ...(settings === undefined ? {} : { settings }),
+        })), accepted, "each accepted field reaches workspace.create as forwarded");
+        const refusals = [
+            ["projectRoot", 42, "project-root-invalid"],
+            ["projectRoot", ["/srv/project"], "project-root-invalid"],
+            ["settings", 7, "settings-invalid"],
+            ["settings", ["PLURNK_EXAMPLE=1"], "settings-invalid"],
+            ["settings", null, "settings-invalid"],
+        ] as const;
+        for (const [index, [field, value, code]] of refusals.entries()) {
+            const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: `refused-${index}`, forwardedProps: { plurnk: {
+                    workspace: `refused-${index}`, [field]: value, action: { kind: "workspace.workers" },
+                } } })) });
+            assert.deepEqual([refused.status, ((await refused.json()) as { type: string }).type.split("/").at(-1)], [400, code],
+                `${field} ${JSON.stringify(value)}`);
+        }
+        assert.equal(created.length, accepted.length, "a refused Run creates nothing");
+    } finally { await mod.close(); }
+});
+
 test("{§credential-authority} reattach replays SEND as speech without inventing an activity from NOTE", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];

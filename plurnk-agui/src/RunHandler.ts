@@ -22,6 +22,12 @@ export type WorkerBinding = "create" | "required" | "attach" | "none";
 // {§module-seam-slices} — the calls a Run makes outside its Portal thread.
 export type RunPort = Pick<ApplicationPort, "configurationNotices" | "listProviders" | "readLog" | "readWorker" | "listWorkerReferences" | "messageAdmission" | "readInbox" | "registerWorkerOwner" | "claimWorkerOwner" | "activateWorkspace" | "workspacePreparationStatus" | "workspaceDerivationStatus">;
 
+// A forwardedProps.plurnk field of the wrong type: the request's own 400, coded for the field in kebab case
+// ({§problems-agui}) and naming it as the client spelled it.
+export const forwardedRefusal = (key: string, expected: string): HttpProblemError =>
+    new HttpProblemError(httpProblem(`${key.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}-invalid`, 400,
+        `${key} must be ${expected}.`, { stage: "request-validation", retryable: false }));
+
 export default class RunHandler {
     readonly #seam: () => RunPort;
     readonly #opts: () => ResolvedModuleOptions;
@@ -470,26 +476,22 @@ export default class RunHandler {
 
     // {§agui-sync} A row's version: what a later delivery of the same row can change.
     // {§agui-run-input} A forwarded field is read by the type the loop contract names; a wrong one is the request's refusal.
-    static #forwardedRefusal(key: string, expected: string): HttpProblemError {
-        return new HttpProblemError(httpProblem(`${key}-invalid`, 400, `${key} must be ${expected}.`, { stage: "request-validation", retryable: false }));
-    }
-
     static #forwardedInteger(forwarded: Readonly<Record<string, unknown>>, key: string): number {
         const value = forwarded[key];
-        if (!isSafeInteger(value)) throw RunHandler.#forwardedRefusal(key, "an integer");
+        if (!isSafeInteger(value)) throw forwardedRefusal(key, "an integer");
         return value;
     }
 
     static #forwardedString(forwarded: Readonly<Record<string, unknown>>, key: string, expected: string): string {
         const value = forwarded[key];
-        if (typeof value !== "string") throw RunHandler.#forwardedRefusal(key, expected);
+        if (typeof value !== "string") throw forwardedRefusal(key, expected);
         return value;
     }
 
     static #forwardedStrings(forwarded: Readonly<Record<string, unknown>>, key: string): string[] {
         const value = forwarded[key];
         if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
-            throw RunHandler.#forwardedRefusal(key, "an array of strings");
+            throw forwardedRefusal(key, "an array of strings");
         }
         return value;
     }

@@ -110,7 +110,6 @@ export interface AguiPlusState {
     providers?: ApplicationProviderAlias[];
     workspace?: AguiWorkspaceState;
     workspaces?: Array<{ id: number; name: string }>;
-    constraints?: Array<{ effect: string; glob: string; source: "explicit" | "create" }>;
     status?: AguiStatusState;
 }
 // {§agui-workspace-state} — the bound workspace, its folder, and the activity that belongs to it rather
