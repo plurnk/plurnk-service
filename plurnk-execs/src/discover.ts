@@ -6,7 +6,7 @@ import type { ExtensionAttribution } from "@plurnk/plurnk-meta";
 import DocFile from "./DocFile.ts";
 import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
-import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
+import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 
 // An exec package's parsed manifest — its name and the `plurnk` block. Read
 // once per package so the trust gate can run before tags are materialized.
@@ -128,7 +128,7 @@ export default class Discover {
     // Import an admitted package's runtimes function through its export map. Its loading,
     // shape, execution, and result failures are fail-hard
     // ({§executor-dynamic-runtimes}).
-    static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
+    static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<unknown[]> {
         if (!rel.startsWith("./")) throw new Error(`exec runtimes function invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
         // Self-reference resolution: the subpath resolves through the package's OWN export
         // map anchored at its root — conditions apply (plurnk-dev → src in a workspace
@@ -152,13 +152,13 @@ export default class Discover {
         }
         let decls: unknown;
         try {
-            decls = await (runtimes as () => unknown)();
+            decls = await Reflect.apply(runtimes, undefined, []);
         } catch (cause) {
             throw new Error(`exec runtimes function threw: ${packageName} -> ${rel}`, { cause });
         }
         if (!Array.isArray(decls)) {
             throw new Error(`exec runtimes function returned a non-array: ${packageName} -> ${rel}`);
         }
-        return decls as RuntimeDecl[];
+        return decls;
     }
 }

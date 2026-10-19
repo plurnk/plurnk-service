@@ -1,5 +1,6 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { spawn } from "node:child_process";
+import { constants } from "node:os";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -13,10 +14,11 @@ import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecRes
 // KILL signal: an abort reason carrying `{ signal }` (a Unix signal name or
 // number) delivers exactly that signal, once, fire-and-forget — no escalation;
 // the model asked for a specific code. Absent → null → the polite default.
+const isSignalName = (value: string): value is NodeJS.Signals => Object.hasOwn(constants.signals, value);
 const overrideSignal = (reason: unknown): NodeJS.Signals | number | null => {
-    const sig = (reason as { signal?: unknown } | null | undefined)?.signal;
+    const sig = isRecord(reason) ? reason.signal : undefined;
     if (typeof sig === "number") return sig;
-    return typeof sig === "string" && sig.startsWith("SIG") ? sig as NodeJS.Signals : null;
+    return typeof sig === "string" && isSignalName(sig) ? sig : null;
 };
 
 // Loop-end housekeeping: an abort reason marked `{ housekeeping: true, graceMs }`
@@ -24,7 +26,7 @@ const overrideSignal = (reason: unknown): NodeJS.Signals | number | null => {
 // SIGKILL after `graceMs` — the consumer's grace, sourced from its config, never
 // a magic number here. Absent → null → no reap (a plain KILL is fire-and-forget).
 const housekeepingGrace = (reason: unknown): number | null => {
-    const r = reason as { housekeeping?: unknown; graceMs?: unknown } | null | undefined;
+    const r = isRecord(reason) ? reason : undefined;
     return r?.housekeeping === true && typeof r.graceMs === "number" ? r.graceMs : null;
 };
 

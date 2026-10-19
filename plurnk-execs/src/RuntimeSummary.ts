@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { RuntimeSummaryDecl } from "./types.ts";
 
 export default class RuntimeSummary {
@@ -17,8 +18,8 @@ export default class RuntimeSummary {
         field: string,
         fail: (detail: string) => never,
     ): RuntimeSummaryDecl {
-        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-            const record = value as Record<string, unknown>;
+        if (isRecord(value)) {
+            const record = value;
             if (record.from === "tools" && Object.keys(record).every((key) => key === "from" || key === "description")) {
                 return {
                     from: "tools",

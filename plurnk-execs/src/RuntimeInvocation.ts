@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, isExecution } from "@plurnk/plurnk-contracts";
+import { PathSyntax, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import RuntimeSummary from "./RuntimeSummary.ts";
 import type {
     RuntimeBodyDecl,
@@ -11,17 +11,21 @@ import type {
     RuntimeTargetKind,
 } from "./types.ts";
 
-const TARGET_KINDS = new Set<RuntimeTargetKind>(["literal", "path", "resource", "script"]);
+const TARGET_KINDS: ReadonlySet<string> = new Set<RuntimeTargetKind>(["literal", "path", "resource", "script"]);
+const isTargetKind = (value: unknown): value is RuntimeTargetKind => typeof value === "string" && TARGET_KINDS.has(value);
 
 const recordOf = (
     value: unknown,
     field: string,
     fail: (detail: string) => never,
 ): Record<string, unknown> => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        fail(`${field} must be an object`);
-    }
-    return value as Record<string, unknown>;
+    if (!isRecord(value)) fail(`${field} must be an object`);
+    return value;
+};
+
+const stringOf = (value: unknown, field: string, fail: (detail: string) => never): string => {
+    if (typeof value !== "string") fail(`${field} must be a string`);
+    return value;
 };
 
 const assertKnownFields = (
@@ -80,7 +84,7 @@ const oneExecSection = (source: string, runtime: string, expectedTarget?: string
 
 export default class RuntimeInvocation {
     static assert(value: unknown, packageName: string, runtime: string): RuntimeInvocationDecl {
-        const fail = (detail: string): never => {
+        const fail: (detail: string) => never = (detail) => {
             throw new Error(`runtime declaration invalid: ${packageName} '${runtime}' ${detail}`);
         };
         const invocation = recordOf(value, "invocation", fail);
@@ -88,13 +92,14 @@ export default class RuntimeInvocation {
 
         const bodyValue = recordOf(invocation.body, "invocation.body", fail);
         assertKnownFields(bodyValue, new Set(["role", "required", "mimetype"]), "invocation.body", fail);
-        if ("mimetype" in bodyValue && (typeof bodyValue.mimetype !== "string" || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/u.test(bodyValue.mimetype))) {
+        const mimetype = "mimetype" in bodyValue ? bodyValue.mimetype : undefined;
+        if ("mimetype" in bodyValue && (typeof mimetype !== "string" || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/u.test(mimetype))) {
             fail("invocation.body.mimetype must be one lowercase type/subtype media type");
         }
         const body: RuntimeBodyDecl = {
             role: roleOf(bodyValue.role, "invocation.body.role", fail),
             required: requiredOf(bodyValue.required, "invocation.body.required", fail),
-            ...("mimetype" in bodyValue ? { mimetype: bodyValue.mimetype as string } : {}),
+            ...(typeof mimetype === "string" ? { mimetype } : {}),
         };
 
         let exclusive = false;
@@ -105,10 +110,8 @@ export default class RuntimeInvocation {
         if ("target" in invocation) {
             const targetValue = recordOf(invocation.target, "invocation.target", fail);
             assertKnownFields(targetValue, new Set(["role", "required", "kind"]), "invocation.target", fail);
-            if (typeof targetValue.kind !== "string" || !TARGET_KINDS.has(targetValue.kind as RuntimeTargetKind)) {
-                fail("invocation.target.kind must be literal, path, resource, or script");
-            }
-            const kind = targetValue.kind as RuntimeTargetKind;
+            const kind = targetValue.kind;
+            if (!isTargetKind(kind)) fail("invocation.target.kind must be literal, path, resource, or script");
             target = {
                 role: roleOf(targetValue.role, "invocation.target.role", fail),
                 required: requiredOf(targetValue.required, "invocation.target.required", fail),
@@ -176,7 +179,7 @@ export default class RuntimeInvocation {
         packageName: string,
         runtime: string,
     ): RuntimeToolRegistry {
-        const fail = (detail: string): never => {
+        const fail: (detail: string) => never = (detail) => {
             throw new Error(`runtime declaration invalid: ${packageName} '${runtime}' ${detail}`);
         };
         const registry = recordOf(value, "tool registry", fail);
@@ -190,9 +193,7 @@ export default class RuntimeInvocation {
             assertKnownFields(tool, new Set(["target", "summary", "invocation", "details", "definition"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
             const summary = RuntimeSummary.assertLine(tool.summary, `tool registry.tools[${index}].summary`, fail);
-            if ("details" in tool && typeof tool.details !== "string") {
-                fail(`tool registry.tools[${index}].details must be a string`);
-            }
+            const details = "details" in tool ? stringOf(tool.details, `tool registry.tools[${index}].details`, fail) : undefined;
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
             if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), runtime, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor fence`);
@@ -215,7 +216,7 @@ export default class RuntimeInvocation {
                 target: exactTarget,
                 summary,
                 invocation,
-                ...(tool.details === undefined ? {} : { details: tool.details as string }),
+                ...(details === undefined ? {} : { details }),
                 ...("definition" in tool ? { definition: recordOf(tool.definition, `tool registry.tools[${index}].definition`, fail) } : {}),
             };
         });
