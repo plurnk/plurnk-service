@@ -1,11 +1,11 @@
 // Stateless helpers of the resource mutations: failure results, effect projection, address and marker facts.
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, isRecord } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type ScopeNormalization } from "@plurnk/plurnk-schemes";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import { renderAddress, renderTarget } from "./plurnk-uri.ts";
 import { assertEditBatchReceipt, assertEditReceipt, assertResourceEffects, projectEditReceipt, type EditBatchReceipt, type LineAnchorPrecondition, type ResourceEffect, type ResourceEffectAction } from "../content/index.ts";
 import Results from "./results.ts";
-import type { DispatchResult, ResourceAddress, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, DeferredMoveSource, PendingResourceEffect, OrchestrationProposalAttrs } from "./mutation-types.ts";
+import type { DispatchResult, ResourceAddress, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, DeferredMoveSource, PendingResourceEffect } from "./mutation-types.ts";
 
 export default class MutationEffects {
     static failure(
@@ -56,6 +56,11 @@ export default class MutationEffects {
         return { identity, checks };
     }
 
+
+    // The effects a proposal holds pending: none when the list is empty, each a target and an action otherwise.
+    static #pendingEffects(value: unknown): readonly PendingResourceEffect[] {
+        return Array.isArray(value) && value.length === 0 ? [] : assertResourceEffects(value);
+    }
 
     static appliedEffects(
         result: DispatchResult,
@@ -152,7 +157,7 @@ export default class MutationEffects {
             ...(exact.status === 202
                 ? {
                     attrs: {
-                        ...(exact.attrs as Record<string, unknown> | undefined),
+                        ...(isRecord(exact.attrs) ? exact.attrs : {}),
                         editReceipt: materialized,
                     },
                 }
@@ -185,8 +190,9 @@ export default class MutationEffects {
         original: DispatchResult,
         settlement: ProposalSettlement,
     ): ProposalSettlement {
-        const pending = (original.attrs as OrchestrationProposalAttrs | undefined)
-            ?.proposalEffects;
+        const pending = isRecord(original.attrs) && original.attrs.proposalEffects !== undefined
+            ? MutationEffects.#pendingEffects(original.attrs.proposalEffects)
+            : undefined;
         if (
             pending === undefined
             || settlement.resolution.decision !== "accept"
@@ -225,8 +231,7 @@ export default class MutationEffects {
 
 
     static settlementEffects(settlement: ProposalSettlement): readonly ResourceEffect[] {
-        const effects = (settlement.resolution.result as Record<string, unknown> | undefined)
-            ?.effects;
+        const effects = isRecord(settlement.resolution.result) ? settlement.resolution.result.effects : undefined;
         return effects === undefined ? [] : assertResourceEffects(effects);
     }
 
@@ -235,7 +240,7 @@ export default class MutationEffects {
         settlement: ProposalSettlement,
         effects: readonly ResourceEffect[],
     ): ProposalSettlement {
-        const projected = (settlement.resolution.result ?? {}) as Record<string, unknown>;
+        const projected = isRecord(settlement.resolution.result) ? settlement.resolution.result : {};
         const { effects: _effects, ...withoutEffects } = projected;
         const result = effects.length === 0
             ? withoutEffects
@@ -294,7 +299,7 @@ export default class MutationEffects {
         return {
             ...result,
             attrs: {
-                ...(result.attrs as Record<string, unknown> | undefined),
+                ...(isRecord(result.attrs) ? result.attrs : {}),
                 proposalScheme: selection.scheme,
                 proposalTarget: {
                     scheme: selection.scheme,
@@ -326,7 +331,7 @@ export default class MutationEffects {
         return {
             ...routed,
             attrs: {
-                ...(routed.attrs as Record<string, unknown> | undefined),
+                ...(isRecord(routed.attrs) ? routed.attrs : {}),
                 proposalEffects: pending,
             },
         };
@@ -353,7 +358,7 @@ export default class MutationEffects {
         return {
             ...result,
             attrs: {
-                ...(result.attrs as Record<string, unknown> | undefined),
+                ...(isRecord(result.attrs) ? result.attrs : {}),
                 moveDestinationWritten: destination,
                 moveDestinationEffects: destinationEffects,
             },

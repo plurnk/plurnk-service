@@ -127,7 +127,6 @@ interface ProposalRow {
     turn_producer: string;
 }
 
-const PROPOSAL_OPS = new Set<string>(PLURNK_OPS);
 
 // {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
 // millisecond value opts into a bound. An explicit invalid value is a broken
@@ -367,7 +366,8 @@ export default class ProposalLifecycle {
     }
 
     #project(row: ProposalRow, waiter: ProposalWaiter): ProposalPendingEvent {
-        const owner = Validator.assertWorkerOwner({ address: row.owner, tools: JSON.parse(row.owner_tools) as string[], interactive: row.owner_interactive === 1 });
+        const tools: unknown = JSON.parse(row.owner_tools);
+        const owner = Validator.assertWorkerOwner({ address: row.owner, tools, interactive: row.owner_interactive === 1 });
         waiter.disposition ??= ProposalPolicies.disposition(owner.tools, {
             maintenance: row.turn_kind === "maintenance",
             clientOperation: row.turn_producer === "client",
@@ -396,19 +396,19 @@ export default class ProposalLifecycle {
 
     static #op(row: ProposalRow): ProposalProjection["op"] {
         // An execution proposal's op is its runtime tag (plurnk-service #659).
-        if ((!PROPOSAL_OPS.has(row.op) && !isExecutionOp(row.op)) || TurnDisposition.isOp(row.op)) {
-            throw new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
-        }
-        return row.op as ProposalProjection["op"];
+        const invalid = (): Error => new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
+        if (TurnDisposition.isOp(row.op)) throw invalid();
+        if (isExecutionOp(row.op)) return row.op;
+        const op = PLURNK_OPS.find((candidate) => candidate === row.op);
+        if (op === undefined) throw invalid();
+        return op;
     }
 
     static #objectJson(logEntryId: number, field: string, raw: string): Record<string, unknown> {
         try {
             const value: unknown = JSON.parse(raw);
-            if (value === null || typeof value !== "object" || Array.isArray(value)) {
-                throw new TypeError(`${field} is not an object`);
-            }
-            return value as Record<string, unknown>;
+            if (!isRecord(value)) throw new TypeError(`${field} is not an object`);
+            return value;
         } catch (cause) {
             throw new Error(`Pending proposal ${logEntryId} has invalid ${field} JSON.`, { cause });
         }
@@ -457,23 +457,23 @@ export default class ProposalLifecycle {
                 pathname: foldAuthorityIntoPath(row.hostname, row.pathname),
             };
         }
-        if (
-            routed === null
-            || typeof routed !== "object"
-            || Array.isArray(routed)
-            || typeof (routed as { scheme?: unknown }).scheme !== "string"
-            || typeof (routed as { authority?: unknown }).authority !== "string"
-            || typeof (routed as { pathname?: unknown }).pathname !== "string"
-        ) {
+        if (!isRecord(routed) || typeof routed.scheme !== "string" || typeof routed.authority !== "string" || typeof routed.pathname !== "string") {
             throw new Error(`Pending proposal ${row.logEntryId} has an invalid canonical proposal target.`);
         }
         return {
-            scheme: (routed as { scheme: string }).scheme === "file"
-                ? null
-                : (routed as { scheme: string }).scheme,
-            authority: (routed as { authority: string }).authority,
-            pathname: (routed as { pathname: string }).pathname,
+            scheme: routed.scheme === "file" ? null : routed.scheme,
+            authority: routed.authority,
+            pathname: routed.pathname,
         };
+    }
+
+    // A proposal's routed target names its scheme, authority and pathname; absent when the proposal was not routed.
+    static #proposalTargetOf(value: unknown): OrchestrationProposalAttrs["proposalTarget"] {
+        if (value === undefined) return undefined;
+        if (!isRecord(value) || typeof value.scheme !== "string" || typeof value.authority !== "string" || typeof value.pathname !== "string") {
+            throw new TypeError("A proposal target names its scheme, authority and pathname.");
+        }
+        return { scheme: value.scheme, authority: value.authority, pathname: value.pathname };
     }
 
     // The wait is untimed by default because a decision belongs to whoever is deciding. It still
@@ -516,7 +516,7 @@ export default class ProposalLifecycle {
         if (resolution.decision !== "accept") return { resolution };
         // {§move-decomposition}: once the destination is written, approval applies
         // to the source operand, including its metadata and manifest binding.
-        const attrs = originalResult.attrs as OrchestrationProposalAttrs | undefined;
+        const attrs = isRecord(originalResult.attrs) ? originalResult.attrs : undefined;
         const operand = statement.op === "MOVE" && attrs?.moveDestinationWritten !== undefined
             ? statement.source
             : statement.op === "COPY" || statement.op === "MOVE" ? statement.destination : statement;
@@ -543,7 +543,7 @@ export default class ProposalLifecycle {
                 metadata: operand.metadata,
                 body: resolution.body,
             };
-            const proposalTarget = attrs?.proposalTarget;
+            const proposalTarget = ProposalLifecycle.#proposalTargetOf(attrs?.proposalTarget);
             const authoredTarget = operand.target;
             // The manifest is resolved AT the target, not for the scheme name: a runtime scheme's
             // facet claims its own subtree with its own channels ({§executor-scheme-output}), and a
