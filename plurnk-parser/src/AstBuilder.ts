@@ -56,7 +56,7 @@ import {
     TargetContext,
     plurnkParser,
 } from "./generated/plurnkParser.ts";
-import { PathSyntax, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, TurnDisposition, isRecord } from "@plurnk/plurnk-contracts";
 import { targetMembers } from "./target-members.ts";
 import StatementShape from "./StatementShape.ts";
 
@@ -254,8 +254,8 @@ export default class AstBuilder {
             if (!(cause instanceof SyntaxError)) throw cause;
             return null;
         }
-        if (!Array.isArray(parsed) || parsed.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) return null;
-        return Object.assign({}, ...parsed as object[]) as Record<string, unknown>;
+        if (!Array.isArray(parsed) || !parsed.every(isRecord)) return null;
+        return Object.fromEntries(parsed.flatMap((record) => Object.entries(record)));
     }
 
     static readonly #SIGIL = /^(\/|\$|~|&|\^)/u;
@@ -367,6 +367,7 @@ export default class AstBuilder {
         const kept = lines.slice(0, -1).join("\n").replace(/\r?\n$/u, "");
         const body = kept === "" ? null : kept;
         if (statement.op === "SEND") return { ...statement, body: body === null ? null : AstBuilder.#parseSendBody(body) };
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the statement with its body trimmed is the same op; the union's spread cannot say so
         return { ...statement, body } as PlurnkStatement;
     }
 
@@ -594,6 +595,7 @@ export default class AstBuilder {
 
     static #executorOf(ctx: ExecStatementContext): RuntimeTag {
         const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "").toLowerCase();
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- OPEN_EXEC admits a runtime tag's spelling; lowercased it is the tag
         return (AstBuilder.executorSpellings.get(name) ?? name) as RuntimeTag;
     }
 
@@ -843,7 +845,8 @@ export default class AstBuilder {
             const offset = Number(base[2] ?? 0) + Number(component.slice(1));
             marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;
         }
-        return { marks: marks as [number | string, ...(number | string)[]] };
+        if (!AstBuilder.#atLeastOne(marks)) throw new Error("an anchor marker names at least one mark");
+        return { marks };
     }
 
     // {§scope-range-recovery}: normalize authored numeric ranges before anchors resolve.
@@ -899,6 +902,11 @@ export default class AstBuilder {
         return whole === "" ? null : whole;
     }
 
+    // A list with its first element: what a marker's tuple type names.
+    static #atLeastOne<T>(values: T[]): values is [T, ...T[]] {
+        return values.length > 0;
+    }
+
     static #isDigit(c: string | undefined): boolean {
         return c !== undefined && c >= "0" && c <= "9";
     }
@@ -930,7 +938,8 @@ export default class AstBuilder {
             }
         }
         // L_MARKER always matches at least one number, so marks is non-empty.
-        return { marks: marks as [number, ...number[]] };
+        if (!AstBuilder.#atLeastOne(marks)) throw new Error("a line marker names at least one mark");
+        return { marks };
     }
 
     /**
@@ -997,7 +1006,7 @@ export default class AstBuilder {
             const encoded = encodeURIComponent(character);
             if (!target.includes(character) && !target.toUpperCase().includes(encoded)) sentinels.push(encoded);
         }
-        const [open, close] = sentinels as [string, string];
+        const [open, close] = sentinels;
         const protectedPath = rawPath.replaceAll("{", open).replaceAll("}", close);
         return {
             value: target.slice(0, pathStart) + protectedPath + target.slice(pathEnd),

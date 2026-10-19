@@ -1,4 +1,4 @@
-import { CharStream, CommonTokenStream, ListTokenSource, Token, type ParserRuleContext } from "antlr4ng";
+import { CharStream, CommonTokenStream, ListTokenSource, ParserRuleContext, TerminalNode, Token } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
@@ -53,6 +53,7 @@ export default class PlurnkParser {
 
     // {§statement-rendering} — one statement's heading in canonical slot order, without a fence.
     static heading(statement: PlurnkStatement): string {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the statement without its body is the same op; the union's spread cannot say so
         const [first] = PlurnkParser.stringify([{ ...statement, body: null } as PlurnkStatement]).split("\n");
         return (first ?? "").replace(/^`+/u, "");
     }
@@ -171,10 +172,11 @@ export default class PlurnkParser {
             if (value[0] !== undefined) warnings.set(value[0], advisories);
             return value;
         }, {}, "reasoning");
+        const reasoning = (statement: PlurnkStatement): statement is ReasoningOperation => isReasoningOperation(statement.op);
         const operations = result.items.flatMap((item) => item.kind === "statement"
-            && isReasoningOperation(item.statement.op)
+            && reasoning(item.statement)
             && lexer.hasClosedBlock(item.statement.position.line)
-            ? [item.statement as ReasoningOperation] : []);
+            ? [item.statement] : []);
         for (const operation of operations) {
             for (const warning of warnings.get(operation) ?? []) onAdvisory?.(warning);
         }
@@ -193,7 +195,7 @@ export default class PlurnkParser {
         const kept = items.filter((item) => !restatesAbsence(item));
         items.length = 0;
         items.push(...kept);
-        const anchor = (items.find((i) => i.kind === "error" && i.error.severity === "error") as { error: PlurnkParseError } | undefined)?.error;
+        const anchor = items.find((i): i is Extract<ParseItem, { kind: "error" }> => i.kind === "error" && i.error.severity === "error")?.error;
         items.push({
             kind: "error",
             error: new PlurnkParseError(
@@ -279,7 +281,9 @@ export default class PlurnkParser {
         for (const note of lexer.takeHeadingNotations()) {
             const at = items.findIndex((item) => item.kind === "statement" && item.statement.position.line === note.line);
             if (at === -1) continue;
-            const statement = (items[at] as { statement: PlurnkStatement }).statement;
+            const found = items[at];
+            if (found.kind !== "statement") continue;
+            const { statement } = found;
             const message = note.kind === "arrow"
                 ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
                 : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
@@ -432,14 +436,15 @@ export default class PlurnkParser {
         boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {
-            // A child is a rule context or a terminal: the walk reads whichever fields the node has.
-            const c = child as Partial<ParserRuleContext> & { symbol?: Token | null; exception?: unknown };
-            const start = c.start ?? c.symbol;
-            const stop = c.stop ?? c.symbol;
+            // A child is a rule context or a terminal: the walk reads the fields of whichever it is.
+            const rule = child instanceof ParserRuleContext ? child : undefined;
+            const symbol = child instanceof TerminalNode ? child.symbol : null;
+            const start = rule?.start ?? symbol;
+            const stop = rule?.stop ?? symbol;
             if (!start) continue;
             if (boundary !== undefined && !PlurnkParser.#isBefore(start, boundary)) continue;
 
-            if (c.ruleIndex !== undefined && STATEMENT_RULES.has(c.ruleIndex)) {
+            if (rule !== undefined && STATEMENT_RULES.has(rule.ruleIndex)) {
                 const errorsForStatement = errors.filter(
                     (e) => !consumedErrors.has(e) && PlurnkParser.#errorInRange(e, start, stop ?? start),
                 );
@@ -448,7 +453,7 @@ export default class PlurnkParser {
                     // One malformed statement projects one hard diagnostic. {§error-shape}
                     for (const error of errorsForStatement) consumedErrors.add(error);
                     items.push({ kind: "error", error: errForStatement, ...PlurnkParser.#attempt(start, stop) });
-                } else if ((c.getChildCount?.() ?? 0) === 0 || c.exception || c.start?.type === Token.EOF) {
+                } else if (rule.getChildCount() === 0 || ("exception" in rule && rule.exception !== null && rule.exception !== undefined) || rule.start?.type === Token.EOF) {
                     // A phantom statement context synthesized during error recovery (a required
                     // slot the parser opened then failed to fill, or a disposition the log rule
                     // demanded at the end of the input): nothing real was matched, so building it
@@ -460,7 +465,8 @@ export default class PlurnkParser {
                     }
                 } else {
                     try {
-                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(c as BuildContext));
+                        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a context whose rule is a statement rule is one of the build contexts
+                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(rule as BuildContext));
                         for (const statement of statements) items.push({ kind: "statement", statement });
                         // {§error-shape} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
@@ -473,8 +479,8 @@ export default class PlurnkParser {
                         items.push({ kind: "error", error: e, ...PlurnkParser.#attempt(start, stop) });
                     }
                 }
-            } else if (c.ruleIndex !== undefined && CONTAINER_RULES.has(c.ruleIndex)) {
-                PlurnkParser.#collect(c as ParserRuleContext, errors, consumedErrors, items, buildFn, boundary);
+            } else if (rule !== undefined && CONTAINER_RULES.has(rule.ruleIndex)) {
+                PlurnkParser.#collect(rule, errors, consumedErrors, items, buildFn, boundary);
             }
         }
     }
