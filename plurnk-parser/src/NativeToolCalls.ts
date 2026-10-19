@@ -6,7 +6,7 @@
 // executor and every parameter is one of plurnk's slots; then the block is rewritten to canonical
 // fences and never taught. Any call this cannot map exactly leaves the whole input as it was.
 
-import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, isRecord } from "@plurnk/plurnk-contracts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import StatementShape from "./StatementShape.ts";
 
@@ -318,8 +318,8 @@ export default class NativeToolCalls {
             const leftover = NativeToolCalls.#withoutStrayClosers(inner.replace(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g, ""));
             // A JSON object beside the parameters carries more of them.
             const object = leftover.startsWith("{") ? NativeToolCalls.#jsonPrefix(leftover) : null;
-            if (object !== null && typeof object === "object" && !Array.isArray(object)) {
-                for (const [key, value] of Object.entries(object as Record<string, unknown>)) {
+            if (isRecord(object)) {
+                for (const [key, value] of Object.entries(object)) {
                     if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
                 }
             } else if (leftover.length > 0) slots.body.push(...leftover.split("\n"));
@@ -328,8 +328,8 @@ export default class NativeToolCalls {
         const trimmed = NativeToolCalls.#withoutStrayClosers(inner);
         if (trimmed.startsWith("{")) {
             const parsed = NativeToolCalls.#jsonPrefix(trimmed);
-            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-            for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+            if (!isRecord(parsed)) return null;
+            for (const [key, value] of Object.entries(parsed)) {
                 if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
             }
             return { name, slots, line };
@@ -341,19 +341,18 @@ export default class NativeToolCalls {
     // `{"name": "READ", "arguments": {…}}`, arguments also accepted as `parameters`, `input`, or a JSON string.
     static #jsonCall(text: string, line: number, known: ReadonlySet<string>): Call | null {
         const parsed = NativeToolCalls.#jsonPrefix(text);
-        const record = Array.isArray(parsed) ? parsed[0] : parsed;
-        if (record === null || typeof record !== "object") return null;
-        return NativeToolCalls.#callFromRecord(record as Record<string, unknown>, line, known);
+        const record: unknown = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (!isRecord(record)) return null;
+        return NativeToolCalls.#callFromRecord(record, line, known);
     }
 
     static #callFromRecord(record: Record<string, unknown>, line: number, known: ReadonlySet<string>): Call | null {
-        const inner = record.function !== undefined && typeof record.function === "object" && record.function !== null
-            ? record.function as Record<string, unknown>
-            : record;
+        const inner = isRecord(record.function) ? record.function : record;
         // `{"op": "READ", "path": …}`: the operation named by a key of its own, its slots beside it.
         const opKey = typeof inner.name === "string" ? undefined : Object.keys(inner).find((key) => OP_KEYS.has(key.toLowerCase()) && typeof inner[key] === "string");
-        if (opKey !== undefined) {
-            const name = NativeToolCalls.#operation(inner[opKey] as string, known);
+        const op = opKey === undefined ? undefined : inner[opKey];
+        if (typeof op === "string") {
+            const name = NativeToolCalls.#operation(op, known);
             if (name === null) return null;
             const slots: Slots = { body: [], extra: "" };
             for (const [key, value] of Object.entries(inner)) {
@@ -368,9 +367,9 @@ export default class NativeToolCalls {
         // An executor's input written as a plain string is its program.
         if (typeof args === "string" && NativeToolCalls.#json(args) === null && known.has(name.toLowerCase())) args = { body: args };
         if (typeof args === "string") args = NativeToolCalls.#json(args);
-        if (args === null || typeof args !== "object" || Array.isArray(args)) return null;
+        if (!isRecord(args)) return null;
         const slots: Slots = { body: [], extra: "" };
-        for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+        for (const [key, value] of Object.entries(args)) {
             if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
         }
         return { name, slots, line };
@@ -401,8 +400,8 @@ export default class NativeToolCalls {
         const line = input.slice(0, from).split("\n").length - 1;
         const calls: Call[] = [];
         for (const record of records) {
-            if (record === null || typeof record !== "object") return { from, to: end, calls: null };
-            const call = NativeToolCalls.#callFromRecord(record as Record<string, unknown>, line, known);
+            if (!isRecord(record)) return { from, to: end, calls: null };
+            const call = NativeToolCalls.#callFromRecord(record, line, known);
             if (call === null) return { from, to: end, calls: null };
             calls.push(call);
         }
@@ -424,9 +423,9 @@ export default class NativeToolCalls {
             const name = NativeToolCalls.#operation(match[1].trim().replace(/^functions\./, "").replace(/:\d+$/, ""), known);
             if (name === null) return { from, to, calls: null };
             const args = NativeToolCalls.#json(match[2].trim());
-            if (args === null || typeof args !== "object" || Array.isArray(args)) return { from, to, calls: null };
+            if (!isRecord(args)) return { from, to, calls: null };
             const slots: Slots = { body: [], extra: "" };
-            for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+            for (const [key, value] of Object.entries(args)) {
                 if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return { from, to, calls: null };
             }
             calls.push({ name, slots, line });

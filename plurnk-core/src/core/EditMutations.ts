@@ -104,7 +104,7 @@ export default class EditMutations {
         const lineInsertion = authored.matcher === null && marks?.length === 4
             && marks[0] === marks[2] && marks[1] === 1 && marks[3] === 1;
         if (!anchored && !rendered && !track && !lineInsertion) {
-            return { statement: authored as ResolvedEditStatement, precondition: null };
+            return { statement: LineAnchors.resolved(authored), precondition: null };
         }
         if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
             return {
@@ -138,7 +138,7 @@ export default class EditMutations {
         if (current.status === 204 || current.status === 404) {
             sequence?.forget(identity);
             if (!anchored && !rendered) {
-                return { statement: authored as ResolvedEditStatement, precondition: null };
+                return { statement: LineAnchors.resolved(authored), precondition: null };
             }
             return { result: EditCollision.result(identity) };
         }
@@ -162,13 +162,13 @@ export default class EditMutations {
         if (current.status !== 200) {
             return { result: EditCollision.result(identity) };
         }
-        const content = (current as { content?: unknown }).content;
+        const content = current.content;
         if (typeof content !== "string") {
             throw new InvalidOperationResultError(
                 `Scheme '${schemeName}' returned READ ${current.status} without textual content while validating an EDIT anchor.`,
             );
         }
-        const lineAnchorIdentity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
+        const lineAnchorIdentity = current.lineAnchorIdentity;
         if (typeof lineAnchorIdentity !== "string" || lineAnchorIdentity.length === 0) {
             throw new InvalidOperationResultError(
                 `Scheme '${schemeName}' returned READ 200 without its canonical derivation identity.`,
@@ -196,7 +196,13 @@ export default class EditMutations {
         const publishedAnchors = async (): Promise<PublishedRead[]> => {
             if (publishedReads !== null) return publishedReads;
             const rows = await ctx.db.edit_published_reads.all<{ start_line: number; anchors: string }>({ worker_id: ctx.workerId, identity: lineAnchorIdentity });
-            publishedReads = rows.map(({ start_line, anchors }) => ({ startLine: start_line, anchors: JSON.parse(anchors) as string[] }));
+            publishedReads = rows.map(({ start_line, anchors }) => {
+                const parsed: unknown = JSON.parse(anchors);
+                if (!Array.isArray(parsed) || !parsed.every(LineAnchors.isAnchor)) {
+                    throw new InvalidOperationResultError("A published read's anchors must be anchor tokens.");
+                }
+                return { startLine: start_line, anchors: parsed };
+            });
             return publishedReads;
         };
         const stripRendered = async (statement: EditStatement): Promise<EditStatement> => {
@@ -222,7 +228,7 @@ export default class EditMutations {
         };
         const statement = await stripRendered(authored);
         if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
-            resolved = statement as ResolvedEditStatement;
+            resolved = LineAnchors.resolved(statement);
         } else {
             const resolution = resolve(statement.lineMarker);
             if (!resolution.ok) {
@@ -394,9 +400,9 @@ export default class EditMutations {
         const current = await this.#current(resolved, ctx);
         if (current.status === 404) return { result: current };
         if (current.status >= 300) return { result: current };
-        const content = (current as { content?: unknown }).content;
-        const mimetype = (current as { mimetype?: unknown }).mimetype;
-        const identity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
+        const content = current.content;
+        const mimetype = current.mimetype;
+        const identity = current.lineAnchorIdentity;
         if (typeof content !== "string" || typeof identity !== "string" || identity.length === 0) {
             throw new InvalidOperationResultError(`Scheme '${schemeName}' supplied pattern ${operation} source ${current.status} without textual content and its anchor identity.`);
         }

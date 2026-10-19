@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import LineAnchors from "./line-anchors.ts";
-import { InvalidOperationResultError } from "@plurnk/plurnk-contracts";
+import { InvalidOperationResultError, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
 import type {
     AppliedEditBatchReceipt,
@@ -45,10 +45,8 @@ interface EffectWithContextRange extends EditEffectReceipt {
 }
 
 const receiptRecord = (value: unknown, label: string): Record<string, unknown> => {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        throw new InvalidOperationResultError(`${label} must be an object.`);
-    }
-    return value as Record<string, unknown>;
+    if (!isRecord(value)) throw new InvalidOperationResultError(`${label} must be an object.`);
+    return value;
 };
 
 const exactFields = (
@@ -72,7 +70,7 @@ const exactFields = (
 };
 
 const assertExtent = (value: unknown, field: string): void => {
-    if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    if (!isSafeInteger(value) || value < 0) {
         throw new InvalidOperationResultError(
             `EDIT receipt ${field} must be a non-negative safe integer.`,
         );
@@ -80,14 +78,16 @@ const assertExtent = (value: unknown, field: string): void => {
 };
 
 const assertParseIssueCount = (value: unknown, field: "before" | "after"): void => {
-    if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    if (!isSafeInteger(value) || value < 0) {
         throw new InvalidOperationResultError(
             `EDIT receipt parseIssues ${field} must be a non-negative safe integer.`,
         );
     }
 };
 
-const assertParseIssues = (value: unknown): ParseIssueTransition => {
+// Each check below is an assertion function: after it returns, the value is the receipt it names, because the function
+// checked every field the shape has ({§edit-result-receipt-projection}).
+function assertParseIssues(value: unknown): asserts value is ParseIssueTransition {
     const transition = receiptRecord(value, "EDIT receipt parseIssues");
     exactFields(transition, ["before", "after"], "EDIT receipt parseIssues");
     assertParseIssueCount(transition.before, "before");
@@ -97,8 +97,7 @@ const assertParseIssues = (value: unknown): ParseIssueTransition => {
             "EDIT receipt parseIssues must be omitted when both counts are zero.",
         );
     }
-    return value as ParseIssueTransition;
-};
+}
 
 export const EDIT_NOOP_DETAIL = "No change: EDIT body matches the selected content.";
 
@@ -114,7 +113,7 @@ const receiptFields = (
     ...tail,
 ];
 
-const assertEffectReceipt = (value: unknown): EditEffectReceipt => {
+function assertEffectReceipt(value: unknown): asserts value is EditEffectReceipt {
     const effect = receiptRecord(value, "EDIT effect receipt");
     // {§edit-receipt-removed-text} — optional: present only on a pure deletion.
     const { removedText, ...exact } = effect;
@@ -135,8 +134,7 @@ const assertEffectReceipt = (value: unknown): EditEffectReceipt => {
     }
     assertExtent(effect.removed, "removed");
     assertExtent(effect.inserted, "inserted");
-    return value as EditEffectReceipt;
-};
+}
 
 const assertReceiptHead = (
     receipt: Record<string, unknown>,
@@ -153,7 +151,7 @@ const assertReceiptHead = (
     if (Object.hasOwn(receipt, "parseIssues")) assertParseIssues(receipt.parseIssues);
 };
 
-export const assertEditReceipt = (value: unknown): EditReceipt => {
+function checkEditReceipt(value: unknown): asserts value is EditReceipt {
     const receipt = receiptRecord(value, "EDIT receipt");
     if (receipt.disposition === "superseded") {
         exactFields(
@@ -170,15 +168,19 @@ export const assertEditReceipt = (value: unknown): EditReceipt => {
             );
         }
         if (Object.hasOwn(receipt, "replacement")) assertEffectReceipt(receipt.replacement);
-        return value as EditReceipt;
+        return;
     }
     exactFields(receipt, receiptFields(receipt, ["effect"]), "EDIT receipt");
     assertReceiptHead(receipt, "EDIT receipt");
     assertEffectReceipt(receipt.effect);
-    return value as EditReceipt;
+}
+
+export const assertEditReceipt = (value: unknown): EditReceipt => {
+    checkEditReceipt(value);
+    return value;
 };
 
-export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
+function checkEditBatchReceipt(value: unknown): asserts value is EditBatchReceipt {
     const receipt = receiptRecord(value, "EDIT batch receipt");
     if (receipt.disposition === "reviewer-replaced") {
         exactFields(
@@ -197,7 +199,7 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
             );
         }
         assertEffectReceipt(receipt.replacement);
-        return value as EditBatchReceipt;
+        return;
     }
     exactFields(receipt, receiptFields(receipt, ["effects"]), "EDIT batch receipt");
     assertReceiptHead(receipt, "EDIT batch receipt");
@@ -205,7 +207,11 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
         throw new InvalidOperationResultError("EDIT batch receipt effects must be a non-empty array.");
     }
     for (const effect of receipt.effects) assertEffectReceipt(effect);
-    return value as EditBatchReceipt;
+}
+
+export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
+    checkEditBatchReceipt(value);
+    return value;
 };
 
 export const assertResourceEffects = (value: unknown): readonly ResourceEffect[] => {

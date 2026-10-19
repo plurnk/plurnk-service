@@ -149,7 +149,9 @@ export default class File extends CoreSchemeAdapterBase {
             const authored = pathScope(statement.target.pathname, true);
             // Structural catalogs use a literal prefix, even when its URL needs quoting.
             if (authored.kind === "glob" && (authored.shallowPrefix !== null || authored.recursivePrefix !== null)) {
-                const literal = Namespace.canonicalizeSpelling(FileAddress.pathname(statement.target) as string, root)!;
+                const spelled = FileAddress.pathname(statement.target);
+                if (typeof spelled !== "string") return { ...emptyFindFields(), ...spelled };
+                const literal = Namespace.canonicalizeSpelling(spelled, root)!;
                 const prefix = literal.slice(0, authored.shallowPrefix !== null ? -1 : -2);
                 scope = { ...scope, candidatePrefix: prefix,
                     shallowPrefix: authored.shallowPrefix === null ? null : prefix,
@@ -179,7 +181,8 @@ export default class File extends CoreSchemeAdapterBase {
                 "file",
             );
         if (result.status !== 404) return result;
-        return (await this.missRefusal(pathname, core, { entry: null }) as ReadEntryResult | null) ?? result;
+        const refusal = await this.missRefusal(pathname, core, { entry: null });
+        return refusal === null ? result : { ...refusal, entry: null };
     }
 
     // {§read-bytes} — a member's bytes straight from disk: sized first, then only the window asked
@@ -562,29 +565,30 @@ export default class File extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const bodyChannel = entry.channels.body;
         if (bodyChannel === undefined) {
-            return Results.failure(
-                "scheme:file",
-                "body-channel-required",
-                400,
-                "A file write requires a body channel.",
-                { created: false, entryId: null },
-                {
-                    recovery: "Provide the file content in the body channel.",
-                    retryable: false,
-                },
-            ) as WriteEntryResult;
+            return {
+                ...Results.failure(
+                    "scheme:file",
+                    "body-channel-required",
+                    400,
+                    "A file write requires a body channel.",
+                    { created: false, entryId: null },
+                    {
+                        recovery: "Provide the file content in the body channel.",
+                        retryable: false,
+                    },
+                ),
+                created: false,
+                entryId: null,
+            };
         }
         const bytes = bodyChannel.bytes;
         const target = await this.#resolveWriteTarget(pathname, core, bytes !== undefined);
         if (!target.ok) {
-            return Results.failure(
-                "scheme:file",
-                target.code,
-                target.status,
-                target.detail,
-                { created: false, entryId: null },
-                target.extensions,
-            ) as WriteEntryResult;
+            return {
+                ...Results.failure("scheme:file", target.code, target.status, target.detail, { created: false, entryId: null }, target.extensions),
+                created: false,
+                entryId: null,
+            };
         }
         const { canonical, rel, fileExists, original, baseSig } = target;
         // {§copy-destination-mimetype}: retain the admitted per-call type on creation.

@@ -66,6 +66,20 @@ export default class LineAnchors {
         return marker?.marks.some((mark) => typeof mark === "string") ?? false;
     }
 
+    // The statement a scheme receives: its marker carries no anchor, so it is the numeric marker the extension
+    // boundary admits; one that still does is the boundary violation `assertResolved` names.
+    static resolved(statement: EditStatement): ResolvedEditStatement {
+        const { lineMarker } = statement;
+        if (!LineAnchors.#isResolvedMarker(lineMarker)) {
+            throw new TypeError("An unresolved line anchor crossed the core-to-scheme boundary.");
+        }
+        return { ...statement, lineMarker };
+    }
+
+    static #isResolvedMarker(marker: TextLineMarker | null): marker is LineMarker | null {
+        return marker === null || marker.marks.every((mark) => typeof mark === "number");
+    }
+
     static assertResolved(
         statements: readonly EditStatement[],
     ): asserts statements is readonly ResolvedEditStatement[] {
