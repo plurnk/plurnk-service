@@ -118,10 +118,11 @@
         // `never` call is the same. The syntactic rule sees neither.
         "typescript/consistent-return": "off",
         "typescript/explicit-module-boundary-types": "error",
-        // The two counted debts after batch 8 (#1162): 795 unsafe assertions in sources, to be retired boundary by boundary
-        // (tests are excused below: a witness's assertion is its claim); 34 assertions tsgolint reads as unnecessary that
-        // tsc still needs (from `unknown` or `object`), a warning until the two checkers agree.
-        "typescript/no-unsafe-type-assertion": "warn",
+        // An assertion in sources is a stated boundary: an inline disable naming why the shape holds (#1163). Every other
+        // value is proved by a schema, a guard or a predicate. Tests are excused below: a witness's assertion is its claim.
+        // The one counted debt, tracked on #1163: assertions in core's tests that tsgolint reads as unnecessary and tsc
+        // still needs, a warning until the two checkers agree.
+        "typescript/no-unsafe-type-assertion": "error",
         "typescript/no-unnecessary-type-assertion": "warn",
         // A string enum compared with one of its own literals is checked by tsc (TS2367 on any other literal); the literal
         // is the wire name the protocol documents.

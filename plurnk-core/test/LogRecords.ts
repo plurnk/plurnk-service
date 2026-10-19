@@ -61,6 +61,6 @@ export const parseLogRecords = (source: string): LogRecord[] => {
             ...(modifiers === undefined ? {} : { modifiers, ...operands(modifiers, op) }),
             ...metadata,
             ...(lines.length === 0 ? {} : { body: `${lines.join("\n")}\n` }),
-        } as LogRecord;
+        };
     });
 };
