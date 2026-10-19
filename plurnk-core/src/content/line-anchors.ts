@@ -1,5 +1,6 @@
 import { Knob } from "@plurnk/plurnk-meta";
 import { createHash } from "node:crypto";
+import { isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { LineMarker, TextLineMarker, EditStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
@@ -57,9 +58,12 @@ export default class LineAnchors {
     }
 
     static isLineNumberWidth(value: unknown): value is number {
-        return Number.isSafeInteger(value)
-            && (value as number) >= 1
-            && (value as number) <= LineAnchors.#MAX_LINE_NUMBER_WIDTH;
+        return isSafeInteger(value) && value >= 1 && value <= LineAnchors.#MAX_LINE_NUMBER_WIDTH;
+    }
+
+    // Marks that name lines by number alone: at least one, none an anchor.
+    static #numeric(marks: readonly (number | string)[]): marks is [number, ...number[]] {
+        return marks.length >= 1 && marks.every((mark) => typeof mark === "number");
     }
 
     static hasAnchor(marker: TextLineMarker | null): marker is TextLineMarker {
@@ -243,10 +247,9 @@ export default class LineAnchors {
     }
 
     static resolve(anchors: readonly string[], marker: TextLineMarker, retained?: ReadonlyMap<string, readonly number[]>): LineAnchorResolution {
-        const anchorIndexes = marker.marks.flatMap((mark, index) => typeof mark === "string" ? [index] : []);
-        if (anchorIndexes.length === 0) {
-            return { ok: true, marker: { marks: [...marker.marks] as [number, ...number[]] } };
-        }
+        const marks = [...marker.marks];
+        if (LineAnchors.#numeric(marks)) return { ok: true, marker: { marks } };
+        const anchored = marks.flatMap((mark, index): [number, string][] => typeof mark === "string" ? [[index, mark]] : []);
         const permitted = marker.marks.length === 1
             ? new Set([0])
             : marker.marks.length === 2
@@ -254,10 +257,9 @@ export default class LineAnchors {
                 : marker.marks.length === 3 || marker.marks.length === 4
                     ? new Set([0, 2])
                     : new Set<number>();
-        for (const index of anchorIndexes) {
-            const anchor = marker.marks[index] as string;
-            if (LineAnchors.#markParts(anchor) === null || !permitted.has(index)) {
-                return { ok: false, failure: { kind: "invalid", anchor } };
+        for (const [index, mark] of anchored) {
+            if (LineAnchors.#markParts(mark) === null || !permitted.has(index)) {
+                return { ok: false, failure: { kind: "invalid", anchor: mark } };
             }
         }
 
@@ -272,9 +274,9 @@ export default class LineAnchors {
             else found.push(lineNumber);
         }
 
-        const resolved = [...marker.marks];
-        for (const index of anchorIndexes) {
-            const { anchor, offset } = LineAnchors.#markParts(marker.marks[index] as string)!;
+        const resolved = [...marks];
+        for (const [index, mark] of anchored) {
+            const { anchor, offset } = LineAnchors.#markParts(mark)!;
             // {§edit-anchor-continuity} — a binding this program retains is the resolution: the line the
             // published anchor named, wherever its own splices moved it. Current-state matching serves only
             // an anchor the program never bound, so a twin neighbourhood the program itself created cannot
@@ -288,13 +290,11 @@ export default class LineAnchors {
                 return { ok: false, failure: { kind: "ambiguous", anchor, matches: found } };
             }
             // An offset landing before the first line names no line; past the end is the ordinary range refusal.
-            if (found[0] + offset < 1) return { ok: false, failure: { kind: "invalid", anchor: marker.marks[index] as string } };
+            if (found[0] + offset < 1) return { ok: false, failure: { kind: "invalid", anchor: mark } };
             resolved[index] = found[0] + offset;
         }
-        return {
-            ok: true,
-            marker: { marks: resolved as [number, ...number[]] },
-        };
+        if (!LineAnchors.#numeric(resolved)) throw new TypeError("LineAnchors.resolve left an anchor unresolved.");
+        return { ok: true, marker: { marks: resolved } };
     }
 
     static checks(authored: TextLineMarker, resolved: LineMarker): readonly LineAnchorCheck[] {

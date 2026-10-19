@@ -134,7 +134,7 @@ export default class FencePairing {
         if (naked !== null && options.operations.has(naked[1])) return { kind: "name", name: naked[1], alone: naked[2] === undefined };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
-        const character = match[2].charAt(0) as FenceCharacter;
+        const character: FenceCharacter = match[2].startsWith("`") ? "`" : "~";
         const width = match[2].length;
         const tail = match[3];
         if (tail.trim() === "" || /^[ \t]*<!--.*-->[ \t]*$/u.test(tail)) return { kind: "bare", character, width, underFence: false };
@@ -411,8 +411,21 @@ class Search {
 
     // An executor heading whose runtime can judge its body carries the runtime and its opening line.
     #judged(line: number): { runtime?: string; opener?: number } {
-        const runtime = (this.#lines[line] as { runtime?: string | null }).runtime;
-        return this.#check === undefined || runtime === null || runtime === undefined ? {} : { runtime, opener: line };
+        const runtime = this.#runtime(line);
+        return this.#check === undefined || runtime === null ? {} : { runtime, opener: line };
+    }
+
+    // The runtime a heading line names; a line of any other kind names none.
+    #runtime(i: number): string | null {
+        const line = this.#lines[i];
+        return line.kind === "heading" ? line.runtime : null;
+    }
+
+    // The line a heading position names: a heading, or the heading half of a close-then-heading line.
+    #headingLine(i: number): Extract<Line, { kind: "heading" | "closeThenHeading" }> {
+        const line = this.#lines[i];
+        if (line.kind !== "heading" && line.kind !== "closeThenHeading") throw new Error(`FencePairing: line ${i} holds no heading.`);
+        return line;
     }
 
     // A body that is not well-formed in its runtime's media type costs a repair ({§pairing-objective}); the
@@ -445,8 +458,8 @@ class Search {
             return;
         }
         if (heading) {
-            const width = line.kind === "closeThenHeading" ? line.headingWidth : (line as { width: number }).width;
-            yield* this.#heading(i, width, (line as { selfClosed: boolean }).selfClosed, context, flags);
+            const named = this.#headingLine(i);
+            yield* this.#heading(i, named.kind === "closeThenHeading" ? named.headingWidth : named.width, named.selfClosed, context, flags);
             return;
         }
         switch (line.kind) {
@@ -477,9 +490,10 @@ class Search {
 
     *#heading(i: number, width: number, selfClosed: boolean, context: Context | null, flags: Flags): Generator<Move> {
         const next = at(i + 1);
+        const named = this.#headingLine(i);
         if (context === null) {
             if (selfClosed) yield { kind: "stay", cost: ZERO, effects: [], next, flags };
-            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, prose: (this.#lines[i] as { prose?: boolean }).prose === true, mutation: (this.#lines[i] as { mutation?: boolean }).mutation === true, ...this.#judged(i) }, line: i, flags };
+            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: named.bodiless, prose: named.kind === "heading" && named.prose, mutation: named.kind === "heading" && named.mutation, ...this.#judged(i) }, line: i, flags };
             return;
         }
         const example = (cost: Cost, held: Flags): Move => selfClosed
@@ -487,7 +501,7 @@ class Search {
             : { kind: "child", cost, effects: [], child: { kind: "nested", character: "`", width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...held, empty: false, written: true } };
         const holding: Flags = { empty: false, holds: true, written: true };
         // {§prose-code-blocks}: a message or a prompt shows code; a block labeled with an executor's name is part of it.
-        if (context.prose && (this.#lines[i] as { runtime?: string | null }).runtime != null) {
+        if (context.prose && this.#runtime(i) !== null) {
             yield example(ZERO, { ...flags, empty: false, written: true });
             yield { kind: "stay", cost: DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             return;
@@ -518,7 +532,7 @@ class Search {
         const narrower = context.character === "`" && width < context.width;
         const declared = narrower || context.kind === "nested" && !context.bareOpened && width <= context.width;
         // {§unclosed-mutation-yields}: an EDIT body reading a same-width native heading as its example swallows it.
-        const native = (this.#lines[i] as { runtime?: string | null }).runtime == null;
+        const native = this.#runtime(i) === null;
         yield example(declared ? LITERAL : context.mutation && native ? SWALLOW : HIDE, holding);
         if (narrower) yield { kind: "stay", cost: LITERAL, effects: [], next, flags: holding };
     }
