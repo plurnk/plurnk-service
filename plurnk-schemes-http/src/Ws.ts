@@ -73,11 +73,9 @@ const SOCKET_CLOSE_NORMAL = 1000;
 const SOCKET_CLOSE_UNSUPPORTED_DATA = 4003;
 const SOCKET_CLOSE_INTERNAL_ERROR = 4011;
 
-// Default: the Node 26+ global WebSocket, reached through globalThis so the lib
-// typing is not a compile dependency (tests always inject, so this path is
+// Default: the runtime's global WebSocket (tests always inject, so this path is
 // runtime-only). Fail-hard if the runtime lacks it.
-const connectGlobal: SocketFactory = (url) =>
-    new (globalThis as unknown as { WebSocket: new (u: string) => Socket }).WebSocket(url);
+const connectGlobal: SocketFactory = (url) => new WebSocket(url);
 
 export default class Ws implements SchemeHandler {
     static manifest: SchemeManifest = {

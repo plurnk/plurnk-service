@@ -1,4 +1,4 @@
-import { PlurnkParseError, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, type ParsedPath, type UrlPath } from "@plurnk/plurnk-contracts";
 
 const EXPLICIT_URI = /^[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -37,8 +37,8 @@ export const targetMembers = (target: ParsedPath, parsePath: (raw: string) => Pa
 
     try {
         const targets = members.map((member) => parsePath(member));
-        if (targets.some((member) => member?.kind !== "url")) return [target];
-        return targets as ParsedPath[];
+        if (!targets.every((member): member is UrlPath => member?.kind === "url")) return [target];
+        return targets;
     } catch (error) {
         if (error instanceof PlurnkParseError) return [target];
         throw error;

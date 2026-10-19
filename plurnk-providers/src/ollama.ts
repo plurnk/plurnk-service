@@ -1,12 +1,9 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";
 import { providerFromSdkModel } from "./catalogProvider.ts";
 import type { Provider, ProviderOptions } from "./types.ts";
 import { withoutNativeTools } from "./native-tools.ts";
-
-type ShowResponse = {
-    model_info?: Record<string, unknown>;
-};
 
 const fetchContextWindow = async ({
     baseUrl,
@@ -24,8 +21,9 @@ const fetchContextWindow = async ({
         ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
     });
     if (!response.ok) throw new Error(`ollama provider: /api/show returned ${response.status}`);
-    const data = await response.json() as ShowResponse;
-    for (const [key, value] of Object.entries(data.model_info ?? {})) {
+    const data: unknown = await response.json();
+    const info = isRecord(data) && isRecord(data.model_info) ? data.model_info : {};
+    for (const [key, value] of Object.entries(info)) {
         if (key.endsWith(".context_length") && typeof value === "number" && value > 0) return value;
     }
     throw new Error(`ollama provider: /api/show has no *.context_length key for "${model}"`);

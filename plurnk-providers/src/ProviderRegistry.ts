@@ -8,6 +8,7 @@
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.
 
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { AiSdkProviderExtension, Provider } from "./types.ts";
 import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
@@ -20,6 +21,11 @@ import Meta, {
     type ExtensionAttribution,
     type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
+
+// An AI SDK provider: an object or a callable that constructs language models by name.
+const isAiSdkProvider = (value: unknown): value is AiSdkProviderExtension =>
+    (typeof value === "object" || typeof value === "function") && value !== null
+    && "languageModel" in value && typeof value.languageModel === "function";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -76,8 +82,8 @@ export const instantiateProvider = async (
     } catch (cause) {
         throw new Error(`provider "${name}" resolves to ${specifier}, but importing it failed`, { cause });
     }
-    const sdkProvider = (mod as { default?: AiSdkProviderExtension }).default;
-    if (sdkProvider === undefined || typeof sdkProvider.languageModel !== "function") {
+    const sdkProvider = isRecord(mod) ? mod.default : undefined;
+    if (!isAiSdkProvider(sdkProvider)) {
         throw new Error(`${specifier} default export is not an AI SDK provider (missing languageModel)`);
     }
     if (baseUrl !== undefined) {

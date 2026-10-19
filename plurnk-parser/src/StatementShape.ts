@@ -1,4 +1,4 @@
-import type { KillStatement, PlurnkOp } from "@plurnk/plurnk-contracts";
+import { isPlurnkOp, type KillStatement, type PlurnkOp } from "@plurnk/plurnk-contracts";
 
 type BodyShape = "none" | "text" | "prose" | "mutation" | "distillation" | "annotation";
 type Selection = Pick<KillStatement, "target" | "lineMarker" | "metadata">;
@@ -16,7 +16,7 @@ export default class StatementShape {
             const { target } = selection;
             return target?.kind === "url" && target.scheme === "log" ? "distillation" : "none";
         }
-        return StatementShape.#BODIES[op as PlurnkOp] ?? "text";
+        return isPlurnkOp(op) ? StatementShape.#BODIES[op] : "text";
     }
 
     static requiresTarget(op: string): boolean {

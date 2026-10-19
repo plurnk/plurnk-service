@@ -1,4 +1,4 @@
-import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+import { MAX_TIMER_MS, isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
 /** {§agui-oauth-authority} The resources a credential of this daemon may name: the client interface, and the A2A exposure. */
@@ -71,13 +71,14 @@ const floorString = (options: ModuleOptions, env: NodeJS.ProcessEnv, option: key
 const readClient = (key: string, raw: string): DeclaredClient => {
     let parsed: unknown;
     try { parsed = JSON.parse(raw); } catch { throw new Error(`${key} must be a JSON object; got ${JSON.stringify(raw)}.`); }
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${key} must be a JSON object.`);
-    const { secret, scopes } = parsed as { secret?: unknown; scopes?: unknown };
+    if (!isRecord(parsed)) throw new Error(`${key} must be a JSON object.`);
+    const { secret, scopes } = parsed;
     if (typeof secret !== "string" || secret.length === 0) throw new Error(`${key} needs a non-empty "secret".`);
-    if (!Array.isArray(scopes) || scopes.length === 0 || scopes.some((scope) => typeof scope !== "string" || !SCOPES.includes(scope))) {
+    if (!Array.isArray(scopes) || scopes.length === 0
+        || !scopes.every((scope): scope is string => typeof scope === "string" && SCOPES.includes(scope))) {
         throw new Error(`${key} needs "scopes", a non-empty array from ${JSON.stringify(SCOPES)}.`);
     }
-    return { secret, scopes: Object.freeze([...new Set(scopes as string[])]) };
+    return { secret, scopes: Object.freeze([...new Set(scopes)]) };
 };
 
 // {§agui-oauth-clients} — every PLURNK_AGUI_CLIENT_<id> line declares one confidential client.

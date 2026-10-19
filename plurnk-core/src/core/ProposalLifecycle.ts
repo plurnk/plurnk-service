@@ -1,6 +1,6 @@
 import {
     InvalidOperationResultError,
-    PLURNK_OPS,
+    isPlurnkOp,
     TurnDisposition,
     Validator,
     isExecution,
@@ -399,9 +399,8 @@ export default class ProposalLifecycle {
         const invalid = (): Error => new Error(`Pending proposal ${row.logEntryId} has invalid operation ${JSON.stringify(row.op)}.`);
         if (TurnDisposition.isOp(row.op)) throw invalid();
         if (isExecutionOp(row.op)) return row.op;
-        const op = PLURNK_OPS.find((candidate) => candidate === row.op);
-        if (op === undefined) throw invalid();
-        return op;
+        if (!isPlurnkOp(row.op)) throw invalid();
+        return row.op;
     }
 
     static #objectJson(logEntryId: number, field: string, raw: string): Record<string, unknown> {

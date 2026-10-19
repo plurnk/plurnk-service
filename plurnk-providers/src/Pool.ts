@@ -86,9 +86,7 @@ export default class Pool implements Provider {
     }
     #minimumKnown(project: (provider: Provider) => number | null): number | null {
         const values = this.#backends.map(project);
-        return values.some((value) => value === null)
-            ? null
-            : Math.min(...values as number[]);
+        return values.every((value): value is number => value !== null) ? Math.min(...values) : null;
     }
     get maxInputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxInputTokens); }
     get maxOutputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxOutputTokens); }
@@ -191,9 +189,7 @@ export default class Pool implements Provider {
             };
         });
         const minimum = (values: readonly (number | null)[]): number | null =>
-            values.some((value) => value === null)
-                ? null
-                : Math.min(...values as number[]);
+            values.every((value): value is number => value !== null) ? Math.min(...values) : null;
         const measurement = await this.countPromptTokens(messages, signal);
         // {§provider-capacity-admission}: decided against the smallest member wall.
         const inputWall = minimum(envelopes.map((envelope) => envelope.inputWall));
@@ -270,7 +266,10 @@ export default class Pool implements Provider {
             return pinned;
         }
         const idx = this.#next++ % this.#backends.length;
-        if (this.#affinity.size >= this.#cap) this.#affinity.delete(this.#affinity.keys().next().value as string);
+        if (this.#affinity.size >= this.#cap) {
+            const oldest = this.#affinity.keys().next();
+            if (oldest.done !== true) this.#affinity.delete(oldest.value);
+        }
         this.#affinity.set(workerId, idx);
         return idx;
     }

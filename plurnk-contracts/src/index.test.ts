@@ -66,6 +66,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "formatJsonDocument",
         "isExecution",
         "isExecutionOp",
+        "isPlurnkOp",
         "isRecord",
         "isSafeInteger",
         "lifecycleOfLoopStatus",
@@ -74,6 +75,13 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "selectWorkerLoop",
         "writtenOp",
     ]);
+});
+
+test("{§canonical-statement} isPlurnkOp admits the operation alphabet and nothing else", () => {
+    for (const op of Contracts.PLURNK_OPS) assert.equal(Contracts.isPlurnkOp(op), true, op);
+    for (const other of ["find", "Read", "sh", "extension", "error", "", " FIND", null, undefined, 7, ["FIND"]]) {
+        assert.equal(Contracts.isPlurnkOp(other), false, JSON.stringify(other));
+    }
 });
 
 test("{§parser-position} unknown statement position is one frozen contracts-owned value", () => {

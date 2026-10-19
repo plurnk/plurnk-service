@@ -208,7 +208,8 @@ export default class AiSdkRequestBody {
         if (slot === undefined) {
             slot = this.#nextSlot++ % this.#slotCount;
             if (this.#runSlots.size >= this.#slotCount * 8) {
-                this.#runSlots.delete(this.#runSlots.keys().next().value as string);
+                const oldest = this.#runSlots.keys().next();
+                if (oldest.done !== true) this.#runSlots.delete(oldest.value);
             }
         } else {
             this.#runSlots.delete(workerId); // re-insert to refresh LRU recency

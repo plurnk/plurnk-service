@@ -48,7 +48,7 @@ export const inputModalitiesOf = (input: readonly string[] | undefined): Readonl
 
 const activationPolicies = Object.freeze(["off", "adaptive"] as const);
 
-const nativeEfforts = new Set<NativeEffort>([
+const nativeEfforts: ReadonlySet<string> = new Set<NativeEffort>([
     "minimal", "low", "medium", "high", "xhigh",
 ]);
 
@@ -137,7 +137,7 @@ const adaptiveEffortProjection = ({
     if (info !== undefined) {
         return {
             adaptiveEffort: adaptiveEffortFromEnv(env, catalogWireEfforts(info, declared)
-                .filter((effort): effort is NativeEffort => nativeEfforts.has(effort as NativeEffort))) ?? "provider-default",
+                .filter((effort): effort is NativeEffort => effort !== null && nativeEfforts.has(effort))) ?? "provider-default",
         };
     }
     return { adaptiveEffort: "provider-default" };
@@ -236,15 +236,16 @@ export const providerFromSdkModel = ({
     // {§operator-cost-override} (#461): the catalog is the starting point; a declared
     // override merges over it, and the estimate's source names the overlay.
     const costOverride = costOverrideFromEnv(env, name);
-    if (costOverride !== null && catalogRates === null
-        && (costOverride.input === undefined || costOverride.output === undefined)) {
-        throw new Error(
-            `${name} provider: PLURNK_PROVIDERS_COST without catalog rates must declare input and output`,
-        );
+    let rates = catalogRates;
+    if (costOverride !== null) {
+        const merged = { ...catalogRates, ...costOverride };
+        if (merged.input === undefined || merged.output === undefined) {
+            throw new Error(
+                `${name} provider: PLURNK_PROVIDERS_COST without catalog rates must declare input and output`,
+            );
+        }
+        rates = { ...merged, input: merged.input, output: merged.output };
     }
-    const rates = costOverride === null
-        ? catalogRates
-        : { ...catalogRates, ...costOverride } as NonNullable<typeof catalogRates>;
     const rateSource = costOverride === null
         ? "Models.dev catalog rates"
         : "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates";

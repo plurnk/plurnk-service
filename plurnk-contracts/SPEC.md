@@ -1524,7 +1524,7 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 | `PathSyntax`                                        | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}         |
 | `TurnDisposition`                                   | The one turn disposition and its recognition                        | {§turn-disposition}                       |
 | `CapabilityAdmission`                               | Admission of a capability descriptor against policy layers          | {§capability-admission}                   |
-| `PLURNK_OPS`, `INTERNAL_ROW_OPS`, `PLURNK_FENCE`    | The closed operation alphabet and the language's fence              | {§canonical-statement}                    |
+| `PLURNK_OPS`, `isPlurnkOp`, `INTERNAL_ROW_OPS`, `PLURNK_FENCE` | The closed operation alphabet, its membership test, and the language's fence | {§canonical-statement} |
 | `PROPOSAL_POLICIES` | Server proposal disposition vocabulary | {§proposal-policy} |
 | `WORKER_NAME`                                       | Authority minting predicate                                         | {§worker-name}                            |
 | `UNKNOWN_POSITION`                                  | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                        |

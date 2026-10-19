@@ -158,12 +158,19 @@ const templateEnvironmentNames = (value: string | undefined): readonly string[] 
     ? []
     : [...new Set([...value.matchAll(/\$\{([A-Z0-9_]+)\}/g)].map((match) => match[1]))];
 
+// A list the readiness contract requires to name at least one item: built, never claimed.
+const nonEmpty = <T>(items: readonly T[], subject: string): [T, ...T[]] => {
+    if (items.length === 0) throw new TypeError(`A model readiness cause names no ${subject}.`);
+    const [first, ...rest] = items;
+    return [first, ...rest];
+};
+
 const missingCause = (
     kind: ModelReadinessCause["kind"],
     alternatives: readonly (readonly string[])[],
 ): ModelReadinessCause => ({
     kind,
-    alternatives: alternatives.map((alternative) => [...alternative]) as ModelReadinessCause["alternatives"],
+    alternatives: nonEmpty(alternatives.map((alternative) => nonEmpty(alternative, "variable in an alternative")), "alternative"),
 });
 
 const bedrockReadinessCauses = (

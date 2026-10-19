@@ -58,6 +58,6 @@ export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
-export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, writtenOp, EFFORTS, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";
+export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, isPlurnkOp, writtenOp, EFFORTS, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

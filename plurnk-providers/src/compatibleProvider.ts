@@ -1,4 +1,4 @@
-import { EFFORTS } from "@plurnk/plurnk-contracts";
+import { EFFORTS, isRecord } from "@plurnk/plurnk-contracts";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
@@ -52,12 +52,11 @@ const probeModels = async (
             ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
         if (!response.ok) return { nCtx: null, llamaServer: false, servedModel: null, failed: true };
-        const data = await response.json() as {
-            data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }>;
-        };
-        const rows = data.data ?? [];
-        const row = rows.find((candidate) => candidate.id === model) ?? rows[0];
-        const nCtx = row?.meta?.n_ctx ?? row?.n_ctx;
+        const data: unknown = await response.json();
+        const rows = isRecord(data) && Array.isArray(data.data) ? data.data.filter(isRecord) : [];
+        const row = rows.find((candidate) => candidate.id === model) ?? rows.at(0);
+        const meta = row?.meta;
+        const nCtx = (isRecord(meta) ? meta.n_ctx : undefined) ?? row?.n_ctx;
         return {
             nCtx: typeof nCtx === "number" && nCtx > 0 ? nCtx : null,
             llamaServer: row?.meta !== undefined,
@@ -97,10 +96,11 @@ const probeProps = async (
             ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
         if (!response.ok) return { slotCount: null, eosText: null };
-        const data = await response.json() as { total_slots?: number; eos_token?: string };
+        const data: unknown = await response.json();
+        const props: Readonly<Record<string, unknown>> = isRecord(data) ? data : {};
         return {
-            slotCount: typeof data.total_slots === "number" && data.total_slots > 0 ? data.total_slots : null,
-            eosText: typeof data.eos_token === "string" && data.eos_token.length > 0 ? data.eos_token : null,
+            slotCount: typeof props.total_slots === "number" && props.total_slots > 0 ? props.total_slots : null,
+            eosText: typeof props.eos_token === "string" && props.eos_token.length > 0 ? props.eos_token : null,
         };
     } catch {
         return { slotCount: null, eosText: null };

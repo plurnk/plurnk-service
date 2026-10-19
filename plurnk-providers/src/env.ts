@@ -110,6 +110,7 @@ export const cacheAffinityDeclarationFromEnv = (env: NodeJS.ProcessEnv, provider
     let value: unknown;
     try { value = JSON.parse(raw); } catch (cause) { throw new TypeError(`${key} must be a cache-affinity declaration or null`, { cause }); }
     if (value === null) return undefined;
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the cache-affinity schema just proved the declaration its type names
     const field = Validator.assertJsonSchemaInstance(key, cacheAffinitySchema, value) as CacheAffinity;
     if (field.target === "header") {
         try { new Headers({ [field.name]: "worker" }); }
@@ -308,12 +309,14 @@ export const resolveGenerationEnvelopeFromEnv = (
 // intent, never mechanism. working memory is separate from provider reasoning.
 export type EffortSetting = { mode: Effort; budget: number | null };
 
+// An effort the effort schema admits.
+const isEffort = (value: unknown): value is Effort => Validator.validateEffort(value).valid;
+
 export const parseEffort = (value: unknown, label: string): Effort => {
-    const result = Validator.validateEffort(value);
-    if (!result.valid) {
+    if (!isEffort(value)) {
         throw new Error(`${label} must be one of ${EFFORTS.map((policy) => `"${policy}"`).join(", ")} (got "${String(value)}")`);
     }
-    return value as Effort;
+    return value;
 };
 
 export type ReasoningResponseStyle = "verbatim" | "think-tags";

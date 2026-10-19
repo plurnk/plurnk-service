@@ -1,5 +1,5 @@
 import { BaseErrorListener, CommonTokenStream, ListTokenSource, type Token } from "antlr4ng";
-import { PLURNK_OPS, PlurnkParseError, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, isPlurnkOp, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
@@ -17,7 +17,7 @@ export default class HeadingReader {
     // what follows. A slot opener suffices even when its slot is malformed, so it receives a diagnostic.
     static opens(name: string, suffix: string, executors: ReadonlySet<string>, reasoning: boolean): boolean {
         if (reasoning) return isReasoningOperation(name);
-        if ((PLURNK_OPS as readonly string[]).includes(name)) return true;
+        if (isPlurnkOp(name)) return true;
         const lower = name.toLowerCase();
         for (const executor of executors) if (executor.toLowerCase() === lower) return true;
         const next = suffix.replace(/^[ \t]*/u, "");

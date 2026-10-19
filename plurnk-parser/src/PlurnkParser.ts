@@ -16,7 +16,7 @@ import {
     type ParseResult,
     type PlurnkStatement,
     type Position,
-    type ResourceSelection,PLURNK_OPS,writtenOp
+    type ResourceSelection, isPlurnkOp, writtenOp,
 } from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
@@ -384,7 +384,7 @@ export default class PlurnkParser {
             if (token.type !== plurnkLexer.TEXT || token.column !== 0) continue;
             if (quoted.some(({ start, end }) => token.start >= start && token.start < end)) continue;
             const native = /^[A-Z]+(?=$|[(<[])/u.exec(token.text ?? "")?.[0];
-            const name = native !== undefined && (PLURNK_OPS as readonly string[]).includes(native)
+            const name = isPlurnkOp(native)
                 ? native
                 : PlurnkParser.#unfencedExecutor(tokens, index, lower);
             if (name === undefined) continue;

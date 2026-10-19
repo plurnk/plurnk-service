@@ -1,11 +1,11 @@
 import {
     BaseErrorListener,
-    type Parser,
+    Parser,
     type RecognitionException,
     type Recognizer,
     type Token,
 } from "antlr4ng";
-import type { plurnkLexer } from "./generated/plurnkLexer.ts";
+import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { PlurnkParseError } from "@plurnk/plurnk-contracts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import StatementShape from "./StatementShape.ts";
@@ -29,13 +29,13 @@ export default class RecordingListener extends BaseErrorListener {
         msg: string,
         _e: RecognitionException | null,
     ): void {
-        const translated = this.source === "lexer"
-            ? PlurnkErrorStrategy.translateLexerMessage(recognizer as plurnkLexer, msg)
+        const translated = recognizer instanceof plurnkLexer
+            ? PlurnkErrorStrategy.translateLexerMessage(recognizer, msg)
             : msg;
         // {§parse-recovery}: a refused heading names the operation's working form.
-        const open = this.source === "lexer"
-            ? { op: (recognizer as plurnkLexer).getOpenOp(), exec: (recognizer as plurnkLexer).isExecFence() }
-            : PlurnkErrorStrategy.parserOpenOp(recognizer as Parser);
+        const open = recognizer instanceof plurnkLexer
+            ? { op: recognizer.getOpenOp(), exec: recognizer.isExecFence() }
+            : recognizer instanceof Parser ? PlurnkErrorStrategy.parserOpenOp(recognizer) : null;
         const recovery = open === null || open.op === "" ? undefined : StatementShape.workingForm(open.op, open.exec);
         this.errors.push(new PlurnkParseError(line, column, this.source, translated, "error", recovery));
     }
