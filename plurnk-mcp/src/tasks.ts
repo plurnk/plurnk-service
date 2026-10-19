@@ -11,6 +11,7 @@ import {
     type Tool,
 } from "@modelcontextprotocol/client";
 import { setTimeout as delay } from "node:timers/promises";
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type ExtensionChannel from "./extensionChannel.ts";
 import {
     resolveInputRequests,
@@ -77,10 +78,10 @@ export interface TaskCallOptions {
     readonly subscriptions: Subscriptions;
 }
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-    value !== null && typeof value === "object" && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
+const asRecord = (value: unknown): Record<string, unknown> | undefined => isRecord(value) ? value : undefined;
+
+const TASK_STATUSES: readonly TaskStatus[] = ["working", "input_required", "completed", "failed", "cancelled"];
+const isTaskStatus = (value: unknown): value is TaskStatus => TASK_STATUSES.some((status) => status === value);
 
 const issueText = (issues: readonly { message: string; path?: readonly unknown[] }[]): string =>
     issues.map((issue) => issue.path?.length
@@ -123,13 +124,7 @@ const parseTask = (
         throw protocolShapeError(surface, `taskId '${taskId}' does not match '${expectedTaskId}'.`);
     }
     const status = record.status;
-    if (![
-        "working",
-        "input_required",
-        "completed",
-        "failed",
-        "cancelled",
-    ].includes(String(status))) {
+    if (!isTaskStatus(status)) {
         throw protocolShapeError(surface, `'status' is not a current Tasks status.`);
     }
     const statusMessage = record.statusMessage;
@@ -139,24 +134,24 @@ const parseTask = (
     const createdAt = requireString(record, "createdAt", surface);
     const lastUpdatedAt = requireString(record, "lastUpdatedAt", surface);
     const ttlMs = record.ttlMs;
-    if (ttlMs !== null && (!Number.isSafeInteger(ttlMs) || (ttlMs as number) < 0)) {
+    if (ttlMs !== null && (!isSafeInteger(ttlMs) || ttlMs < 0)) {
         throw protocolShapeError(surface, "'ttlMs' must be a non-negative integer or null.");
     }
     const pollIntervalMs = record.pollIntervalMs;
     if (
         pollIntervalMs !== undefined
-        && (!Number.isSafeInteger(pollIntervalMs) || (pollIntervalMs as number) < 0)
+        && (!isSafeInteger(pollIntervalMs) || pollIntervalMs < 0)
     ) {
         throw protocolShapeError(surface, "'pollIntervalMs' must be a non-negative integer.");
     }
     return {
         taskId,
-        status: status as TaskStatus,
+        status,
         createdAt,
         lastUpdatedAt,
-        ttlMs: ttlMs as number | null,
+        ttlMs,
         ...(statusMessage === undefined ? {} : { statusMessage }),
-        ...(pollIntervalMs === undefined ? {} : { pollIntervalMs: pollIntervalMs as number }),
+        ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
     };
 };
 
@@ -184,7 +179,7 @@ const parseDetailedTask = (
         const error = asRecord(record.error);
         if (
             error === undefined
-            || !Number.isSafeInteger(error.code)
+            || !isSafeInteger(error.code)
             || typeof error.message !== "string"
         ) {
             throw protocolShapeError(surface, "failed status omitted its JSON-RPC error.");
@@ -193,7 +188,7 @@ const parseDetailedTask = (
             ...task,
             status: "failed",
             error: {
-                code: error.code as number,
+                code: error.code,
                 message: error.message,
                 ...(error.data === undefined ? {} : { data: error.data }),
             },
@@ -207,9 +202,9 @@ const parseInputRequiredResult = (value: unknown): InputRequiredResult => {
     if (record?.resultType !== "input_required") {
         throw protocolShapeError("tools/call result", "expected resultType 'input_required'.");
     }
-    const inputRequests = record.inputRequests;
+    const inputRequests = record.inputRequests === undefined ? undefined : asRecord(record.inputRequests);
     const requestState = record.requestState;
-    if (inputRequests !== undefined && asRecord(inputRequests) === undefined) {
+    if (record.inputRequests !== undefined && inputRequests === undefined) {
         throw protocolShapeError("tools/call result", "'inputRequests' must be an object.");
     }
     if (requestState !== undefined && typeof requestState !== "string") {
@@ -223,9 +218,10 @@ const parseInputRequiredResult = (value: unknown): InputRequiredResult => {
     }
     return {
         resultType: "input_required",
-        ...(inputRequests === undefined
-            ? {}
-            : { inputRequests: inputRequests as InputRequiredResult["inputRequests"] }),
+        // The SDK declares the input requests it will resolve and ships no validator for them; the adapter proves an
+        // object here, and `resolveInputRequests` reads each request as the SDK types it.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the stated boundary above
+        ...(inputRequests === undefined ? {} : { inputRequests: inputRequests as InputRequiredResult["inputRequests"] }),
         ...(requestState === undefined ? {} : { requestState }),
     };
 };
@@ -246,6 +242,9 @@ const validateToolInput = async (
     tool: Tool,
     args: Record<string, unknown>,
 ): Promise<void> => {
+    // A tool's input schema is JSON Schema by the protocol; the SDK declares it and the validator's input type under two
+    // names, and this is the one place the tool's schema takes the validator's.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the stated boundary above
     const validator = fromJsonSchema(tool.inputSchema as JsonSchemaType);
     const parsed = await validator["~standard"].validate(args);
     if (parsed.issues !== undefined) {
@@ -495,8 +494,8 @@ export const callToolWithTasks = async (options: TaskCallOptions): Promise<CallT
             requestOptions.onprogress,
         ),
     });
-    if ((initial as { resultType?: unknown }).resultType === "task") {
-        return driveTask(initial as CreateTaskResult, options, startedAt + options.timeout);
+    if (isRecord(initial) && initial.resultType === "task") {
+        return driveTask({ ...parseTask(initial, "creation result"), resultType: "task" }, options, startedAt + options.timeout);
     }
     return validateToolOutput(options.tool, initial);
 };

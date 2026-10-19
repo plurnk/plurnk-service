@@ -142,7 +142,8 @@ export interface EditCensus {
     edits: number;
     refused: number;   // status >= 400
     revisits: number;  // an EDIT of a path this worker edited within its previous two model turns
-    forms: Record<EditForm, number>;
+    // Every EditForm's count, keyed by its name: built from EDIT_FORMS, so each form is present.
+    forms: Record<string, number>;
 }
 // {§exec-env-scoped} — one output's recorded environment; `stream` is the log row's stream address.
 export interface ExecutionEnvironmentRow { workspace_id: number; stream: string; env: string }

@@ -1,4 +1,4 @@
-import type { LineMarker, ReadStatement } from "@plurnk/plurnk-contracts";
+import { isRecord, isSafeInteger, type LineMarker, type ReadStatement } from "@plurnk/plurnk-contracts";
 import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
@@ -20,11 +20,11 @@ import PatternEdits from "./pattern-edits.ts";
 // {§packet-attachment-parts} — a projected image member names its picture: source mimetype and
 // the handler's dimensions, read from the member's projection facts, never from the bytes.
 const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; width: number; height: number; bytes: number } | null => {
-    const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { width?: unknown; height?: unknown; bytes?: unknown } } | undefined;
-    if (projection === undefined || typeof projection.mimetype !== "string" || !projection.mimetype.startsWith("image/")) return null;
+    const projection = attributes?.sourceProjection;
+    if (!isRecord(projection) || typeof projection.mimetype !== "string" || !projection.mimetype.startsWith("image/")) return null;
     const facts = projection.facts;
-    if (facts === undefined || !Number.isSafeInteger(facts.width) || !Number.isSafeInteger(facts.height) || !Number.isSafeInteger(facts.bytes)) return null;
-    return { mimetype: projection.mimetype, width: facts.width as number, height: facts.height as number, bytes: facts.bytes as number };
+    if (!isRecord(facts) || !isSafeInteger(facts.width) || !isSafeInteger(facts.height) || !isSafeInteger(facts.bytes)) return null;
+    return { mimetype: projection.mimetype, width: facts.width, height: facts.height, bytes: facts.bytes };
 };
 
 // {§packet-attachment-parts} — a projected PDF member names its document: source mimetype, the
@@ -36,21 +36,21 @@ const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
 };
 
 const documentOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; pages: number | null; bytes: number } | null => {
-    const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { pages?: unknown; bytes?: unknown } } | undefined;
-    if (projection === undefined || projection.mimetype !== "application/pdf") return null;
+    const projection = attributes?.sourceProjection;
+    if (!isRecord(projection) || projection.mimetype !== "application/pdf") return null;
     const facts = projection.facts;
-    if (facts === undefined || !Number.isSafeInteger(facts.bytes)) return null;
-    const pages = Number.isSafeInteger(facts.pages) ? facts.pages as number : null;
-    return { mimetype: projection.mimetype, pages, bytes: facts.bytes as number };
+    if (!isRecord(facts) || !isSafeInteger(facts.bytes)) return null;
+    const pages = isSafeInteger(facts.pages) ? facts.pages : null;
+    return { mimetype: projection.mimetype, pages, bytes: facts.bytes };
 };
 
 const audioOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; duration: number | null; bytes: number } | null => {
-    const projection = attributes?.sourceProjection as { mimetype?: unknown; facts?: { duration?: unknown; bytes?: unknown } } | undefined;
-    if (typeof projection?.mimetype !== "string" || !projection.mimetype.startsWith("audio/")) return null;
+    const projection = attributes?.sourceProjection;
+    if (!isRecord(projection) || typeof projection.mimetype !== "string" || !projection.mimetype.startsWith("audio/")) return null;
     const facts = projection.facts;
-    if (facts === undefined || !Number.isSafeInteger(facts.bytes)) return null;
+    if (!isRecord(facts) || !isSafeInteger(facts.bytes)) return null;
     const duration = typeof facts.duration === "number" && Number.isFinite(facts.duration) && facts.duration >= 0 ? facts.duration : null;
-    return { mimetype: projection.mimetype, duration, bytes: facts.bytes as number };
+    return { mimetype: projection.mimetype, duration, bytes: facts.bytes };
 };
 
 export interface AnchoredReadResult extends EntryReadResult {
@@ -201,8 +201,9 @@ export default class ReadProjector {
             };
         }
         const attributes = opts.representation.attributes;
-        const sourceProjection = attributes?.sourceProjection as { mimetype?: string } | undefined;
-        const mimetype = sourceProjection?.mimetype ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;
+        const sourceProjection = attributes?.sourceProjection;
+        const projected = isRecord(sourceProjection) && typeof sourceProjection.mimetype === "string" ? sourceProjection.mimetype : undefined;
+        const mimetype = projected ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;
         const native = mimetype?.startsWith("image/") || mimetype?.startsWith("audio/") || mimetype === "application/pdf";
         const selected = opts.statement.target?.fragment ?? opts.manifest.defaultChannel;
         const mediaView = selected === opts.manifest.defaultChannel || selected === ByteView.CHANNEL || selected === "readable";
@@ -261,14 +262,14 @@ export default class ReadProjector {
             detail: string,
             fields: Readonly<Record<string, unknown>> = {},
             extensions: Readonly<Record<string, unknown>> = {},
-        ): EntryReadResult => Results.failure(
-            `scheme:${manifest.name}`,
-            code,
-            status,
-            detail,
-            { content: null, mimetype: null, channel, ...fields },
-            extensions,
-        ) as EntryReadResult;
+        ): EntryReadResult => ({
+            // {§read-selection-projection} The failure is a read result: the members a read result names, then the
+            // scheme's own fields, as the failure builder lays them out.
+            ...Results.failure(`scheme:${manifest.name}`, code, status, detail, { content: null, mimetype: null, channel, ...fields }, extensions),
+            content: null,
+            mimetype: null,
+            channel,
+        });
 
         // {§read-bytes} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
         if (selected === ByteView.CHANNEL && !Object.hasOwn(manifest.channels, selected)) {

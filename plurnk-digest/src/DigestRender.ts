@@ -7,9 +7,8 @@ import {
     type ProviderAccounting,
     type ProviderRequestAccounting,
     type ChatMessage,
-    type ProviderRequestCapture,
 } from "@plurnk/plurnk-providers";
-import { Validator, type OperationResult, type ProblemDetails, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type OperationResult, type ProblemDetails, isExecutionOp } from "@plurnk/plurnk-contracts";
 import type {
     WorkerRow,
     LoopRow,
@@ -129,7 +128,8 @@ export default class DigestRender {
 
     static #renderStream(le: LogRow): string | null {
         if (!isExecutionOp(le.op)) return null;
-        const stream = (DigestRender.parseJson(le.attrs, {}) as { stream?: unknown }).stream;
+        const attrs = DigestRender.parseJson(le.attrs, {});
+        const stream = isRecord(attrs) ? attrs.stream : undefined;
         return typeof stream === "string" ? stream : null;
     }
 
@@ -138,11 +138,11 @@ export default class DigestRender {
     // stay in digest.json. Part of the rendered line, so spawns under different environments never
     // collapse into one group.
     static envLine(env: unknown): string | null {
-        if (env === undefined || env === null || typeof env !== "object") return null;
+        if (!isRecord(env)) return null;
         const host: string[] = [];
         const rest: string[] = [];
-        for (const [name, raw] of Object.entries(env as Record<string, unknown>).toSorted(([left], [right]) => left.localeCompare(right))) {
-            const record = raw as { source?: unknown; from?: unknown; value?: unknown };
+        for (const [name, raw] of Object.entries(env).toSorted(([left], [right]) => left.localeCompare(right))) {
+            const record: Readonly<Record<string, unknown>> = isRecord(raw) ? raw : {};
             const from = typeof record.from === "string" ? record.from : null;
             if (record.source === "host") host.push(name);
             else if (record.source === "masked") rest.push(`${name} (masked${from === null ? "" : ` by ${from}`})`);
@@ -184,7 +184,8 @@ export default class DigestRender {
     }
 
     static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
-        const attrs = DigestRender.parseJson(row.attrs, {}) as { kind?: unknown };
+        const parsedAttrs = DigestRender.parseJson(row.attrs, {});
+        const attrs: Readonly<Record<string, unknown>> = isRecord(parsedAttrs) ? parsedAttrs : {};
         // {§emission-row}: the announcement of an admitted emission, and whether the model retired it.
         if (row.op === "READ" && attrs.kind === "emission") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", DigestRender.#environmentOf(row, m));
@@ -232,9 +233,9 @@ export default class DigestRender {
     // badge — the digest mirror of the strike rail's exemption (#425 F1).
     static #isExecutorEvidence(le: LogRow): boolean {
         if (le.status_rx < 400 || le.rx === null) return false;
-        const rx = DigestRender.parseJson(le.rx, null) as { problem?: { type?: unknown } } | null;
-        return typeof rx?.problem?.type === "string"
-            && rx.problem.type.startsWith("https://problems.plurnk.xyz/executor/");
+        const rx = DigestRender.parseJson(le.rx, null);
+        const problem = isRecord(rx) && isRecord(rx.problem) ? rx.problem : null;
+        return typeof problem?.type === "string" && problem.type.startsWith("https://problems.plurnk.xyz/executor/");
     }
 
     // {§digest-capacity-evidence} (#1096) — a 413 is the capacity contract working: a result that did
@@ -287,7 +288,8 @@ export default class DigestRender {
     static editForm(row: Pick<EditRow, "line_marker" | "pattern">): EditForm {
         if (row.pattern !== null) return "pattern";
         if (row.line_marker === null) return "whole";
-        const { marks } = DigestRender.parseJson(row.line_marker, { marks: [] }) as { marks: Array<number | string> };
+        const marker = DigestRender.parseJson(row.line_marker, { marks: [] });
+        const marks: readonly unknown[] = isRecord(marker) && Array.isArray(marker.marks) ? marker.marks : [];
         if (marks.length === 1) {
             const [mark] = marks;
             if (typeof mark === "string") return "hash";
@@ -324,13 +326,13 @@ export default class DigestRender {
         const formById = new Map<number, EditForm>();
         const revisitById = new Set<number>();
         for (const [workerId, rows] of m.editRowsByWorker) {
-            const census: EditCensus = { edits: 0, refused: 0, revisits: 0, forms: Object.fromEntries(EDIT_FORMS.map((form) => [form, 0])) as Record<EditForm, number> };
+            const census: EditCensus = { edits: 0, refused: 0, revisits: 0, forms: Object.fromEntries(EDIT_FORMS.map((form) => [form, 0])) };
             const lastEdited = new Map<string, number>();
             for (const row of rows) {
                 const form = DigestRender.editForm(row);
                 formById.set(row.id, form);
                 census.edits += 1;
-                census.forms[form] += 1;
+                census.forms[form] = (census.forms[form] ?? 0) + 1;
                 if (row.status_rx >= 400) census.refused += 1;
                 const at = ordinal.get(row.turn_id);
                 if (at === undefined) throw new TypeError(`EDIT ${row.id} sits on a turn no model produced`);
@@ -349,7 +351,7 @@ export default class DigestRender {
 
     static #renderEditCensus(census: EditCensus | undefined): string {
         if (census === undefined || census.edits === 0) return "(no edits)";
-        const forms = EDIT_FORMS.filter((form) => census.forms[form] > 0).map((form) => `${form}=${census.forms[form]}`).join(" ");
+        const forms = EDIT_FORMS.filter((form) => (census.forms[form] ?? 0) > 0).map((form) => `${form}=${census.forms[form] ?? 0}`).join(" ");
         return `${census.edits} · ${forms} · refused=${census.refused} · revisits=${census.revisits}`;
     }
 
@@ -408,7 +410,7 @@ export default class DigestRender {
         if (entries.length === 0) return "";
         const sum = (values: Array<number | null>): string => values.some((value) => value === null)
             ? "?"
-            : String(values.reduce<number>((total, value) => total + (value as number), 0));
+            : String(values.reduce<number>((total, value) => total + (value ?? 0), 0));
         return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.inputTokens))}`;
     }
 
@@ -417,8 +419,8 @@ export default class DigestRender {
         const entries = DigestRender.#cacheEntries(requests, m);
         const reported = entries.filter((entry) => entry.cachedTokens !== null && entry.inputTokens !== null);
         const unreported = entries.length - reported.length;
-        const cached = reported.reduce((total, entry) => total + (entry.cachedTokens as number), 0);
-        const input = reported.reduce((total, entry) => total + (entry.inputTokens as number), 0);
+        const cached = reported.reduce((total, entry) => total + (entry.cachedTokens ?? 0), 0);
+        const input = reported.reduce((total, entry) => total + (entry.inputTokens ?? 0), 0);
         const pct = input === 0 ? "n/a" : `${((100 * cached) / input).toFixed(1)}%`;
         const plural = (n: number): string => n === 1 ? "request" : "requests";
         return [
@@ -454,8 +456,9 @@ export default class DigestRender {
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed transport metadata; absence makes no claim
         // about endpoint-owned settings. {§operator-grammar}
-        const tm = DigestRender.parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string } | null;
-        const attached = tm?.railsAttached;
+        const tm = DigestRender.parseJson(turn.meta ?? "null", null);
+        const railsFlag = isRecord(tm) ? tm.railsAttached : undefined;
+        const attached = typeof railsFlag === "boolean" || typeof railsFlag === "string" ? railsFlag : undefined;
         const rails = attached === undefined || attached === false ? ""
             : ` rails=${attached === true ? "client" : attached}`;
         const model = turn.model ?? "—";
@@ -516,20 +519,24 @@ export default class DigestRender {
 
     // {§provider-wire-emission} — public so the line can be witnessed on its own.
     static wireLine(assistantRaw: unknown): string | null {
-        const wire = typeof assistantRaw === "object" && assistantRaw !== null ? (assistantRaw as { wire?: unknown }).wire : undefined;
-        if (typeof wire !== "object" || wire === null) return null;
-        const { chunks, emptyChunks, fields, channels, toolCalls, unmappedChunks } = wire as {
-            chunks?: number; emptyChunks?: number; fields?: Record<string, number>; channels?: Record<string, string>;
-            toolCalls?: ReadonlyArray<{ name?: string; arguments: string }>;
-            unmappedChunks?: readonly unknown[];
-        };
+        const wire = isRecord(assistantRaw) && isRecord(assistantRaw.wire) ? assistantRaw.wire : null;
+        if (wire === null) return null;
+        const chunks = typeof wire.chunks === "number" ? wire.chunks : 0;
+        const emptyChunks = typeof wire.emptyChunks === "number" ? wire.emptyChunks : 0;
+        const fields = isRecord(wire.fields) ? wire.fields : {};
+        const channels = isRecord(wire.channels) ? wire.channels : {};
+        const toolCalls: readonly unknown[] = Array.isArray(wire.toolCalls) ? wire.toolCalls : [];
+        const unmappedChunks: readonly unknown[] = Array.isArray(wire.unmappedChunks) ? wire.unmappedChunks : [];
         const parts = [
-            `${chunks ?? 0} chunks`,
-            (emptyChunks ?? 0) > 0 ? `${emptyChunks} carried nothing` : null,
-            ...Object.entries(fields ?? {}).map(([field, count]) => `${field}×${count}`),
-            ...(toolCalls ?? []).map((call) => `tool call ${call.name ?? "?"}(${DigestRender.#summarize(call.arguments, 60)})`),
-            ...Object.entries(channels ?? {}).map(([channel, text]) => `${channel}: ${DigestRender.#summarize(text, 60)}`),
-            (unmappedChunks?.length ?? 0) > 0 ? `${unmappedChunks!.length} unmapped frames retained` : null,
+            `${chunks} chunks`,
+            emptyChunks > 0 ? `${emptyChunks} carried nothing` : null,
+            ...Object.entries(fields).map(([field, count]) => `${field}×${String(count)}`),
+            ...toolCalls.map((call) => {
+                const name = isRecord(call) && typeof call.name === "string" ? call.name : "?";
+                return `tool call ${name}(${DigestRender.#summarize(isRecord(call) ? call.arguments : undefined, 60)})`;
+            }),
+            ...Object.entries(channels).map(([channel, text]) => `${channel}: ${DigestRender.#summarize(text, 60)}`),
+            unmappedChunks.length > 0 ? `${unmappedChunks.length} unmapped frames retained` : null,
         ].filter((part) => part !== null);
         return `  ↳ wire: ${parts.join(", ")}`;
     }
@@ -609,17 +616,18 @@ export default class DigestRender {
                 const packet = m.evidence.packet(turn).packet;
                 if (packet === null || packet.budget === null || packet.budget === 0 || packet.weight === 0) continue;
                 const call = m.modelCalls.findLast((row) => row.turn_id === turn.id && row.kind === "emission" && row.capacity !== null);
-                const capacity = DigestRender.parseJson(call?.capacity) as {
-                    inputCapacity?: number | null; inputWall?: number | null; prompt?: { kind?: string; tokens?: number };
-                } | null;
-                if (capacity?.inputCapacity == null || capacity.inputWall == null) continue;
+                const capacity = DigestRender.parseJson(call?.capacity);
+                const inputCapacity = isRecord(capacity) ? capacity.inputCapacity : undefined;
+                const inputWall = isRecord(capacity) ? capacity.inputWall : undefined;
+                if (typeof inputCapacity !== "number" || typeof inputWall !== "number") continue;
                 const reported = (m.requestsByTurn.get(turn.id) ?? [])
                     .findLast((row) => row.kind === "emission" && row.outcome === "response" && row.usage_input !== null)?.usage_input ?? null;
-                const count = capacity.prompt?.kind === "exact" ? capacity.prompt.tokens ?? null : reported;
+                const prompt = isRecord(capacity) && isRecord(capacity.prompt) ? capacity.prompt : null;
+                const count = prompt?.kind === "exact" ? (typeof prompt.tokens === "number" ? prompt.tokens : null) : reported;
                 if (count === null || count === 0) continue;
                 measures.push({
-                    weight: packet.weight, budget: packet.budget, capacity: capacity.inputCapacity, wall: capacity.inputWall, count,
-                    estimate: Math.ceil(packet.weight * capacity.inputCapacity / packet.budget),
+                    weight: packet.weight, budget: packet.budget, capacity: inputCapacity, wall: inputWall, count,
+                    estimate: Math.ceil(packet.weight * inputCapacity / packet.budget),
                 });
             }
         }
@@ -752,10 +760,10 @@ export default class DigestRender {
             }
             for (const attempt of attempts) {
                 const retainedResponse = m.evidence.response(attempt.model_call_id);
-                const response = DigestRender.parseJson(retainedResponse, {}) as {
-                    assistant?: { reasoning?: unknown };
-                };
-                const parseErrors = DigestRender.parseJson(attempt.parse_errors, []) as Array<{ message?: unknown }>;
+                const response = DigestRender.parseJson(retainedResponse, {});
+                const assistant = isRecord(response) && isRecord(response.assistant) ? response.assistant : null;
+                const parsedErrors = DigestRender.parseJson(attempt.parse_errors, []);
+                const parseErrors: readonly unknown[] = Array.isArray(parsedErrors) ? parsedErrors : [];
                 lines.push("");
                 const disposition = attempt.state === "error"
                     ? "call error"
@@ -765,7 +773,8 @@ export default class DigestRender {
                             ? "admitted"
                             : "rejected";
                 lines.push(`### Attempt ${attempt.sequence} - ${disposition}`);
-                const attributions = DigestRender.parseJson(attempt.attributions, []) as unknown[];
+                const parsedAttributions = DigestRender.parseJson(attempt.attributions, []);
+                const attributions: readonly unknown[] = Array.isArray(parsedAttributions) ? parsedAttributions : [];
                 lines.push(`Attributions: ${attributions.length === 0 ? "(none)" : attributions.join(", ")}`);
                 if (attempt.failure !== null) {
                     lines.push(`Failure: ${JSON.stringify(DigestRender.parseJson(attempt.failure, attempt.failure))}`);
@@ -775,11 +784,12 @@ export default class DigestRender {
                 }
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
-                        if (typeof error.message === "string") lines.push(`- ${error.message}`);
+                        const message = isRecord(error) ? error.message : undefined;
+                        if (typeof message === "string") lines.push(`- ${message}`);
                     }
                     lines.push("");
                 }
-                const reasoning = response.assistant?.reasoning ?? null;
+                const reasoning = assistant?.reasoning ?? null;
                 if (typeof reasoning === "string" && reasoning.length > 0) lines.push(DigestRender.#literal(reasoning));
                 else if (retainedResponse === null && attempt.state === "response") lines.push("(response evidence is not retained; readable reasoning availability is unknown)");
                 else {
@@ -862,8 +872,8 @@ export default class DigestRender {
     static #physicalRequest(m: DigestModel, request: ProviderRequestRow, evidence: unknown): string {
         const from = `requests/${request.id}.md`;
         const turn = m.turns.find(({ id }) => id === request.turn_id);
-        const fields = typeof evidence === "object" && evidence !== null ? evidence as Record<string, unknown> : {};
-        const capture = fields.request as Partial<ProviderRequestCapture> | undefined;
+        const fields: Readonly<Record<string, unknown>> = isRecord(evidence) ? evidence : {};
+        const capture = isRecord(fields.request) ? fields.request : undefined;
         const lines = [
             `# Physical request ${request.id}`,
             [DigestRender.#link(from, "digest.md", "Digest"),
@@ -881,7 +891,7 @@ export default class DigestRender {
                 : DigestRender.#literal(JSON.stringify(DigestRender.#requestAccounting(request), null, 2), "json"),
             "## Dispatched request",
             typeof capture?.body !== "string" ? "Dispatched request body was not retained."
-                : `${capture.method} ${capture.origin}\n\nExact serialized body; URL details and request headers are not captured.\n\n${DigestRender.#literal(capture.body, "json")}`,
+                : `${String(capture.method)} ${String(capture.origin)}\n\nExact serialized body; URL details and request headers are not captured.\n\n${DigestRender.#literal(capture.body, "json")}`,
         ];
         const call = m.modelCalls.find(({ id }) => id === request.inference_call_id);
         if (request.outcome === "response" && call?.accepted === 0) {
@@ -1040,13 +1050,12 @@ export default class DigestRender {
                     write(`${prefix}.response.md`, `# Emission attempt ${attempt.sequence}: ${admission}\n\nResponse evidence is not retained.\n`);
                     continue;
                 }
-                const response = DigestRender.parseJson(retainedResponse, {}) as {
-                    assistant?: { content?: unknown };
-                };
+                const response = DigestRender.parseJson(retainedResponse, {});
+                const assistant = isRecord(response) && isRecord(response.assistant) ? response.assistant : null;
                 const attemptFiles: Array<[string, string]> = [
                     [
                         `${prefix}.assistant.md`,
-                        typeof response.assistant?.content === "string" ? response.assistant.content : "",
+                        typeof assistant?.content === "string" ? assistant.content : "",
                     ],
                     [`${prefix}.response.json`, JSON.stringify(response, null, 2)],
                 ];
