@@ -105,7 +105,7 @@ export default class LoopDocs {
         // {§turn0-local-instructions} — the root AGENTS.local.md, read whatever its git status (the convention ignores
         // it); only an exclusion hides it.
         const localContent = workspace?.project_root === null || workspace?.project_root === undefined
-            || await GitMembership.excludedByConstraint(db, workspaceId, "AGENTS.local.md")
+            || await GitMembership.exclusionOf(db, workspaceId, "AGENTS.local.md") !== null
             ? null
             : await readFile(join(workspace.project_root, "AGENTS.local.md"), "utf8").catch(() => null);
         if (localContent !== null) desired.set(generatedPathname("/AGENTS.local.md"), localContent);

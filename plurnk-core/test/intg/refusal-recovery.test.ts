@@ -121,13 +121,19 @@ test("{§fs-home} {§membership-read-refusal} home, literal and absolute misses 
     assert.equal(inside.problem.recovery, FILE_MISS_RECOVERY, "inside the root the listing, creation and admission doors stand");
 });
 
-test("{§membership-read-refusal} a non-member the repository ignores is not offered an admission no model definition can make", async (t) => {
-    const { dispatch } = await runtime(t);
+test("{§membership-read-refusal} a non-member an exclusion covers or the repository ignores is not offered an admission no model definition can make", async (t) => {
+    const { db, ids, root, dispatch } = await runtime(t);
     const ignored = await dispatch("````READ (generated.log)````");
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "The repository ignores it: a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("````READ (loose.md)````");
     assert.equal(untracked.problem.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
+    await writeFile(join(root, "secret.md"), "hidden\n");
+    await db.crud_insert_family_workspace_constraint.run({ workspace_id: ids.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
+    const excluded = await dispatch("````READ (secret.md)````");
+    assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
+    assert.doesNotMatch(excluded.problem.recovery ?? "", /members \(add\)/u, "an exclusion no add lifts is not offered one");
+    assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
 });
 
 test("{§log-near-miss} a log miss beside real rows names them", async (t) => {

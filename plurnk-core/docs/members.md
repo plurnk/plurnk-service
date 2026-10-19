@@ -63,10 +63,11 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   ```
 
 - **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
-  ignored by the repository, or excluded by `!glob`, which outranks every
-  inclusion. Neither auto-add nor your `add` admits it, and the scope is fixed
-  for the turn, so a refused `add` is refused again. A client or operator
-  definition can admit it, and that is the user's to give: ask them.
+  ignored by git, or excluded by a `!glob`. Neither auto-add nor your `add`
+  admits it, and the scope is fixed for the turn, so a refused `add` is refused
+  again. Admitting it is the user's to give: a client or operator definition
+  includes an untracked or ignored file, and only lifting its exclusion admits
+  an excluded one. Ask them.
 
 - **Beyond the project root** (an absolute path such as `/srv/shared/notes.md`,
   which is how such a path is spelled; `../notes.md` names the same place): a

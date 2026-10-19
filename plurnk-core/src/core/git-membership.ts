@@ -225,13 +225,13 @@ export default class GitMembership {
     // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
     // projected from disk, but the standard never outranks the operator's exclusions — a path the
     // active repository ignores, or an exclusion matches, contributes nothing.
-    // An exclusion (`!glob`) matches the path: it outranks every inclusion and every instruction standard.
-    static async excludedByConstraint(db: Db, workspaceId: number, key: string): Promise<boolean> {
-        return await db.crud_constraint_excluding.get({ workspace_id: workspaceId, key }) !== undefined;
+    // The exclusion (`!glob`) covering the path, if one does: it outranks every inclusion and every instruction standard.
+    static async exclusionOf(db: Db, workspaceId: number, key: string): Promise<string | null> {
+        return (await db.crud_constraint_excluding.get<{ glob: string }>({ workspace_id: workspaceId, key }))?.glob ?? null;
     }
 
     static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
-        if (await GitMembership.excludedByConstraint(db, workspaceId, key)) return true;
+        if (await GitMembership.exclusionOf(db, workspaceId, key) !== null) return true;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
         const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
@@ -276,16 +276,16 @@ export default class GitMembership {
             };
         }
 
-        const exclusion = await db.crud_constraint_excluding.get<{ glob: string }>({ workspace_id: workspaceId, key });
-        if (exclusion !== undefined) {
+        const exclusion = await GitMembership.exclusionOf(db, workspaceId, key);
+        if (exclusion !== null) {
             return {
                 ok: false,
                 code: "file-create-excluded",
                 status: 403,
-                detail: `A members exclusion (\`!${exclusion.glob}\`) covers '${key}'.`,
+                detail: `A members exclusion (\`!${exclusion}\`) covers '${key}'.`,
                 extensions: {
                     path: key,
-                    glob: exclusion.glob,
+                    glob: exclusion,
                     recovery: "Remove or disable the excluding members definition, or choose another path.",
                     retryable: false,
                 },
