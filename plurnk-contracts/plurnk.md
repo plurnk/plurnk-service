@@ -1,7 +1,7 @@
 # Plurnk Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line. No tool calls.
+> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.
 
 ## Syntax
 
