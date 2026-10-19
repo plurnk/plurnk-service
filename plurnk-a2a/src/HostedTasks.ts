@@ -12,6 +12,7 @@ import {
 import type { ServerCallContext } from "@a2a-js/sdk/server";
 import { RequestMalformedError } from "@a2a-js/sdk/errors";
 import {
+    isSafeInteger,
     WORKER_NAME,
     type ApplicationMessage,
     type ApplicationLoopProjection,
@@ -56,11 +57,11 @@ const decodeCursor = (token: string): TaskCursor | null => {
         const value: unknown = JSON.parse(bytes.toString("utf8"));
         if (bytes.toString("base64url") !== token
             || !Array.isArray(value) || value.length !== 2
-            || !Number.isSafeInteger(value[0]) || value[0] < 0
+            || !isSafeInteger(value[0]) || value[0] < 0
             || !nonempty(value[1])) {
             throw new TypeError("Invalid Task cursor.");
         }
-        return [value[0] as number, value[1]];
+        return [value[0], value[1]];
     } catch (cause) {
         throw new RequestMalformedError({ message: "pageToken is not a valid Task cursor.", cause });
     }

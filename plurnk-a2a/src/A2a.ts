@@ -1,3 +1,4 @@
+import { Validator, isRecord } from "@plurnk/plurnk-contracts";
 import {
     TaskState,
     type StreamResponse,
@@ -9,7 +10,6 @@ import {
     MessageAttachments,
     MessageScheme,
     Results,
-    type ProblemDetails,
     type PassthroughResult,
     type ProposalResult,
     type ProposalApplyRequest,
@@ -214,7 +214,7 @@ export default class A2a {
         }
         const raw = request.body ?? (typeof attrs.body === "string" ? attrs.body : "");
         const applied = await this.#performSend({
-            op: "SEND", aside: null, target: attrs.target as SendStatement["target"],
+            op: "SEND", aside: null, target: Validator.assertParsedPath(attrs.target),
             metadata: request.metadata === null ? null : [...request.metadata],
             lineMarker: null, body: { raw, json: null }, position: { line: 1, column: 1 },
         }, ctx);
@@ -437,7 +437,7 @@ export default class A2a {
                 : { client };
         } catch (cause) {
             // An unavailable alias carries its one exact preparation Problem.
-            const exact = (cause as { problem?: ProblemDetails }).problem;
+            const exact = isRecord(cause) && cause.problem !== undefined ? Validator.assertProblemDetails(cause.problem) : undefined;
             if (exact !== undefined) return { problem: { status: exact.status, problem: structuredClone(exact) } };
             return { problem: A2a.#remoteProblem(authority, "connect", cause, true) };
         }

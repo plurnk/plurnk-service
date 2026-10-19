@@ -7,6 +7,7 @@
 // Status 203 preserves readable content when its requested structural
 // projection cannot be parsed; the owning mapping lives in {§matcher-dispatch}.
 
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
 import {
@@ -116,9 +117,7 @@ export default class Matcher {
             // sets each error subclass's `.name` to its class name.
             const name = err instanceof Error ? err.name : "";
             if (name === "UnsupportedDialectError" || err instanceof UnsupportedDialectError) {
-                const unsupportedMimetype = typeof (err as { mimetype?: unknown }).mimetype === "string"
-                    ? (err as { mimetype: string }).mimetype
-                    : mimetype;
+                const unsupportedMimetype = isRecord(err) && typeof err.mimetype === "string" ? err.mimetype : mimetype;
                 return Matcher.unsupported(body, unsupportedMimetype);
             }
             if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {

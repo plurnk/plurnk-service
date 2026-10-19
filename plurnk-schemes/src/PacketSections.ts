@@ -1,10 +1,17 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { PacketSectionDraft } from "./packet.ts";
 
 const FIELDS = ["name", "slot", "header", "content"] as const;
 const FIELD_NAMES = new Set<string>(FIELDS);
 
 export default class PacketSections {
+    // {§scheme-packet-transform} Exact valid drafts preserve their list: the check narrows the value it was given.
     static assertDrafts(value: unknown, subject = "packet section drafts"): PacketSectionDraft[] {
+        PacketSections.#checkDrafts(value, subject);
+        return value;
+    }
+
+    static #checkDrafts(value: unknown, subject: string): asserts value is PacketSectionDraft[] {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
 
         const names = new Set<string>();
@@ -15,14 +22,19 @@ export default class PacketSections {
             }
             names.add(section.name);
         }
-        return value as PacketSectionDraft[];
     }
 
     static assertDraft(value: unknown, subject: string): PacketSectionDraft {
-        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        PacketSections.#checkDraft(value, subject);
+        return value;
+    }
+
+    // Every field a draft names is checked here; the draft is the value that passed.
+    static #checkDraft(value: unknown, subject: string): asserts value is PacketSectionDraft {
+        if (!isRecord(value)) {
             throw new TypeError(`${subject} must be an object`);
         }
-        const section = value as Record<string, unknown>;
+        const section = value;
         const missing = FIELDS.find((field) => !Object.hasOwn(section, field));
         if (missing !== undefined) throw new TypeError(`${subject} is missing field '${missing}'`);
         const unexpected = Object.keys(section).find((field) => !FIELD_NAMES.has(field));
@@ -37,6 +49,5 @@ export default class PacketSections {
             throw new TypeError(`${subject}.header must be a string or null`);
         }
         if (typeof section.content !== "string") throw new TypeError(`${subject}.content must be a string`);
-        return value as PacketSectionDraft;
     }
 }

@@ -110,6 +110,7 @@ export default class Exposure {
         // {§a2a-hosted-credentials} — the security section is the authority's posture at serve time, and
         // every address in it the one the asking request reached ({§http-request-origin}).
         app.use(`/${AGENT_CARD_PATH}`, (req: Request, res: Response, next: NextFunction) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK types its provider as the message and serializes the JSON form it is handed
             agentCardHandler({ agentCardProvider: async () => AgentCard.toJSON(this.agentCard(req)) as AgentCard })(req, res, next);
         });
         const endpoint = restHandler({

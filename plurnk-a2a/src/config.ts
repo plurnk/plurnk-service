@@ -1,4 +1,4 @@
-import { WORKER_NAME, type A2AAgentDefinition as A2aAgentDefinition, type FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
+import { isRecord, WORKER_NAME, type A2AAgentDefinition as A2aAgentDefinition, type FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute, resolve } from "node:path";
 import { readDefinition } from "./definition.ts";
@@ -89,10 +89,10 @@ const skills = (raw: string | undefined): AgentSkill[] => {
     const ids = new Set<string>();
     return parsed.map((candidate, index) => {
         const at = `${field}[${index}]`;
-        if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+        if (!isRecord(candidate)) {
             throw new ConfigurationError(field, `${at} must be an Agent Skill object.`);
         }
-        const skill = candidate as Record<string, unknown>;
+        const skill = candidate;
         const text = (name: string): string => {
             const value = skill[name];
             if (typeof value !== "string" || value.length === 0) {

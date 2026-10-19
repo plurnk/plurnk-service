@@ -1,4 +1,5 @@
 import {
+    isRecord,
     InvalidOperationResultError,
     Problems,
     Validator,
@@ -156,7 +157,8 @@ export default class Results {
         ) {
             throw new TypeError("invalid match evidence: expected an object");
         }
-        const record = evidence as Record<string, unknown>;
+        if (!isRecord(evidence)) throw new TypeError("invalid match evidence: expected an object");
+        const record = evidence;
         const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region" && key !== "enclosingRegion" && key !== "matched");
         if (extras.length > 0) {
             throw new TypeError(`invalid match evidence: unexpected field ${JSON.stringify(extras[0])}`);
@@ -250,7 +252,8 @@ export default class Results {
             if (item === null || typeof item !== "object" || Array.isArray(item)) {
                 throw new TypeError("invalid scope normalization: expected an object");
             }
-            const record = item as Record<string, unknown>;
+            if (!isRecord(item)) throw new TypeError("invalid scope normalization: expected an object");
+            const record = item;
             const extras = Object.keys(record).filter((key) => key !== "requested" && key !== "canonical");
             if (extras.length > 0) {
                 throw new TypeError(`invalid scope normalization: unexpected field ${JSON.stringify(extras[0])}`);

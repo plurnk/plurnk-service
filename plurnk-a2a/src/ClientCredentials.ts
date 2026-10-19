@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 // {§a2a-outbound-credentials} — OAuth 2.0 client credentials at a remote agent's token endpoint
 // (RFC 6749 §4.4): one access token per attachment, obtained at preparation, presented as the bearer
 // on every request, and obtained again once when the agent answers 401.
@@ -64,14 +65,16 @@ export default class ClientCredentials {
             signal?.throwIfAborted();
             throw refuse(cause instanceof Error ? cause.message : String(cause));
         }
-        const answer = await response.json().catch(() => null) as { access_token?: unknown; error?: unknown; error_description?: unknown } | null;
+        const answer: unknown = await response.json().catch(() => null);
         signal?.throwIfAborted();
-        if (!response.ok || answer === null || typeof answer.access_token !== "string" || answer.access_token.length === 0) {
-            const error = typeof answer?.error === "string" ? answer.error : String(response.status);
-            const description = typeof answer?.error_description === "string" ? answer.error_description : "";
+        const fields = isRecord(answer) ? answer : undefined;
+        const token = fields?.access_token;
+        if (!response.ok || typeof token !== "string" || token.length === 0) {
+            const error = typeof fields?.error === "string" ? fields.error : String(response.status);
+            const description = typeof fields?.error_description === "string" ? fields.error_description : "";
             throw refuse(description.length === 0 ? error : `${error}: ${description}`);
         }
-        this.#token = answer.access_token;
+        this.#token = token;
         return this.#token;
     }
 }

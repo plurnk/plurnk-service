@@ -179,7 +179,7 @@ export default class A2aFunctionality {
 
     async discover(query: FunctionalityDiscoverQuery): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
-            const overlay = Object.fromEntries(Object.entries(query.configuration).filter(([, value]) => typeof value === "string")) as Record<string, string>;
+            const overlay = Object.fromEntries(Object.entries(query.configuration).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
             let definitions: ReturnType<typeof outboundDefinitions>;
             try {
                 definitions = outboundDefinitions({ PLURNK_A2A_ENABLED: this.#env.PLURNK_A2A_ENABLED, ...overlay });

@@ -31,7 +31,8 @@ export default class MetadataOptions {
             // Never echo the parser message: V8 quotes the input, and metadata may hold credentials.
             return fail("metadata-invalid", "[metadata] must be a JSON array.");
         }
-        return { elements: parsed as unknown[] };
+        if (!Array.isArray(parsed)) return fail("metadata-invalid", "[metadata] must be a JSON array.");
+        return { elements: parsed };
     }
 
     static parse(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): MetadataOptionsParsed {

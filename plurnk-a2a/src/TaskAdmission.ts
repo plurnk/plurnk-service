@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SendMessageRequest, type Message } from "@a2a-js/sdk";
 import { ContentTypeNotSupportedError, RequestMalformedError, TaskNotFoundError, UnsupportedOperationError } from "@a2a-js/sdk/errors";
-import { Problems } from "@plurnk/plurnk-contracts";
+import { Problems, isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import HostedTasks from "./HostedTasks.ts";
 import A2aProjection from "./A2aProjection.ts";
@@ -65,13 +65,15 @@ export default class TaskAdmission {
         const workerId = binding?.worker.id ?? (await this.#port.createWorker({
             workspaceId, name: taskId, parentWorkerId: await this.#parent(workspaceId),
         })).workerId;
+        const envelope: unknown = SendMessageRequest.toJSON({ ...request, message });
+        if (!isRecord(envelope)) throw new TypeError("An A2A request's JSON form is an object.");
         try {
             await this.#port.runLoop({
                 workspaceId,
                 workerId,
                 ...(binding === null ? {} : { loopId: binding.loop.id }),
                 prompt: body,
-                envelope: SendMessageRequest.toJSON({ ...request, message }) as Record<string, unknown>,
+                envelope,
                 attachments: message.parts.flatMap((part) => part.content?.$case === "raw" ? [{
                     name: part.filename,
                     mediaType: part.mediaType || "application/octet-stream",

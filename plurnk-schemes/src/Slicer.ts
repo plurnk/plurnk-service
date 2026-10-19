@@ -200,6 +200,7 @@ export default class Slicer {
         // {§text-scope-semantics} — `-1` is the final addressable endpoint in every form: as a region line it
         // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends; as a column
         // it is the end of its line, so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to it.
+        if (!Slicer.#fourMarks(marker.marks)) return { error: "A region names four marks: start line, start column, end line, end column." };
         const [startLine, startColumn, endLine, rawEndColumn] = Slicer.#finalEndpoint(content, lines, marker.marks);
         if (startLine < 1 || startLine > lines.length) {
             return { error: `Start line ${startLine} is outside the available line range 1..${lines.length}.` };
@@ -232,8 +233,13 @@ export default class Slicer {
         return { start, end, body, startLine, endLine: resolvedEndLine };
     }
 
-    static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly number[]): [number, number, number, number] {
-        const [startLine, startColumn, endLine, endColumn] = marks as [number, number, number, number];
+    // The four marks a region names, as the marker's tuple type cannot say.
+    static #fourMarks(marks: readonly number[]): marks is readonly [number, number, number, number] {
+        return marks.length === 4;
+    }
+
+    static #finalEndpoint(content: string, lines: ReturnType<typeof TextCoordinates.lines>, marks: readonly [number, number, number, number]): [number, number, number, number] {
+        const [startLine, startColumn, endLine, endColumn] = marks;
         const endOf = (line: number): number => {
             const data = lines[Math.min(Math.max(line, 1), lines.length) - 1];
             return Array.from(content.slice(data.start, data.contentEnd)).length + 1;

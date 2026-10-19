@@ -51,10 +51,11 @@ const artifactJson = (artifact: unknown, authority: string, taskId: string, pref
 
 const taskJson = (task: unknown, authority: string, prefix: string): unknown => {
     if (!isRecord(task) || typeof task.id !== "string") return task;
+    const taskId = task.id;
     const status = isRecord(task.status) ? { ...task.status, ...("message" in task.status ? { message: messageJson(task.status.message, authority, prefix) } : {}) } : task.status;
     return {
         ...task,
-        ...(Array.isArray(task.artifacts) ? { artifacts: task.artifacts.map((artifact) => artifactJson(artifact, authority, task.id as string, prefix)) } : {}),
+        ...(Array.isArray(task.artifacts) ? { artifacts: task.artifacts.map((artifact) => artifactJson(artifact, authority, taskId, prefix)) } : {}),
         ...(Array.isArray(task.history) ? { history: task.history.map((message) => messageJson(message, authority, prefix)) } : {}),
         ...(status === undefined ? {} : { status }),
     };

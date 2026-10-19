@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type { PackageAttributions, ExtensionAttribution } from "@plurnk/plurnk-meta";
@@ -130,8 +131,8 @@ export default class SchemeDiscovery {
                 throw new Error(`${packageName}: plurnk.schemes must be a non-empty array of { name, export }`);
             }
             return declared.map((entry) => {
-                if (typeof entry !== "object" || entry === null) throw new Error(`${packageName}: each plurnk.schemes entry must be an object`);
-                const e = entry as Record<string, unknown>;
+                if (!isRecord(entry)) throw new Error(`${packageName}: each plurnk.schemes entry must be an object`);
+                const e = entry;
                 if (typeof e.name !== "string" || e.name === "") throw new Error(`${packageName}: a plurnk.schemes entry is missing a non-empty name`);
                 if (typeof e.export !== "string" || e.export === "") throw new Error(`${packageName}: plurnk.schemes entry '${e.name}' is missing a non-empty export`);
                 return { name: e.name, packageName, exportName: e.export };
