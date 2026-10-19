@@ -18,7 +18,6 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAccounting, ProviderSpec } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
-import { discoverDaemonModules } from "./module-discovery.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
@@ -30,7 +29,7 @@ import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type MessageEvidence, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
-import HttpListener from "./HttpListener.ts";
+import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import Envelope, { projectWorkerRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
 import WorkerReferences from "./WorkerReferences.ts";
@@ -52,7 +51,7 @@ import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { Knob } from "@plurnk/plurnk-meta";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
 import WorkerOwners from "../core/WorkerOwners.ts";
 import RuntimeWorker from "../core/RuntimeWorker.ts";
@@ -66,9 +65,8 @@ import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
-import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
-import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, StartedModule } from "@plurnk/plurnk-modules";
+import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import type { AgentRootScope } from "./AgentRoots.ts";
@@ -78,6 +76,7 @@ import { observed, observedSync } from "../observe/spans.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import WorkerModels, { type EffortSource } from "./WorkerModels.ts";
 import ClientReads from "./ClientReads.ts";
+import DaemonModules from "./DaemonModules.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 
 // {§connection-lifecycle} A client operation cancelled mid-way settles its loop with what happened.
@@ -112,12 +111,6 @@ type InjectWorkerResult = Awaited<ReturnType<InjectWorker>>;
 type DrainCallbacks = ConstructorParameters<typeof DrainSupervisor>[0];
 type DrainRunLoopArgs = Parameters<DrainCallbacks["runLoop"]>[0];
 type DrainRunLoopResult = Awaited<ReturnType<DrainCallbacks["runLoop"]>>;
-
-// {§module-discovery} — a registered module and its owner, the package it came from.
-interface RegisteredModule {
-    readonly module: DaemonModule<HostSetupSeam>;
-    readonly owner: string;
-}
 
 export default class Daemon implements ApplicationPort, HostSetupSeam {
     static validateConfiguration(): void {
@@ -162,12 +155,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
-    #modules: RegisteredModule[] = [];
-    // {§module-http-mounts} — each claimed prefix's owner, and the claims mounted at start.
-    readonly #mountClaims = new Map<string, string>();
-    readonly #mounted = new Set<string>();
-    #moduleLifetimes: StartedModule[] = [];
-    #moduleActions = new Map<string, ModuleActionRegistration>();
+    // {§module-discovery} — the daemon's modules, composed and discovered, with their mounts, phases and actions.
+    readonly #modules: DaemonModules;
     // {§connection-lifecycle} Each running client operation's loop, its own cancellation scope and its settlement.
     readonly #clientLoops = new Map<number, {
         readonly workspaceId: number; readonly scope: AbortController; readonly settled: Promise<void>;
@@ -245,6 +234,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             engine: () => this.#engine,
             workspaceGate: this.#workspaceGate,
             normalizeRuntime: (registration) => this.#normalizeRuntime(registration) });
+        // {§module-discovery} — the modules' owner exists before Core registers its own families below: their
+        // actions register through the same seam a module's do.
+        this.#modules = new DaemonModules({
+            db, http: this.#http, configuration: this.#configuration, residency: this.#residency, workspaceGate: this.#workspaceGate,
+        });
         // {§functionality-coordinator} — the one owner above every family
         // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
@@ -1269,106 +1263,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             scheme };
     }
 
-    // {§http-host} — exterior adapters mount on the daemon's one listener at start(); the
-    // daemon never opens a second transport, and a daemon without a listener says so.
+    // {§http-host} {§module-http-mounts} — a module mounts on the daemon's one listener exactly what it claimed;
+    // the modules' owner keeps the claims. {§module-action-registration}: a module's actions, registered, listed and invoked.
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
-        if (this.#http === null) throw new Error(`registerHttpRoute: this daemon has no HTTP listener to mount '${prefix}' on`);
-        // {§module-http-mounts} — a module mounts exactly what it claimed.
-        if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpRoute: no module declared '${prefix}' among its mounts`);
-        this.#http.registerHttpRoute(prefix, handler);
-        this.#mounted.add(prefix);
+        this.#modules.registerHttpRoute(prefix, handler);
     }
 
     httpAddress(): { readonly host: string; readonly port: number } {
-        if (this.#http === null) throw new Error("httpAddress: this daemon has no HTTP listener");
-        return this.#http.httpAddress();
+        return this.#modules.httpAddress();
     }
 
     registerModuleAction(registration: ModuleActionRegistration): void {
-        const { name, scope, inputSchema, outputSchema, handler } = registration;
-        if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
-        if (scope !== "daemon" && scope !== "workspace" && scope !== "worker") {
-            throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
-        }
-        if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
-            throw new Error(`module action '${name}' has no input schema`);
-        }
-        if (outputSchema === null || typeof outputSchema !== "object" || Array.isArray(outputSchema)) {
-            throw new Error(`module action '${name}' has no output schema`);
-        }
-        for (const [role, schema] of [["input", inputSchema], ["output", outputSchema]] as const) {
-            try {
-                Validator.validateJsonSchemaInstance(schema, {});
-            } catch (cause) {
-                throw new Error(`module action '${name}' has an invalid ${role} schema`, { cause });
-            }
-        }
-        if (typeof handler !== "function") throw new Error(`module action '${name}' has no handler`);
-        if (registration.residency !== "required" && registration.residency !== "none") {
-            throw new Error(`module action '${name}' must declare its residency requirement`);
-        }
-        if (scope === "daemon" && registration.residency !== "none") {
-            throw new Error(`daemon module action '${name}' cannot require workspace residency`);
-        }
-        if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
-        this.#moduleActions.set(name, registration);
+        this.#modules.registerAction(registration);
     }
 
     listModuleActions(): ModuleActionDescriptor[] {
-        return [...this.#moduleActions.values()]
-            .map(({ name, scope, inputSchema, outputSchema }) => ({
-                name,
-                scope,
-                inputSchema,
-                outputSchema }))
-            .toSorted((left, right) => left.name.localeCompare(right.name));
+        return this.#modules.listActions();
     }
 
-    async invokeModuleAction(
-        name: string,
-        params: Readonly<Record<string, unknown>>,
-        context: ModuleActionContext,
-    ): Promise<unknown> {
-        const registration = this.#moduleActions.get(name);
-        if (registration === undefined) throw new Error(`module action '${name}' is not registered`);
-        if (registration.scope !== context.scope) {
-            throw new Error(
-                `module action '${name}' requires ${registration.scope} context, not ${context.scope}`,
-            );
-        }
-        let releaseCapabilities: WorkspaceCapabilityRelease | undefined;
-        if (context.scope === "worker") {
-            const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
-            const workerId = ClientInput.assertId(`module action '${name}'`, "workerId", context.workerId);
-            const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-            if (worker === undefined || worker.workspace_id !== workspaceId) {
-                throw daemonFailure(
-                    "daemon:module-action",
-                    "worker-not-found",
-                    404,
-                    `Worker ${workerId} does not exist in workspace ${workspaceId}.`,
-                    { workspaceId, workerId, retryable: false },
-                );
-            }
-        }
-        if (registration.residency === "required" && context.scope !== "daemon") {
-            releaseCapabilities = await this.#residency.acquire(context.workspaceId);
-        } else if (context.scope === "workspace") {
-            await this.#residency.identity(context.workspaceId);
-        }
-        try {
-            if (registration.residency === "required" && context.scope === "worker") {
-                const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.workerId);
-                try {
-                    await this.#residency.reconcile(context.workspaceId);
-                } finally {
-                    release();
-                }
-            }
-            return await registration.handler(params, context);
-        } finally {
-            releaseCapabilities?.();
-        }
+    invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>, context: ModuleActionContext): Promise<unknown> {
+        return this.#modules.invokeAction(name, params, context);
     }
 
     registerWorkspaceCapabilityProvider(
@@ -1443,7 +1357,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§module-discovery} — `owner` is the module's package name; diagnostics name it.
     registerModule(module: DaemonModule<HostSetupSeam>, owner: string): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
-        this.#modules.push({ module, owner });
+        this.#modules.register(module, owner);
     }
 
     async start(): Promise<void> {
@@ -1501,41 +1415,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
-        // {§module-discovery} — third-party daemon-module composition: trusted
-        // packages declaring `plurnk.kind: "module"` register beside the
-        // service's explicit composition before any module setup runs.
-        const discoveredModules = await discoverDaemonModules({
-            cwd: this.#discoveryCwd, hostPaths: this.#hostPaths, registered: new Set(this.#modules.map(({ owner }) => owner)),
-        });
-        for (const { owner, cause } of discoveredModules.configurationErrors) this.#configuration.record(owner, cause);
-        this.#configuration.pluginReports(discoveredModules.reports);
-        for (const packageName of discoveredModules.skipped) {
-            console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
-        }
-        for (const { module, owner } of discoveredModules.modules) {
-            this.#modules.push({ module, owner });
-        }
-        // {§module-http-mounts} — a daemon without a listener has nothing to serve a mount on: it
-        // leaves out every module that declares one, and says so.
-        if (this.#http === null) {
-            this.#modules = this.#modules.filter(({ module, owner }) => {
-                const mounts = module.mounts ?? [];
-                if (mounts.length === 0) return true;
-                this.#configuration.leftOut(`module:${owner}`, `module '${owner}' mounts ${mounts.map((prefix) => `'${prefix}'`).join(", ")} and this daemon has no HTTP listener: left out`);
-                return false;
-            });
-        }
-        // {§module-contained-configuration} — what a module contained is its own configuration diagnostic.
-        for (const { module, owner } of this.#modules) {
-            for (const { key, message } of module.contained ?? []) this.#configuration.record(`module:${owner}`, new ConfigurationError(key, message));
-        }
-        this.#claimMounts();
-        // oxlint-disable-next-line typescript/no-this-alias -- the daemon itself, narrowed to the seam a module's setup receives
-        const setupSeam: HostSetupSeam = this;
-        for (const { module } of this.#modules) {
-            if (module.stop !== undefined || module.close !== undefined) this.#moduleLifetimes.push(module);
-            await module.setup?.(setupSeam);
-        }
+        // {§module-discovery} — discovery composes beside the service's explicit modules, then every module sets
+        // up against this daemon as the seam ({§module-lifecycle}).
+        await this.#modules.setup(this, { cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
         // {§credential-authority} — the posture is never an inference: a listening daemon that
         // authenticates needs a module that issues, and it writes a minted secret where same-user
         // clients read it before any mount is admitted; a configured or absent secret leaves no file.
@@ -1554,38 +1436,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§module-lifecycle} — the daemon opened its one transport before admission ({§http-host});
         // modules mount their routes on it here, only after capability publication and durable
         // lifecycle recovery are complete. None opens a listener of its own.
-        for (const { module } of this.#modules) {
-            const started = await module.start?.(this);
-            if (started !== undefined && !this.#moduleLifetimes.includes(started)) {
-                this.#moduleLifetimes.push(started);
-            }
-        }
-        this.#admitMounts();
-    }
-
-    // {§module-http-mounts} — every prefix is claimed before any module sets up: one owner per
-    // prefix, including the optional root mount.
-    #claimMounts(): void {
-        for (const { module, owner } of this.#modules) {
-            for (const prefix of module.mounts ?? []) {
-                if (!HttpListener.isPrefix(prefix)) {
-                    throw new Error(`module '${owner}' declares HTTP mount '${prefix}', which is not an absolute pathname prefix`);
-                }
-                const holder = this.#mountClaims.get(prefix);
-                if (holder !== undefined) throw new Error(`HTTP mount '${prefix}' is claimed by both '${holder}' and '${owner}'`);
-                this.#mountClaims.set(prefix, owner);
-            }
-        }
-    }
-
-    // {§module-http-mounts} — the listener is admitted once every module has started and every
-    // claim is mounted, so readiness never depends on registration order.
-    #admitMounts(): void {
-        if (this.#http === null) return;
-        for (const [prefix, owner] of this.#mountClaims) {
-            if (!this.#mounted.has(prefix)) throw new Error(`module '${owner}' claimed HTTP mount '${prefix}' but did not mount it at start`);
-        }
-        this.#http.admit();
+        await this.#modules.start(this);
+        this.#modules.admitMounts();
     }
 
     async #recoverLifecycle(): Promise<void> {
@@ -1669,14 +1521,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // Stop accepting external work immediately, but do not await listener
         // closure before cancelling active workers: an SSE connection may itself be
         // waiting for the worker cancellation that follows.
-        const modules = this.#moduleLifetimes.toReversed();
-        this.#moduleLifetimes = [];
-        const modulePhase = async (phase: "stop" | "close"): Promise<void> => {
-            const results = await Promise.allSettled(modules.map((module) => Promise.resolve().then(() => module[phase]?.())));
-            const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected").map(({ reason }) => reason);
-            if (errors.length > 0) throw new AggregateError(errors, `module ${phase} failed`);
-        };
-        const moduleStop = shutdown.settle("modules stop", () => modulePhase("stop"));
+        const modulePhases = this.#modules.beginStop();
+        const moduleStop = shutdown.settle("modules stop", () => modulePhases.stop());
 
         // Drain order: (1) tell the supervisor to abort worker scopes so
         // strike paths don't keep going, (2) await its active drains
@@ -1714,7 +1560,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // conclusion notifications. Join the supervisor-owned async tails only
         // after those producers settle, before the caller may close SQLite.
         const wakeResult = await shutdown.settle("drains idle (wake)", () => this.#drains.idle());
-        const moduleCloseResult = await shutdown.settle("modules close", () => modulePhase("close"));
+        const moduleCloseResult = await shutdown.settle("modules close", () => modulePhases.close());
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
         // {§retention-policy} — the operator's retention runs once more before the statistics.
