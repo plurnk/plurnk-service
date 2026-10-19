@@ -1,5 +1,5 @@
 import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } from "./Validator.ts";
-import type { OperationResult, ProblemDetails, ProblemProjection } from "./types.generated.ts";
+import type { ProblemDetails, ProblemProjection } from "./types.generated.ts";
 
 const TYPE_ROOT = "https://problems.plurnk.xyz";
 const OWNER = /^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)*$/;
@@ -34,9 +34,9 @@ export default class Problems {
         if (typeof error !== "object" || error === null) return null;
         const result = (error as { result?: unknown }).result;
         try {
-            if (result !== undefined) return Validator.assertOperationResult(result as OperationResult).problem ?? null;
+            if (result !== undefined) return Validator.assertOperationResult(result).problem ?? null;
             const problem = (error as { problem?: unknown }).problem;
-            return problem === undefined ? null : Validator.assertProblemDetails(problem as ProblemDetails);
+            return problem === undefined ? null : Validator.assertProblemDetails(problem);
         } catch (cause) {
             // {§problem-error-carrier}: recognition rejects malformed carriers; the
             // caller still owns the original exception and its complete cause.
@@ -83,6 +83,6 @@ export default class Problems {
             if (context.row !== undefined && Object.hasOwn(context.row, key) && sameFact(value, context.row[key])) continue;
             projection[key] = value;
         }
-        return Validator.assertProblemProjection(projection as ProblemProjection);
+        return Validator.assertProblemProjection(projection);
     }
 }

@@ -414,7 +414,7 @@ export default class ProposalLifecycle {
     static #result(logEntryId: number, raw: string): OperationResult {
         try {
             const value: unknown = JSON.parse(raw);
-            const result = Validator.assertOperationResult(value as OperationResult);
+            const result = Validator.assertOperationResult(value);
             if (result.status !== 202) throw new TypeError(`status is ${result.status}, not 202`);
             return result;
         } catch (cause) {

@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, type ParsedPath, type PlurnkStatement, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ParsedPath, type PlurnkStatement, type RangeExtent, type TextLineMarker, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
 import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
@@ -876,9 +876,8 @@ export default class PacketWire {
     static #problemFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): void {
         const { meta } = identity;
         if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-            const problem = (rx as { problem?: unknown }).problem;
-            Validator.assertProblemDetails(problem as ProblemDetails);
-            meta.problem = Problems.project(problem as ProblemDetails, {
+            const problem = Validator.assertProblemDetails((rx as { problem?: unknown }).problem);
+            meta.problem = Problems.project(problem, {
                 status: e.status,
                 row: { ...meta, target: identity.target },
             });
@@ -913,7 +912,7 @@ export default class PacketWire {
                 if (Array.isArray(parsed)) findItems = parsed.length;
             }
             range = rx !== null && typeof rx === "object" && rx.range !== undefined
-                ? Validator.assertRangeExtent(rx.range as RangeExtent)
+                ? Validator.assertRangeExtent(rx.range)
                 : null;
             const problemOwnsRange = typeof e.status === "number"
                 && e.status >= 400
@@ -934,7 +933,7 @@ export default class PacketWire {
                 meta.range = ScopeFormat.range(range, sparse);
             } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
                 delete meta.scope;
-                meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region as TextRegion));
+                meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region));
             }
             // These are underlying selected-content weights, distinct from
             // the emitted body's generic `tokens` measurement.

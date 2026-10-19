@@ -365,9 +365,9 @@ export default class Validator {
         return Validator.#validate(Validator.#workerOwner, value);
     }
 
-    static assertWorkerOwner<T extends WorkerOwner>(value: T): T {
+    static assertWorkerOwner(value: unknown): WorkerOwner {
         const result = Validator.validateWorkerOwner(value);
-        if (!result.valid) throw new InvalidWorkerOwnerError(`invalid WorkerOwner: ${JSON.stringify(result.errors)}`);
+        if (!Validator.#accepted<WorkerOwner>(value, result)) throw new InvalidWorkerOwnerError(`invalid WorkerOwner: ${JSON.stringify(result.errors)}`);
         return value;
     }
 
@@ -493,31 +493,31 @@ export default class Validator {
         return Validator.#validate(validator, value);
     }
 
-    static assertNotice<T extends Notice>(value: T): T {
+    static assertNotice(value: unknown): Notice {
         const result = Validator.validateNotice(value);
-        if (!result.valid) throw new InvalidNoticeError(`invalid Notice: ${JSON.stringify(result.errors)}`);
+        if (!Validator.#accepted<Notice>(value, result)) throw new InvalidNoticeError(`invalid Notice: ${JSON.stringify(result.errors)}`);
         return value;
     }
 
-    static assertProblemDetails<T extends ProblemDetails>(value: T): T {
+    static assertProblemDetails(value: unknown): ProblemDetails {
         const result = Validator.validateProblemDetails(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ProblemDetails>(value, result)) {
             throw new InvalidProblemDetailsError(`invalid RFC 9457 Problem Details: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }
 
-    static assertProblemProjection<T extends ProblemProjection>(value: T): T {
+    static assertProblemProjection(value: unknown): ProblemProjection {
         const result = Validator.validateProblemProjection(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ProblemProjection>(value, result)) {
             throw new InvalidProblemProjectionError(`invalid model Problem projection: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }
 
-    static assertOperationResult<T extends OperationResult>(value: T): T {
+    static assertOperationResult(value: unknown): OperationResult {
         const result = Validator.validateOperationResult(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<OperationResult>(value, result)) {
             throw new InvalidOperationResultError(`invalid operation result: ${JSON.stringify(result.errors)}`);
         }
         if (value.problem !== undefined && value.problem.status !== value.status) {
@@ -535,9 +535,9 @@ export default class Validator {
         return value;
     }
 
-    static assertEntryReadResult<T extends EntryReadResult>(value: T): T {
+    static assertEntryReadResult(value: unknown): EntryReadResult {
         const result = Validator.validateEntryReadResult(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<EntryReadResult>(value, result)) {
             throw new InvalidEntryReadResultError(
                 `invalid EntryReadResult: ${JSON.stringify(result.errors)}`,
             );
@@ -550,9 +550,9 @@ export default class Validator {
         return value;
     }
 
-    static assertTextRegion<T extends TextRegion>(value: T): T {
+    static assertTextRegion(value: unknown): TextRegion {
         const result = Validator.validateTextRegion(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<TextRegion>(value, result)) {
             throw new InvalidTextRegionError(`invalid TextRegion: ${JSON.stringify(result.errors)}`);
         }
         if (
@@ -564,9 +564,9 @@ export default class Validator {
         return value;
     }
 
-    static assertRangeExtent<T extends RangeExtent>(value: T): T {
+    static assertRangeExtent(value: unknown): RangeExtent {
         const result = Validator.validateRangeExtent(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<RangeExtent>(value, result)) {
             throw new InvalidRangeExtentError(`invalid RangeExtent: ${JSON.stringify(result.errors)}`);
         }
         if (value.returned !== undefined) {
@@ -578,25 +578,25 @@ export default class Validator {
         return value;
     }
 
-    static assertCapabilityDescriptor<T extends CapabilityDescriptor>(value: T): T {
+    static assertCapabilityDescriptor(value: unknown): CapabilityDescriptor {
         const result = Validator.validateCapabilityDescriptor(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<CapabilityDescriptor>(value, result)) {
             throw new InvalidCapabilityDescriptorError(`invalid CapabilityDescriptor: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }
 
-    static assertCapabilityPolicy<T extends CapabilityPolicy>(value: T): T {
+    static assertCapabilityPolicy(value: unknown): CapabilityPolicy {
         const result = Validator.validateCapabilityPolicy(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<CapabilityPolicy>(value, result)) {
             throw new InvalidCapabilityPolicyError(`invalid CapabilityPolicy: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }
 
-    static assertProposalProjection<T extends ProposalProjection>(value: T): T {
+    static assertProposalProjection(value: unknown): ProposalProjection {
         const result = Validator.validateProposalProjection(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ProposalProjection>(value, result)) {
             throw new InvalidProposalProjectionError(
                 `invalid ProposalProjection: ${JSON.stringify(result.errors)}`,
             );
@@ -604,9 +604,9 @@ export default class Validator {
         return value;
     }
 
-    static assertClientDisplayCapabilities<T extends ClientDisplayCapabilities>(value: T): T {
+    static assertClientDisplayCapabilities(value: unknown): ClientDisplayCapabilities {
         const result = Validator.validateClientDisplayCapabilities(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ClientDisplayCapabilities>(value, result)) {
             throw new InvalidClientDisplayCapabilitiesError(
                 `invalid ClientDisplayCapabilities: ${JSON.stringify(result.errors)}`,
             );
@@ -614,9 +614,9 @@ export default class Validator {
         return value;
     }
 
-    static assertMcpServerDefinition<T extends McpServerDefinition>(value: T): T {
+    static assertMcpServerDefinition(value: unknown): McpServerDefinition {
         const result = Validator.validateMcpServerDefinition(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<McpServerDefinition>(value, result)) {
             throw new InvalidMcpServerDefinitionError(
                 `invalid MCP server definition: ${JSON.stringify(result.errors)}`,
             );
@@ -624,9 +624,9 @@ export default class Validator {
         return value;
     }
 
-    static assertA2aAgentDefinition<T extends A2aAgentDefinition>(value: T): T {
+    static assertA2aAgentDefinition(value: unknown): A2aAgentDefinition {
         const result = Validator.validateA2aAgentDefinition(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<A2aAgentDefinition>(value, result)) {
             throw new InvalidA2aAgentDefinitionError(
                 `invalid A2A agent definition: ${JSON.stringify(result.errors)}`,
             );
@@ -634,9 +634,9 @@ export default class Validator {
         return value;
     }
 
-    static assertSkillDefinition<T extends SkillDefinition>(value: T): T {
+    static assertSkillDefinition(value: unknown): SkillDefinition {
         const result = Validator.validateSkillDefinition(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<SkillDefinition>(value, result)) {
             throw new InvalidSkillDefinitionError(
                 `invalid Skill definition: ${JSON.stringify(result.errors)}`,
             );
@@ -644,9 +644,9 @@ export default class Validator {
         return value;
     }
 
-    static assertMcpOAuth<T extends McpOAuth>(value: T): T {
+    static assertMcpOAuth(value: unknown): McpOAuth {
         const result = Validator.validateMcpOAuth(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<McpOAuth>(value, result)) {
             throw new InvalidMcpOAuthError(
                 `invalid MCP OAuth settings: ${JSON.stringify(result.errors)}`,
             );
@@ -654,9 +654,9 @@ export default class Validator {
         return value;
     }
 
-    static assertClientInteractionRequest<T extends ClientInteractionRequest>(value: T): T {
+    static assertClientInteractionRequest(value: unknown): ClientInteractionRequest {
         const result = Validator.validateClientInteractionRequest(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ClientInteractionRequest>(value, result)) {
             throw new InvalidClientInteractionRequestError(
                 `invalid ClientInteractionRequest: ${JSON.stringify(result.errors)}`,
             );
@@ -664,9 +664,9 @@ export default class Validator {
         return value;
     }
 
-    static assertClientInteractionProjection<T extends ClientInteractionProjection>(value: T): T {
+    static assertClientInteractionProjection(value: unknown): ClientInteractionProjection {
         const result = Validator.validateClientInteractionProjection(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ClientInteractionProjection>(value, result)) {
             throw new InvalidClientInteractionProjectionError(
                 `invalid ClientInteractionProjection: ${JSON.stringify(result.errors)}`,
             );
@@ -674,9 +674,9 @@ export default class Validator {
         return value;
     }
 
-    static assertClientInteractionResolution<T extends ClientInteractionResolution>(value: T): T {
+    static assertClientInteractionResolution(value: unknown): ClientInteractionResolution {
         const result = Validator.validateClientInteractionResolution(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ClientInteractionResolution>(value, result)) {
             throw new InvalidClientInteractionResolutionError(
                 `invalid ClientInteractionResolution: ${JSON.stringify(result.errors)}`,
             );

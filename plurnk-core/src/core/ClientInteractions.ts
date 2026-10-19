@@ -216,7 +216,7 @@ export default class ClientInteractions {
             loopId: row.loopId,
             turnId: row.turnId,
             recipient: row.recipient,
-            request: Validator.assertClientInteractionRequest(request as ClientInteractionRequest),
+            request: Validator.assertClientInteractionRequest(request),
         });
     }
 }

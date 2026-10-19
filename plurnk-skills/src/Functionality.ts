@@ -243,7 +243,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         const params = isRecord(input) ? input : {};
         let definition: SkillDefinition;
         try {
-            definition = structuredClone(Validator.assertSkillDefinition(structuredClone(params.definition) as SkillDefinition));
+            definition = structuredClone(Validator.assertSkillDefinition(structuredClone(params.definition)));
         } catch (cause) {
             throw actionError("definition-invalid", 400, "The Agent Skill definition is invalid.", { retryable: false }, cause);
         }

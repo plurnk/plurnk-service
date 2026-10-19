@@ -13,7 +13,7 @@ import { daemonFailure } from "./daemon-results.ts";
 import type { ChannelRow } from "./Daemon.ts";
 
 const entryReadResult = (result: unknown): EntryReadResult =>
-    Validator.assertEntryReadResult(result as EntryReadResult);
+    Validator.assertEntryReadResult(result);
 
 export default class ClientReads {
     readonly #db: Db;

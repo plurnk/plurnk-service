@@ -103,7 +103,7 @@ export default class DigestRender {
 
     static #operationResult(raw: unknown, subject: string): OperationResult {
         try {
-            return Validator.assertOperationResult(DigestRender.parseJson(raw) as OperationResult);
+            return Validator.assertOperationResult(DigestRender.parseJson(raw));
         } catch (cause) {
             throw new Error(`${subject} does not contain a valid operation result`, { cause });
         }

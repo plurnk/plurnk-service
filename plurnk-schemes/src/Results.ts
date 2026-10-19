@@ -135,7 +135,7 @@ export default class Results {
     }
 
     static assertProblem(problem: unknown): asserts problem is ProblemDetails {
-        Validator.assertProblemDetails(problem as ProblemDetails);
+        Validator.assertProblemDetails(problem);
     }
 
     static assertMatchEvidence(evidence: unknown): MatchEvidence {
@@ -163,8 +163,8 @@ export default class Results {
         if (hasLocator && (typeof record.locator !== "string" || record.locator.length === 0)) {
             throw new TypeError("invalid match evidence: locator must be a non-empty string");
         }
-        if (hasRegion) Validator.assertTextRegion(record.region as TextRegion);
-        if (hasEnclosingRegion) Validator.assertTextRegion(record.enclosingRegion as TextRegion);
+        if (hasRegion) Validator.assertTextRegion(record.region);
+        if (hasEnclosingRegion) Validator.assertTextRegion(record.enclosingRegion);
         return evidence;
     }
 
@@ -180,7 +180,7 @@ export default class Results {
         const exact = Results.assert(result);
         const record = exact as Record<string, unknown>;
         if (Object.hasOwn(record, "region") && record.region !== undefined) {
-            Validator.assertTextRegion(record.region as TextRegion);
+            Validator.assertTextRegion(record.region);
         }
         if (Object.hasOwn(record, "matches") && record.matches !== undefined) {
             Results.assertMatchEvidenceList(record.matches);
@@ -284,7 +284,7 @@ export default class Results {
         if (exact.scopeNormalizations !== undefined) {
             Results.assertScopeNormalizations(exact.scopeNormalizations);
         }
-        return exact;
+        return result;
     }
 
     static attachInstance<T extends SchemeResult>(result: T, instance: string): T {

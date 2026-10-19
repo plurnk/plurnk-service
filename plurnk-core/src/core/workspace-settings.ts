@@ -42,7 +42,7 @@ export default class WorkspaceSettings {
         const client = typeof bag.client === "string" ? bag.client : null;
         let capabilities: CapabilityPolicy;
         try {
-            capabilities = Validator.assertCapabilityPolicy((bag.capabilities === undefined ? {} : bag.capabilities) as CapabilityPolicy);
+            capabilities = Validator.assertCapabilityPolicy(bag.capabilities === undefined ? {} : bag.capabilities);
         } catch (cause) {
             throw new Error(`Workspace ${workspaceId} has invalid persisted capability policy.`, { cause });
         }

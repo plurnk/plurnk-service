@@ -2,7 +2,7 @@ import { Validator, type McpServerDefinition } from "@plurnk/plurnk-contracts";
 
 // {§mcp-server-definition} One admission path for configuration and live additions.
 export const readDefinition = (input: unknown): McpServerDefinition => {
-    const definition = structuredClone(Validator.assertMcpServerDefinition(input as McpServerDefinition));
+    const definition = structuredClone(Validator.assertMcpServerDefinition(input));
     if (definition.type === "stdio") return definition;
     const url = new URL(definition.url);
     if (url.protocol !== "https:" && url.protocol !== "http:") {

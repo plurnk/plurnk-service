@@ -538,7 +538,7 @@ export default class ClientInput {
         }
         if (r.capabilities !== undefined) {
             try {
-                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities as CapabilityPolicy);
+                out.capabilities = Validator.assertCapabilityPolicy(r.capabilities);
             } catch {
                 ClientInput.#invalid(
                     "workspace.create",

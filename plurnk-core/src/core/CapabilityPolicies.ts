@@ -21,7 +21,7 @@ export default class CapabilityPolicies {
             throw new Error("PLURNK_SERVICE_CAPABILITIES is not valid JSON.", { cause });
         }
         try {
-            return Validator.assertCapabilityPolicy(parsed as CapabilityPolicy);
+            return Validator.assertCapabilityPolicy(parsed);
         } catch (cause) {
             throw new Error("PLURNK_SERVICE_CAPABILITIES is not a valid capability policy.", { cause });
         }
