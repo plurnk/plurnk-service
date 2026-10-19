@@ -1,7 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
-import { TurnDisposition, UNKNOWN_POSITION, PathSyntax, isExecution } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, UNKNOWN_POSITION, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -28,7 +28,6 @@ import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
-import type { MatchItem } from "../schemes/_entry-find.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
@@ -432,8 +431,8 @@ export default class Dispatcher {
         if (cached !== undefined) return cached;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || schemeName === "log") return null;
-        const handler = this.#schemes.get(schemeName, workspaceId) as { kill?: unknown } | undefined;
-        if (handler === undefined || typeof handler.kill === "function") return null;
+        const handler = this.#schemes.get(schemeName, workspaceId);
+        if (handler === undefined || ("kill" in handler && typeof handler.kill === "function")) return null;
         const edit: EditStatement = {
             op: "EDIT",
             aside: statement.aside,
@@ -502,7 +501,9 @@ export default class Dispatcher {
         const execution = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
         let { result } = execution;
-        const edit = context.statement.op === "EDIT" ? context.statement : this.#scopedEntryEdits.get(context.statement as KillStatement);
+        const edit = context.statement.op === "EDIT"
+            ? context.statement
+            : context.statement.op === "KILL" ? this.#scopedEntryEdits.get(context.statement) : undefined;
         if (edit !== undefined) {
             // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
             // statement's merge facts ride every EDIT result, whichever route produced it.
@@ -515,13 +516,13 @@ export default class Dispatcher {
         // environment is the model's to retire, never the daemon's to drop.
         const distillation = Dispatcher.#distillationOf(context.statement);
         if (distillation !== null) {
-            const note: NoteStatement = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: distillation, position: context.statement.position };
-            this.#distillations.set(note, (context.statement as KillStatement).target!.raw);
+            const note: NoteStatement = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
+            this.#distillations.set(note, distillation.target);
             const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
             delete noteContext.fanout;
             delete noteContext.emissionIndex;
             await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(noteContext), (ctx) => this.#dispatchOne(noteContext, ctx));
-            result = Results.assert({ ...result, rowsWritten: ((result.rowsWritten as number | undefined) ?? 1) + 1 });
+            result = Results.assert({ ...result, rowsWritten: Dispatcher.#rowsWritten(result) + 1 });
         }
         return { ...execution, result };
     }
@@ -538,9 +539,23 @@ export default class Dispatcher {
             { stage: "matcher", recovery: unreadable.recovery, retryable: false });
     }
 
-    static #distillationOf(statement: PlurnkStatement): string | null {
-        if (statement.op !== "KILL" || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
-        return statement.body.trim() === "" ? null : statement.body;
+    static #distillationOf(statement: PlurnkStatement): { body: string; target: string } | null {
+        if (statement.op !== "KILL" || statement.target === null || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
+        return statement.body.trim() === "" ? null : { body: statement.body, target: statement.target.raw };
+    }
+
+    // The rows a dispatch wrote: the result says when more than its own row landed.
+    static #rowsWritten(result: DispatchResult): number {
+        return typeof result.rowsWritten === "number" ? result.rowsWritten : 1;
+    }
+
+    // {§bulk-resource-targeting} — the paths a FIND matched: each catalog item's, never a scope group's.
+    static #matchedPaths(results: unknown): string[] {
+        const items: unknown[] = Array.isArray(results) ? results : [];
+        return items.flatMap((item): string[] => {
+            const head: unknown = Array.isArray(item) ? item[0] : undefined;
+            return isRecord(head) && !("items" in head) && typeof head.path === "string" ? [head.path] : [];
+        });
     }
 
     static #globTarget(target: ParsedPath | null): boolean {
@@ -556,7 +571,7 @@ export default class Dispatcher {
         const found = await this.#dataRun.run(schemeNameOf(survey.target), survey, ctx);
         if (found.status >= 400) return { result: found };
         const paths = found.status < 300
-            ? ((found.results as MatchItem[] | undefined) ?? []).flatMap((item) => Array.isArray(item) && !("items" in item[0]) ? [item[0].path] : [])
+            ? Dispatcher.#matchedPaths(found.results)
             : [];
         const matched = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
         if (survey.lineMarker !== null && matched !== paths.length) {
@@ -622,7 +637,7 @@ export default class Dispatcher {
                 ...(context.fit === undefined ? {} : { fit: reserved(context.fit, admitted.length - index - 1) }),
             }, true);
             results.push(result);
-            rowsWritten += (result.rowsWritten as number | undefined) ?? 1;
+            rowsWritten += Dispatcher.#rowsWritten(result);
             if (context.failOnOperationError && result.status >= 400 && !isContextReceipt(result)) break;
         }
         if (results.length === 0) throw new Error("Dispatch requires an admitted operation.");
@@ -660,7 +675,7 @@ export default class Dispatcher {
         result = admission.result;
         // {§bulk-resource-targeting} — a row on behalf of a glob names the statement it came from.
         if (context.fanout !== undefined) {
-            const attrs = typeof result.attrs === "object" && result.attrs !== null ? result.attrs as Record<string, unknown> : {};
+            const attrs = isRecord(result.attrs) ? result.attrs : {};
             result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
         }
         // Persist log curation for forensics; packet rendering suppresses its
@@ -792,7 +807,7 @@ export default class Dispatcher {
     #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { autoAccept: boolean; result: DispatchResult } {
         let autoAccept = false;
         if (Dispatcher.#isProposal(statement, result)) {
-            const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
+            const effect = isRecord(result.attrs) ? result.attrs.effect : undefined;
             const mustDeclareEffect = isExecution(statement) || (statement.op === "SEND"
                 && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId));
             if (mustDeclareEffect || effect !== undefined) {
@@ -881,16 +896,16 @@ export default class Dispatcher {
         if (remaining === null) return result;
         const tokens = await this.#rowTokens(context, statement, result);
         if (tokens <= remaining) return result;
-        const size = resultSize(result as { range?: never; content?: unknown });
-        const range = (result as { range?: unknown }).range;
+        const range = result.range === undefined ? undefined : Validator.assertRangeExtent(result.range);
+        const size = resultSize({ range, content: result.content });
         const retained = statement.op === "READ"
-            ? { content: null, mimetype: null, channel: (result as { channel?: unknown }).channel ?? null, ...(range === undefined ? {} : { range }) }
-            : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, (result as Record<string, unknown>)[key]]] : [])) };
+            ? { content: null, mimetype: null, channel: result.channel ?? null, ...(range === undefined ? {} : { range }) }
+            : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, result[key]]] : [])) };
         const receipt = (delivered: number): DispatchResult => unfitResult(retained, size, tokens, remaining, statement.op, delivered);
         if (statement.op !== "READ" || size.unit !== "line") return receipt(0);
-        const whole = result as DispatchResult & { readonly content: string };
+        const whole: DispatchResult & { readonly content: string } = { ...result, content: result.content };
         const withPrefix = (count: number): DispatchResult => {
-            const prefix = resultPrefix(whole, count) as Record<string, unknown>;
+            const prefix = resultPrefix(whole, count);
             const carried = Object.fromEntries(["content", "mimetype", "startLine", "lineAnchors", "lineNumberWidth", "lineOrdinals", "matches", "range"]
                 .flatMap((key) => prefix[key] === undefined ? [] : [[key, prefix[key]]]));
             return { ...receipt(count), ...carried };
