@@ -91,12 +91,12 @@ export class InvalidAguiConformanceKitError extends TypeError {}
 export class InvalidJsonSchemaInstanceError extends TypeError {}
 
 export default class Validator {
-    static #position = new CfValidator(positionSchema as Schema, "2020-12");
-    static #lineMarker = new CfValidator(lineMarkerSchema as Schema, "2020-12");
-    static #textLineMarker = new CfValidator(textLineMarkerSchema as Schema, "2020-12");
-    static #parsedPath = new CfValidator(parsedPathSchema, "2020-12");
-    static #matcherBody = new CfValidator(matcherBodySchema, "2020-12");
-    static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
+    static #position = Validator.#compile(positionSchema);
+    static #lineMarker = Validator.#compile(lineMarkerSchema);
+    static #textLineMarker = Validator.#compile(textLineMarkerSchema);
+    static #parsedPath = Validator.#compile(parsedPathSchema);
+    static #matcherBody = Validator.#compile(matcherBodySchema);
+    static #sendBody = Validator.#compile(sendBodySchema);
     static #plurnkStatement = Validator.#withRefs(
         plurnkStatementSchema,
         [
@@ -109,13 +109,13 @@ export default class Validator {
             resourceSelectionSchema,
         ],
     );
-    static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
-    static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
-    static #problemProjection = new CfValidator(problemProjectionSchema as Schema, "2020-12");
+    static #notice = Validator.#compile(noticeSchema);
+    static #problemDetails = Validator.#compile(problemDetailsSchema);
+    static #problemProjection = Validator.#compile(problemProjectionSchema);
     static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema, rangeExtentSchema]);
     static #entryReadResult = Validator.#withRefs(entryReadResultSchema, [problemDetailsSchema]);
-    static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
-    static #rangeExtent = new CfValidator(rangeExtentSchema as Schema, "2020-12");
+    static #textRegion = Validator.#compile(textRegionSchema);
+    static #rangeExtent = Validator.#compile(rangeExtentSchema);
     static #capabilityDescriptor = Validator.#withRefs(
         capabilityDescriptorSchema,
         [capabilitySelectorSchema],
@@ -124,52 +124,28 @@ export default class Validator {
         capabilityPolicySchema,
         [capabilitySelectorSchema],
     );
-    static #workerOwner = new CfValidator(workerOwnerSchema as Schema, "2020-12");
+    static #workerOwner = Validator.#compile(workerOwnerSchema);
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
         [proposalDispositionSchema, capabilityPolicySchema, capabilitySelectorSchema],
     );
-    static #clientDisplayCapabilities = new CfValidator(
-        clientDisplayCapabilitiesSchema as Schema,
-        "2020-12",
-    );
+    static #clientDisplayCapabilities = Validator.#compile(clientDisplayCapabilitiesSchema);
     static #mcpServerDefinition = Validator.#withRefs(mcpServerDefinitionSchema, [mcpOAuthSchema]);
-    static #a2aAgentDefinition = new CfValidator(
-        a2aAgentDefinitionSchema as unknown as Schema,
-        "2020-12",
-    );
-    static #skillDefinition = new CfValidator(
-        skillDefinitionSchema as unknown as Schema,
-        "2020-12",
-    );
-    static #mcpOAuth = new CfValidator(
-        mcpOAuthSchema as unknown as Schema,
-        "2020-12",
-    );
-    static #clientInteractionRequest = new CfValidator(
-        clientInteractionRequestSchema as unknown as Schema,
-        "2020-12",
-    );
+    static #a2aAgentDefinition = Validator.#compile(a2aAgentDefinitionSchema);
+    static #skillDefinition = Validator.#compile(skillDefinitionSchema);
+    static #mcpOAuth = Validator.#compile(mcpOAuthSchema);
+    static #clientInteractionRequest = Validator.#compile(clientInteractionRequestSchema);
     static #clientInteractionProjection = Validator.#withRefs(
         clientInteractionProjectionSchema,
         [clientInteractionRequestSchema],
     );
-    static #clientInteractionResolution = new CfValidator(
-        clientInteractionResolutionSchema as unknown as Schema,
-        "2020-12",
-    );
-    static #effort = new CfValidator(
-        effortSchema,
-        "2020-12",
-    );
+    static #clientInteractionResolution = Validator.#compile(clientInteractionResolutionSchema);
+    static #effort = Validator.#compile(effortSchema);
     static #providerRequestAccounting = Validator.#withRefs(
         providerRequestAccountingSchema,
         [providerUsageSchema, providerCostSchema],
     );
-    static #modelReadiness = new CfValidator(
-        modelReadinessSchema as unknown as Schema,
-        "2020-12",
-    );
+    static #modelReadiness = Validator.#compile(modelReadinessSchema);
     static #modelCatalogPage = Validator.#withRefs(
         modelCatalogPageSchema,
         [modelReadinessSchema, effortSchema],
@@ -186,11 +162,8 @@ export default class Validator {
         functionalityMutationResultSchema,
         [functionalityDefinitionStateSchema, functionalityProvenanceSchema, problemDetailsSchema],
     );
-    static #rollbackReport = new CfValidator(rollbackReportSchema as unknown as Schema, "2020-12");
-    static #modelCatalogQuery = new CfValidator(
-        modelCatalogQuerySchema as unknown as Schema,
-        "2020-12",
-    );
+    static #rollbackReport = Validator.#compile(rollbackReportSchema);
+    static #modelCatalogQuery = Validator.#compile(modelCatalogQuerySchema);
     static #modelRoute = Validator.#withRefs(
         modelRouteSchema,
         [effortSchema],
@@ -199,14 +172,8 @@ export default class Validator {
         aguiDiscoverySchema,
         [clientDisplayCapabilitiesSchema],
     );
-    static #aguiClientConformance = new CfValidator(
-        aguiClientConformanceSchema as unknown as Schema,
-        "2020-12",
-    );
-    static #aguiConformanceKit = new CfValidator(
-        aguiConformanceKitSchema as unknown as Schema,
-        "2020-12",
-    );
+    static #aguiClientConformance = Validator.#compile(aguiClientConformanceSchema);
+    static #aguiConformanceKit = Validator.#compile(aguiConformanceKitSchema);
     static #jsonSchemaValidators = new WeakMap<JsonSchema, CfValidator>();
     static #publicSchemas = [
         applicationOperationEventSchema,
@@ -266,18 +233,50 @@ export default class Validator {
     // The exact schema behind a `$ref` a Functionality family declares as its definition
     // schema — the source its generated document teaches the definition from.
     static schemaByRef(ref: string): object | null {
-        const schema = Validator.#publicSchemas.find((candidate) => (candidate as { $id?: string }).$id === ref);
-        return schema === undefined ? null : (schema);
+        const schema = Validator.#publicSchemas.find((candidate) => Validator.#schemaId(candidate) === ref);
+        return schema === undefined ? null : schema;
+    }
+
+    // {§wire-entrypoint} A schema document is an object, naming its dialect in `$schema` or taking the validator's
+    // default; every validator compiles one, the checked-in documents and the dynamic ones callers own alike. What
+    // the document then means is the validator's to read, its declared dialect included.
+    static #schemaDocument(value: unknown): value is Schema {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+        return !("$schema" in value) || typeof value.$schema === "string";
+    }
+
+    static #schemaId(document: unknown): string | undefined {
+        return typeof document === "object" && document !== null && "$id" in document && typeof document.$id === "string"
+            ? document.$id
+            : undefined;
+    }
+
+    static #compile(document: unknown): CfValidator {
+        if (!Validator.#schemaDocument(document)) {
+            throw new TypeError("a JSON Schema document is an object declaring draft 2020-12, or no draft");
+        }
+        return new CfValidator(document, "2020-12");
     }
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
-        const validator = new CfValidator(mainSchema as Schema, "2020-12");
-        const mainId = (mainSchema as { $id?: string }).$id;
+        const validator = Validator.#compile(mainSchema);
+        const mainId = Validator.#schemaId(mainSchema);
         for (const ref of refSchemas) {
-            if ((ref as { $id?: string }).$id === mainId) continue;
-            validator.addSchema(ref as Schema);
+            if (Validator.#schemaId(ref) === mainId) continue;
+            if (!Validator.#schemaDocument(ref)) {
+                throw new TypeError("a referenced JSON Schema document is an object declaring draft 2020-12, or no draft");
+            }
+            validator.addSchema(ref);
         }
         return validator;
+    }
+
+    // {§wire-entrypoint} The schema's acceptance is the proof a value has its wire type: a guard over the result of
+    // validating that value, the one place a validated `unknown` takes its type. The caller names the type the
+    // schema it validated against generates; the predicate is where it appears.
+    // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- a type predicate's parameter appears once by nature
+    static #accepted<T>(value: unknown, result: ValidationResult): value is T {
+        return result.valid;
     }
 
     static validatePosition(value: unknown): ValidationResult {
@@ -326,8 +325,8 @@ export default class Validator {
 
     static validateEntryReadResult(value: unknown): ValidationResult {
         const result = Validator.#validate(Validator.#entryReadResult, value);
-        if (!result.valid) return result;
-        const entry = (value as EntryReadResult).entry;
+        if (!Validator.#accepted<EntryReadResult>(value, result)) return result;
+        const entry = value.entry;
         if (entry === null) return result;
         for (const [name, channel] of Object.entries(entry.channels)) {
             const returnedLength = Array.from(channel.content).length;
@@ -442,14 +441,16 @@ export default class Validator {
 
     static assertRollbackReport(value: unknown): RollbackReport {
         const result = Validator.validateRollbackReport(value);
-        if (!result.valid) throw new InvalidRollbackReportError(`invalid RollbackReport: ${JSON.stringify(result.errors)}`);
-        return value as RollbackReport;
+        if (!Validator.#accepted<RollbackReport>(value, result)) {
+            throw new InvalidRollbackReportError(`invalid RollbackReport: ${JSON.stringify(result.errors)}`);
+        }
+        return value;
     }
 
     static validateModelReadiness(value: unknown): ValidationResult {
         const result = Validator.#validate(Validator.#modelReadiness, value);
-        if (!result.valid) return result;
-        const readiness = value as ModelReadiness;
+        if (!Validator.#accepted<ModelReadiness>(value, result)) return result;
+        const readiness = value;
         if (readiness.ready !== (readiness.causes.length === 0)) {
             return {
                 valid: false,
@@ -685,22 +686,22 @@ export default class Validator {
 
     static assertEffort(value: unknown): Effort {
         const result = Validator.validateEffort(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<Effort>(value, result)) {
             throw new InvalidEffortError(
                 `invalid Effort: ${JSON.stringify(result.errors)}`,
             );
         }
-        return value as Effort;
+        return value;
     }
 
     static assertModelCatalogPage(value: unknown): ModelCatalogPage {
         const result = Validator.validateModelCatalogPage(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ModelCatalogPage>(value, result)) {
             throw new InvalidModelCatalogPageError(
                 `invalid ModelCatalogPage: ${JSON.stringify(result.errors)}`,
             );
         }
-        const page = value as ModelCatalogPage;
+        const page = value;
         const selectors = new Set<string>();
         for (const item of page.items) {
             Validator.assertModelReadiness(item.readiness);
@@ -732,64 +733,64 @@ export default class Validator {
 
     static assertFunctionalityListResult(value: unknown): FunctionalityListResult {
         const result = Validator.validateFunctionalityListResult(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<FunctionalityListResult>(value, result)) {
             throw new InvalidFunctionalityListResultError(`invalid FunctionalityListResult: ${JSON.stringify(result.errors)}`);
         }
-        return value as FunctionalityListResult;
+        return value;
     }
 
     static assertFunctionalityDiscoverResult(value: unknown): FunctionalityDiscoverResult {
         const result = Validator.validateFunctionalityDiscoverResult(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<FunctionalityDiscoverResult>(value, result)) {
             throw new InvalidFunctionalityDiscoverResultError(`invalid FunctionalityDiscoverResult: ${JSON.stringify(result.errors)}`);
         }
-        return value as FunctionalityDiscoverResult;
+        return value;
     }
 
     static assertFunctionalityMutationResult(value: unknown): FunctionalityMutationResult {
         const result = Validator.validateFunctionalityMutationResult(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<FunctionalityMutationResult>(value, result)) {
             throw new InvalidFunctionalityMutationResultError(`invalid FunctionalityMutationResult: ${JSON.stringify(result.errors)}`);
         }
-        return value as FunctionalityMutationResult;
+        return value;
     }
 
     static assertModelCatalogQuery(value: unknown): ModelCatalogQuery {
         const result = Validator.validateModelCatalogQuery(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ModelCatalogQuery>(value, result)) {
             throw new InvalidModelCatalogQueryError(
                 `invalid ModelCatalogQuery: ${JSON.stringify(result.errors)}`,
             );
         }
-        return value as ModelCatalogQuery;
+        return value;
     }
 
     static assertModelReadiness(value: unknown): ModelReadiness {
         const result = Validator.validateModelReadiness(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ModelReadiness>(value, result)) {
             throw new InvalidModelReadinessError(
                 `invalid ModelReadiness: ${JSON.stringify(result.errors)}`,
             );
         }
-        return value as ModelReadiness;
+        return value;
     }
 
     static assertModelRoute(value: unknown): ModelRoute {
         const result = Validator.validateModelRoute(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<ModelRoute>(value, result)) {
             throw new InvalidModelRouteError(`invalid ModelRoute: ${JSON.stringify(result.errors)}`);
         }
-        return value as ModelRoute;
+        return value;
     }
 
     static assertAguiDiscovery(value: unknown): AguiDiscovery {
         const result = Validator.validateAguiDiscovery(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<AguiDiscovery>(value, result)) {
             throw new InvalidAguiDiscoveryError(
                 `invalid AG-UI discovery manifest: ${JSON.stringify(result.errors)}`,
             );
         }
-        return value as AguiDiscovery;
+        return value;
     }
 
     static assertAguiClientConformance(
@@ -798,12 +799,12 @@ export default class Validator {
     ): AguiClientConformance {
         const discovery = Validator.assertAguiDiscovery(discoveryValue);
         const result = Validator.validateAguiClientConformance(conformanceValue);
-        if (!result.valid) {
+        if (!Validator.#accepted<AguiClientConformance>(conformanceValue, result)) {
             throw new InvalidAguiClientConformanceError(
                 `invalid AG-UI client conformance: ${JSON.stringify(result.errors)}`,
             );
         }
-        const conformance = conformanceValue as AguiClientConformance;
+        const conformance = conformanceValue;
         const mismatch = (kind: "actions" | "notifications"): string[] => {
             const installed = Object.keys(discovery[kind]).toSorted();
             const accounted = Object.keys(conformance[kind]).toSorted();
@@ -833,7 +834,7 @@ export default class Validator {
                         ? baseline
                         : ["failure"];
                 for (const dimension of required) {
-                    if (!disposition.dimensions.includes(dimension as never)) {
+                    if (!disposition.dimensions.some((declared) => declared === dimension)) {
                         missingDimensions.push(`${kind.slice(0, -1)} '${name}' lacks ${dimension}`);
                     }
                 }
@@ -849,12 +850,12 @@ export default class Validator {
 
     static assertAguiConformanceKit(value: unknown): AguiConformanceKit {
         const result = Validator.validateAguiConformanceKit(value);
-        if (!result.valid) {
+        if (!Validator.#accepted<AguiConformanceKit>(value, result)) {
             throw new InvalidAguiConformanceKitError(
                 `invalid AG-UI conformance kit: ${JSON.stringify(result.errors)}`,
             );
         }
-        const kit = value as AguiConformanceKit;
+        const kit = value;
         for (const specimens of [kit.transport, kit.lifecycles]) {
             const names = specimens.map(({ name }) => name);
             if (new Set(names).size !== names.length) {
