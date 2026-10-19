@@ -1,7 +1,7 @@
 // The AG-UI built-in actions: the management-plane calls a client makes by name. Split out of the module.
 import { type ActionOutcome } from "./AguiPlus.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Problems, UNKNOWN_POSITION, Validator, type AguiDiscovery, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { Problems, UNKNOWN_POSITION, Validator, isRecord, type AguiDiscovery, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { actionFailure } from "./action-results.ts";
 import MessageAddress from "./MessageAddress.ts";
@@ -9,6 +9,10 @@ import type { RunAgentInput } from "./types.ts";
 
 // {§agui-broadcast-fan} What a client operation's Run hears: the loop its dispatch opened, before any statement runs.
 export type OperationLoopListener = (loop: { readonly workerId: number; readonly loopId: number }) => void;
+
+// A workspace constraint as `workspace.create` admits it: an effect and the glob it applies to.
+const isConstraint = (value: unknown): value is { effect: string; glob: string } =>
+    isRecord(value) && typeof value.effect === "string" && typeof value.glob === "string";
 
 const operationOutcome = (result: OperationResult): ActionOutcome => {
     const exact = Validator.assertOperationResult(result);
@@ -112,7 +116,8 @@ export default class BuiltinActions {
         statements: PlurnkStatement[],
         onLoop: OperationLoopListener | undefined,
     ): Promise<OperationResult[]> {
-        const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        const props: unknown = input.forwardedProps;
+        const forwarded = isRecord(props) && isRecord(props.plurnk) ? props.plurnk : undefined;
         const contextWorkerId = await this.#threadWorker(input.threadId, workspace.workspaceId, forwarded);
         return await this.#seam().dispatchClientAction({
             workspaceId: workspace.workspaceId,
@@ -160,23 +165,26 @@ export default class BuiltinActions {
                         return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                     }
                     const created = await this.#seam().createWorkspace({
-                        ...(Object.hasOwn(p, "projectRoot")
-                            ? { projectRoot: p.projectRoot as string | null }
-                            : {}),
-                        ...(Object.hasOwn(p, "constraints")
-                            ? { constraints: p.constraints as Array<{ effect: string; glob: string }> }
-                            : {}),
-                        ...(Object.hasOwn(p, "settings")
-                            ? { settings: p.settings as string | object }
-                            : {}),
+                        ...(typeof p.projectRoot === "string" || p.projectRoot === null ? { projectRoot: p.projectRoot } : {}),
+                        ...(Array.isArray(p.constraints) && p.constraints.every(isConstraint) ? { constraints: p.constraints } : {}),
+                        ...(typeof p.settings === "string" || isRecord(p.settings) ? { settings: p.settings } : {}),
                     });
                     return { ok: true, result: { id: created.workspaceId, name: created.workspaceName } };
                 }
                 case "workspace.attach": {
                     // The registry admits exactly one selector; core owns its interpretation.
-                    const att = await this.#seam().attachWorkspace(typeof p.id === "number"
-                        ? { workspaceId: p.id }
-                        : typeof p.name === "string" ? { name: p.name } : { projectRoot: p.projectRoot as string });
+                    const selector = typeof p.id === "number" ? { workspaceId: p.id }
+                        : typeof p.name === "string" ? { name: p.name }
+                            : typeof p.projectRoot === "string" ? { projectRoot: p.projectRoot } : null;
+                    if (selector === null) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "workspace.attach names no workspace: none of id, name or projectRoot is present.",
+                            400,
+                            { recovery: "Provide one of id, name or projectRoot." },
+                        );
+                    }
+                    const att = await this.#seam().attachWorkspace(selector);
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName } };
                 }
             }
@@ -189,13 +197,13 @@ export default class BuiltinActions {
                     const entries = await this.#seam().readLog({
                         workspaceId: workspace.workspaceId,
                         workerId: readWorkerId,
-                        ...(Object.hasOwn(p, "limit") ? { limit: p.limit as number } : {}),
-                        ...(Object.hasOwn(p, "sinceId") ? { sinceId: p.sinceId as number } : {}),
-                        ...(Object.hasOwn(p, "loopId") ? { loopId: p.loopId as number } : {}),
-                        ...(Object.hasOwn(p, "turnId") ? { turnId: p.turnId as number } : {}),
-                        ...(Object.hasOwn(p, "loopSeq") ? { loopSeq: p.loopSeq as number } : {}),
-                        ...(Object.hasOwn(p, "turnSeq") ? { turnSeq: p.turnSeq as number } : {}),
-                        ...(Object.hasOwn(p, "sequence") ? { sequence: p.sequence as number } : {}),
+                        ...(typeof p.limit === "number" ? { limit: p.limit } : {}),
+                        ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}),
+                        ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}),
+                        ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}),
+                        ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}),
+                        ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}),
+                        ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}),
                     });
                     return { ok: true, result: { entries } };
                 }
@@ -228,12 +236,17 @@ export default class BuiltinActions {
                     result: {
                         prompts: await this.#seam().listPrompts(
                             workspace.workspaceId,
-                            Object.hasOwn(p, "limit") ? p.limit as number : undefined,
+                            typeof p.limit === "number" ? p.limit : undefined,
                             typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                         ),
                     },
                 };
-                case "workspace.share": return { ok: true, result: await this.#seam().shareWorkspace({ workspaceId: workspace.workspaceId, folder: p.folder as string }) };
+                case "workspace.share": {
+                    if (typeof p.folder !== "string") {
+                        return actionFailure("invalid-action-parameters", "workspace.share folder is not a string.", 400, { field: "folder", recovery: "Provide the folder to share into." });
+                    }
+                    return { ok: true, result: await this.#seam().shareWorkspace({ workspaceId: workspace.workspaceId, folder: p.folder }) };
+                }
                 case "workspace.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) {
                         return actionFailure(
@@ -296,8 +309,8 @@ export default class BuiltinActions {
                             ? p.workerId
                             : BuiltinActions.#bound(boundWorkerId),
                         target: p.target,
-                        ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
-                        ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),
+                        ...(typeof p.channel === "string" ? { channel: p.channel } : {}),
+                        ...(typeof p.offset === "number" ? { offset: p.offset } : {}),
                     }));
                     return operationOutcome(result);
                 }
@@ -436,7 +449,7 @@ export default class BuiltinActions {
                 case "workspace.capabilities.set": {
                     return { ok: true, result: await this.#seam().setWorkspaceCapabilities({
                         workspaceId: workspace.workspaceId,
-                        policy: p.policy as CapabilityPolicy,
+                        policy: Validator.assertCapabilityPolicy(p.policy),
                     }) };
                 }
                 default: throw new Error(`AG-UI built-in '${kind}' has no executor`);

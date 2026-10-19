@@ -1,6 +1,6 @@
 import { JSONPathEnvironment, JSONPathError, type JSONPathQuery, type JSONValue } from "json-p3";
 import picomatch from "picomatch";
-import { PathSyntax, type TextRegion } from "@plurnk/plurnk-contracts";
+import { PathSyntax, Validator, isRecord, isSafeInteger, type TextRegion } from "@plurnk/plurnk-contracts";
 
 // json-p3's default recursion-descent cap (50 nodes visited) is a DoS guard for
 // untrusted deeply-nested JSON. Our jsonpath target is deepJson — our OWN parse
@@ -124,7 +124,9 @@ export function queryJsonpathObject(
         if (!(cause instanceof JSONPathError)) throw cause;
         throw new InvalidExpressionError({ dialect: "jsonpath", expression: pattern, cause });
     }
-    // deepJson is JSON-shaped by {§mimetype-channel-architecture}; the cast is the seam.
+    // {§mimetype-channel-architecture} A handler's deep JSON is JSON-shaped by contract; this is the one place its tree
+    // takes json-p3's type, which names the same values structurally.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the stated boundary above
     const results = query.query(obj as JSONValue).nodes.map((n) => ({
         value: n.value,
         path: n.getPath({ form: "canonical" }),
@@ -169,8 +171,10 @@ export function queryXpathString(
         const onError = (level: string, message: string): void => {
             if (level !== "warn") throw new Error(`deep-xml parse ${level}: ${message}`);
         };
-        doc = new DOMParser({ onError })
-            .parseFromString(xml, "text/xml") as unknown as Document;
+        // xmldom's Document and the DOM Document xpath reads name the same object; this is the one place the parsed
+        // document takes the type the query runs against.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the stated boundary above
+        doc = new DOMParser({ onError }).parseFromString(xml, "text/xml") as unknown as Document;
     } catch (cause) {
         throw new QueryParseFailureError({ mimetype, cause });
     }
@@ -224,6 +228,21 @@ const PROCESSING_INSTRUCTION_NODE = 7;
 const COMMENT_NODE = 8;
 const ELEMENT_NODE = 1;
 
+const isElement = (node: Node): node is Element => node.nodeType === ELEMENT_NODE;
+const isAttr = (node: Node): node is Attr => node.nodeType === ATTRIBUTE_NODE;
+const isCharacterData = (node: Node): node is Text | Comment | ProcessingInstruction =>
+    node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE || node.nodeType === COMMENT_NODE
+    || node.nodeType === PROCESSING_INSTRUCTION_NODE;
+
+// The nearest element at or above a node: the node itself, an attribute's owner, else the first element ancestor.
+const nearestElement = (node: Node): Element | null => {
+    if (isElement(node)) return node;
+    if (isAttr(node)) return node.ownerElement;
+    let cur: Node | null = node.parentNode;
+    while (cur !== null && !isElement(cur)) cur = cur.parentNode;
+    return cur;
+};
+
 // Recover a readable-text region from the `pk:*` provenance attributes the
 // framework projection writes onto elements. Non-element matches walk to their
 // nearest annotated element. Missing or unaddressable provenance stays absent.
@@ -231,27 +250,17 @@ function regionOfMatchedNode(
     node: Node,
     coordinates: TextCoordinates,
 ): Pick<QueryMatch, "regions" | "enclosingRegions"> {
-    let el: Element | null = null;
-    if (node.nodeType === ELEMENT_NODE) {
-        el = node as unknown as Element;
-    } else if (node.nodeType === ATTRIBUTE_NODE) {
-        el = (node as Attr).ownerElement;
-    } else {
-        // Walk up to the nearest element ancestor for text/comment/PI/CDATA.
-        let cur: Node | null = (node as { parentNode?: Node | null }).parentNode ?? null;
-        while (cur && cur.nodeType !== ELEMENT_NODE) {
-            cur = (cur as { parentNode?: Node | null }).parentNode ?? null;
-        }
-        el = cur as unknown as Element | null;
-    }
+    let el = nearestElement(node);
     while (el && pkAttr(el, "line") === undefined && !el.hasAttributeNS(PK_NS, "regions")) {
         el = parentElement(el);
     }
     if (!el) return {};
     const serializedRegions = el.getAttributeNS(PK_NS, "regions");
     if (serializedRegions) {
-        const regions = JSON.parse(serializedRegions) as TextRegion[];
-        if (!Array.isArray(regions) || !regions.every((region) => isAddressableRegion(coordinates, region))) {
+        const parsed: unknown = JSON.parse(serializedRegions);
+        if (!Array.isArray(parsed)) throw new Error("Projected source regions must be addressable text coordinates");
+        const regions = parsed.map((region) => Validator.assertTextRegion(region));
+        if (!regions.every((region) => isAddressableRegion(coordinates, region))) {
             throw new Error("Projected source regions must be addressable text coordinates");
         }
         return el === node ? { regions } : { enclosingRegions: regions };
@@ -277,31 +286,26 @@ function regionOfMatchedNode(
 
 // Nearest ancestor ELEMENT of an element node, or null at the document root.
 function parentElement(el: Element): Element | null {
-    let cur: Node | null = (el as { parentNode?: Node | null }).parentNode ?? null;
-    while (cur && cur.nodeType !== ELEMENT_NODE) {
-        cur = (cur as { parentNode?: Node | null }).parentNode ?? null;
-    }
-    return cur as unknown as Element | null;
+    let cur: Node | null = el.parentNode;
+    while (cur !== null && !isElement(cur)) cur = cur.parentNode;
+    return cur;
 }
 
 function pkAttr(el: Element | null, name: string): number | undefined {
     if (!el) return undefined;
-    const raw = el.getAttributeNS
-        ? el.getAttributeNS("https://plurnk.xyz/deep-xml/1", name)
-        : (el as Element & { getAttribute?: (n: string) => string | null })
-            .getAttribute?.(`pk:${name}`) ?? null;
+    const raw = el.getAttributeNS("https://plurnk.xyz/deep-xml/1", name);
     if (raw === null || raw === undefined || raw === "") return undefined;
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 export function serializeXpathNode(node: Node): string {
-    const nt = node.nodeType;
-    if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
-    if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;
-    if (nt === COMMENT_NODE) return (node as Comment).data;
-    if (nt === PROCESSING_INSTRUCTION_NODE) return (node as ProcessingInstruction).data;
-    return (node as unknown as { toString: () => string }).toString();
+    if (isAttr(node)) return node.value;
+    if (isCharacterData(node)) return node.data;
+    // An xmldom node serializes itself in toString; the DOM type the query reads it under does not say so (the same
+    // boundary the parse states).
+    // oxlint-disable-next-line typescript/no-base-to-string -- the stated boundary above
+    return node.toString();
 }
 
 // Pick a return shape for a regex match under the polymorphism rule in
@@ -415,44 +419,35 @@ function valueAtPointer(root: unknown, pointer: string): unknown {
     let cur: unknown = root;
     for (const tok of tokens) {
         if (cur === null || typeof cur !== "object") return undefined;
-        cur = (cur as Record<string, unknown>)[tok];
+        cur = Reflect.get(cur, tok);
     }
     return cur;
 }
 
 function explicitSpan(value: unknown): LineSpan | undefined {
-    if (value === null || typeof value !== "object") return undefined;
-    const o = value as Record<string, unknown>;
+    if (!isRecord(value)) return undefined;
+    const o = value;
     if (typeof o.line !== "number" || !(o.line > 0)) return undefined;
     const endLine = typeof o.endLine === "number" && o.endLine >= o.line ? o.endLine : o.line;
     return { line: o.line, endLine };
 }
 
 function explicitRegion(value: unknown): TextRegion | undefined {
-    if (value === null || typeof value !== "object") return undefined;
-    const candidate = value as Record<string, unknown>;
-    const startLine = candidate.line;
-    const startColumn = candidate.column;
-    const endLine = candidate.endLine;
-    const endColumn = candidate.endColumn;
+    if (!isRecord(value)) return undefined;
+    const { line: startLine, column: startColumn, endLine, endColumn } = value;
     if (
-        !Number.isSafeInteger(startLine)
-        || !Number.isSafeInteger(startColumn)
-        || !Number.isSafeInteger(endLine)
-        || !Number.isSafeInteger(endColumn)
-        || (startLine as number) < 1
-        || (startColumn as number) < 1
-        || (endLine as number) < 1
-        || (endColumn as number) < 1
+        !isSafeInteger(startLine)
+        || !isSafeInteger(startColumn)
+        || !isSafeInteger(endLine)
+        || !isSafeInteger(endColumn)
+        || startLine < 1
+        || startColumn < 1
+        || endLine < 1
+        || endColumn < 1
     ) {
         return undefined;
     }
-    return {
-        startLine: startLine as number,
-        startColumn: startColumn as number,
-        endLine: endLine as number,
-        endColumn: endColumn as number,
-    };
+    return { startLine, startColumn, endLine, endColumn };
 }
 
 function isAddressableRegion(
@@ -487,7 +482,7 @@ function collectLineNumbers(value: unknown): number[] {
     if (typeof value === "number" && Number.isFinite(value) && value > 0) return [value];
     if (value !== null && typeof value === "object") {
         const out: number[] = [];
-        for (const v of Object.values(value as Record<string, unknown>)) out.push(...collectLineNumbers(v));
+        for (const v of Object.values(value)) out.push(...collectLineNumbers(v));
         return out;
     }
     return [];
@@ -503,7 +498,7 @@ function ancestorChain(root: unknown, pointer: string): unknown[] {
     let cur: unknown = root;
     for (let i = 0; i < tokens.length - 1; i += 1) {
         if (cur === null || typeof cur !== "object") break;
-        cur = (cur as Record<string, unknown>)[tokens[i]];
+        cur = Reflect.get(cur, tokens[i]);
         chain.push(cur);
     }
     return chain;
