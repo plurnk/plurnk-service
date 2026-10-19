@@ -6,6 +6,7 @@ import { mkdtemp, writeFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as SourceContracts from "../src/index.ts";
+import { isRecord } from "../src/guards.ts";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -112,9 +113,9 @@ console.log("OK: wire contracts are consumable through one installed entrypoint.
     process.stdout.write(`[smoke] PASS\n`);
 } catch (e) {
     await cleanup();
-    const err = e as { message?: string; stdout?: string; stderr?: string };
-    process.stderr.write(`[smoke] FAIL: ${err.message ?? String(e)}\n`);
-    if (err.stdout) process.stderr.write(`[stdout] ${err.stdout}\n`);
-    if (err.stderr) process.stderr.write(`[stderr] ${err.stderr}\n`);
+    const failure: Readonly<Record<string, unknown>> = isRecord(e) ? e : {};
+    process.stderr.write(`[smoke] FAIL: ${e instanceof Error ? e.message : String(e)}\n`);
+    if (typeof failure.stdout === "string" && failure.stdout !== "") process.stderr.write(`[stdout] ${failure.stdout}\n`);
+    if (typeof failure.stderr === "string" && failure.stderr !== "") process.stderr.write(`[stderr] ${failure.stderr}\n`);
     process.exit(1);
 }

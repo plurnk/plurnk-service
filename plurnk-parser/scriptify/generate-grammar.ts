@@ -12,7 +12,7 @@ const GENERATED_IMPORT = /from\s+(['"])\.\/([^'"]+)\.js\1/gu;
 
 const antlr = (args: readonly string[], cwd: string): Promise<{ code: number; output: string }> => new Promise((accept) => {
     execFile(ANTLR, args, { cwd, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
-        const code = error === null ? 0 : typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1;
+        const code = error === null ? 0 : typeof error.code === "number" ? error.code : 1;
         accept({ code, output: `${stdout}${stderr}` });
     });
 });

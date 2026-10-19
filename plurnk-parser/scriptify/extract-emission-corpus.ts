@@ -126,6 +126,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
     if (values.reclassify && root !== undefined) throw new Error("--reclassify reads only the retained corpus; do not name a drill root");
     const records = values.reclassify
         ? readFileSync(CORPUS, "utf8").split("\n").filter(Boolean).map((line) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the retained corpus is this script's own output, one record per line
             const { specimen, packet, recordedStatus, turns, emission } = JSON.parse(line) as CorpusRecord;
             return { specimen, packet, recordedStatus, ...classify(emission), turns, emission };
         }) : harvest(root);

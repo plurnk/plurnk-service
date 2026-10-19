@@ -1,6 +1,7 @@
 // Audit the composed dependency tree and route @plurnk/*-rooted chains to
 // their owning packages. {§install-root-advisory-ownership}
 
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -47,20 +48,19 @@ const workerAudit = (extra: string[]): string => {
     try {
         return execFileSync("npm", ["audit", ...extra], { encoding: "utf8" });
     } catch (err) {
-        const stdout = (err as { stdout?: string }).stdout;
+        const stdout = isRecord(err) ? err.stdout : undefined;
         if (typeof stdout === "string" && stdout.length > 0) return stdout;
         throw err;
     }
 };
 
 const readDirectDeps = (): Set<string> => {
-    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as Record<string, Record<string, string> | undefined>;
-    return new Set([
-        ...Object.keys(pkg.dependencies ?? {}),
-        ...Object.keys(pkg.devDependencies ?? {}),
-        ...Object.keys(pkg.optionalDependencies ?? {}),
-        ...Object.keys(pkg.peerDependencies ?? {}),
-    ]);
+    const pkg: unknown = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    const names = (group: string): string[] => {
+        const declared = isRecord(pkg) ? pkg[group] : undefined;
+        return isRecord(declared) ? Object.keys(declared) : [];
+    };
+    return new Set(["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].flatMap(names));
 };
 
 // Walk the audit graph's `effects` edges from a vulnerable package out to the direct deps that pull
@@ -106,6 +106,7 @@ const LEVEL = "moderate";
 
 const main = (): number => {
     const strict = process.argv.includes("--strict");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- npm audit --json's report: every member the type names is optional and read with a fallback
     const audit = JSON.parse(workerAudit(["--json", `--audit-level=${LEVEL}`])) as AuditReport;
     const m = audit.metadata?.vulnerabilities ?? {};
     const total = m.total ?? 0;

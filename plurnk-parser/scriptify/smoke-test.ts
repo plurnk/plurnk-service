@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import * as SourceParser from "../src/index.ts";
+import { isRecord } from "@plurnk/plurnk-contracts";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -24,9 +25,19 @@ const cleanup = async (): Promise<void> => {
     await rm(tempDir, { recursive: true, force: true });
 };
 
+// A parse result's items, as the CLI prints and the browser bundle returns them.
+const parseItems = (result: unknown, source: string): readonly unknown[] => {
+    if (!isRecord(result) || !Array.isArray(result.items)) throw new Error(`${source} returned no parse items: ${JSON.stringify(result)}`);
+    return result.items;
+};
+const isParseError = (item: unknown): boolean => isRecord(item) && item.kind === "error";
+
 try {
     const candidates = await Promise.all([contractsDir, parserDir].map(async (cwd) => {
-        const manifest = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
+        const manifest: unknown = JSON.parse(await readFile(join(cwd, "package.json"), "utf8"));
+        if (!isRecord(manifest) || typeof manifest.name !== "string" || typeof manifest.version !== "string") {
+            throw new Error(`${cwd}/package.json names no package and version`);
+        }
         // `--silent` prints the one archive's filename and nothing else, the same on every npm; the JSON
         // envelope changed shape in npm 12 and belongs to the root release scripts' normalizer.
         const { stdout } = await run("npm", ["pack", "--silent", "--ignore-scripts", "--pack-destination", tempDir], { cwd, env: cleanEnv });
@@ -34,7 +45,7 @@ try {
         if (!tarballName.endsWith(".tgz")) throw new Error(`npm pack printed no archive name: ${JSON.stringify(stdout)}`);
         const tarball = join(tempDir, tarballName);
         process.stdout.write(`[smoke] candidate: ${manifest.name}@${manifest.version}\n`);
-        return { name: manifest.name as string, version: manifest.version as string, tarball };
+        return { name: manifest.name, version: manifest.version, tarball };
     }));
 
     process.stdout.write(`[smoke] setting up consumer in ${tempDir}...\n`);
@@ -200,8 +211,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
     // {§operation-fences} — the installed CLI smoke writes the taught form.
     await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
-    const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
-    if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);
+    if (parseItems(JSON.parse(cliOut), "the CLI").some(isParseError)) throw new Error(`CLI reported parse errors: ${cliOut}`);
 
     await writeFile(join(tempDir, "consume-browser.js"), `
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -218,12 +228,11 @@ export const parse = (input) => PlurnkParser.parse(input);
         platform: "browser",
         logLevel: "silent",
     });
-    const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
-        parse(input: string): { items: Array<{ kind: string }> };
-    };
-    const browserResult = browserConsumer.parse("```NOTE\nbrowser bundle initialized\n```");
-    if (browserResult.items.some(({ kind }) => kind === "error")) {
-        throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
+    const browserConsumer: unknown = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`);
+    if (!isRecord(browserConsumer) || typeof browserConsumer.parse !== "function") throw new Error("the browser bundle exports no parse");
+    const browserItems = parseItems(Reflect.apply(browserConsumer.parse, undefined, ["```NOTE\nbrowser bundle initialized\n```"]), "the browser bundle");
+    if (browserItems.some(isParseError)) {
+        throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserItems)}`);
     }
     process.stdout.write("[smoke] browser bundle initialized and parsed a turn\n");
 
@@ -231,9 +240,9 @@ export const parse = (input) => PlurnkParser.parse(input);
     process.stdout.write(`[smoke] PASS\n`);
 } catch (e) {
     await cleanup();
-    const err = e as { message?: string; stdout?: string; stderr?: string };
-    process.stderr.write(`[smoke] FAIL: ${err.message ?? String(e)}\n`);
-    if (err.stdout) process.stderr.write(`[stdout] ${err.stdout}\n`);
-    if (err.stderr) process.stderr.write(`[stderr] ${err.stderr}\n`);
+    const failure: Readonly<Record<string, unknown>> = isRecord(e) ? e : {};
+    process.stderr.write(`[smoke] FAIL: ${e instanceof Error ? e.message : String(e)}\n`);
+    if (typeof failure.stdout === "string" && failure.stdout !== "") process.stderr.write(`[stdout] ${failure.stdout}\n`);
+    if (typeof failure.stderr === "string" && failure.stderr !== "") process.stderr.write(`[stderr] ${failure.stderr}\n`);
     process.exit(1);
 }
