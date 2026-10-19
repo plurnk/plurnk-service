@@ -1048,9 +1048,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 retryable: false,
             },
         );
-        let exitLabel = "did not conclude";
-        let stdoutLength = 0;
-        let stderrLength = 0;
+        let channelSizes: ReadonlyArray<readonly [string, number]> = [];
         // {§exec-entry-sink} — the executor's entry() sink and the narration turn it owns live in their own owner;
         // this spawn's tail settles them.
         const sink = new ExecEntrySink({
@@ -1143,11 +1141,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 }
             }
 
-            ({ result, exitLabel } = this.#settleExecutionResult({ result, timedOut, timeoutSec, signal, target, runtime, body, ctx }));
-            const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
-            const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
-            stdoutLength = stdoutMeta?.contentLength ?? 0;
-            stderrLength = stderrMeta?.contentLength ?? 0;
+            result = this.#settleExecutionResult({ result, timedOut, timeoutSec, signal, target, runtime, body, ctx });
+            // {§exec-conclusion-summary} — the summary sizes the channels this executor declares, in its order.
+            channelSizes = await Promise.all(Object.keys(executor.channels).map(async (channel) => [
+                channel,
+                (await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel }))?.contentLength ?? 0,
+            ] as const));
         } catch (cause) {
             executionFailures.push(cause);
         }
@@ -1163,8 +1162,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 });
             }
             try {
-                await lifecycle.close(result,
-                    `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`);
+                await lifecycle.close(result, Exec.#closeSummary(`${runtime}://${pathname}`, result, channelSizes));
             } catch (cause) { finalizationErrors.push(cause); }
             if (finalizationErrors.length === 1) throw finalizationErrors[0];
             if (finalizationErrors.length > 1) {
@@ -1180,7 +1178,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     #settleExecutionResult(args: {
         result: SchemeResult; timedOut: boolean; timeoutSec: number | null; signal: AbortSignal;
         target: string | null; runtime: string; body: string; ctx: PlurnkSchemeContext;
-    }): { result: SchemeResult; exitLabel: string } {
+    }): SchemeResult {
         const { timedOut, timeoutSec, signal, target, runtime, body, ctx } = args;
         let { result } = args;
         const cancelled = (exitCode?: number): SchemeResult => Results.failure(
@@ -1216,14 +1214,15 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         } else if (result.status < 400 && exitCode === 127 && target === null) {
             result = this.#namedToolFallThrough(result, runtime, body, ctx);
         }
-        const exitLabel = timedOut
-            ? `timed out after ${(timeoutSec ?? 0) / 60}m`
-            : result.status === 499
-                ? "aborted"
-                : exitCode !== null
-                    ? `exit ${exitCode}`
-                    : result.problem?.title.toLowerCase() ?? "completed";
-        return { result, exitLabel };
+        return result;
+    }
+
+    // {§exec-conclusion-summary} — the stream's address, how its settled result ended, and each declared channel's size.
+    static #closeSummary(address: string, result: SchemeResult, channels: ReadonlyArray<readonly [string, number]>): string {
+        const ended = Results.isFailed(result) ? result.problem.title.toLowerCase()
+            : typeof result.exitCode === "number" ? `completed (exit ${result.exitCode})` : "completed";
+        const sizes = channels.map(([channel, size]) => `${channel}=${size} bytes`).join(", ");
+        return `${address} ${ended}${sizes === "" ? "" : `; ${sizes}`}`;
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {

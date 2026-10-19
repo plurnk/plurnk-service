@@ -70,7 +70,6 @@ test("{§executor-results} a rejecting driver still concludes its stream with an
         const concluded = await waitFor(() => wakes, (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].result.status, 500, "the rejected execution concluded as a FAILURE, not an open subscription");
         assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-threw");
-        assert.match(concluded[0].summary, /executor threw/, "the summary reflects the structured executor-threw result");
     } finally { await db.close(); }
 });
 
@@ -183,7 +182,6 @@ test("{§executor-results} a driver resolving 200 under abort is replaced by a 4
         const concluded = await waitFor(() => wakes.filter((w) => w.result !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].result.status, 499, "the reaped execution concluded 499, not the driver's claimed 200");
         assert.equal(concluded[0].result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/execution-cancelled");
-        assert.match(concluded[0].summary, /aborted/, "the summary reflects the structured cancellation result");
     } finally { await db.close(); }
 });
 

@@ -3638,6 +3638,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 | {§effect-policy-tunable} | Effect admission is one knob per effect. |
 | {§exec-stream} | Stream surfacing. |
 | {§stream-observation-result} | A stream observation's result carries one liveness fact. |
+| {§exec-conclusion-summary} | An execution's conclusion summary is its address, how it ended and its channel sizes. |
 | {§exec-concurrency} | Execution concurrency is bounded per workspace (#389). |
 | {§exec-stream-page} | An unrequested delivery never exceeds the retrieval page. |
 | {§workspace-env} | Workspace environment. |
@@ -3892,6 +3893,14 @@ publication transition consumes the same result flag; private log attributes
 retain only the publication offset, not a second liveness value. A closed channel
 publishes only once subscription settlement has installed its terminal result;
 until then the stream is still in flight and publishes on the turn after it settles.
+
+§exec-conclusion-summary **An execution's conclusion summary is its address, how it ended and its
+channel sizes.** The `summary` of an execution's `stream/concluded` ({§notifications-stream-concluded})
+is a display line for clients, such as `sh:///ab3d5678 completed (exit 0); stdout=12 bytes, stderr=0 bytes`;
+the model receives the terminal observation instead ({§exec-stream}). How it ended is read from the
+settled result: `completed`, with its exit code when it has one, for a success, and the Problem's title
+in lowercase for a failure. The sizes follow, one per channel the executor declares, in declared order
+({§executor-channels}).
 
 §exec-concurrency **Execution concurrency is bounded per workspace (#389).** At most `PLURNK_SERVICE_EXEC_CONCURRENCY` external executions run at once in one workspace (`-1` unbounded); the scope is the workspace, so neither delegation nor later turns bypass it and no other workspace can starve it. The scheduler is the exec scheme's; the knob is the service's ({§operator-config}), fail-hard on any other value. Ordered subsystem commands use {§functionality-model-mutation}, not this background-work queue.
 
@@ -5786,7 +5795,7 @@ answering a message in this worker's inbox, omits the field, as does every other
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for routing to the bound worker, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic extension notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
+| §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `summary` is a display line the owning scheme writes; an execution's is {§exec-conclusion-summary}. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 | §notifications-outside-event `outside/event`                 | `{ workerId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<worker>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
 | §notifications-reasoning-event `reasoning/event`             | `{ workerId, loopId, turnId, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |

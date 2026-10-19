@@ -15,7 +15,7 @@ import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Dsl from "./dsl.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
+import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { namedModelWorker } from "./_workers.ts";
 import {
     Validator,
@@ -1703,6 +1703,60 @@ test("{§live-updates-stream-event-fires-on-chunk} the client-interface seam —
             await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: "streamtag", command: "go" })] });
             await waitFor(() => events.filter((m) => m === "stream/event"), (s) => s.length > 0, { timeoutMs: 4000 });
             assert.ok(events.filter((m) => m === "stream/event").length > 0, "the exec's stdout arrived as stream/event on the seam — not just log/entry + stream/concluded");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§exec-conclusion-summary} an execution's summary is its address, how its settled result ended, and the size of each channel its executor declares", async (t) => {
+    t.mock.method(console, "error", () => {}); // the invalid report is diagnosed on stderr; the summaries are the witness
+    type RunArgs = { write: (channel: string, chunk: string, mimetype: string) => void; setState: (channel: string, state: string) => void };
+    const fixture = (name: string, channels: readonly string[], report: (args: RunArgs) => unknown): Executor => ({
+        runtime: name, glyph: "🔌",
+        get manifest() { return { name, channels: Object.fromEntries(channels.map((channel) => [channel, "text/plain"])), defaultChannel: channels[0], category: "data", writableBy: [], volatile: true, modelVisible: true }; },
+        get defaultChannel() { return channels[0]; },
+        get channels() { return Object.fromEntries(channels.map((channel) => [channel, { mimetype: "text/plain" }])); },
+        effect: () => "read",
+        probe: async () => ({ available: true, detail: "fake" }),
+        run: async (args: RunArgs) => {
+            const reported = report(args);
+            for (const channel of channels) args.setState(channel, "closed");
+            return reported;
+        },
+    }) as unknown as Executor;
+    // How it ended (a success, a success with an exit code, the executor's own Problem, the service's settlement of an
+    // invalid report) crossed with what the executor declares (one channel; two, sized in declared order).
+    const cases = [
+        { executor: fixture("verbtag", ["results"], (args) => { args.write("results", "{\"ok\":true}", "text/plain"); return { status: 200 }; }),
+            summary: /^verbtag:\/\/\/[a-f0-9]{8} completed; results=11 bytes$/u, because: "a success without an exit code completed, and only its declared channel is sized" },
+        { executor: fixture("spawntag", ["stdout", "stderr"], (args) => { args.write("stdout", "hi\n", "text/plain"); return { status: 200, exitCode: 0 }; }),
+            summary: /^spawntag:\/\/\/[a-f0-9]{8} completed \(exit 0\); stdout=3 bytes, stderr=0 bytes$/u, because: "a success names its exit code, and its channels are sized in declared order" },
+        { executor: fixture("refusetag", ["results"], () => Results.failure("refusetag", "fixture-refused", 409, "The fixture refused.")),
+            summary: /^refusetag:\/\/\/[a-f0-9]{8} fixture refused; results=0 bytes$/u, because: "a failure is its Problem's title, never completed" },
+        { executor: fixture("claimtag", ["stdout", "stderr"], () => ({ status: 102, exitCode: 0 })),
+            summary: /^claimtag:\/\/\/[a-f0-9]{8} executor invalid result; stdout=0 bytes, stderr=0 bytes$/u, because: "the settled result speaks, not the executor's report" },
+    ];
+    await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            for (const { executor } of cases) {
+                await daemon.registerRuntime({
+                    namespaceOwner: "summary test module",
+                    decl: { name: executor.runtime, glyph: "🔌", summary: "Summary fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } },
+                    executor,
+                    availability: { available: true, detail: "fake" },
+                });
+            }
+            const created = (await rpcCall(ws, 1, "workspace.create", { name: "conclusion-summary" })).result as { id: number };
+            const summaries = new Map<string, string>();
+            daemon.subscribeToEvents((_s, method, params) => {
+                const concluded = params as { scheme?: unknown; summary?: unknown };
+                if (method === "stream/concluded" && typeof concluded.scheme === "string" && typeof concluded.summary === "string") summaries.set(concluded.scheme, concluded.summary);
+            });
+            for (const { executor } of cases) {
+                await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildExec({ runtime: executor.runtime, command: "go" })] });
+            }
+            await waitFor(() => [...summaries.keys()], (seen) => seen.length === cases.length, { timeoutMs: 4000 });
+            for (const { executor, summary, because } of cases) assert.match(summaries.get(executor.runtime) ?? "", summary, because);
         } finally { ws.close(); }
     });
 });
