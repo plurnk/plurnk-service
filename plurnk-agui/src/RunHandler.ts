@@ -1,4 +1,4 @@
-import { Problems } from "@plurnk/plurnk-contracts";
+import { Problems, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 // The AG-UI Run endpoint: one client run resolved to its worker, streamed, and settled. Split out of the module, which keeps the delegating entry point.
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import type Portal from "./Portal.ts";
@@ -91,7 +91,7 @@ export default class RunHandler {
             ));
         }
         const input: RunAgentInput = parsed.data;
-        const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        const forwarded = isRecord(input.forwardedProps) && isRecord(input.forwardedProps.plurnk) ? input.forwardedProps.plurnk : undefined;
         if (forwarded?.control !== undefined && typeof forwarded.control !== "boolean") {
             throw new HttpProblemError(httpProblem("control-invalid", 400, "control must be a boolean.",
                 { stage: "request-validation", retryable: false }));
@@ -372,20 +372,20 @@ export default class RunHandler {
             workspaceId, workerId, prompt,
             ...MessageAddress.submission(principal, input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
-                ? { maxTurns: forwarded.maxTurns as number }
+                ? { maxTurns: RunHandler.#forwardedInteger(forwarded, "maxTurns") }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
-                ? { openPaths: forwarded.openPaths as string[] }
+                ? { openPaths: RunHandler.#forwardedStrings(forwarded, "openPaths") }
                 : {}),
             // {§methods-loop-run-model} The client may still forward one explicit
             // alias-or-provider/model selector. The daemon
             // persists an explicit selection onto the worker and snapshots it on the
             // loop; an omitted selector continues the worker's durable model.
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "selector")
-                ? { selector: forwarded.selector as string }
+                ? { selector: RunHandler.#forwardedString(forwarded, "selector", "a string") }
                 : {}),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "childSelector")
-                ? { childSelector: forwarded.childSelector as string | null }
+                ? { childSelector: forwarded.childSelector === null ? null : RunHandler.#forwardedString(forwarded, "childSelector", "a string or null") }
                 : {}),
         };
         let started: { loopId: number } | null;
@@ -445,7 +445,7 @@ export default class RunHandler {
         if (conversation === null) return last;
         const coordinate = /^(\d+)\/(\d+)\/(\d+)$/u.exec(last.id);
         if (coordinate !== null) {
-            const [loopSeq, turnSeq, sequence] = coordinate.slice(1).map(Number) as [number, number, number];
+            const [loopSeq, turnSeq, sequence] = [Number(coordinate[1]), Number(coordinate[2]), Number(coordinate[3])];
             if ((await this.#seam().readLog({ ...conversation, loopSeq, turnSeq, sequence })).length > 0) return null;
         }
         if (typeof last.content !== "string") return last;
@@ -469,6 +469,31 @@ export default class RunHandler {
     }
 
     // {§agui-sync} A row's version: what a later delivery of the same row can change.
+    // {§agui-run-input} A forwarded field is read by the type the loop contract names; a wrong one is the request's refusal.
+    static #forwardedRefusal(key: string, expected: string): HttpProblemError {
+        return new HttpProblemError(httpProblem(`${key}-invalid`, 400, `${key} must be ${expected}.`, { stage: "request-validation", retryable: false }));
+    }
+
+    static #forwardedInteger(forwarded: Readonly<Record<string, unknown>>, key: string): number {
+        const value = forwarded[key];
+        if (!isSafeInteger(value)) throw RunHandler.#forwardedRefusal(key, "an integer");
+        return value;
+    }
+
+    static #forwardedString(forwarded: Readonly<Record<string, unknown>>, key: string, expected: string): string {
+        const value = forwarded[key];
+        if (typeof value !== "string") throw RunHandler.#forwardedRefusal(key, expected);
+        return value;
+    }
+
+    static #forwardedStrings(forwarded: Readonly<Record<string, unknown>>, key: string): string[] {
+        const value = forwarded[key];
+        if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
+            throw RunHandler.#forwardedRefusal(key, "an array of strings");
+        }
+        return value;
+    }
+
     static #version(row: { status_rx?: unknown; signal?: unknown; attrs?: unknown }): string {
         return JSON.stringify([row.status_rx ?? null, row.signal ?? null, row.attrs ?? null]);
     }
@@ -477,11 +502,12 @@ export default class RunHandler {
     // holds the row as it arrived; when it holds an earlier version, whose call it holds, the later facts folded onto that
     // call, a repeated START and END without arguments ({§agui-proposal-resolve}), and the call's result.
     static #unreplayed(events: AguiEvent[], replayed: ReadonlyMap<unknown, string>): AguiEvent[] {
-        const facts = events.map((event) => (event as { metadata?: { plurnk?: { id?: unknown; status?: unknown; signal?: unknown; attrs?: unknown } } }).metadata?.plurnk)
+        const facts = events.map((event) => "metadata" in event && isRecord(event.metadata) && isRecord(event.metadata.plurnk) ? event.metadata.plurnk : undefined)
             .find((plurnk) => plurnk?.id !== undefined);
-        const whole = events.find((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient") as { value?: Record<string, unknown> } | undefined;
+        const ambient = events.find((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient");
+        const whole = ambient?.type === EventType.CUSTOM && isRecord(ambient.value) ? ambient.value : undefined;
         const row = facts !== undefined ? { id: facts.id, version: RunHandler.#version({ status_rx: facts.status, signal: facts.signal, attrs: facts.attrs }) }
-            : whole?.value !== undefined ? { id: whole.value.id, version: RunHandler.#version(whole.value) } : null;
+            : whole !== undefined ? { id: whole.id, version: RunHandler.#version(whole) } : null;
         if (row === null || !replayed.has(row.id)) return events;
         const held = (event: AguiEvent): boolean => (event.type.startsWith("TOOL_CALL_") && event.type !== EventType.TOOL_CALL_RESULT)
             || event.type.startsWith("TEXT_MESSAGE_") || event.type.startsWith("REASONING_");
@@ -489,7 +515,7 @@ export default class RunHandler {
             return events.filter((event) => !held(event) || event.type === EventType.TOOL_CALL_START || event.type === EventType.TOOL_CALL_END);
         }
         return events.filter((event) => !(held(event) || event.type === EventType.TOOL_CALL_RESULT
-            || (event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient")));
+            || (event.type === EventType.CUSTOM && event.name === "plurnk.ambient")));
     }
 
     static #isOriented(input: RunAgentInput, history: readonly LogEntryWire[], replyThreads: readonly string[]): boolean {

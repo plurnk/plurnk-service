@@ -1060,6 +1060,10 @@ reconstruct one from `RUN_ERROR`.
 | `invalid-json` | 400 | The request body is not valid JSON. |
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
 | `control-invalid` | 400 | control must be a boolean. |
+| `maxTurns-invalid` | 400 | maxTurns must be an integer. |
+| `openPaths-invalid` | 400 | openPaths must be an array of strings. |
+| `selector-invalid` | 400 | selector must be a string. |
+| `childSelector-invalid` | 400 | childSelector must be a string or null. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
 | `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
 | `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |

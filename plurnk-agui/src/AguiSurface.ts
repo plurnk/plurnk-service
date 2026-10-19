@@ -1,4 +1,5 @@
-import type { JsonSchema } from "@plurnk/plurnk-contracts";
+import type { ApplicationLoopPacket, JsonSchema } from "@plurnk/plurnk-contracts";
+import type { LogEntryNotification, OutsideEventNotification, ReasoningEventNotification, TerminatedNotification } from "./types.ts";
 
 // The public AG-UI+ wire registry. JSON Schema values are both the discovery
 // representation and the production admission contract; clients never maintain
@@ -12,8 +13,10 @@ export interface AguiActionContract {
     readonly outputSchema: JsonSchema;
 }
 
-export interface AguiNotificationContract {
+export interface AguiNotificationContract<T = unknown> {
     readonly payloadSchema: JsonSchema;
+    // The payload the schema generates: the type the table declares beside the schema, never a value the contract carries.
+    readonly payload?: T;
 }
 
 const id = (name: string): string => `https://schemas.plurnk.xyz/v0/${name}.json`;
@@ -167,8 +170,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     }, ["policy"]), capabilityProjection),
 } satisfies Readonly<Record<string, AguiActionContract>>);
 
-const notification = (payloadSchema: JsonSchema): AguiNotificationContract =>
-    Object.freeze({ payloadSchema });
+const notification = <T = unknown>(payloadSchema: JsonSchema): AguiNotificationContract<T> => Object.freeze({ payloadSchema });
 
 const streamCoordinate = {
     loop_seq: NONNEGATIVE,
@@ -195,11 +197,11 @@ const reasoningIdentity = {
 };
 
 export const AGUI_NOTIFICATIONS = Object.freeze({
-    "workspace/preparation": notification(object({
+    "workspace/preparation": notification<{ preparation: unknown }>(object({
         workspaceId: POSITIVE,
         preparation: array(ref("FunctionalityPreparationActivity")),
     }, ["workspaceId", "preparation"])),
-    "log/entry": notification(object({
+    "log/entry": notification<LogEntryNotification>(object({
         entry: object({
             id: POSITIVE,
             worker_id: POSITIVE,
@@ -208,7 +210,7 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             origin: NONEMPTY,
         }, ["id", "worker_id", "loop_id", "op", "origin"], true),
     }, ["entry"])),
-    "loop/terminated": notification(object({
+    "loop/terminated": notification<TerminatedNotification>(object({
         workerId: POSITIVE,
         loopId: POSITIVE,
         result: OPERATION_RESULT,
@@ -226,19 +228,19 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
         terminatedAt: POSITIVE,
     }, ["workerId", "loopId", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
-    "loop/packet": notification(object({
+    "loop/packet": notification<ApplicationLoopPacket>(object({
         workerId: POSITIVE,
         loopId: POSITIVE,
         packetCount: POSITIVE,
     }, ["workerId", "loopId", "packetCount"])),
     "loop/proposal": notification(ref("ProposalProjection")),
     "loop/interaction": notification(ref("ClientInteractionProjection")),
-    "notice/event": notification(object({
+    "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({
         workerId: nullable(POSITIVE),
         loopId: NONNEGATIVE,
         notice: ref("Notice"),
     }, ["workerId", "loopId", "notice"])),
-    "reasoning/event": notification({
+    "reasoning/event": notification<ReasoningEventNotification>({
         oneOf: [
             object({
                 ...reasoningIdentity,
@@ -251,7 +253,7 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase", "delta"]),
         ],
     }),
-    "outside/event": notification(object({
+    "outside/event": notification<OutsideEventNotification>(object({
         workerId: POSITIVE,
         loopId: POSITIVE,
         turnId: POSITIVE,
