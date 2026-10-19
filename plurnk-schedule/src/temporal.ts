@@ -11,6 +11,7 @@ export interface TemporalRuntime extends TemporalImplementation {
     };
 }
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the runtime's Temporal is the TC39 object; its shape is the proposal's, which Node's typings do not yet declare
 const runtime = (globalThis as unknown as { Temporal?: TemporalRuntime }).Temporal;
 if (runtime === undefined) throw new Error("@plurnk/plurnk-schedule requires a runtime with Temporal (Node 26 or later).");
 

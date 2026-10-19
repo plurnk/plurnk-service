@@ -16,7 +16,7 @@ import { Problems,
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
-    type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity, Validator, isRecord } from "@plurnk/plurnk-contracts";
 import { previewOccurrences, validateConfiguration } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
@@ -105,7 +105,7 @@ export default class ScheduleFunctionality {
         this.scheme = new ScheduleResources(async (workspaceId) => {
             if (this.#handle === null) throw new Error("schedule family is not attached");
             const listing = await this.#handle.invoke("list", {}, { workspaceId });
-            return (listing.body as { definitions: Array<{ alias: string; state: string }> }).definitions;
+            return Validator.assertFunctionalityListResult(listing.body).definitions;
         });
         this.#readAt = this.#scheduler.now();
     }

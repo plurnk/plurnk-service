@@ -1,4 +1,4 @@
-import { writtenOp, type ApplicationOperationEvent, type ClientInteractionProjection, type Notice, type ProposalProjection } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 
 export interface HookEvent {
     readonly hook_event_name: string;
@@ -23,24 +23,49 @@ export default class EventProjection {
     ]);
     static readonly names: ReadonlySet<string> = new Set([...EventProjection.sources.values()].flat());
 
+    // An operation event's fields the projection reads, each by its type: the native evidence as the daemon sent it.
+    static #operationEvent(params: unknown): {
+        origin: unknown;
+        phase: unknown;
+        result: Record<string, unknown> | undefined;
+        cwd: string | undefined;
+        toolUseId: string;
+        toolName: string;
+        statement: unknown;
+    } {
+        const event = isRecord(params) ? params : {};
+        const statement = isRecord(event.statement) ? event.statement : {};
+        return {
+            origin: event.origin,
+            phase: event.phase,
+            result: isRecord(event.result) ? event.result : undefined,
+            cwd: typeof event.projectRoot === "string" ? event.projectRoot : undefined,
+            toolUseId: [event.turnId, event.sequence].map((n) => isSafeInteger(n) ? String(n) : "").join("/"),
+            // The heading as written: an execution's runtime, otherwise the op ({§executor-heading}).
+            toolName: typeof statement.runtime === "string" ? statement.runtime : typeof statement.op === "string" ? statement.op : "",
+            statement: event.statement,
+        };
+    }
+
     static project(workspaceId: number | null, method: string, params: unknown): HookEvent | null {
         if (!EventProjection.sources.has(method)) return null;
-        const workerId = (params as { workerId?: number | null }).workerId;
+        const workerId = isRecord(params) ? params.workerId : undefined;
         const shared = {
             ...(typeof workerId === "number" ? { session_id: String(workerId) } : {}),
             plurnk: { workspaceId, method, params },
         };
         switch (method) {
             case "operation/event": {
-                const event = params as ApplicationOperationEvent;
+                const event = EventProjection.#operationEvent(params);
                 if (event.origin !== "model" && event.origin !== "client") return null;
+                const status = typeof event.result?.status === "number" ? event.result.status : 0;
                 return {
                     hook_event_name: event.phase === "started" ? "PreToolUse"
-                        : event.result!.status >= 400 ? "PostToolUseFailure" : "PostToolUse",
+                        : status >= 400 ? "PostToolUseFailure" : "PostToolUse",
                     ...shared,
-                    ...(event.projectRoot === null ? {} : { cwd: event.projectRoot }),
-                    tool_use_id: `${event.turnId}/${event.sequence}`,
-                    tool_name: writtenOp(event.statement),
+                    ...(event.cwd === undefined ? {} : { cwd: event.cwd }),
+                    tool_use_id: event.toolUseId,
+                    tool_name: event.toolName,
                     tool_input: event.statement,
                     ...(event.phase === "settled" ? { tool_response: event.result } : {}),
                 };
@@ -48,19 +73,19 @@ export default class EventProjection {
             case "loop/terminated":
                 return { hook_event_name: "Stop", ...shared };
             case "notice/event": {
-                const { notice } = params as { notice: Notice };
-                return { hook_event_name: "Notification", ...shared, ...(typeof notice.message === "string" ? { message: notice.message } : {}) };
+                const notice = isRecord(params) && isRecord(params.notice) ? params.notice : undefined;
+                return { hook_event_name: "Notification", ...shared, ...(typeof notice?.message === "string" ? { message: notice.message } : {}) };
             }
             case "loop/proposal": {
-                const event = params as ProposalProjection;
+                const event = Validator.assertProposalProjection(params);
                 if (event.disposition.decision !== "review") return null;
                 return { hook_event_name: "PermissionRequest", ...shared, tool_name: event.op,
                     tool_input: { target: event.target, body: event.body, attrs: event.attrs } };
             }
             case "loop/interaction": {
-                const { request } = params as ClientInteractionProjection;
-                return { hook_event_name: "PermissionRequest", ...shared, tool_name: request.toolName,
-                    tool_input: request.arguments, ...(request.message === undefined ? {} : { message: request.message }) };
+                const request = isRecord(params) && isRecord(params.request) ? params.request : {};
+                return { hook_event_name: "PermissionRequest", ...shared, tool_name: typeof request.toolName === "string" ? request.toolName : "",
+                    tool_input: request.arguments, ...(typeof request.message === "string" ? { message: request.message } : {}) };
             }
             default:
                 throw new Error(`Hook event ${method} has no projection.`);

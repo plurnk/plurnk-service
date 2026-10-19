@@ -67,9 +67,11 @@ export class ScheduleDeliveryError extends Error {
 const DIAGNOSTIC_LIMIT = 512;
 const key = (workspaceId: number, alias: string): string => `${workspaceId}:${alias}`;
 
+// A handle the system timers armed: Node's Timeout, which the seam carries as the unknown it is to callers.
+const isTimeout = (handle: unknown): handle is NodeJS.Timeout => typeof handle === "object" && handle !== null && "refresh" in handle;
 const SYSTEM_TIMERS: SchedulerTimers = Object.freeze({
     set: (callback: () => void, delayMs: number): unknown => setTimeout(callback, delayMs).unref(),
-    clear: (handle: unknown): void => { clearTimeout(handle as NodeJS.Timeout); },
+    clear: (handle: unknown): void => { if (isTimeout(handle)) clearTimeout(handle); },
 });
 
 const problem = (code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>> = {}): ProblemDetails =>

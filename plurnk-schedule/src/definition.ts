@@ -46,6 +46,7 @@ export class DefinitionError extends TypeError {
 export const readDefinition = (value: unknown): ScheduleDefinition => {
     const validation = Validator.validateJsonSchemaInstance(DEFINITION_SCHEMA, value);
     if (!validation.valid) throw new DefinitionError(validation.errors);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the definition schema just proved the shape its type names
     return structuredClone(value as ScheduleDefinition);
 };
 

@@ -1,4 +1,5 @@
 import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } from "./Validator.ts";
+import { isRecord } from "./guards.ts";
 import type { ProblemDetails, ProblemProjection } from "./types.generated.ts";
 
 const TYPE_ROOT = "https://problems.plurnk.xyz";
@@ -22,9 +23,9 @@ const sameFact = (left: unknown, right: unknown): boolean => {
             && left.length === right.length
             && left.every((value, index) => sameFact(value, right[index]));
     }
-    if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+    if (!isRecord(left) || !isRecord(right)) return false;
     const leftEntries = Object.entries(left);
-    const rightRecord = right as Record<string, unknown>;
+    const rightRecord = right;
     return leftEntries.length === Object.keys(rightRecord).length
         && leftEntries.every(([key, value]) => Object.hasOwn(rightRecord, key) && sameFact(value, rightRecord[key]));
 };

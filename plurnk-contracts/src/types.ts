@@ -40,6 +40,7 @@ export const isExecution = <T extends { readonly op?: string | undefined }>(stat
 // The heading token as written: an operation keyword, or an execution's runtime. This is the
 // log row's `op`.
 export const writtenOp = <T extends PlurnkStatement>(statement: T): Exclude<T["op"], undefined> | RuntimeTag =>
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an execution's op is its runtime tag; every other statement's op is its own
     (isExecution(statement) ? statement.runtime : statement.op) as Exclude<T["op"], undefined> | RuntimeTag;
 
 // Runtime-neutral cardinal observation for one physical inference request.
@@ -62,12 +63,14 @@ export type ProviderRequestObserver = (
 // Schema-owned portable reasoning vocabulary. Providers own which subset a
 // route supports; runtimes and clients share this exact wire alphabet.
 export const EFFORTS = Object.freeze(
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the enum and the type are generated from the same schema
     effortSchema.enum as Effort[],
 );
 
 // Schema-owned server disposition vocabulary. {§proposal-disposition}
 // {§proposal-policy}
 export const PROPOSAL_POLICIES = Object.freeze(
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the enum and the type are generated from the same schema
     proposalPolicySchema.enum as ProposalPolicy[],
 );
 

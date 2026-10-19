@@ -1,4 +1,4 @@
-import type { FunctionalityFamilyHandle, FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import { Validator, type FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 // {§schedule-family} — the daemon module: registers the family at setup, arms every workspace's
@@ -66,7 +66,7 @@ export default class Module implements DaemonModule<SetupSeam, StartSeam> {
                 continue;
             }
             const rules = new Map<string, ScheduledRule>();
-            for (const { alias, definition, state } of (listing.body as FunctionalityListResult).definitions) {
+            for (const { alias, definition, state } of Validator.assertFunctionalityListResult(listing.body).definitions) {
                 if (state === "disabled") continue;
                 try {
                     const read = readDefinition(definition);
