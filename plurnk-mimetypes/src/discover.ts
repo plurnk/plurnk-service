@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type { ExtensionAttribution } from "@plurnk/plurnk-meta";
@@ -168,7 +169,7 @@ async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | nul
 // Produce one HandlerInfo per valid entry from one trusted kind claim.
 function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
     const { manifestPath, packageName, plurnk } = manifest;
-    const fail = (reason: string, mimetype?: string): never => {
+    const fail: (reason: string, mimetype?: string) => never = (reason, mimetype) => {
         throw new MimetypeExtensionError({
             reason,
             packageName,
@@ -180,17 +181,15 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
     if (!Array.isArray(handlers) || handlers.length === 0) {
         fail("plurnk.handlers must be a non-empty array");
     }
-    const entries = handlers as unknown[];
+    const entries: unknown[] = handlers;
     if (plurnk.binary !== undefined && typeof plurnk.binary !== "boolean") {
         fail("plurnk.binary must be a boolean when present");
     }
     // Package-level `binary: true` applies to every handler in the package.
     const binary = plurnk.binary === true;
     return entries.map((entry, index) => {
-        if (typeof entry !== "object" || entry === null) {
-            fail(`plurnk.handlers entry ${index} must be an object`);
-        }
-        const e = entry as Record<string, unknown>;
+        if (!isRecord(entry)) fail(`plurnk.handlers entry ${index} must be an object`);
+        const e = entry;
         const name = e.name;
         const revision = e.revision;
         const glyph = e.glyph;
@@ -198,7 +197,7 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
         if (typeof name !== "string" || !MEDIA_TYPE_NAME.test(name)) {
             fail(`plurnk.handlers entry ${index} must declare a media-type name`, typeof name === "string" ? name : undefined);
         }
-        const mimetype = name as string;
+        const mimetype = name;
         if (
             typeof revision !== "string"
             || revision.length === 0
@@ -211,7 +210,7 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
         }
         if (extensions !== undefined && (
             !Array.isArray(extensions)
-            || !extensions.every((extension) => typeof extension === "string" && extension !== "")
+            || !extensions.every((extension): extension is string => typeof extension === "string" && extension !== "")
         )) {
             fail(`plurnk.handlers entry ${index} extensions must be non-empty strings`, mimetype);
         }
@@ -219,8 +218,8 @@ function readHandlerInfos(manifest: MimetypeManifest): HandlerInfo[] {
             mimetype,
             glyph: typeof glyph === "string" ? glyph : "",
             packageName,
-            projectionRevision: revision as string,
-            extensions: (extensions ?? []) as string[],
+            projectionRevision: revision,
+            extensions: extensions ?? [],
             binary,
             source: "package",
         } satisfies HandlerInfo;

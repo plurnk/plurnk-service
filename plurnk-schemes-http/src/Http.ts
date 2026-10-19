@@ -2,6 +2,7 @@
 // acquisition, materialization, publication, and query flow live in
 // {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
 
+import { Validator } from "@plurnk/plurnk-contracts";
 import { createParser, type ParseError } from "eventsource-parser";
 import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState, WebMaterializer, ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "@plurnk/plurnk-schemes";
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
@@ -310,6 +311,7 @@ export default class Http implements SchemeHandler {
             });
         }
         const read = MetadataOptions.parse(statement.metadata, "scheme:http");
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a metadata refusal has no shape; the method's result type names the success's passthrough shape
         if ("failure" in read) return read.failure as PassthroughResult;
         // The `remote` spelling is stripped in applyResolution, where the request is actually made.
         if (read.options.remote === true) return Http.#propose("DELETE", statement.target);
@@ -341,6 +343,8 @@ export default class Http implements SchemeHandler {
         if (typeof target !== "object" || target === null) {
             throw new Error("An outbound HTTP proposal is missing its target.");
         }
+        const url = Validator.assertParsedPath(target);
+        if (url.kind !== "url") throw new Error("An outbound HTTP proposal's target is a URL.");
         // This scheme mints exactly three outbound methods; a settlement never widens that set.
         if (typeof method !== "string" || !OUTBOUND_METHODS.has(method)) {
             throw new Error(`An outbound HTTP proposal named a method this scheme never proposes: ${String(method)}.`);
@@ -355,7 +359,7 @@ export default class Http implements SchemeHandler {
             const { remote: _remote, ...headers } = read.options;
             metadata = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
         }
-        return this.#requester.request(target as UrlPath, metadata, ctx, method, body);
+        return this.#requester.request(url, metadata, ctx, method, body);
     }
 
     // {§turn-disposition} — SEND is messaging; lifecycle operations never reach a scheme.
@@ -561,6 +565,7 @@ export default class Http implements SchemeHandler {
         metadata: readonly string[] | null,
     ): Array<[string, string]> | (PassthroughResult & ChannelProducerResult) {
         const read = MetadataOptions.parse(metadata, "scheme:http");
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a metadata refusal has no shape; the method's result type names the success's passthrough shape
         if ("failure" in read) return read.failure as PassthroughResult & ChannelProducerResult;
         const headers: Array<[string, string]> = [];
         for (const [name, value] of Object.entries(read.options)) {

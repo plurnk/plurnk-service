@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
@@ -46,6 +47,9 @@ export type MaterializerResult =
         readonly evidence: MaterializerEvidence;
         readonly problem: MaterializerProblem;
     };
+
+// A materializer is the object a module exports or constructs that declares its eligibility.
+const isMaterializer = (value: unknown): value is HttpMaterializer => isRecord(value) && "eligible" in value;
 
 export interface HttpMaterializer {
     readonly id: string;
@@ -125,12 +129,14 @@ export default class MaterializerRegistry {
         const cached = this.#loaded.get(key);
         if (cached !== undefined) return cached;
         const promise = (async (): Promise<HttpMaterializer> => {
-            const module = await import(pathToFileURL(key).href) as {
-                default?: HttpMaterializer | { new(): HttpMaterializer };
-            };
-            const exported = module.default;
-            if (typeof exported === "function") return new exported();
-            if (exported !== undefined && typeof exported === "object" && "eligible" in exported) return exported;
+            const module: unknown = await import(pathToFileURL(key).href);
+            const exported = isRecord(module) ? module.default : undefined;
+            if (typeof exported === "function") {
+                const built: unknown = Reflect.construct(exported, []);
+                if (isMaterializer(built)) return built;
+            } else if (isMaterializer(exported)) {
+                return exported;
+            }
             throw new Error(`http materializer module '${key}' exports no HttpMaterializer default`);
         })();
         this.#loaded.set(key, promise);
@@ -144,9 +150,8 @@ export default class MaterializerRegistry {
         if (!Array.isArray(declared) || declared.length === 0) return null;
         const materializers: Manifest["materializers"] = [];
         for (const entry of declared) {
-            if (typeof entry !== "object" || entry === null) continue;
-            const id = (entry as { id?: unknown }).id;
-            const module = (entry as { module?: unknown }).module;
+            if (!isRecord(entry)) continue;
+            const { id, module } = entry;
             if (typeof id !== "string" || id.length === 0 || typeof module !== "string" || module.length === 0) continue;
             materializers.push({ id, module: await Meta.moduleFile(manifest, module) });
         }

@@ -2,6 +2,7 @@
 // address claims and settlement. Retained sockets follow {§handler-lifecycle}
 // and use the canonical network identity {§network-address}.
 
+import { Validator } from "@plurnk/plurnk-contracts";
 import type {
     SchemeCtx,
     SubscriptionHandle,
@@ -497,12 +498,14 @@ export default class Ws implements SchemeHandler {
         if (typeof target !== "object" || target === null) {
             throw new Error("A WebSocket proposal is missing its target.");
         }
+        const url = Validator.assertParsedPath(target);
+        if (url.kind !== "url") throw new Error("A WebSocket proposal's target is a URL.");
         // This scheme proposes exactly two operations; a settlement never widens that set.
         if (operation !== "EDIT" && operation !== "SEND") {
             throw new Error(`A WebSocket proposal named an operation this scheme never proposes: ${String(operation)}.`);
         }
         const body = request.body ?? (typeof attrs.body === "string" ? attrs.body : "");
-        return this.#write(target as UrlPath, body, ctx, operation);
+        return this.#write(url, body, ctx, operation);
     }
 
     #openFor(

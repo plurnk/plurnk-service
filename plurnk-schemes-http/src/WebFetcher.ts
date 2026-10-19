@@ -275,9 +275,9 @@ export default class WebFetcher implements WebMaterializer {
         projection: ProjectionCaps,
         signal?: AbortSignal,
     ): Promise<WebMaterializedResult> {
-        const html = fetched.originUnavailable === true
+        const html = fetched.originUnavailable === true || typeof fetched.body !== "string"
             ? undefined
-            : { content: fetched.body as string, mimetype: fetched.mimetype };
+            : { content: fetched.body, mimetype: fetched.mimetype };
         const originOutcome = WebFetcher.#originOutcome(fetched);
         const selected = fetched.allowConfiguredMaterializer === true
             ? await WebFetcher.#selectedMaterializer(fetched.url, signal)

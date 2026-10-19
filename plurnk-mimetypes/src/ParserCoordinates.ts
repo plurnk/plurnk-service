@@ -1,3 +1,4 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import TextCoordinates from "./TextCoordinates.ts";
 import type { MimeSymbol } from "./types.ts";
@@ -31,11 +32,6 @@ export interface TreeSitterSourceNode {
 interface AntlrTokenSpan {
     readonly start?: number;
     readonly stop?: number;
-}
-
-interface AntlrContextSpan {
-    readonly start?: AntlrTokenSpan | null;
-    readonly stop?: AntlrTokenSpan | null;
 }
 
 export class ParserCoordinateError extends Error {
@@ -112,15 +108,16 @@ export default class ParserCoordinates {
     }
 
     antlrContext(context: unknown): TextRegion {
-        const span = context as AntlrContextSpan;
-        const start = this.#antlrTokenBoundary(span.start, "start");
-        const stop = this.#antlrTokenBoundary(span.stop ?? span.start, "end");
+        const span = isRecord(context) ? context : {};
+        const start = this.#antlrTokenBoundary(tokenSpan(span.start), "start");
+        const stop = this.#antlrTokenBoundary(tokenSpan(span.stop ?? span.start), "end");
         return this.#regionFromOffsets("ANTLR", start, Math.max(start, stop));
     }
 
     antlrToken(token: unknown): TextRegion {
-        const start = this.#antlrTokenBoundary(token as AntlrTokenSpan, "start");
-        const stop = this.#antlrTokenBoundary(token as AntlrTokenSpan, "end");
+        const span = tokenSpan(token);
+        const start = this.#antlrTokenBoundary(span, "start");
+        const stop = this.#antlrTokenBoundary(span, "end");
         return this.#regionFromOffsets("ANTLR", start, Math.max(start, stop));
     }
 
@@ -224,7 +221,16 @@ export default class ParserCoordinates {
 }
 
 function isOffset(value: unknown): value is number {
-    return Number.isSafeInteger(value) && (value as number) >= 0;
+    return isSafeInteger(value) && value >= 0;
+}
+
+// The offsets an ANTLR token carries, when it carries them as numbers.
+function tokenSpan(value: unknown): AntlrTokenSpan {
+    if (!isRecord(value)) return {};
+    return {
+        ...(typeof value.start === "number" ? { start: value.start } : {}),
+        ...(typeof value.stop === "number" ? { stop: value.stop } : {}),
+    };
 }
 
 function isPoint(value: unknown): value is TreeSitterPoint {

@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
@@ -320,6 +321,7 @@ export default class Mimetypes {
                     cause: surfaceFailure,
                 });
             }
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- handlerSurfaceFailure checked every method the handler surface names
             return candidate as BaseHandler;
         })();
         this.#handlerInstances.set(mimetype, resolution);
@@ -423,8 +425,8 @@ export default class Mimetypes {
             });
         }
         try {
-            const Ctor = HandlerClass as new (m: HandlerMetadata) => unknown;
-            return new Ctor(metadata);
+            const instance: unknown = Reflect.construct(HandlerClass, [metadata]);
+            return instance;
         } catch (cause) {
             throw new MimetypeExtensionError({
                 reason: "handler construction failed",
@@ -528,7 +530,7 @@ export default class Mimetypes {
                     mimetype,
                     content,
                     channels,
-                    (err as { plurnkPackage?: string }).plurnkPackage ?? "",
+                    isRecord(err) && typeof err.plurnkPackage === "string" ? err.plurnkPackage : "",
                 );
             }
             if (isGrammarNotInstalled(err) || isMimetypeInputError(err)) throw err;
@@ -819,10 +821,10 @@ function errorResult(mimetype: string | null): ProcessResult {
 }
 
 function handlerSurfaceFailure(candidate: unknown, metadata: HandlerMetadata): TypeError | null {
-    if (typeof candidate !== "object" || candidate === null) {
+    if (!isRecord(candidate)) {
         return new TypeError("invalid handler surface: constructor did not return an object");
     }
-    const surface = candidate as Record<string, unknown>;
+    const surface = candidate;
     const missing = HANDLER_METHODS.filter((method) => typeof surface[method] !== "function");
     if (missing.length > 0) {
         return new TypeError(`invalid handler surface: missing callable ${missing.map((method) => `${method}()`).join(", ")}`);
