@@ -71,7 +71,7 @@ const afterFirstStatement = (
         get(target, property) {
             return property === statementName ? wrapped : Reflect.get(target, property, target);
         },
-    }) as Db;
+    });
 };
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

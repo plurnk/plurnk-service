@@ -2,7 +2,7 @@ import { Validator, type A2AAgentDefinition as A2aAgentDefinition } from "@plurn
 
 // {§a2a-functionality}: environment and live admission share the same connection contract.
 export const readDefinition = (value: unknown): A2aAgentDefinition => {
-    const definition = Validator.assertA2aAgentDefinition(structuredClone(value) as A2aAgentDefinition);
+    const definition = Validator.assertA2aAgentDefinition(structuredClone(value));
     let url: URL;
     try {
         url = new URL(definition.url);

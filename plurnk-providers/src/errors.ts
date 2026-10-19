@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { APICallError, InvalidResponseDataError, JSONParseError, RetryError, TypeValidationError } from "ai";
 import { ProviderError } from "./providerError.ts";
 import type { ProviderErrorKind } from "./providerError.ts";
@@ -38,8 +39,8 @@ const peerTerminated = (err: unknown): boolean => {
 
 const wireError = (body: string): { type: string | null; code: string | null; message: string | null } => {
     try {
-        const { error } = JSON.parse(body) as { error?: { type?: unknown } };
-        const record = error as { type?: unknown; code?: unknown; message?: unknown } | undefined;
+        const parsed: unknown = JSON.parse(body);
+        const record = isRecord(parsed) && isRecord(parsed.error) ? parsed.error : undefined;
         return {
             type: typeof record?.type === "string" ? record.type : null,
             code: typeof record?.code === "string" || typeof record?.code === "number" ? String(record.code) : null,
@@ -104,7 +105,7 @@ export const classifyProviderError = (
         const cause = failureCause(err, detailLimit);
         return cause === null ? classified : { ...classified, extensions: { ...classified.extensions, cause } };
     }
-    const wire = err as { message?: unknown; type?: unknown };
+    const wire = isRecord(err) ? err : undefined;
     if (wire?.type === "grammar_invalid") {
         return {
             kind: "grammar_invalid",
@@ -113,11 +114,10 @@ export const classifyProviderError = (
                 : "The provider rejected the response grammar.",
         };
     }
-    const error = err as { message?: string };
     return {
         kind: "network_failure",
         message: preview(
-            (error?.message ?? String(err)) || "The provider request failed.",
+            (typeof wire?.message === "string" ? wire.message : String(err)) || "The provider request failed.",
             detailLimit,
         ),
     };

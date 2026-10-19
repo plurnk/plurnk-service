@@ -1,13 +1,16 @@
 import {
     InvalidOperationResultError,
     PLURNK_OPS,
-    isExecutionOp,
-    Validator,
     TurnDisposition,
+    Validator,
+    isExecution,
+    isExecutionOp,
+    isRecord,
     type OperationResult,
     type PlurnkStatement,
+    type ProposalDisposition,
     type ProposalProjection,
-    type ProposalDisposition,isExecution,type ProposalResolution
+    type ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -536,7 +539,7 @@ export default class ProposalLifecycle {
         try {
             const applyCtx = this.#applyContext(ids);
             const request = {
-                attrs: (originalResult.attrs ?? {}) as object,
+                attrs: isRecord(originalResult.attrs) ? originalResult.attrs : {},
                 metadata: operand.metadata,
                 body: resolution.body,
             };

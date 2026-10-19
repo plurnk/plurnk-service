@@ -12,7 +12,6 @@ import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 
@@ -89,9 +88,9 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
                 if (property === "crud_find_workspace_entry") {
                     return { get: async () => { throw lookupCause; } };
                 }
-                return Reflect.get(target, property, target) as unknown;
+                return Reflect.get(target, property, target);
             },
-        }) as Db;
+        });
         const lookupCtx = makeSchemeCtx({
             db: failingLookupDb,
             workspaceId,

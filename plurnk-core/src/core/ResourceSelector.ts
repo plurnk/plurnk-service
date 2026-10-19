@@ -234,7 +234,7 @@ export default class ResourceSelector {
             );
         }
         if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
-            return Results.assert(selected.producerResult) as DispatchResult;
+            return Results.assert(selected.producerResult);
         }
         let content = selected.content;
         let startLine = 1;

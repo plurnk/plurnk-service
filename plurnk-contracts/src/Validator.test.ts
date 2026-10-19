@@ -245,15 +245,15 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
     );
 
     assert.throws(
-        () => Validator.assertClientInteractionRequest({ ...request, requestState: "private" } as never),
+        () => Validator.assertClientInteractionRequest({ ...request, requestState: "private" }),
         InvalidClientInteractionRequestError,
     );
     assert.throws(
-        () => Validator.assertClientInteractionProjection({ ...projection, workspaceId: 9 } as never),
+        () => Validator.assertClientInteractionProjection({ ...projection, workspaceId: 9 }),
         InvalidClientInteractionProjectionError,
     );
     assert.throws(
-        () => Validator.assertClientInteractionResolution({ status: "cancelled", payload: {} } as never),
+        () => Validator.assertClientInteractionResolution({ status: "cancelled", payload: {} }),
         InvalidClientInteractionResolutionError,
     );
 });
@@ -278,7 +278,7 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
         { name: "Upper", type: "stdio", command: "npx" },
         { name: "scheme", type: "streamable-http", url: "ftp://example.com/mcp" },
     ]) {
-        assert.throws(() => Validator.assertMcpServerDefinition(invalid as never), InvalidMcpServerDefinitionError, JSON.stringify(invalid));
+        assert.throws(() => Validator.assertMcpServerDefinition(invalid), InvalidMcpServerDefinitionError, JSON.stringify(invalid));
     }
 });
 
@@ -300,7 +300,7 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
         { type: "client-credentials", clientId: "worker", clientSecret: "literal-secret" },
         { type: "bearer", token: "${TOKEN}" },
     ]) {
-        assert.throws(() => Validator.assertMcpOAuth(invalid as never), InvalidMcpOAuthError, JSON.stringify(invalid));
+        assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
     }
 });
 
@@ -318,7 +318,7 @@ test("{§client-display-capabilities} ClientDisplayCapabilities admits only disc
         [{ kind: "executor", name: "sh", display: { glyph: "🐚" } }],
     ]) {
         assert.throws(
-            () => Validator.assertClientDisplayCapabilities(invalid as never),
+            () => Validator.assertClientDisplayCapabilities(invalid),
             InvalidClientDisplayCapabilitiesError,
         );
     }
@@ -341,7 +341,7 @@ test("{§text-region} TextRegion requires complete ordered Unicode text coordina
         { startLine: 1, startColumn: 3, endLine: 1, endColumn: 2 },
     ]) {
         assert.throws(
-            () => Validator.assertTextRegion(invalid as never),
+            () => Validator.assertTextRegion(invalid),
             InvalidTextRegionError,
         );
     }
@@ -370,7 +370,7 @@ test("{§range-extent}: RangeExtent has one compact, bounded selection shape", (
         { ...extent, returned: [1, 21] },
     ]) {
         assert.throws(
-            () => Validator.assertRangeExtent(invalid as never),
+            () => Validator.assertRangeExtent(invalid),
             InvalidRangeExtentError,
         );
     }
@@ -433,7 +433,7 @@ test("{§notice} Notice rejects missing and malformed contract fields", () => {
         assert.equal(Validator.validateNotice(notice).valid, false);
     }
     assert.throws(
-        () => Validator.assertNotice({ source: "grammar", kind: "parse_error" } as never),
+        () => Validator.assertNotice({ source: "grammar", kind: "parse_error" }),
         InvalidNoticeError,
     );
 });
@@ -568,7 +568,7 @@ test("{§problem-details} ProblemDetails rejects missing fields and non-absolute
         detail: "Missing.",
     }).valid, false);
     assert.throws(
-        () => Validator.assertProblemDetails({ status: 404 } as never),
+        () => Validator.assertProblemDetails({ status: 404 }),
         InvalidProblemDetailsError,
     );
     assert.equal(Validator.validateProblemDetails({
@@ -607,7 +607,7 @@ test("{§operation-result} OperationResult discriminates successes and RFC 9457 
         { status: 200, range: { unit: "line", total: 2, requested: [1, 16], complete: true } },
     ]) {
         assert.equal(Validator.validateOperationResult(invalid).valid, false);
-        assert.throws(() => Validator.assertOperationResult(invalid as never), InvalidOperationResultError);
+        assert.throws(() => Validator.assertOperationResult(invalid), InvalidOperationResultError);
     }
 });
 
@@ -629,7 +629,7 @@ test("{§operation-result} OperationResult rejects mismatched envelope and Probl
     };
     assert.equal(Validator.validateOperationResult(malformedRange).valid, true);
     assert.throws(
-        () => Validator.assertOperationResult(malformedRange as never),
+        () => Validator.assertOperationResult(malformedRange),
         (error: unknown) => error instanceof InvalidOperationResultError
             && error.cause instanceof InvalidRangeExtentError,
     );
@@ -653,7 +653,7 @@ test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonic
 
     for (const invalid of [{}, { operation: "READ", extra: true }, { traits: ["WEB"] }]) {
         assert.equal(Validator.validateCapabilityDescriptor(invalid).valid, false);
-        assert.throws(() => Validator.assertCapabilityDescriptor(invalid as never), InvalidCapabilityDescriptorError);
+        assert.throws(() => Validator.assertCapabilityDescriptor(invalid), InvalidCapabilityDescriptorError);
     }
     for (const invalid of [
         { deny: [{}] },
@@ -662,7 +662,7 @@ test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonic
         { extra: [] },
     ]) {
         assert.equal(Validator.validateCapabilityPolicy(invalid).valid, false);
-        assert.throws(() => Validator.assertCapabilityPolicy(invalid as never), InvalidCapabilityPolicyError);
+        assert.throws(() => Validator.assertCapabilityPolicy(invalid), InvalidCapabilityPolicyError);
     }
 });
 
@@ -673,7 +673,7 @@ test("{§worker-ownership}: owner declarations require an address, explicit supp
     }
     for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], interactive: false, undeclared: true }, null, []]) {
         assert.equal(Validator.validateWorkerOwner(invalid).valid, false);
-        assert.throws(() => Validator.assertWorkerOwner(invalid as never), InvalidWorkerOwnerError);
+        assert.throws(() => Validator.assertWorkerOwner(invalid), InvalidWorkerOwnerError);
     }
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
@@ -707,7 +707,7 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
     ]) {
         assert.equal(Validator.validateProposalProjection(invalid).valid, false);
         assert.throws(
-            () => Validator.assertProposalProjection(invalid as never),
+            () => Validator.assertProposalProjection(invalid),
             InvalidProposalProjectionError,
         );
     }
@@ -766,7 +766,7 @@ test("{§entry-read-result} EntryReadResult validates one exact client entry pro
     ]) {
         assert.equal(Validator.validateEntryReadResult(invalid).valid, false);
         assert.throws(
-            () => Validator.assertEntryReadResult(invalid as never),
+            () => Validator.assertEntryReadResult(invalid),
             /invalid EntryReadResult/,
         );
     }
