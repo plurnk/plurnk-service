@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PROPOSAL_POLICIES } from "./types.ts";
+import { PROPOSAL_POLICIES, UNKNOWN_POSITION } from "./types.ts";
 import Validator, {
     InvalidClientInteractionProjectionError,
     InvalidClientInteractionRequestError,
@@ -10,6 +10,7 @@ import Validator, {
     InvalidCapabilityPolicyError,
     InvalidFunctionalityListResultError,
     InvalidWorkerOwnerError,
+    InvalidPlurnkStatementError,
     InvalidMcpServerDefinitionError,
     InvalidMcpOAuthError,
     InvalidModelCatalogPageError,
@@ -770,4 +771,10 @@ test("{§entry-read-result} EntryReadResult validates one exact client entry pro
             /invalid EntryReadResult/,
         );
     }
+});
+
+test("{§wire-entrypoint} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
+    const note = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
+    assert.equal(Validator.assertPlurnkStatement(note), note);
+    assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), InvalidPlurnkStatementError);
 });

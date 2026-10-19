@@ -22,7 +22,7 @@ import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type
 import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
 import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
 import workerOwnerSchema from "../schema/WorkerOwner.json" with { type: "json" };
-import type { WorkerOwner, A2AAgentDefinition as A2aAgentDefinition, RollbackReport, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath } from "./types.generated.ts";
+import type { WorkerOwner, A2AAgentDefinition as A2aAgentDefinition, RollbackReport, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -90,6 +90,7 @@ export class InvalidAguiClientConformanceError extends TypeError {}
 export class InvalidAguiConformanceKitError extends TypeError {}
 export class InvalidJsonSchemaInstanceError extends TypeError {}
 export class InvalidParsedPathError extends TypeError {}
+export class InvalidPlurnkStatementError extends TypeError {}
 
 export default class Validator {
     static #position = Validator.#compile(positionSchema);
@@ -689,6 +690,14 @@ export default class Validator {
         const result = Validator.validateParsedPath(value);
         if (!Validator.#accepted<ParsedPath>(value, result)) {
             throw new InvalidParsedPathError(`invalid ParsedPath: ${JSON.stringify(result.errors)}`);
+        }
+        return value;
+    }
+
+    static assertPlurnkStatement(value: unknown): PlurnkStatement {
+        const result = Validator.validatePlurnkStatement(value);
+        if (!Validator.#accepted<PlurnkStatement>(value, result)) {
+            throw new InvalidPlurnkStatementError(`invalid PlurnkStatement: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }

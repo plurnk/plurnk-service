@@ -1,4 +1,4 @@
-import { Validator, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { PacketSections, type PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { ATTACHMENT_KINDS, type AttachmentKind } from "./attachments.ts";
 
@@ -97,7 +97,12 @@ export default class StoredPacket {
         }
     }
 
-    static #attachments(value: unknown, subject: string): void {
+    static #attachments(value: unknown, subject: string): PacketAttachment[] {
+        StoredPacket.#checkAttachments(value, subject);
+        return value;
+    }
+
+    static #checkAttachments(value: unknown, subject: string): asserts value is PacketAttachment[] {
         if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
         value.forEach((item, index) => {
             const attachment = StoredPacket.#record(item, `${subject}[${index}]`);
@@ -133,15 +138,11 @@ export default class StoredPacket {
             absent ? ["weight", "attributions", "attachments", "assistant", "assistantRaw"] : ["weight", "sections", "attributions", "attachments", "assistant", "assistantRaw"],
             subject,
         );
-        if (own(packet, "attachments")) StoredPacket.#attachments(packet.attachments, `${subject}.attachments`);
+        const attachments = own(packet, "attachments") ? StoredPacket.#attachments(packet.attachments, `${subject}.attachments`) : undefined;
         StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
-        if (!absent && !Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
 
-        const sections = absent ? [] : (packet.sections as unknown[]).map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
+        const sections = absent ? [] : StoredPacket.#array(packet.sections, `${subject}.sections`).map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
         const attributions = StoredPacket.#attributions(packet.attributions, `${subject}.attributions`);
-        const attachments = own(packet, "attachments")
-            ? packet.attachments as PacketAttachment[]
-            : undefined;
         const hasAssistant = own(packet, "assistant");
         const hasAssistantRaw = own(packet, "assistantRaw");
         if (hasAssistant !== hasAssistantRaw) {
@@ -174,11 +175,11 @@ export default class StoredPacket {
             throw new TypeError(`${subject}.reasoning must be a string or null`);
         }
         const ops = assistant.ops.map((op, index) => {
-            const result = Validator.validatePlurnkStatement(op);
-            if (!result.valid) {
-                throw new TypeError(`${subject}.ops[${index}] is not a PlurnkStatement: ${JSON.stringify(result.errors)}`);
+            try {
+                return Validator.assertPlurnkStatement(op);
+            } catch (cause) {
+                throw new TypeError(`${subject}.ops[${index}] is not a PlurnkStatement`, { cause });
             }
-            return op as PlurnkStatement;
         });
         return { content: assistant.content, ops, reasoning: assistant.reasoning };
     }
@@ -186,9 +187,7 @@ export default class StoredPacket {
     static #section(value: unknown, subject: string): StoredPacketSection {
         const section = StoredPacket.#record(value, subject);
         StoredPacket.#keys(section, ["name", "slot", "header", "content", "weight"], ["name", "slot", "header", "content", "weight", "items"], subject);
-        if (own(section, "items") && (!Array.isArray(section.items) || !section.items.every((item) => typeof item === "string"))) {
-            throw new TypeError(`${subject}.items must be an array of strings`);
-        }
+        const items = own(section, "items") ? StoredPacket.#strings(section.items, `${subject}.items`) : undefined;
         const { name, slot, header, content } = PacketSections.assertDraft(
             { name: section.name, slot: section.slot, header: section.header, content: section.content },
             subject,
@@ -200,7 +199,7 @@ export default class StoredPacket {
             header,
             content,
             weight: section.weight,
-            ...(own(section, "items") ? { items: section.items as string[] } : {}),
+            ...(items === undefined ? {} : { items }),
         };
     }
 
@@ -220,10 +219,20 @@ export default class StoredPacket {
     }
 
     static #record(value: unknown, subject: string): Record<string, unknown> {
-        if (value === null || typeof value !== "object" || Array.isArray(value)) {
-            throw new TypeError(`${subject} must be an object`);
+        if (!isRecord(value)) throw new TypeError(`${subject} must be an object`);
+        return value;
+    }
+
+    static #array(value: unknown, subject: string): unknown[] {
+        if (!Array.isArray(value)) throw new TypeError(`${subject} must be an array`);
+        return value;
+    }
+
+    static #strings(value: unknown, subject: string): string[] {
+        if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
+            throw new TypeError(`${subject} must be an array of strings`);
         }
-        return value as Record<string, unknown>;
+        return value;
     }
 
     static #keys(value: Record<string, unknown>, required: string[], allowed: string[], subject: string): void {
@@ -235,7 +244,7 @@ export default class StoredPacket {
     }
 
     static #nonnegativeInteger(value: unknown, subject: string): asserts value is number {
-        if (!Number.isSafeInteger(value) || (value as number) < 0) {
+        if (!isSafeInteger(value) || value < 0) {
             throw new TypeError(`${subject} must be a non-negative safe integer`);
         }
     }

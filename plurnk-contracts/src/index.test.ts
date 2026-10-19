@@ -39,6 +39,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "InvalidNoticeError",
         "InvalidOperationResultError",
         "InvalidParsedPathError",
+        "InvalidPlurnkStatementError",
         "InvalidProblemDetailsError",
         "InvalidProblemProjectionError",
         "InvalidProposalProjectionError",

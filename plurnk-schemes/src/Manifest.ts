@@ -1,8 +1,9 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { SchemeAuthority, SchemeManifest, WriterTier } from "./types.ts";
 
-const WRITERS = new Set<WriterTier>(["model", "client", "_plurnk"]);
-const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
-const AUTHORITIES = new Set<SchemeAuthority>(["namespace", "resource"]);
+const WRITERS: ReadonlySet<string> = new Set<WriterTier>(["model", "client", "_plurnk"]);
+const CATEGORIES: ReadonlySet<string> = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
+const AUTHORITIES: ReadonlySet<string> = new Set<SchemeAuthority>(["namespace", "resource"]);
 const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     name: true,
     authority: true,
@@ -28,12 +29,19 @@ export default class Manifest {
         if (typeof handler !== "object" || handler === null) {
             throw new Error("scheme handler must be an object");
         }
-        const instance = handler as { manifest?: unknown; constructor?: { manifest?: unknown } };
-        const value = instance.manifest ?? instance.constructor?.manifest;
-        if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        const own = "manifest" in handler ? handler.manifest : undefined;
+        const ctor: unknown = handler.constructor;
+        const value = own ?? (typeof ctor === "function" && "manifest" in ctor ? ctor.manifest : undefined);
+        Manifest.#check(value, expectedName);
+        return value;
+    }
+
+    // Every field the contract names is checked here; the manifest is the value that passed.
+    static #check(value: unknown, expectedName?: string): asserts value is SchemeManifest {
+        if (!isRecord(value)) {
             throw new Error(`scheme '${expectedName ?? "unknown"}' must declare a static or instance manifest`);
         }
-        const manifest = value as Record<string, unknown>;
+        const manifest = value;
         const name = Manifest.#string(manifest, "name");
         const unknown = Object.keys(manifest).find((field) => !MANIFEST_FIELD_NAMES.has(field));
         if (unknown !== undefined) {
@@ -42,7 +50,7 @@ export default class Manifest {
         if (expectedName !== undefined && name !== expectedName) {
             throw new Error(`scheme identity mismatch: registered '${expectedName}', manifest declares '${name}'`);
         }
-        if (manifest.authority !== undefined && !AUTHORITIES.has(manifest.authority as SchemeAuthority)) {
+        if (manifest.authority !== undefined && (typeof manifest.authority !== "string" || !AUTHORITIES.has(manifest.authority))) {
             throw new Error(`scheme '${name}' manifest.authority must be namespace or resource`);
         }
         const channels = manifest.channels;
@@ -57,12 +65,12 @@ export default class Manifest {
         if (defaultChannel !== defaultChannel.toLowerCase()) {
             throw new Error(`scheme '${name}' manifest.defaultChannel must be lowercase`);
         }
-        if (!CATEGORIES.has(manifest.category as SchemeManifest["category"])) {
+        if (typeof manifest.category !== "string" || !CATEGORIES.has(manifest.category)) {
             throw new Error(`scheme '${name}' manifest.category must be data, logging, or control`);
         }
         const writableBy = manifest.writableBy;
         if (!Array.isArray(writableBy)
-            || !writableBy.every((writer): writer is WriterTier => typeof writer === "string" && WRITERS.has(writer as WriterTier))
+            || !writableBy.every((writer): writer is WriterTier => typeof writer === "string" && WRITERS.has(writer))
             || new Set(writableBy).size !== writableBy.length) {
             throw new Error(`scheme '${name}' manifest.writableBy must contain unique writer tiers`);
         }
@@ -72,7 +80,6 @@ export default class Manifest {
         for (const field of ["documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
         Manifest.#optionalNonemptyString(manifest, "glyph");
         Manifest.#traits(manifest.traits, name);
-        return value as SchemeManifest;
     }
 
     static #string(record: Record<string, unknown>, field: string, emptyAllowed = false): string {

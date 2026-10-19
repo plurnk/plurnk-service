@@ -35,6 +35,7 @@ export {
     InvalidAguiDiscoveryError,
     InvalidJsonSchemaInstanceError,
     InvalidParsedPathError,
+    InvalidPlurnkStatementError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export { errnoCode, isRecord, isSafeInteger } from "./guards.ts";

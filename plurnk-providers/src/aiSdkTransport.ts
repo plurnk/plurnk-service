@@ -1,3 +1,4 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { chatMessageText } from "./types.ts";
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
@@ -146,10 +147,7 @@ const finishReasonOf = (unified: string | undefined, raw: string | undefined): P
     }
 };
 
-const recordOf = (value: unknown): Record<string, unknown> | null =>
-    value !== null && typeof value === "object"
-        ? value as Record<string, unknown>
-        : null;
+const recordOf = (value: unknown): Record<string, unknown> | null => isRecord(value) ? value : null;
 
 const metadataOf = (values: readonly unknown[]): Record<string, unknown> => {
     const metadata: Record<string, unknown> = {};
@@ -606,11 +604,8 @@ export const transportFailureEvidence = (
         .map(recordOf)
         .find((record) => Number.isInteger(record?.status))?.status;
     const apiStatus = apiError?.statusCode;
-    const status = Number.isInteger(apiStatus) && (apiStatus as number) >= 100 && (apiStatus as number) <= 599
-        ? apiStatus as number
-        : Number.isInteger(wireStatus) && (wireStatus as number) >= 100 && (wireStatus as number) <= 599
-            ? wireStatus as number
-            : undefined;
+    const httpStatus = (value: unknown): number | undefined => isSafeInteger(value) && value >= 100 && value <= 599 ? value : undefined;
+    const status = httpStatus(apiStatus) ?? httpStatus(wireStatus);
     return {
         content: emission.content || partial?.content || "",
         reasoning: emission.reasoning || partial?.reasoning || "",
