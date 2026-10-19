@@ -233,6 +233,11 @@ export default class ProposalHitl {
             .toSorted(comparePending);
     }
 
+    // {§agui-held-interrupts} The keys of the gates pending for an owner.
+    async pendingKeys(workspaceId: number, address: string): Promise<ReadonlySet<string>> {
+        return new Set((await this.#pending(workspaceId)).filter((item) => recipient(item) === address).map(({ key }) => key));
+    }
+
     async resurface(workspaceId: number, address: string): Promise<HitlDelivery[]> {
         const pending = (await this.#pending(workspaceId)).filter((item) => recipient(item) === address);
         const workerIds = [...new Set(pending.map(({ workerId }) => workerId))];

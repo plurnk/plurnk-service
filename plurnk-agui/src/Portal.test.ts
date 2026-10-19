@@ -15,7 +15,7 @@ import type {
     ProviderAccounting,ClientInteractionResolution
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
-import type { Interrupt } from "@ag-ui/core";
+import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamEvent, termination } from "../test/notification-fixture.ts";
@@ -1390,5 +1390,139 @@ test("{§agui-outside-text}: outside/event fans to the bound thread for its work
     await nextTask();
     const outside = seen.filter((e) => e.type === EventType.CUSTOM && (e as { name?: string }).name === "plurnk.outside");
     assert.deepEqual(outside.map((e) => (e as { value: { text: string } }).value.text), ["Thinking out loud."], "one event for the thread's worker, none for the other");
+    portal.stop();
+});
+
+// {§agui-held-interrupts} One Run of a thread as its client sees it: what it received, and the interrupts that ended it.
+const viewRun = (portal: Portal, resume?: ResumeEntry[], { threadId = "tui", workerId = 10 } = {}) => {
+    const seen: AguiEvent[] = [];
+    const view = capture(seen);
+    const thread = portal.openThread({ workspaceId: 3, workerId, threadId, owner: OWNER, notificationScope: "worker", emit: view.emit,
+        ...(resume === undefined ? {} : { resume }) });
+    const finished = (): Array<string | undefined> => seen.filter(({ type }) => type === EventType.RUN_FINISHED)
+        .map((event) => (event as { outcome?: { type: string } }).outcome?.type);
+    return { thread, seen, view, finished };
+};
+const drained = async (): Promise<void> => { for (let i = 0; i < 6; i++) await nextTask(); };
+const loopCancelled = { status: 499, problem: { type: "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled", title: "Loop cancelled",
+    status: 499, detail: "The loop was cancelled.", instance: "ops://worker-10/1" } };
+
+// {§agui-held-interrupts} Each gate kind, held, settled each way it can be: another presentation's resume, the daemon
+// (a row of the gate's worker), or its loop's cancellation.
+for (const kind of ["proposal", "interaction"] as const) {
+    for (const settledBy of ["another presentation's resume", "the daemon", "its loop's cancellation"] as const) {
+        test(`{§agui-held-interrupts}: a Run holding ${kind === "proposal" ? "a proposal" : "an interaction"} does not present it again, and finishes once ${settledBy} settles it`, async () => {
+            const proposals = kind === "proposal" ? [proposal({ logEntryId: 42, loopId: 7 })] : [];
+            const interactions = kind === "interaction" ? [interaction({ interactionId: 12, loopId: 7 })] : [];
+            const m = mockSeam(proposals, interactions, { loops: new Map([[10, [loop(10, 7)]]]) });
+            const portal = new Portal(m.seam);
+            portal.start();
+            const call = kind === "proposal" ? "1/1/42" : "int:12";
+            const answer = kind === "proposal" ? { decision: "accept" } : { color: "red" };
+            const settled = (): number => m.resolves.length + m.interactionResolves.length;
+            // Two views of one worker, each presented the gate; each Run ends at its interrupt.
+            const first = viewRun(portal);
+            const second = viewRun(portal);
+            for (const view of [first, second]) {
+                assert.equal(await portal.synchronize(3, view.thread), false, "each view is presented the gate");
+                portal.closeRun(3, view.thread);
+            }
+            const held = first.view.interrupt(call);
+            const other = second.view.interrupt(call);
+            assert.notEqual(held.id, other.id, "each presentation has its own id");
+
+            const again = viewRun(portal);
+            assert.equal(await portal.synchronize(3, again.thread, true, [held.id]), true, "the first view's client connects again, holding it");
+            assert.deepEqual([again.view.interrupts, again.finished()], [[], []], "the held gate is not presented again, and the Run stays open");
+
+            if (settledBy === "another presentation's resume") {
+                const answering = viewRun(portal, [{ interruptId: other.id, status: "resolved", payload: answer }]);
+                await portal.resolve(3, answering.thread, [{ interruptId: other.id, status: "resolved", payload: answer }]);
+            } else {
+                proposals.length = 0;
+                interactions.length = 0;
+                if (settledBy === "the daemon") {
+                    m.fire(3, "log/entry", { entry: wireRow({ id: 50, worker_id: 10, loop_id: 7, sequence: 50, op: "EDIT", status_rx: 409, rx: { status: 409 } }) });
+                } else {
+                    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 7, result: loopCancelled, turnIds: [], usage: loopUsage({ curationBudget: 1000 }) }));
+                }
+            }
+            await drained();
+            assert.deepEqual(again.finished(), [settledBy === "its loop's cancellation" ? "cancelled" : "success"],
+                "the Run finishes once, with an outcome that clears the standard client's pending interrupts");
+            assert.deepEqual(again.view.interrupts, [], "having presented nothing");
+            assert.equal(settled(), settledBy === "another presentation's resume" ? 1 : 0, "the gate settled once, by whoever settled it");
+
+            const late = viewRun(portal, [{ interruptId: held.id, status: "resolved", payload: answer }]);
+            await assert.rejects(portal.resolve(3, late.thread, [{ interruptId: held.id, status: "resolved", payload: answer }]),
+                (error: unknown) => (error as { problem?: { status?: number } }).problem?.status === 409, "a late answer of the held interrupt is refused");
+            assert.equal(settled(), settledBy === "another presentation's resume" ? 1 : 0, "and settles nothing");
+            portal.stop();
+        });
+    }
+}
+
+test("{§agui-held-interrupts}: an interrupt the Run does not hold, unknown or another thread's, is ignored and the pending gate is presented again", async () => {
+    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })], [], { loops: new Map([[10, [loop(10, 7)]]]) });
+    const portal = new Portal(m.seam);
+    portal.start();
+    const elsewhere = viewRun(portal, undefined, { threadId: "web" });
+    assert.equal(await portal.synchronize(3, elsewhere.thread), false);
+    portal.closeRun(3, elsewhere.thread);
+    const foreign = elsewhere.view.interrupt("1/1/42");
+    for (const [what, named] of [["an unknown interrupt", ["no-such-interrupt"]], ["another thread's interrupt", [foreign.id]]] as const) {
+        const view = viewRun(portal);
+        assert.equal(await portal.synchronize(3, view.thread, true, named), false, `${what} holds nothing`);
+        assert.ok(![foreign.id, ...named].includes(view.view.interrupt("1/1/42").id), `${what}: the gate is presented again under a new id`);
+        portal.closeRun(3, view.thread);
+    }
+    portal.stop();
+});
+
+test("{§agui-held-interrupts}: while it holds a gate a Run presents no other, which stays durable and is presented after", async () => {
+    const pending = [proposal({ logEntryId: 42, loopId: 7 })];
+    const m = mockSeam(pending, [], { workers: [worker(10), worker(20, 10)], loops: new Map([[10, [loop(10, 7)]], [20, [loop(20, 9)]]]) });
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = viewRun(portal);
+    await portal.synchronize(3, first.thread);
+    portal.closeRun(3, first.thread);
+    const again = viewRun(portal);
+    assert.equal(await portal.synchronize(3, again.thread, true, [first.view.interrupt("1/1/42").id]), true);
+
+    const child = proposal({ logEntryId: 61, workerId: 20, loopId: 9 });
+    pending.push(child);
+    m.fire(3, "loop/proposal", child);
+    await drained();
+    assert.deepEqual(again.view.interrupts, [], "a child's gate is not presented to the Run that holds one");
+
+    pending.splice(0, 1);
+    m.fire(3, "log/entry", { entry: wireRow({ id: 42, worker_id: 10, loop_id: 7, sequence: 42, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
+    await drained();
+    assert.deepEqual(again.finished(), ["success"], "the held gate settled: the Run finishes");
+    const next = viewRun(portal);
+    assert.equal(await portal.synchronize(3, next.thread, true, []), false);
+    assert.deepEqual(next.view.interrupts.map(({ metadata }) => (metadata as { plurnk?: { proposal?: { logEntryId?: number } } }).plurnk?.proposal?.logEntryId), [61],
+        "the child's gate, durable meanwhile, is presented next");
+    portal.stop();
+});
+
+test("{§agui-held-interrupts}: a synchronization holding another worker's gate waits on an idle bound worker until that gate settles", async () => {
+    const pending = [proposal({ logEntryId: 61, workerId: 20, loopId: 9 })];
+    const m = mockSeam(pending, [], { workers: [worker(10), worker(20, 10)], loops: new Map([[20, [loop(20, 9)]]]) });
+    const portal = new Portal(m.seam);
+    portal.start();
+    const first = viewRun(portal);
+    assert.equal(await portal.synchronize(3, first.thread), false);
+    portal.closeRun(3, first.thread);
+    const [held] = first.view.interrupts;
+    assert.ok(held !== undefined);
+    const again = viewRun(portal);
+    assert.equal(await portal.synchronize(3, again.thread, false, [held.id]), true, "an idle bound worker does not finish a Run that holds a gate");
+    assert.deepEqual(again.finished(), []);
+    pending.length = 0;
+    m.fire(3, "log/entry", { entry: wireRow({ id: 61, worker_id: 20, loop_id: 9, sequence: 61, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
+    await drained();
+    assert.deepEqual(again.finished(), ["success"], "a row of the gate's worker, once the gate is settled, finishes it");
     portal.stop();
 });

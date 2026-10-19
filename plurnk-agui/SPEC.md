@@ -144,7 +144,21 @@ events, and interrupt representation
 child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
 ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
 This is the transport implementation of the AG-UI `connect()` extension, not another event protocol: `HttpAgent`
-leaves `connect()` to its subclasses, and a client without one reattaches by running with nothing new.
+leaves `connect()` to its subclasses, and a client without one reattaches by running with nothing new. A client that
+holds an interrupt while its person decides stays informed by connecting with that interrupt named
+({§agui-held-interrupts}).
+
+§agui-held-interrupts **A Run that names the interrupts its client holds waits on them.**
+`forwardedProps.plurnk.interrupts` lists the `Interrupt.id`s its client holds unanswered, the standard client's
+`pendingInterrupts`: an array of strings, which only a Run that submits nothing reads ({§agui-run-input}).
+
+| Fact | Rule |
+| --- | --- |
+| A held interrupt | one a Run of this thread presented, whose gate is still pending: the Run does not present that gate again, and presents no other gate while it holds one; that other gate stays durable and is presented after |
+| While held | the Run observes as a connection does, waiting when the worker is idle |
+| Settlement | when a held gate settles, through any presentation's resume or by Core, the Run finishes with `RUN_FINISHED` success, which clears the standard client's pending interrupts; the client connects again to follow the work that continues |
+| An interrupt not held | unknown, settled, from before a restart, or another thread's: the Run ignores it, so a pending gate is presented again under a new id |
+| Answering | a held interrupt is answered by an ordinary resume ({§agui-proposal-resolve}); one whose gate another answer settled first is refused, 409, and settles nothing |
 
 §agui-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new
 requests while admitted Runs retain terminal-event delivery. In `close`, after core
@@ -384,7 +398,7 @@ every other daemon surface.
   | A passive observation (`forwardedProps.plurnk.control` absent or false) | resolves an existing worker under {§agui-thread-binding}, creates nothing and claims nothing |
   | An owner's control observation | the owner's session attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}) |
   | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then an authoritative `MESSAGES_SNAPSHOT` of the daemon-owned log and the accepted messages the Worker has not yet observed ({§agui-snapshot}, {§agui-message-acceptance}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
-  | A durable pending gate addressed to the Run's thread ({§agui-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not |
+  | A durable pending gate addressed to the Run's thread ({§agui-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not, unless the Run's client holds it ({§agui-held-interrupts}) |
   | An active Loop | remains observed through its terminal; an idle worker emits `RUN_FINISHED` |
 
 §agui-snapshot **A snapshot is the messages the live projection built**, in log order, under
@@ -1067,6 +1081,7 @@ reconstruct one from `RUN_ERROR`.
 | `project-root-invalid` | 400 | projectRoot must be a string or null. |
 | `settings-invalid` | 400 | settings must be a string or an object. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
+| `interrupts-invalid` | 400 | interrupts must be an array of strings. |
 | `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
 | `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |
 | `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*. Recovery: Name an existing model worker, or create one by sending it a message. |

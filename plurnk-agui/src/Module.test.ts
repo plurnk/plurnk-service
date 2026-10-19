@@ -2319,6 +2319,22 @@ test("{§problems-agui} a message Run's forwarded field of the wrong type is its
     } finally { await mod.close(); }
 });
 
+test("{§agui-held-interrupts} a Run that submits nothing refuses interrupts that are not an array of strings, before it binds anything", async () => {
+    const { seam, loopRuns } = mockSeam();
+    existingWorkspace(seam, "held");
+    const mod = await host(seam);
+    try {
+        const port = mod.address().port;
+        for (const [path, interrupts] of [["/agui", "interrupt-1"], ["/agui/connect", [7]]] as const) {
+            const refused = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: "held", forwardedProps: { plurnk: { workspace: "held", interrupts } } })) });
+            assert.equal(refused.status, 400, `${path} ${JSON.stringify(interrupts)}`);
+            assert.match((await refused.json() as { type: string }).type, /interrupts-invalid$/u);
+        }
+        assert.deepEqual(loopRuns, [], "a refused Run submits nothing");
+    } finally { await mod.close(); }
+});
+
 test("{§agui-thread-binding} a creating Run forwards projectRoot and settings as given and refuses any other type", async () => {
     const created: Array<{ projectRoot?: string | null; settings?: string | object }> = [];
     const { seam } = mockSeam();

@@ -66,6 +66,9 @@ interface Thread {
     staleGauge: boolean;
     // The latest refresh begun: an earlier one that completes after it publishes nothing.
     gaugeRefresh: number;
+    // {§agui-held-interrupts} The pending gates this Run's client holds a presentation of, by key, each with its worker:
+    // the Run presents no gate while it holds one, and finishes when one settles.
+    held: Map<string, number>;
 }
 
 export type NotificationScope = "worker" | "operation" | "result";
@@ -217,6 +220,7 @@ export default class Portal {
         const observing: Array<Promise<void>> = [];
         for (const thread of this.#threads.get(workspaceId) ?? []) {
             if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(thread);
+            if (thread.held.size > 0 && Portal.#touchesHeld(thread, method, params)) this.#recheckHeld(workspaceId, thread);
             const actor = thread.descendants ? Portal.#observedActor(thread, method, params) : null;
             if (actor !== null) {
                 observing.push(this.#observeDescendant(workspaceId, thread, actor, method, params));
@@ -252,6 +256,7 @@ export default class Portal {
             if (opened !== null) thread.openStreams.add(opened);
             if (method === "stream/concluded") thread.openStreams.delete(Portal.#streamTarget(params));
             const out = Portal.#finishing(thread, thread.router.route(method, params));
+            if (out.some(({ type }) => type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR)) thread.held.clear();
             if (out.length > 0) thread.emit(out);
             if (method === "log/entry" && opened !== null) this.#releaseUnannounced(thread, opened);
             // {§agui-gate-deferral} — a terminal leaves the held gate durable for the next Run; any other
@@ -290,6 +295,40 @@ export default class Portal {
                     || (entry.op === "SEND" && entry.origin === "_plurnk"));
         }
         return false;
+    }
+
+    // {§agui-held-interrupts} An event that may settle a held gate: a row of its worker, or its worker's loop ending.
+    static #touchesHeld(thread: Thread, method: string, params: unknown): boolean {
+        const workers = new Set(thread.held.values());
+        if (method === "log/entry") {
+            const workerId = Portal.#entryOf(params)?.worker_id;
+            return typeof workerId === "number" && workers.has(workerId);
+        }
+        return method === "loop/terminated" && isRecord(params) && typeof params.workerId === "number" && workers.has(params.workerId);
+    }
+
+    // {§agui-held-interrupts} Whether the daemon still holds the Run's held gates pending, asked once what was published
+    // before has reached the Run; one it no longer holds finishes the Run.
+    #recheckHeld(workspaceId: number, thread: Thread): void {
+        this.#enqueueDelivery(workspaceId, async () => {
+            if (thread.owner === null || thread.held.size === 0) return;
+            const pending = await this.#hitl.pendingKeys(workspaceId, thread.owner);
+            if ([...thread.held.keys()].some((key) => !pending.has(key))) this.#finishHeld(workspaceId, thread);
+        });
+    }
+
+    // {§agui-held-interrupts} Gates a resume settled: each Run that holds one finishes, after what reached it before.
+    #settleHeld(workspaceId: number, settled: ReadonlySet<string>): void {
+        this.#enqueueDelivery(workspaceId, async () => {
+            const holding = [...this.#threads.get(workspaceId) ?? []].filter(({ held }) => [...held.keys()].some((key) => settled.has(key)));
+            for (const thread of holding) this.#finishHeld(workspaceId, thread);
+        });
+    }
+
+    #finishHeld(workspaceId: number, thread: Thread): void {
+        if (!(this.#threads.get(workspaceId)?.has(thread) ?? false) || thread.held.size === 0) return;
+        thread.held.clear();
+        this.#finishThread(thread, [], undefined);
     }
 
     // Publish only what differs from the gauge this Run's client holds, and nothing before its snapshot.
@@ -667,10 +706,10 @@ export default class Portal {
     }
 
     // {§agui-worker-owner} A gate reaches its owner's Runs that observe a worker: the one bound to its worker, else
-    // every one. An operation or result Run never presents one.
+    // every one. An operation or result Run never presents one, nor does a Run that holds a gate ({§agui-held-interrupts}).
     #routeHitl(workspaceId: number, delivery: HitlDelivery): void {
         const threads = [...(this.#threads.get(workspaceId) ?? [])]
-            .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope === "worker");
+            .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope === "worker" && thread.held.size === 0);
         const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
         this.#emitDelivery(workspaceId, delivery, exact.length > 0 ? exact : threads);
     }
@@ -792,6 +831,7 @@ export default class Portal {
             gauge: null,
             staleGauge: false,
             gaugeRefresh: 0,
+            held: new Map(),
         };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
@@ -875,7 +915,7 @@ export default class Portal {
         }
     }
 
-    async #resurfaceControlled(workspaceId: number, thread: Thread): Promise<boolean> {
+    async #resurfaceControlled(workspaceId: number, thread: Thread, holding: readonly string[] = []): Promise<boolean> {
         if (thread.owner === null) return false;
         const deliveries = await this.#hitl.resurface(workspaceId, thread.owner);
         const pendingKeys = new Set(deliveries.flatMap(({ batch }) => batch.gates.map(({ key }) => key)));
@@ -883,7 +923,17 @@ export default class Portal {
             if (candidate.continuation.workspaceId === workspaceId && candidate.continuation.owner === thread.owner
                 && !pendingKeys.has(candidate.key)) this.#continuations.delete(id);
         }
-        if (deliveries.length === 0) return false;
+        // {§agui-held-interrupts} A pending gate this thread presented whose interrupt the Run's client holds is held: the
+        // Run does not present it again, and presents no other gate while it holds one.
+        for (const id of holding) {
+            const presented = this.#continuations.get(id);
+            if (presented === undefined) continue;
+            const { continuation } = presented;
+            if (continuation.workspaceId === workspaceId && continuation.owner === thread.owner && continuation.threadId === thread.threadId) {
+                thread.held.set(presented.key, continuation.gate.workerId);
+            }
+        }
+        if (deliveries.length === 0 || thread.held.size > 0) return false;
         const delivery = deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
         if (delivery === undefined) return false;
         if (thread.loopId === null) {
@@ -911,14 +961,15 @@ export default class Portal {
     // stopped-world is re-presented first; otherwise an active Loop stays attached
     // and an idle worker settles immediately. Returns true only while this
     // thread remains attached to independently-owned live work.
-    async synchronize(workspaceId: number, thread: ThreadHandle, waitForWork = false): Promise<boolean> {
+    async synchronize(workspaceId: number, thread: ThreadHandle, waitForWork = false, holding: readonly string[] = []): Promise<boolean> {
         const bound = this.#bound(thread);
         if (bound.workerId === null) throw new Error("a synchronization Run reached the Portal without its worker");
-        if (await this.#resurfaceControlled(workspaceId, bound)) return false;
+        if (await this.#resurfaceControlled(workspaceId, bound, holding)) return false;
         const loop = selectWorkerLoop((await this.#seam.listWorkerLoops({ workspaceId, workerId: bound.workerId }))
             .filter(({ terminatedAt, terminalResult }) => terminatedAt === null && terminalResult === null));
         if (loop === null) {
-            if (waitForWork) return true;
+            // {§agui-held-interrupts} A Run that holds a gate waits for its settlement, as a connection waits for work.
+            if (waitForWork || bound.held.size > 0) return true;
             this.#finishThread(bound, [], undefined);
             return false;
         }
@@ -1020,6 +1071,7 @@ export default class Portal {
         for (const [id, candidate] of this.#continuations) {
             if (candidate.continuation.workspaceId === workspaceId && resolvedIds.has(candidate.key)) this.#continuations.delete(id);
         }
+        this.#settleHeld(workspaceId, resolvedIds);
         if (this.#threads.get(workspaceId)?.has(bound)) {
             const surfaced = await this.#resurfaceControlled(workspaceId, bound);
             if (!surfaced && bound.loopId === null) this.#finishThread(bound, [], undefined);

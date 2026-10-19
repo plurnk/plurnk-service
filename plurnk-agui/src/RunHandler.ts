@@ -128,6 +128,8 @@ export default class RunHandler {
             ));
         }
         const synchronize = connect || asks === 0;
+        // {§agui-held-interrupts} The interrupts a Run that submits nothing names as its client's, unanswered.
+        const holding = synchronize && forwarded?.interrupts !== undefined ? RunHandler.#forwardedStrings(forwarded, "interrupts") : [];
 
         // Control plane FIRST: a management action that doesn't live in a workspace, and one the module does not
         // register or whose input it refuses, answers without binding — or forging — a workspace
@@ -333,7 +335,7 @@ export default class RunHandler {
             presented = true;
             for (const batch of held.splice(0)) emit(RunHandler.#unreplayed(batch.events, replayed), batch.interrupts);
             if (finished) return;
-            await this.#portal().synchronize(workspaceId, boundRun, connect);
+            await this.#portal().synchronize(workspaceId, boundRun, connect, holding);
             return;
         }
 
