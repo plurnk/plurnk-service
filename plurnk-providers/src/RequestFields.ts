@@ -8,6 +8,8 @@ type ObjectValue = Record<string, unknown>;
 type Facts = { readonly reasoning: boolean; readonly reasoningOptions?: readonly ModelReasoningOption[] };
 const wireEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 type WireEffort = typeof wireEfforts[number] | "none";
+const declarableEfforts: ReadonlySet<string> = new Set([...wireEfforts, "none"]);
+const isWireEffort = (value: string): value is WireEffort => declarableEfforts.has(value);
 const unsafe = new Set(["__proto__", "constructor", "prototype"]);
 const managed = new Set([
     "model", "messages", "stream", "stream_options", "max_tokens", "max_completion_tokens",
@@ -33,9 +35,15 @@ const set = (body: ObjectValue, path: readonly string[], value: unknown): void =
     let parent = body;
     for (const part of path.slice(0, -1)) {
         const existing = parent[part];
-        if (existing === undefined) parent[part] = {};
-        else if (!object(existing)) throw new TypeError(`request fields overlap at ${part}`);
-        parent = parent[part] as ObjectValue;
+        if (existing === undefined) {
+            const next: ObjectValue = {};
+            parent[part] = next;
+            parent = next;
+        } else if (!object(existing)) {
+            throw new TypeError(`request fields overlap at ${part}`);
+        } else {
+            parent = existing;
+        }
     }
     parent[path.at(-1)!] = value;
 };
@@ -48,7 +56,7 @@ const leaves = (body: ObjectValue, parent: readonly string[] = []): (readonly st
 const merge = (left: ObjectValue, right: ObjectValue): ObjectValue => {
     const result = structuredClone(left);
     for (const path of leaves(right)) {
-        const value = path.reduce<unknown>((at, key) => (at as ObjectValue)[key], right);
+        const value = path.reduce<unknown>((at, key) => object(at) ? at[key] : undefined, right);
         set(result, path, structuredClone(value));
     }
     return result;
@@ -76,9 +84,9 @@ export default class RequestFields {
         const [key, raw] = providerSetting(name, env, suffix);
         if (raw === undefined) return undefined;
         const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
-        const invalid = values.find((value) => value !== "none" && !wireEfforts.includes(value as typeof wireEfforts[number]));
+        const invalid = values.find((value) => !isWireEffort(value));
         if (invalid !== undefined) throw new TypeError(`${key} has invalid value "${invalid}"; declarable efforts: none, ${wireEfforts.join(", ")}`);
-        return [...new Set(values as WireEffort[])];
+        return [...new Set(values.filter(isWireEffort))];
     }
 
     static declaredEfforts(name: string, env: NodeJS.ProcessEnv): readonly WireEffort[] {

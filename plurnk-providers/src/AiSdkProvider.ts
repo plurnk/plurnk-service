@@ -8,7 +8,7 @@
 
 import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
-import { EFFORTS, MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { CallWarning, JSONValue } from "ai";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
@@ -497,7 +497,8 @@ export default class AiSdkProvider implements Provider {
                         : {}),
                 });
                 if (!res.ok) throw new Error(`${this.#source}: tokenize endpoint returned ${res.status}`);
-                const { tokens } = (await res.json()) as { tokens?: unknown };
+                const body: unknown = await res.json();
+                const tokens = isRecord(body) ? body.tokens : undefined;
                 if (!Array.isArray(tokens) || !tokens.every((t) => typeof t === "number")) {
                     throw new Error(`${this.#source}: tokenize endpoint returned no token array`);
                 }
@@ -577,8 +578,9 @@ export default class AiSdkProvider implements Provider {
                     `llama-server input-token endpoint returned HTTP ${response.status}`,
                 );
             }
-            const body = await response.json() as { input_tokens?: unknown };
-            if (!Number.isInteger(body.input_tokens) || (body.input_tokens as number) < 0) {
+            const body: unknown = await response.json();
+            const inputTokens = isRecord(body) ? body.input_tokens : undefined;
+            if (!isSafeInteger(inputTokens) || inputTokens < 0) {
                 return estimatePromptTokens(
                     messages,
                     "llama-server input-token endpoint returned no non-negative integer input_tokens",
@@ -586,7 +588,7 @@ export default class AiSdkProvider implements Provider {
             }
             return {
                 kind: "exact",
-                tokens: body.input_tokens as number,
+                tokens: inputTokens,
                 source: "llama-server:/v1/chat/completions/input_tokens",
             };
         } catch (cause) {
@@ -837,6 +839,7 @@ export default class AiSdkProvider implements Provider {
                         headers: requestHeaders,
                         providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget,
                             this.#requestFields?.namespace === undefined ? undefined : {
+                                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- request fields are JSON: parsed from the operator's settings, composed from strings and numbers
                                 [this.#requestFields.namespace]: this.#requestFields.body(this.#effort.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],
                             }),
                         systemProviderOptions: this.#systemCacheProviderOptions,

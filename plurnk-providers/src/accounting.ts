@@ -1,3 +1,4 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type {
     ProviderAccounting,
     ProviderCostNormalizer,
@@ -12,10 +13,7 @@ import {
 } from "./cost.ts";
 import { validateProviderUsage } from "./usage.ts";
 
-const recordOf = (value: unknown): Record<string, unknown> | null =>
-    typeof value === "object" && value !== null && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : null;
+const recordOf = (value: unknown): Record<string, unknown> | null => isRecord(value) ? value : null;
 
 const decimalFromNumber = (value: number, subject: string): string => {
     if (!Number.isFinite(value) || value < 0) {
@@ -96,9 +94,8 @@ export const providerCostNormalizer = (
     }
 };
 
-export const validateProviderRequestAccounting = (
-    value: unknown,
-): ProviderRequestAccounting => {
+// Every field a request's accounting names is checked here; the accounting is the value that passed.
+function checkProviderRequestAccounting(value: unknown): asserts value is ProviderRequestAccounting {
     const request = recordOf(value);
     if (request === null) throw new TypeError("provider request accounting must be an object");
     if (typeof request.provider !== "string" || request.provider.length === 0) {
@@ -111,12 +108,16 @@ export const validateProviderRequestAccounting = (
         throw new TypeError("provider request accounting.outcome must be response or error");
     }
     if (request.status !== undefined
-        && (!Number.isInteger(request.status) || (request.status as number) < 100 || (request.status as number) > 599)) {
+        && (!isSafeInteger(request.status) || request.status < 100 || request.status > 599)) {
         throw new TypeError("provider request accounting.status must be an HTTP status");
     }
-    if (request.usage !== undefined) validateProviderUsage(request.usage as ProviderUsage);
+    if (request.usage !== undefined) validateProviderUsage(request.usage);
     validateProviderCost(request.cost);
-    return value as ProviderRequestAccounting;
+}
+
+export const validateProviderRequestAccounting = (value: unknown): ProviderRequestAccounting => {
+    checkProviderRequestAccounting(value);
+    return value;
 };
 
 const projectUsage = (

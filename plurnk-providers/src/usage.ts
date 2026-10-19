@@ -2,6 +2,7 @@
 // input/output totals own their optional cache/reasoning details, absence is
 // unknown, and no token category is inferred from text length.
 
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { ProviderUsage } from "./types.ts";
 
 export type RawUsage = {
@@ -32,15 +33,16 @@ export type RawUsage = {
 
 const knownTokens = (value: unknown, name: string): number | undefined => {
     if (value === undefined) return undefined;
-    if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    if (!isSafeInteger(value) || value < 0) {
         throw new TypeError(`${name} must be a non-negative safe integer`);
     }
-    return value as number;
+    return value;
 };
 
 const nonEmptyDetails = <T extends Record<string, number | undefined>>(details: T): T | undefined => {
     const entries = Object.entries(details).filter((entry): entry is [string, number] =>
         entry[1] !== undefined);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the entries are T's own, filtered to the defined ones
     return entries.length === 0 ? undefined : Object.fromEntries(entries) as T;
 };
 
@@ -55,7 +57,10 @@ export class UsageDetailError extends TypeError {
     }
 }
 
-export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
+// Every quantity a provider usage names is checked here; the usage is the value that passed.
+function checkProviderUsage(candidate: unknown): asserts candidate is ProviderUsage {
+    if (!isRecord(candidate)) throw new TypeError("provider usage must be an object");
+    const usage = candidate;
     const input = knownTokens(usage.inputTokens, "provider usage.inputTokens");
     const output = knownTokens(usage.outputTokens, "provider usage.outputTokens");
     const total = knownTokens(usage.totalTokens, "provider usage.totalTokens");
@@ -72,6 +77,7 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
     }
 
     if (inputDetails !== undefined) {
+        if (!isRecord(inputDetails)) throw new TypeError("provider usage.inputTokenDetails must be an object");
         const values = [
             knownTokens(inputDetails.noCacheTokens, "provider usage.inputTokenDetails.noCacheTokens"),
             knownTokens(inputDetails.cacheReadTokens, "provider usage.inputTokenDetails.cacheReadTokens"),
@@ -91,6 +97,7 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
     }
 
     if (outputDetails !== undefined) {
+        if (!isRecord(outputDetails)) throw new TypeError("provider usage.outputTokenDetails must be an object");
         const values = [
             knownTokens(outputDetails.textTokens, "provider usage.outputTokenDetails.textTokens"),
             knownTokens(outputDetails.reasoningTokens, "provider usage.outputTokenDetails.reasoningTokens"),
@@ -107,7 +114,11 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
             throw new TypeError("complete provider output-token details must sum to outputTokens");
         }
     }
-    return usage;
+}
+
+export const validateProviderUsage = (value: unknown): ProviderUsage => {
+    checkProviderUsage(value);
+    return value;
 };
 
 export const normalizeUsage = (
@@ -208,10 +219,10 @@ export const normalizeUsage = (
         "provider usage non-cache tokens",
     );
     const inputParts = { noCacheTokens: explicitNoCacheTokens, cacheReadTokens, cacheWriteTokens };
-    const missing = Object.entries(inputParts).filter(([, value]) => value === undefined);
+    const missing = (["noCacheTokens", "cacheReadTokens", "cacheWriteTokens"] as const).filter((part) => inputParts[part] === undefined);
     if (detailErrors.length === inputDetailErrors && inputTokens !== undefined && missing.length === 1) {
         const known = Object.values(inputParts).reduce<number>((sum, value) => sum + (value ?? 0), 0);
-        inputParts[missing[0][0] as keyof typeof inputParts] = inputTokens - known;
+        inputParts[missing[0]] = inputTokens - known;
     }
     const inputTokenDetails = nonEmptyDetails(inputParts);
     const outputTokenDetails = nonEmptyDetails({ textTokens, reasoningTokens: normalizedReasoning });

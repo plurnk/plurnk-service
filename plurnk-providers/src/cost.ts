@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type {
     ChargedCost,
     ProviderCost,
@@ -13,10 +14,8 @@ const DECIMAL = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const CURRENCY = /^[A-Z][A-Z0-9]{2,11}$/;
 
 const recordOf = (value: unknown, name: string): Record<string, unknown> => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        throw new TypeError(`${name} must be an object`);
-    }
-    return value as Record<string, unknown>;
+    if (!isRecord(value)) throw new TypeError(`${name} must be an object`);
+    return value;
 };
 
 const nonEmpty = (value: unknown, name: string): string => {
@@ -42,7 +41,8 @@ const monetaryAmount = (value: unknown, name: string): { amount: string; currenc
     return { amount: decimalAmount, currency: amount.currency };
 };
 
-export const validateChargedCost = (value: unknown): ChargedCost => {
+// Every field a charged cost names is checked here; the cost is the value that passed.
+function checkChargedCost(value: unknown): asserts value is ChargedCost {
     const cost = recordOf(value, "provider charged cost");
     if (cost.kind !== "charged") throw new TypeError("provider charged cost kind must be charged");
     monetaryAmount(cost.amount, "provider charged cost");
@@ -50,24 +50,35 @@ export const validateChargedCost = (value: unknown): ChargedCost => {
         validateDecimal(cost.usdEquivalent, "provider charged cost USD equivalent");
     }
     nonEmpty(cost.source, "provider charged cost source");
-    return value as ChargedCost;
+}
+
+export const validateChargedCost = (value: unknown): ChargedCost => {
+    checkChargedCost(value);
+    return value;
 };
 
-export const validateProviderCost = (value: unknown): ProviderCost => {
+// Every field a provider cost names, by its kind, is checked here; the cost is the value that passed.
+function checkProviderCost(value: unknown): asserts value is ProviderCost {
     const cost = recordOf(value, "provider cost");
     switch (cost.kind) {
         case "charged":
-            return validateChargedCost(value);
+            checkChargedCost(value);
+            return;
         case "estimated":
             monetaryAmount(cost.amount, "provider estimated cost");
             nonEmpty(cost.source, "provider estimated cost source");
-            return value as ProviderCost;
+            return;
         case "unknown":
             nonEmpty(cost.reason, "provider unknown-cost reason");
-            return value as ProviderCost;
+            return;
         default:
             throw new TypeError("provider cost kind must be charged, estimated, or unknown");
     }
+}
+
+export const validateProviderCost = (value: unknown): ProviderCost => {
+    checkProviderCost(value);
+    return value;
 };
 
 export const estimateProviderCost = (
@@ -133,6 +144,6 @@ export const addDecimals = (values: readonly string[]): string => {
 
 export const sumProviderCostsUsd = (costs: readonly ProviderCost[]): string | null => {
     const values = costs.map(providerCostUsd);
-    if (values.some((value) => value === null)) return null;
-    return addDecimals(values as string[]);
+    if (!values.every((value): value is string => value !== null)) return null;
+    return addDecimals(values);
 };

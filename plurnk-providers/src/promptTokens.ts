@@ -1,7 +1,8 @@
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { chatMessageText } from "./types.ts";
 import type { ChatMessage, PromptTokenMeasurement } from "./types.ts";
 
-const KINDS = new Set<PromptTokenMeasurement["kind"]>([
+const KINDS: ReadonlySet<string> = new Set<PromptTokenMeasurement["kind"]>([
     "exact",
     "upper_bound",
     "estimate",
@@ -12,16 +13,24 @@ export const assertPromptTokenMeasurement = (
     value: unknown,
     owner = "provider",
 ): PromptTokenMeasurement => {
-    if (typeof value !== "object" || value === null) {
+    checkPromptTokenMeasurement(value, owner);
+    return value;
+};
+
+const isKind = (value: unknown): value is PromptTokenMeasurement["kind"] => typeof value === "string" && KINDS.has(value);
+
+// Every field a measurement names, by its kind, is checked here; the measurement is the value that passed.
+function checkPromptTokenMeasurement(value: unknown, owner: string): asserts value is PromptTokenMeasurement {
+    if (!isRecord(value)) {
         throw new TypeError(`${owner}: prompt token measurement must be an object`);
     }
-    const candidate = value as Record<string, unknown>;
-    const kind = candidate.kind as PromptTokenMeasurement["kind"];
-    if (!KINDS.has(kind)) {
+    const candidate = value;
+    const kind = candidate.kind;
+    if (!isKind(kind)) {
         throw new TypeError(`${owner}: prompt token measurement has invalid kind ${JSON.stringify(candidate.kind)}`);
     }
     if (kind !== "unavailable"
-        && (!Number.isInteger(candidate.tokens) || (candidate.tokens as number) < 0)) {
+        && (!isSafeInteger(candidate.tokens) || candidate.tokens < 0)) {
         throw new TypeError(`${owner}: prompt token measurement tokens must be a non-negative integer`);
     }
     if (typeof candidate.source !== "string" || candidate.source.length === 0) {
@@ -31,8 +40,7 @@ export const assertPromptTokenMeasurement = (
         && (typeof candidate.detail !== "string" || candidate.detail.length === 0)) {
         throw new TypeError(`${owner}: ${kind} prompt token measurement requires detail`);
     }
-    return value as PromptTokenMeasurement;
-};
+}
 
 export const estimatePromptTokens = (
     messages: readonly ChatMessage[],
