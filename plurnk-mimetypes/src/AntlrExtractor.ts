@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import BaseHandler from "./BaseHandler.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
 import ParserCoordinates from "./ParserCoordinates.ts";
@@ -55,8 +56,8 @@ function walkAntlrTree(node: unknown, content?: string): unknown {
 }
 
 function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined): unknown {
-    if (node === null || node === undefined) return null;
-    const n = node as Record<string, unknown>;
+    if (!isRecord(node)) return null;
+    const n = node;
 
     // Terminal node — wraps a single token under `symbol`.
     if (typeof n.symbol === "object" && n.symbol !== null && !("children" in n)) {
@@ -84,12 +85,12 @@ function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined
 
     // Rule context — has start/stop tokens for positions and children for
     // recursive descent.
-    const start = n.start as { line?: number } | undefined;
-    const stop = n.stop as { line?: number } | undefined;
+    const start = isRecord(n.start) ? n.start : undefined;
+    const stop = isRecord(n.stop) ? n.stop : undefined;
     // Source-bound walks use absolute offsets. This line-only fallback keeps
     // the public source-less helper ordered for synthetic callers.
-    const startLine = start?.line ?? 1;
-    const stopLine = stop?.line;
+    const startLine = typeof start?.line === "number" ? start.line : 1;
+    const stopLine = typeof stop?.line === "number" ? stop.line : undefined;
     const region = coordinates?.antlrContext(n);
     const out: Record<string, unknown> = {
         type: ruleNameOf(node),
@@ -102,8 +103,8 @@ function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined
         }),
     };
 
-    const children = n.children as unknown[] | undefined;
-    if (Array.isArray(children) && children.length > 0) {
+    const children: unknown[] | undefined = Array.isArray(n.children) ? n.children : undefined;
+    if (children !== undefined && children.length > 0) {
         const walked: unknown[] = [];
         for (const child of children) {
             const w = walkAntlrNode(child, coordinates);
@@ -119,7 +120,8 @@ function walkAntlrNode(node: unknown, coordinates: ParserCoordinates | undefined
 // PascalCase grammars (less common) become camelCase: `ClassDeclarationContext`
 // → `classDeclaration`. Fallback: `node`.
 function ruleNameOf(ctx: unknown): string {
-    const className = (ctx as { constructor?: { name?: string } }).constructor?.name ?? "";
+    const ctor: unknown = isRecord(ctx) ? ctx.constructor : undefined;
+    const className = typeof ctor === "function" ? ctor.name : "";
     if (className.length === 0) return "node";
     const base = className.endsWith("Context") ? className.slice(0, -7) : className;
     if (base.length === 0) return "node";
@@ -131,11 +133,12 @@ function ruleNameOf(ctx: unknown): string {
 // unrecognized cases. Some grammars don't expose vocabulary in a stable way;
 // duck-typed access keeps the walker robust.
 function tokenTypeName(terminal: unknown, sym: { type?: number; text?: string }): string {
-    const parent = (terminal as { parent?: unknown }).parent;
-    const vocab = (parent as { parser?: { vocabulary?: { getSymbolicName?: (t: number) => string | null } } })
-        ?.parser?.vocabulary;
-    if (vocab?.getSymbolicName && typeof sym.type === "number") {
-        const name = vocab.getSymbolicName(sym.type);
+    const parent = isRecord(terminal) ? terminal.parent : undefined;
+    const parser = isRecord(parent) ? parent.parser : undefined;
+    const vocab = isRecord(parser) ? parser.vocabulary : undefined;
+    const symbolicName = isRecord(vocab) ? vocab.getSymbolicName : undefined;
+    if (typeof symbolicName === "function" && typeof sym.type === "number") {
+        const name: unknown = Reflect.apply(symbolicName, vocab, [sym.type]);
         if (typeof name === "string" && name.length > 0) return name;
     }
     if (typeof sym.text === "string" && sym.text.length > 0 && sym.text.length <= 10) {
