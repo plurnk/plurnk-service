@@ -1996,6 +1996,94 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
     });
 }
 
+// {§agui-resume-before-gate} Each gate kind, answered while another worker's gate for the same owner becomes pending at
+// each stage of the resume, the answer applied or refused.
+for (const kind of ["proposal", "interaction"] as const) {
+    for (const stage of ["binding", "validation", "resolution"] as const) {
+        for (const applied of [true, false]) {
+            test(`{§agui-resume-before-gate}: ${kind === "proposal" ? "a proposal" : "an interaction"} answer is ${applied ? "applied" : "refused"} on its own Run when another gate becomes pending during ${stage}`, async () => {
+                const { seam, emit } = mockSeam();
+                const owner = "agui://anonymous/threads/resume-first";
+                const gate = (id: number, workerId: number, loopId: number): ProposalProjection | ClientInteractionProjection => kind === "proposal"
+                    ? { logEntryId: id, workerId, worker: `worker-${workerId}`, loopId, turnId: 1, coordinate: `1/1/${id}`, op: "EDIT",
+                        target: { scheme: "file", authority: null, pathname: "a" }, body: "diff", attrs: {}, owner, disposition: { decision: "review" } }
+                    : { interactionId: id, recipient: owner, workerId, loopId, turnId: 1,
+                        request: { toolName: "ask", arguments: { id }, message: "Which?", responseSchema: { type: "object" } } };
+                const idOf = (interrupt: Interrupt): unknown => {
+                    const plurnk = (interrupt.metadata as { plurnk?: { proposal?: { logEntryId?: number }; interaction?: { interactionId?: number } } }).plurnk;
+                    return kind === "proposal" ? plurnk?.proposal?.logEntryId : plurnk?.interaction?.interactionId;
+                };
+                // The answered gate is the bound worker's; the arriving one is another worker's, reviewed by the same owner.
+                const answered = gate(42, 77, 9);
+                const arriving = gate(43, 78, 10);
+                let pending = [answered];
+                const routed = async (): Promise<void> => { for (let i = 0; i < 8; i++) await new Promise((resolve) => setImmediate(resolve)); };
+                const arrive = async (): Promise<void> => {
+                    pending = [...pending, arriving];
+                    emit(3, kind === "proposal" ? "loop/proposal" : "loop/interaction", arriving);
+                    await routed();
+                };
+                // The stage the other gate becomes pending at, armed once the answered gate is presented.
+                let armed: typeof stage | null = null;
+                const reached = async (at: typeof stage): Promise<void> => { if (armed === at) { armed = null; await arrive(); } };
+                seam.pendingProposals = async () => {
+                    if (kind === "proposal") await reached("validation");
+                    return kind === "proposal" ? pending as ProposalProjection[] : [];
+                };
+                seam.pendingClientInteractions = async () => {
+                    if (kind === "interaction") await reached("validation");
+                    return kind === "interaction" ? pending as ClientInteractionProjection[] : [];
+                };
+                const readModel = seam.readWorkerModel;
+                seam.readWorkerModel = async (args) => { await reached("binding"); return readModel(args); };
+                seam.listWorkers = async () => [workerRow(77, "resume-first")];
+                seam.readLog = async ({ workerId, loopSeq, turnSeq, sequence }) => loopSeq === undefined ? [] : logRows([{ id: sequence, worker_id: workerId,
+                    loop_seq: loopSeq, turn_seq: turnSeq, sequence, op: "EDIT", status_rx: 202, state: "proposed", origin: "model" }]);
+                const resolutions: number[] = [];
+                const resolve = async (id: number): Promise<void> => {
+                    await reached("resolution");
+                    pending = pending.filter((item) => item !== answered);
+                    if (!applied) {
+                        throw Object.assign(new Error("The gate expired."), { problem: Problems.create("test:gate", "expired", 409, "The gate expired.") });
+                    }
+                    resolutions.push(id);
+                    // A proposal's answer settles its operation, which reaches the Run as the gate's row.
+                    if (kind === "proposal") emit(3, "log/entry", { entry: wireRow({ id, worker_id: 77, loop_id: 9, loop_seq: 1, turn_seq: 1, sequence: id,
+                        op: "EDIT", status_rx: 200, rx: { status: 200 }, state: "resolved", origin: "model" }) });
+                };
+                seam.resolveProposal = async (logEntryId) => { await resolve(logEntryId); };
+                seam.resolveClientInteraction = async (interactionId) => { await resolve(interactionId); };
+                const mod = await host(seam);
+                try {
+                    const binding = { threadId: "resume-first", forwardedProps: { plurnk: { workspace: "resume-first" } } };
+                    const first = presentedInterrupt(await post(mod.address().port, { ...binding, runId: "ask", messages: [{ role: "user", content: "Begin." }] }));
+                    assert.equal(idOf(first), 42);
+                    if (!applied && stage !== "resolution") pending = [];
+                    armed = stage;
+                    const resumed = await post(mod.address().port, { ...binding, runId: "answer",
+                        resume: [{ interruptId: first.id, status: "resolved", payload: kind === "proposal" ? { decision: "accept" } : { answer: "one" } }] });
+                    const end = resumed.at(-1);
+                    if (applied) {
+                        assert.deepEqual(resolutions, [42], `the answer was applied: ${JSON.stringify(resumed)}`);
+                        const settled = resumed.findIndex((event) => event.type === "TOOL_CALL_RESULT" && event.toolCallId === first.toolCallId);
+                        assert.ok(settled >= 0 && settled < resumed.length - 1, `the answered call's result reaches its Run: ${JSON.stringify(resumed)}`);
+                        assert.equal(idOf(presentedInterrupt(resumed)), 43, "and the gate that became pending is presented after it");
+                    } else {
+                        assert.equal(end?.type, "RUN_ERROR", `the refusal reaches its Run: ${JSON.stringify(resumed)}`);
+                        assert.match((end as { code: string }).code, stage === "resolution" ? /\/expired$/u : /\/interrupt-not-pending$/u);
+                        assert.equal(resumed.filter(({ type }) => type === "RUN_FINISHED").length, 0, "having presented nothing");
+                        assert.deepEqual(resolutions, []);
+                        const next = await post(mod.address().port, { ...binding, runId: "after" });
+                        assert.equal(idOf(presentedInterrupt(next)), 43, "the gate that became pending stays durable for the next Run");
+                    }
+                } finally {
+                    await mod.close();
+                }
+            });
+        }
+    }
+}
+
 test("{§agui-message-before-gate} a descendant client interaction round-trips through its owning AG-UI thread", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{

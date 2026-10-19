@@ -707,11 +707,12 @@ export default class Portal {
 
     // {§agui-worker-owner} A gate reaches its owner's Runs that observe a worker: the one bound to its worker, else
     // every one. An operation or result Run never presents one, nor does a Run that holds a gate ({§agui-held-interrupts}).
+    // {§agui-resume-before-gate} A Run settling its resume presents it once the resume settles, never before.
     #routeHitl(workspaceId: number, delivery: HitlDelivery): void {
         const threads = [...(this.#threads.get(workspaceId) ?? [])]
             .filter((thread) => thread.owner === delivery.recipient && thread.notificationScope === "worker" && thread.held.size === 0);
         const exact = threads.filter((thread) => thread.workerId === delivery.workerId);
-        this.#emitDelivery(workspaceId, delivery, exact.length > 0 ? exact : threads);
+        this.#emitDelivery(workspaceId, delivery, (exact.length > 0 ? exact : threads).filter((thread) => !thread.resolvingInterrupts));
     }
 
     #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {

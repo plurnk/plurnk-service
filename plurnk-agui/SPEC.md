@@ -477,6 +477,7 @@ explicit path fails rather than falling back or skipping conformance.
 | --- | --- |
 | {§agui-gate-deferral} | A gate waits for the reasoning it cannot split. |
 | {§agui-message-before-gate} | A message is durable before a pending gate is re-presented. |
+| {§agui-resume-before-gate} | A resume is applied or refused before its Run presents a gate. |
 | {§agui-proposal-disposition} | AG-UI consumes Core's `ProposalProjection` identically for live delivery and reconnect. |
 | {§agui-provider-policy-forwarding} | A textual Run forwards `selector` and `childSelector` from `forwardedProps.plurnk` unchanged to… |
 <!-- /map -->
@@ -519,6 +520,12 @@ message Run that finds a pending stopped-world first delivers its prompt through
 `ApplicationPort.runLoop`, so Core holds it (injected into the Worker's running or parked
 Loop, otherwise enqueued as its next Loop), and only then re-presents the gate and ends with
 the interrupt. The prompt is never discarded; an admission failure is that Run's `RUN_ERROR`.
+
+§agui-resume-before-gate **A resume is applied or refused before its Run presents a gate.** A gate
+that becomes pending while a resume Run binds, validates or resolves its resume is not presented on
+that Run until the resume is applied, or refused with its exact `RUN_ERROR`. The gate stays durable:
+the Run whose resume was applied presents the pending gates next, and after a refusal the next Run
+does.
 
 An interrupt is an AG-UI Run boundary, not a Plurnk turn boundary. Before Run A's interrupt
 terminal, the projection closes any active `turn-<id>` step. Run B emits `RUN_STARTED`, its
