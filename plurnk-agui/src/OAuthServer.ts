@@ -3,6 +3,7 @@
 // and authorization code with PKCE (RFC 6749 §4.1, RFC 7636), client credentials (§4.4), refresh with
 // rotation, revocation (RFC 7009) and public-client registration (RFC 7591), all on the daemon's one
 // listener. Bearer admission for a protected resource is here too (RFC 6750).
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CredentialAuthority, CredentialClaims, ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -570,11 +571,11 @@ export default class OAuthServer {
         let metadata: Record<string, unknown>;
         try {
             const parsed: unknown = JSON.parse(await readBody(req));
-            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
-            metadata = parsed as Record<string, unknown>;
+            if (!isRecord(parsed)) throw new Error("not an object");
+            metadata = parsed;
         } catch { throw new OAuthError("invalid_client_metadata", "The body is not a JSON object."); }
         const redirectUris = metadata.redirect_uris;
-        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || redirectUris.some((uri) => absoluteHttpUrl(uri) === null)) {
+        if (!Array.isArray(redirectUris) || redirectUris.length === 0 || !redirectUris.every((uri): uri is string => typeof uri === "string" && absoluteHttpUrl(uri) !== null)) {
             throw new OAuthError("invalid_redirect_uri", "redirect_uris must list absolute http(s) URLs without fragments.");
         }
         const method = metadata.token_endpoint_auth_method ?? "none";
@@ -595,7 +596,7 @@ export default class OAuthServer {
         if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
         const id = mint();
         this.#registered += 1;
-        this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: Object.freeze(redirectUris as string[]), name });
+        this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: Object.freeze(redirectUris), name });
         this.#json(res, 201, {
             client_id: id,
             client_id_issued_at: Math.floor(this.#now() / 1000),

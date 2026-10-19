@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { Tool } from "@modelcontextprotocol/client";
 
 const BASE64_PREFIX = "=?base64?";
@@ -60,8 +61,8 @@ export const headerDeclarations = (tool: Tool): HeaderDeclaration[] => {
         throw new HeaderDeclarationError(tool.name, `${pathName(path)}: ${what}`);
     }
     const visit = (schema: unknown, path: readonly string[], reachable: boolean): void => {
-        if (schema === null || typeof schema !== "object" || Array.isArray(schema)) return;
-        const node = schema as Record<string, unknown>;
+        if (!isRecord(schema)) return;
+        const node = schema;
         if ("x-mcp-header" in node) {
             if (!reachable || path.length === 0) refuse(path, "x-mcp-header outside a chain of properties");
             const header = node["x-mcp-header"];
@@ -102,8 +103,8 @@ export const assertHeaderDeclarations = (tool: Tool): void => {
 const valueAt = (root: Record<string, unknown>, path: readonly string[]): unknown => {
     let value: unknown = root;
     for (const segment of path) {
-        if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-        value = (value as Record<string, unknown>)[segment];
+        if (!isRecord(value)) return undefined;
+        value = value[segment];
     }
     return value;
 };

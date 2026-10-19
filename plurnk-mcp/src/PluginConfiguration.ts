@@ -40,10 +40,9 @@ export default class PluginConfiguration {
         await mkdir(context.data, { recursive: true });
         const definition = PluginConfiguration.resolve(source, context);
         const root = source.cwd?.startsWith("${PLUGIN_DATA}") ? context.data : context.root;
-        for (const [field, base, path] of [
-            ["cwd", root, definition.cwd],
-            ...(source.command.startsWith("./") ? [["command", context.root, definition.command]] : []),
-        ] as [string, string, string][]) {
+        const contained: Array<[string, string, string]> = [["cwd", root, definition.cwd]];
+        if (source.command.startsWith("./")) contained.push(["command", context.root, definition.command]);
+        for (const [field, base, path] of contained) {
             if (!await AgentPluginFiles.contained(await realpath(base), path)) {
                 throw new TypeError(`MCP server '${source.name}' ${field} resolves outside its plugin ${field === "cwd" && root === context.data ? "data directory" : "root"}.`);
             }

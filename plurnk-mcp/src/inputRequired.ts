@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import {
     fromJsonSchema,
     isInputRequiredResult,
@@ -131,10 +132,10 @@ const supportedElicitations = (
     operation: InputRequiredMethod,
     inputRequests: Readonly<Record<string, unknown>>,
 ): [string, ElicitRequest][] => Object.entries(inputRequests).map(([key, candidate]) => {
-    const request = candidate as { method?: unknown };
-    if (request.method !== "elicitation/create") {
+    const method = isRecord(candidate) ? candidate.method : undefined;
+    if (method !== "elicitation/create") {
         throw new Error(
-            `MCP server '${server}' requested unsupported embedded input method '${String(request.method)}' during '${operation}'; Plurnk advertises only elicitation form and URL modes.`,
+            `MCP server '${server}' requested unsupported embedded input method '${String(method)}' during '${operation}'; Plurnk advertises only elicitation form and URL modes.`,
         );
     }
     const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(candidate);
@@ -222,9 +223,12 @@ const resolvedInputResponses = async (
     resolution: ClientInteractionResolution,
 ): Promise<Record<string, InputResponse>> => {
     if (resolution.status === "cancelled") {
-        const entries = Object.entries(
-            request.arguments.requests as Record<string, ElicitRequest>,
-        );
+        const requests = isRecord(request.arguments.requests) ? request.arguments.requests : {};
+        const entries = Object.entries(requests).map(([key, value]): [string, ElicitRequest] => {
+            const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(value);
+            if (parsed.issues !== undefined) throw new Error(`MCP elicitation '${key}' is not an elicitation request: ${formatValidationIssues(parsed.issues)}.`);
+            return [key, parsed.value];
+        });
         return cancelledInputResponses(entries);
     }
     const validator = fromJsonSchema<Record<string, unknown>>(

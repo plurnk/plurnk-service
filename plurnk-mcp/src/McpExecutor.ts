@@ -4,7 +4,7 @@ import {
     Results,
     RuntimeInvocation,
 } from "@plurnk/plurnk-execs";
-import { formatJsonDocument } from "@plurnk/plurnk-contracts";
+import { isRecord, formatJsonDocument } from "@plurnk/plurnk-contracts";
 import type {
     ChannelDecl,
     Effect,
@@ -102,10 +102,11 @@ const pageReceipt = (
     if (body.mimetype !== "application/json") return null;
     const parsed: unknown = JSON.parse(body.content);
     if (!Array.isArray(parsed)) return null;
-    const properties = (tool.inputSchema.properties ?? {}) as Readonly<Record<string, { default?: unknown } | undefined>>;
+    const properties = isRecord(tool.inputSchema.properties) ? tool.inputSchema.properties : {};
     for (const name of PAGE_ARGUMENTS) {
         const sent = args[name];
-        const size = typeof sent === "number" ? sent : properties[name]?.default;
+        const property = properties[name];
+        const size = typeof sent === "number" ? sent : isRecord(property) ? property.default : undefined;
         if (typeof size !== "number" || !Number.isInteger(size) || size <= 0) continue;
         return parsed.length === size ? { size, returned: parsed.length } : null;
     }
@@ -334,10 +335,10 @@ export default class McpExecutor extends BaseExecutor {
         if (input.length > 0) {
             try {
                 const parsed: unknown = McpExecutor.#parseArguments(input);
-                if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                if (!isRecord(parsed)) {
                     throw new TypeError("tool arguments must be an object");
                 }
-                args = parsed as Record<string, unknown>;
+                args = parsed;
             } catch (cause) {
                 // Name the form that works (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
                 return fail(

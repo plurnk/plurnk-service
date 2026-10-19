@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import {
     CLIENT_CAPABILITIES_META_KEY,
     CLIENT_INFO_META_KEY,
@@ -43,10 +44,7 @@ interface ExtensionChannelOptions {
 type TaskNotificationHandler = (params: unknown) => void;
 type MessageExtra = Parameters<NonNullable<Transport["onmessage"]>>[1];
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-    value !== null && typeof value === "object" && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : undefined;
+const asRecord = (value: unknown): Record<string, unknown> | undefined => isRecord(value) ? value : undefined;
 
 const asError = (cause: unknown): Error => cause instanceof Error
     ? cause

@@ -9,7 +9,7 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import MessageAddress from "./MessageAddress.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
-import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
@@ -42,7 +42,7 @@ export interface Resolution extends ProposalResolution { logEntryId: number }
 export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
     const logEntryId = logEntryIdFromKey(entry.interruptId);
     if (logEntryId === null) return null;
-    const payload = entry.payload as { decision?: unknown; body?: unknown; outcome?: unknown } | undefined;
+    const payload = isRecord(entry.payload) ? entry.payload : undefined;
     if (payload?.outcome !== undefined && typeof payload.outcome !== "string") return null;
     const outcome = payload?.outcome === undefined ? {} : { outcome: payload.outcome };
     if (entry.status === "cancelled") return { logEntryId, decision: "cancel", ...outcome };
@@ -184,8 +184,8 @@ export const aliveChildren = (rows: readonly { readonly lifecycle: LoopLifecycle
 
 export const derivationActivity = (value: unknown): AguiDerivationActivity | null => {
     if (value === null) return null;
-    if (typeof value !== "object") throw new TypeError("Invalid derivation activity.");
-    const { phase, completed, total, percent, message } = value as Record<string, unknown>;
+    if (!isRecord(value)) throw new TypeError("Invalid derivation activity.");
+    const { phase, completed, total, percent, message } = value;
     if (phase !== "preparing" && phase !== "indexing" && phase !== "complete" && phase !== "failed"
         || typeof completed !== "number" || !Number.isSafeInteger(completed) || completed < 0
         || typeof total !== "number" || !Number.isSafeInteger(total) || total < completed
@@ -244,11 +244,12 @@ export const stateDelta = (patches: JsonPatch): AguiEvent => ({ type: EventType.
 // the Run with the outcome as its result.
 export interface ActionRequest { kind: string; params: Record<string, unknown> }
 export const parseAction = (forwardedProps: unknown): ActionRequest | null => {
-    const action = (forwardedProps as { plurnk?: { action?: unknown } } | undefined)?.plurnk?.action;
-    if (action === null || typeof action !== "object") return null;
-    const kind = (action as { kind?: unknown }).kind;
+    const plurnk = isRecord(forwardedProps) && isRecord(forwardedProps.plurnk) ? forwardedProps.plurnk : undefined;
+    const action = plurnk?.action;
+    if (!isRecord(action)) return null;
+    const { kind } = action;
     if (typeof kind !== "string" || kind.length === 0) return null;
-    const { kind: _kind, ...params } = action as Record<string, unknown>;
+    const { kind: _kind, ...params } = action;
     return { kind, params };
 };
 export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; problem: ProblemDetails };

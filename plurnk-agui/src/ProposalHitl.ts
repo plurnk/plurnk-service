@@ -186,8 +186,8 @@ export default class ProposalHitl {
     start(): void {
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId === null) return;
-            const item = method === "loop/proposal" ? proposalItem(params as ProposalNotification)
-                : method === "loop/interaction" ? interactionItem(params as ClientInteractionProjection)
+            const item = method === "loop/proposal" ? proposalItem(Validator.assertProposalProjection(params))
+                : method === "loop/interaction" ? interactionItem(Validator.assertClientInteractionProjection(params))
                 : null;
             if (item === null || (item.kind === "proposal" && item.projection.disposition.decision !== "review")) return;
             this.#emit(workspaceId, this.#render(workspaceId, item).then((batch) => (
@@ -202,7 +202,7 @@ export default class ProposalHitl {
             return { events: interactionToolCall(item.projection), gates: [{ key: item.key, kind: "interaction", interrupt: interactionInterrupt(item.projection) }] };
         }
         const { workerId, loopId, coordinate } = item.projection;
-        const [loopSeq, turnSeq, sequence] = coordinate.split("/").map(Number) as [number, number, number];
+        const [loopSeq, turnSeq, sequence] = coordinate.split("/").map(Number);
         const [row] = await this.#seam.readLog({ workspaceId, workerId, loopSeq, turnSeq, sequence });
         if (row === undefined) throw new Error(`Pending proposal ${item.id} has no row at ${coordinate}.`);
         return { events: [], gates: [{ key: item.key, kind: "proposal", interrupt: proposalInterrupt(item.projection),
@@ -275,7 +275,7 @@ export default class ProposalHitl {
             );
         }
         const resolutions = entries.map(parseResolution);
-        if (resolutions.some((resolution) => resolution === null)) {
+        if (!resolutions.every((resolution): resolution is ParsedResolution => resolution !== null)) {
             throw new InterruptInputError(
                 "interrupt-invalid",
                 400,
@@ -283,7 +283,7 @@ export default class ProposalHitl {
                 { recovery: "Resume with the interrupt IDs and response shapes supplied by the pending tool calls." },
             );
         }
-        const resolved = resolutions as ParsedResolution[];
+        const resolved = resolutions;
         const received = new Set(resolved.map(({ key }) => key));
         const addressed = allPending.filter(({ key }) => received.has(key));
         if (addressed.length !== received.size) {

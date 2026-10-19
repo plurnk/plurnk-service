@@ -419,9 +419,8 @@ export const staticClientCapabilities = (): {
     readonly elicitation: Record<(typeof ADVERTISED_ELICITATION_MODES)[number], Record<string, never>>;
     readonly extensions: Record<string, Record<string, never>>;
 } => ({
-    elicitation: Object.fromEntries(
-        ADVERTISED_ELICITATION_MODES.map((mode) => [mode, {}]),
-    ) as never,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the advertised modes are exactly the record's keys
+    elicitation: Object.fromEntries(ADVERTISED_ELICITATION_MODES.map((mode) => [mode, {}])) as Record<(typeof ADVERTISED_ELICITATION_MODES)[number], Record<string, never>>,
     extensions: Object.fromEntries(
         CAPABILITY_MATRIX
             .filter((row) => row.authority === "extension" && row.advertised === "always")

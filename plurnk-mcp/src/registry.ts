@@ -2,6 +2,7 @@
 // stdio packages become self-contained standard entries and its Streamable HTTP remotes become URL
 // entries; anything that needs a person's input first (a template variable, a required argument with
 // no value) has no entry. Nothing here installs, launches, or connects.
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { McpStdioServerDefinition, McpStreamableHttpServerDefinition } from "@plurnk/plurnk-contracts";
 
 type McpServerEntry = Omit<McpStdioServerDefinition, "name"> | Omit<McpStreamableHttpServerDefinition, "name">;
@@ -164,8 +165,8 @@ export class RegistryError extends Error {
 }
 
 const isServer = (value: unknown): value is RegistryServer => {
-    if (typeof value !== "object" || value === null) return false;
-    const server = value as Record<string, unknown>;
+    if (!isRecord(value)) return false;
+    const server = value;
     return typeof server.name === "string" && typeof server.version === "string";
 };
 
@@ -190,10 +191,10 @@ export const searchRegistry = async (
     } catch (cause) {
         throw new RegistryError(`The MCP Registry at ${endpoint.origin} answered with malformed JSON.`, response.status, { cause });
     }
-    const listed = (body as { servers?: unknown } | null)?.servers;
+    const listed = isRecord(body) ? body.servers : undefined;
     if (!Array.isArray(listed)) throw new RegistryError(`The MCP Registry at ${endpoint.origin} answered without a server list.`, response.status);
     return listed.flatMap((item) => {
-        const server = (item as { server?: unknown } | null)?.server;
+        const server = isRecord(item) ? item.server : undefined;
         return isServer(server) ? [server] : [];
     });
 };
