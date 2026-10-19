@@ -93,7 +93,7 @@ test("{§db-migrations} {§file-snapshot-revision}: upgrade retains projections 
         await MembershipMaterialization.materializeMember("doc.md", root, ctx, new Map());
         const proposal = await file.edit(statement, ctx);
         assert.equal(proposal.status, 202);
-        assert.equal((await file.applyResolution({ attrs: proposal.attrs as never }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, ctx)).status, 200);
         landedRevision = (await file.readEntry("doc.md", ctx)).fileRevision;
         assert.ok(landedRevision);
     } finally { await db.close(); }

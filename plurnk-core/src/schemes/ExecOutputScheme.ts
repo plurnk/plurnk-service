@@ -64,7 +64,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         return target.kind === "url" && this.#facet?.claims(entryCoordinateOf(target, "namespace").pathname) === true;
     }
 
-    resolveEntryAddress(target: ParsedPath): EntryAddress | null {
+    async resolveEntryAddress(target: ParsedPath): Promise<EntryAddress | null> {
         return target.kind === "url" ? entryCoordinateOf(target, this.manifestAt(target).authority ?? "namespace") : null;
     }
 

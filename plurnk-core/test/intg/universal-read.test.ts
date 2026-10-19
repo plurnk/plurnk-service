@@ -40,6 +40,7 @@ class PublicCrudTrapScheme extends EntryBackedScheme {
         ...EntryBackedScheme.manifest,
         name: "public-crud-trap",
     };
+    readonly manifest = PublicCrudTrapScheme.manifest;
 
     async readEntry(): Promise<never> {
         throw new Error("public readEntry must not be dispatched");

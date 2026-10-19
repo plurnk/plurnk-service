@@ -41,15 +41,19 @@ interface RuntimeSchemeRegistration {
     readonly facet?: RuntimeSchemeFacet;
 }
 
+// What the registry holds: a scheme handler, which may carry the packet-section hook the registry reads
+// ({§scheme-packet-transform}).
+export type RegisteredScheme = SchemeHandler & Partial<PacketSectionTransformer>;
+
 interface WorkspaceSchemeSnapshot {
-    readonly handlers: ReadonlyMap<string, object>;
+    readonly handlers: ReadonlyMap<string, RegisteredScheme>;
     readonly claims: ReadonlyMap<string, NamespaceClaim>;
 }
 
 export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
-    #handlers = new Map<string, object>();
+    #handlers = new Map<string, RegisteredScheme>();
     #workspaceByOwner = new Map<number, Map<string, WorkspaceSchemeSnapshot>>();
     #readiness = new Map<object, Promise<void>>();
     #closures = new Map<object, Promise<void>>();
@@ -93,12 +97,12 @@ export default class SchemeRegistry {
         return handler;
     }
 
-    register(name: string, handler: object): void {
+    register(name: string, handler: RegisteredScheme): void {
         const claim = SchemeRegistry.#programmaticClaim(name);
         this.#registerClaimed(name, handler, claim);
     }
 
-    #registerBuiltIn(name: string, handler: object): void {
+    #registerBuiltIn(name: string, handler: RegisteredScheme): void {
         const claim: NamespaceClaim = {
             key: "core:@plurnk/plurnk-service",
             label: "core package '@plurnk/plurnk-service'",
@@ -107,7 +111,7 @@ export default class SchemeRegistry {
         this.#registerClaimed(name, handler, claim);
     }
 
-    #registerClaimed(name: string, handler: object, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
+    #registerClaimed(name: string, handler: RegisteredScheme, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
         if (this.#assertClaim(name, claim, sameOwnerRescan) === "same") return false;
         Manifest.of(handler, name);
         const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
@@ -251,7 +255,7 @@ export default class SchemeRegistry {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("workspace runtime scheme: the exec handler is not registered");
         const tags = new Set<string>();
-        const handlers = new Map<string, object>();
+        const handlers = new Map<string, RegisteredScheme>();
         const claims = new Map<string, NamespaceClaim>();
         const workspaceOwners = this.#workspaceByOwner.get(workspaceId);
         for (const { tag, executor, owner, facet } of registrations) {
@@ -313,12 +317,12 @@ export default class SchemeRegistry {
     // {§web-materialization-contract} — the https handler publishes web materialization; core
     // reaches it here and names no extension package. Absent is a defect of the installation, not a fallback.
     webMaterializer(): WebMaterializer {
-        const handler = this.#handlers.get("https") as SchemeHandler | undefined;
+        const handler = this.#handlers.get("https");
         if (handler?.webMaterializer === undefined) throw new Error("web materialization requires an installed https scheme handler that publishes it");
         return handler.webMaterializer;
     }
 
-    get(name: string, workspaceId?: number): object | undefined {
+    get(name: string, workspaceId?: number): RegisteredScheme | undefined {
         if (workspaceId !== undefined) {
             for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
                 const handler = snapshot.handlers.get(name);
@@ -352,7 +356,7 @@ export default class SchemeRegistry {
         for (const handler of this.#allHandlers()) await this.#readyHandler(handler);
     }
 
-    #readyHandler(handler: object): Promise<void> {
+    #readyHandler(handler: RegisteredScheme): Promise<void> {
         let readiness = this.#readiness.get(handler);
         if (readiness === undefined) {
             readiness = Promise.resolve().then(async () => {
@@ -425,10 +429,9 @@ export default class SchemeRegistry {
     async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
         for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {
-            const transform = (handler as Partial<PacketSectionTransformer>).transformSections;
-            if (typeof transform !== "function") continue;
+            if (typeof handler.transformSections !== "function") continue;
             current = PacketSections.assertDrafts(
-                await transform.call(handler, current),
+                await handler.transformSections(current),
                 `scheme '${name}' transformSections result`,
             );
         }
@@ -477,7 +480,7 @@ export default class SchemeRegistry {
         return Meta.composeAttributions(...lists);
     }
 
-    #effectiveHandlers(workspaceId?: number): Map<string, object> {
+    #effectiveHandlers(workspaceId?: number): Map<string, RegisteredScheme> {
         const handlers = new Map(this.#handlers);
         if (workspaceId !== undefined) {
             for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
@@ -501,7 +504,7 @@ export default class SchemeRegistry {
         return false;
     }
 
-    #allHandlers(): Set<object> {
+    #allHandlers(): Set<RegisteredScheme> {
         const handlers = new Set(this.#handlers.values());
         for (const owners of this.#workspaceByOwner.values()) {
             for (const snapshot of owners.values()) {

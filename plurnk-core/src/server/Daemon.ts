@@ -38,7 +38,7 @@ import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
-import type { ResourceTreeSource } from "@plurnk/plurnk-schemes";
+import type { ResourceTreeSource, SchemeHandler } from "@plurnk/plurnk-schemes";
 import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
 import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
@@ -920,7 +920,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.registerRuntimes([registration]);
     }
 
-    async registerScheme(name: string, handler: object): Promise<void> {
+    async registerScheme(name: string, handler: SchemeHandler): Promise<void> {
         this.#schemes.register(name, handler);
         if (this.#residency.published) await this.#schemes.ready();
         await this.#residency.rematerializeActive();

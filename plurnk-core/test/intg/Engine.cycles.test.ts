@@ -45,6 +45,7 @@ class ObservedContent {
         name: "observed-content", category: "control", channels: { body: "text/plain" }, defaultChannel: "body",
         writableBy: [], volatile: true, modelVisible: true,
     };
+    readonly manifest = ObservedContent.manifest;
     calls = 0;
     readonly #changing: boolean;
 

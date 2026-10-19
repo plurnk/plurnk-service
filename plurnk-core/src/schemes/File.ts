@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
@@ -28,6 +28,7 @@ import {
     InvalidOperationResultError,
     type ResolvedEditStatement,
     type ScopeNormalization,
+    type ProposalApplyRequest,
     type ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
 
@@ -52,8 +53,9 @@ import {
     projectEditReceipt,
     reviewerReplacementReceipt,
     withEditReceiptParseIssues,
+    assertEditBatchReceipt,
+    type EditBatchReceipt,
 } from "../content/index.ts";
-import type { EditBatchReceipt } from "../content/index.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import FileMaterialization from "../core/file-materialization.ts";
 import FileSnapshot from "../core/FileSnapshot.ts";
@@ -613,11 +615,40 @@ export default class File extends CoreSchemeAdapterBase {
     //   1. Write the patched content to disk.
     //   2. Register the file as an entry so it appears in the manifest and the
     //      model can READ its full landed work.
+    // The attrs an accepted file proposal carries back are the ones this scheme's own proposal wrote;
+    // each is read by its type, and the receipt by its own assert.
+    static #applyAttrs(value: object): ApplyArgs["attrs"] {
+        if (!isRecord(value)) throw new InvalidOperationResultError("The accepted file proposal's attrs are not a record.");
+        const string = (key: string): string | undefined => {
+            const field = value[key];
+            if (field !== undefined && typeof field !== "string") {
+                throw new InvalidOperationResultError(`The accepted file proposal's attrs.${key} is not a string.`);
+            }
+            return field;
+        };
+        if (value.existed !== undefined && typeof value.existed !== "boolean") {
+            throw new InvalidOperationResultError("The accepted file proposal's attrs.existed is not a boolean.");
+        }
+        return {
+            ...value,
+            path: string("path"),
+            canonical: string("canonical"),
+            original: string("original"),
+            patched: string("patched"),
+            mimetype: string("mimetype"),
+            deletePath: string("deletePath"),
+            baseSig: value.baseSig === null ? null : string("baseSig"),
+            existed: value.existed,
+            editReceipt: value.editReceipt === undefined ? undefined : assertEditBatchReceipt(value.editReceipt),
+        };
+    }
+
     // {§edit-result-receipt-truth} — accepted EDITs return the receipt for what
     // landed. Dispatcher composes COPY/MOVE effects after this hook returns.
-    async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
+    async applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
-        const { attrs, body } = args;
+        const attrs = File.#applyAttrs(request.attrs);
+        const { body } = request;
         if (typeof attrs.deletePath === "string") return this.#applyDelete(attrs.deletePath, attrs.baseSig ?? null, typeof attrs.mimetype === "string" ? attrs.mimetype : null, core);
         const canonical = attrs.canonical;
         const relPath = attrs.path;
@@ -638,7 +669,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (typeof mimetype !== "string" || mimetype.length === 0) {
             throw new InvalidOperationResultError("The accepted file proposal is missing attrs.mimetype.");
         }
-        const existed = args.attrs.existed === true;
+        const existed = attrs.existed === true;
         const baseline = FileSnapshot.decode(attrs.baseSig ?? null);
         if (existed && (baseline === null || baseline.hash === null)) return EditCollision.result(relPath, { outcome: "edit_collision" });
         let receipt = attrs.editReceipt;

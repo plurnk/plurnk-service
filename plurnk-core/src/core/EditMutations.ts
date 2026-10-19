@@ -1,5 +1,5 @@
 import { type EditStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
@@ -298,7 +298,7 @@ export default class EditMutations {
         if (schemeName === null || statement.target === null) {
             return MutationEffects.failure("target-required", 400, "EDIT requires a target scheme.", {}, { retryable: false });
         }
-        const handler = this.#schemes.get(schemeName, ctx.workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(schemeName, ctx.workspaceId);
         const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,

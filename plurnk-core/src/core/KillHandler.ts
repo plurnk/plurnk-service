@@ -9,7 +9,7 @@ import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
-import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
 import ResourceBindings from "./ResourceBindings.ts";
@@ -86,7 +86,7 @@ export default class KillHandler {
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // log:/// KILL has already gone through the projection-curation owner.
         // This path owns scheme-specific resource and process KILL semantics.
-        const killable = binding?.handler as SchemeHandler | undefined;
+        const killable = binding?.handler;
         if (killable !== undefined && typeof killable.kill === "function"
             && (!(killable instanceof ExecOutputScheme) || killable.kills(path))) {
             let handlerCtx: SchemeCtxImpl | null;

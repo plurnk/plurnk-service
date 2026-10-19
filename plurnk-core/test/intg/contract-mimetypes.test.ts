@@ -424,7 +424,7 @@ test("{§copy-destination-mimetype} an admitted file type survives reprojection,
             channels: { body: { content: "", bytes: Uint8Array.of(1, 2, 3, 4), mimetype: "application/x-readable-binary" } },
         }, ctx);
         assert.equal(proposed.status, 202);
-        assert.equal((await file.applyResolution({ attrs: proposed.attrs as never }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: proposed.attrs as never, metadata: null }, ctx)).status, 200);
         for (const revision of ["first", "second"]) {
             const projectedCtx = makeSchemeCtx({ ...ctx, mimetypes: binaryProjectionMimetypes(revision) });
             assert.equal(await MembershipMaterialization.materializeMember(pathname, root, projectedCtx, new Map()), null);

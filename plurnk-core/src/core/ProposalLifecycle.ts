@@ -527,7 +527,7 @@ export default class ProposalLifecycle {
                 ? "exec"
                 : schemeNameOf(operand.target);
         if (schemeName === null) return { resolution };
-        const handler = this.#schemes.get(schemeName, workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(schemeName, workspaceId);
         if (handler === undefined) {
             return {
                 resolution: { ...resolution, outcome: "apply_failed" },

@@ -113,7 +113,7 @@ test("{§read-exact-target} trailing slash is ordinary resource syntax unless th
             });
             return { status: 200 };
         }
-        async find() { throw new Error("undeclared folder scope must never invoke FIND"); }
+        async find(): Promise<never> { throw new Error("undeclared folder scope must never invoke FIND"); }
     }
     const { db, workspaceId, workerId, loopId, turnId, schemes, engine } = await setup();
     try {

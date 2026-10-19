@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CapabilityPolicy, ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
+import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -267,7 +268,7 @@ test("{§schemes-self-doc-materialization}: read-only reconciliation records cre
         const schemes = new SchemeRegistry();
         let documentation = "# Reference\n\n## Summary\n\nFirst revision.";
         schemes.register("readable", {
-            get manifest() {
+            get manifest(): SchemeManifest {
                 return {
                     name: "readable", category: "data",
                     channels: { body: "text/plain" }, defaultChannel: "body",

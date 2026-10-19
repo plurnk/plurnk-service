@@ -14,7 +14,7 @@ import ToolResources from "./ToolResources.ts";
 import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
-import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
+import type { SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
 
 // {§capability-policy-cascade} A denial names the ring that refused.
 type CapabilityScope = "service" | "workspace" | "owner";
@@ -231,7 +231,7 @@ export default class CapabilityResolver {
         policies: readonly CapabilityPolicy[],
     ): boolean {
         const manifest = this.#schemes.manifestFor(scheme, workspaceId);
-        const handler = this.#schemes.get(scheme, workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(scheme, workspaceId);
         if (manifest?.modelVisible !== true || handler === undefined) return false;
         const allows = (operation: CapabilityDescriptor["operation"], access: CapabilityDescriptor["access"]): boolean =>
             CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));

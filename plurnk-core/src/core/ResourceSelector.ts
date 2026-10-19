@@ -207,7 +207,7 @@ export default class ResourceSelector {
         ctx: PlurnkSchemeContext,
         operation: "COPY" | "MOVE" | "SEND" | "EDIT",
     ): Promise<SelectedSource | DispatchResult> {
-        const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler as SchemeHandler | undefined;
+        const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved source scheme '${selection.scheme}' is no longer registered.`,

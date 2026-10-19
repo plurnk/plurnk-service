@@ -40,7 +40,7 @@ const fixture = async (t: TestContext) => {
     const path = join(root, "doc.md");
     const creating = await file.edit(editStmt(localPath("doc.md"), original), ctx);
     assert.equal(creating.status, 202);
-    assert.equal((await file.applyResolution({ attrs: creating.attrs as never }, ctx)).status, 200);
+    assert.equal((await file.applyResolution({ attrs: creating.attrs as never, metadata: null }, ctx)).status, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: ctx.weigh });
     return { root, db, ids, ctx, file, path, engine };
 };
@@ -74,8 +74,8 @@ for (const scope of ["workers", "workspaces", "aliases"] as const) {
             return parse.apply(this, args);
         });
         const results = await Promise.all([
-            fx.file.applyResolution({ attrs: first.attrs as never }, fx.ctx),
-            fx.file.applyResolution({ attrs: second.attrs as never }, secondCtx),
+            fx.file.applyResolution({ attrs: first.attrs as never, metadata: null }, fx.ctx),
+            fx.file.applyResolution({ attrs: second.attrs as never, metadata: null }, secondCtx),
         ]);
         assert.deepEqual(results.map(({ status }) => status).toSorted((a, b) => a - b), [200, 409]);
         const winner = results[0].status === 200 ? "first edit!\n" : "second edit\n";
@@ -130,7 +130,7 @@ for (const mutation of ["EDIT", "KILL"] as const) {
                 await fs.writeFile(fx.path, external);
                 await fs.utimes(fx.path, 1_700_000_000, 1_700_000_000);
             }
-            const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+            const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
             assert.equal(result.status, 409);
             assert.match(result.problem?.type ?? "", /edit-collision$/);
             if (drift === "missing") await assert.rejects(fs.stat(fx.path), { code: "ENOENT" });
@@ -184,7 +184,7 @@ test("{§file-snapshot-revision}: an external update after projection publicatio
         if (args[0].pathname === "doc.md" && args[3] === "file") await fs.writeFile(fx.path, external);
         return result;
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 200);
     t.mock.restoreAll();
     const divergence = await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
@@ -204,7 +204,7 @@ test("{§file-delete-revision}: creation rollback preserves another writer's rep
         await fs.rename(replacement, target);
         throw new Error("fixture: incorporation failed after external replacement");
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 500);
     assert.match(result.problem?.type ?? "", /creation-rollback-failed$/);
     assert.equal(await fs.readFile(target, "utf8"), external);
@@ -223,7 +223,7 @@ test("{§file-delete-revision}: creation rollback follows its published identity
         await fs.symlink("second", alias);
         throw new Error("fixture: incorporation failed after the parent changed");
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 500);
     assert.match(result.problem?.type ?? "", /creation-incorporation-failed$/);
     await assert.rejects(fs.stat(join(fx.root, "first/new.md")), { code: "ENOENT" });
@@ -249,7 +249,7 @@ for (const existing of [true, false]) {
             }
             return handle;
         });
-        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
         assert.equal(result.status, 500);
         assert.match(result.problem?.type ?? "", /write-failed$/);
         assert.equal(result.problem?.published, false);
@@ -274,7 +274,7 @@ test("{§membership-edit-write-revision}: final validation follows staging and f
         }
         return handle;
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 409);
     assert.match(result.problem?.type ?? "", /edit-collision$/);
     assert.equal(await fs.readFile(fx.path, "utf8"), external);
@@ -289,7 +289,7 @@ test("{§file-create-no-clobber}: an occupant appearing at publication is preser
         await fs.writeFile(target, external);
         return link(...args);
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 409);
     assert.equal(await fs.readFile(target, "utf8"), external);
 });
@@ -315,7 +315,7 @@ test("{§file-external-race}: creation revalidates a symlinked parent after stag
         }
         return handle;
     });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 409);
     assert.match(result.problem?.type ?? "", /edit-collision$/);
     for (const parent of ["first", "second"]) {
@@ -333,7 +333,7 @@ test("{§file-publication}: replacement preserves mode and owner while hard link
     const before = await fs.stat(fx.path);
     await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
     const proposal = await fx.file.edit(editStmt(localPath("doc.md"), "replacement\n", fullReplace), fx.ctx);
-    assert.equal((await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx)).status, 200);
+    assert.equal((await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx)).status, 200);
     const after = await fs.stat(fx.path);
     assert.equal(after.mode, before.mode);
     assert.equal(after.uid, before.uid);
@@ -419,7 +419,7 @@ for (const changed of [false, true]) {
         const proposal = await fx.file.deleteEntry("doc.md", fx.ctx);
         assert.equal(proposal.status, 202);
         if (changed) await fs.writeFile(fx.path, external);
-        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
         if (changed) {
             assert.equal(result.status, 409);
             assert.match(result.problem?.type ?? "", /edit-collision$/);
@@ -436,7 +436,7 @@ test("{§file-publication}: database failure after replacement reports the effec
     const proposed = "landed on disk\n";
     const proposal = await fx.file.edit(editStmt(localPath("doc.md"), proposed, fullReplace), fx.ctx);
     t.mock.method(EntryCrud, "writeEntry", async () => { throw new Error("fixture: database publication failed"); });
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 500);
     assert.match(result.problem?.type ?? "", /materialization-failed$/);
     assert.deepEqual(result.effects, [{ target: "doc.md", action: "update" }]);
@@ -470,7 +470,7 @@ for (const retargeted of [false, true]) {
             await fs.unlink(alias);
             await fs.symlink("other.md", alias);
         }
-        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+        const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
         assert.equal(result.status, retargeted ? 409 : 200);
         assert.equal(await fs.readFile(fx.path, "utf8"), retargeted ? original : "replacement\n");
         assert.equal(await fs.readlink(alias), retargeted ? "other.md" : "doc.md");
@@ -506,9 +506,9 @@ test("{§file-commit-serialization}: reconciliation settles before a same-file c
     });
     const reconciling = MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
     await started.promise;
-    const committing = Promise.allSettled([fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx)]);
+    const committing = Promise.allSettled([fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx)]);
     try {
-        assert.equal((await fx.file.applyResolution({ attrs: independent.attrs as never }, fx.ctx)).status, 200);
+        assert.equal((await fx.file.applyResolution({ attrs: independent.attrs as never, metadata: null }, fx.ctx)).status, 200);
         assert.equal(await fs.readFile(fx.path, "utf8"), original);
         assert.equal(await fs.readFile(join(fx.root, "independent.md"), "utf8"), "independent\n");
     } finally { release.resolve(); }
@@ -578,7 +578,7 @@ test("{§file-commit-serialization} {§membership-source-projection}: a slow pro
     const seed = await fx.file.writeEntry(pathname, {
         channels: { body: { content: "", bytes: seedBytes, mimetype: "image/png" } },
     }, fx.ctx);
-    assert.equal((await fx.file.applyResolution({ attrs: seed.attrs as never }, fx.ctx)).status, 200);
+    assert.equal((await fx.file.applyResolution({ attrs: seed.attrs as never, metadata: null }, fx.ctx)).status, 200);
     const proposal = await fx.file.writeEntry(pathname, {
         channels: { body: { content: "", bytes: replacement, mimetype: "image/png" } },
     }, fx.ctx);
@@ -594,7 +594,7 @@ test("{§file-commit-serialization} {§membership-source-projection}: a slow pro
     }) });
     const materializing = MembershipMaterialization.materializeMember(pathname, fx.root, ctx, new Map());
     await projecting.promise;
-    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never }, fx.ctx);
+    const result = await fx.file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, fx.ctx);
     assert.equal(result.status, 200, "a file commit must progress while its old snapshot is being projected");
     assert.deepEqual(await fs.readFile(join(fx.root, pathname)), replacement);
     const committed = await fx.file.readEntry(pathname, fx.ctx);

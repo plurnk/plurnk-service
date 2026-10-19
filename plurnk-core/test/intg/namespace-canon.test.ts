@@ -92,7 +92,7 @@ for (const key of ["~", "~/note.md"]) test(`{§fs-home} retained ${key} identity
         const reopened = await openMigrated(databasePath);
         try {
             const restored = { ...ctx, db: reopened };
-            assert.equal((await file.applyResolution({ attrs: proposal.attrs as never }, restored)).status, 200);
+            assert.equal((await file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, restored)).status, 200);
             const read = await readFileScheme(readStmt(`./${key}`), restored);
             assert.equal(read.status, 200);
             assert.equal(read.content, "revised\n");
@@ -198,7 +198,7 @@ test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical ro
         // creation. Accepting the proposal establishes the resulting membership.
         const rootCreate = await file.edit(editStmt("fresh.md", "x\n"), ctx);
         assert.equal(rootCreate.status, 202, "the project root admits an exclusive create without another membership grantor");
-        const rootApplied = await file.applyResolution({ attrs: rootCreate.attrs as never }, ctx);
+        const rootApplied = await file.applyResolution({ attrs: rootCreate.attrs as never, metadata: null }, ctx);
         assert.equal(rootApplied.status, 200);
         const rootMember = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
@@ -346,7 +346,7 @@ test("{§fs-create-incorporation}: accept records constraint provenance before r
         const file = new File();
         const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
         assert.equal(proposal.status, 202);
-        const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined }, ctx);
+        const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined, metadata: null }, ctx);
         assert.equal(applied.status, 200);
         const row = await db.test_get_origin.get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
         assert.equal(row?.membership_origin, "constraint", "the accepted create carries its represented grantor, not NULL");

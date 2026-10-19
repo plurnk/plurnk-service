@@ -1009,7 +1009,7 @@ test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → acti
             category: "data" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
-        async editBatch() { throw new Error("scheme handler deliberately threw"); }
+        async editBatch(): Promise<never> { throw new Error("scheme handler deliberately threw"); }
     }
     schemes.register("boom", new Boom());
     const engine = new Engine({ db, schemes });

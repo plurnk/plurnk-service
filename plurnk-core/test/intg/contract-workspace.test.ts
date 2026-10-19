@@ -182,7 +182,7 @@ test("{§fs-namei} absolute paths printed by a shell READ and EDIT the existing 
         const edit = await file.edit(editStmt(filePath(abs), revised, fullReplace), ctx);
         assert.equal(edit.status, 202);
         assert.equal((edit.attrs as { path: string }).path, trackedPath);
-        const applied = await file.applyResolution({ attrs: edit.attrs as WriteAttrs }, ctx);
+        const applied = await file.applyResolution({ attrs: edit.attrs as WriteAttrs, metadata: null }, ctx);
         assert.equal(applied.status, 200);
         assert.equal(await readFile(abs, "utf8"), revised);
         await assert.rejects(readFile(join(root, abs.slice(1))), { code: "ENOENT" });
@@ -209,7 +209,7 @@ test("{§membership} an out-of-band disk change between propose and accept is an
 
         // Accept. body omitted, so a successful write would land attrs.patched (the full proposed
         // content) — which is exactly what must NOT happen now that disk has drifted from baseSig.
-        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
+        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs, metadata: null }, ctx);
         assert.equal(applied.status, 409, "a drifted disk is an edit collision, not a silent clobber");
         assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(applied.outcome, "edit_collision", "the proposal lifecycle retains the neutral collision outcome");
@@ -229,7 +229,7 @@ test("{§membership} with no drift the proposal lands and restamps the snapshot 
         const proposal = await file.edit(editStmt(filePath(trackedPath), revised, fullReplace), ctx);
         assert.equal(proposal.status, 202);
 
-        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
+        const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs, metadata: null }, ctx);
         assert.equal(applied.status, 200, "no drift → the write lands");
         assert.equal(await readFile(join(root, trackedPath), "utf8"), revised, "disk holds the proposed content");
 

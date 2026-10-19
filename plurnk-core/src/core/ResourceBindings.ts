@@ -1,5 +1,5 @@
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { Manifest, type SchemeManifest } from "@plurnk/plurnk-schemes";
+import { Manifest, type SchemeHandler, type SchemeManifest } from "@plurnk/plurnk-schemes";
 import ExecutionOutputs from "./ExecutionOutputs.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -8,7 +8,7 @@ import { schemeNameOf } from "./plurnk-uri.ts";
 import ContentUse from "./ContentUse.ts";
 
 export interface ResourceScheme {
-    readonly handler: object;
+    readonly handler: SchemeHandler;
     readonly manifest: SchemeManifest;
 }
 

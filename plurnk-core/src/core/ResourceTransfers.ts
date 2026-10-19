@@ -369,7 +369,7 @@ export default class ResourceTransfers {
             return MutationEffects.finalizeEffects(edited, source, removals.map(() => effect));
         }
         if (ResourceTransfers.#curatedSource(source)) {
-            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+            const handler = this.#schemes.get(source.scheme, ctx.workspaceId);
             if (handler?.kill === undefined) {
                 throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
             }
@@ -789,7 +789,8 @@ export default class ResourceTransfers {
         const removals = source.matchedScopes ?? (source.lineMarker === null ? [] : [source.lineMarker]);
         if (removals.length === 0) throw new InvalidOperationResultError("A scoped byte MOVE has no removal coordinates.");
         const target = destination ?? { ...source, matcher: null, lineMarker: removals[0] };
-        const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler;
+        const handler = this.#schemes.get(source.scheme, ctx.workspaceId);
+        if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' is not registered.`);
         const binding = await this.#resolveDataEntryAddress({ target: source.target, routedScheme: source.scheme, handler,
             manifest: source.manifest, ctx, access: "write" });
         if (binding.result !== null) return binding.result;
@@ -810,7 +811,7 @@ export default class ResourceTransfers {
         ctx: PlurnkSchemeContext,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId);
         if (typeof handler?.editBatch !== "function") {
             return MutationEffects.failure(
                 "operation-not-implemented",

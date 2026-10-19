@@ -123,6 +123,11 @@ export type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
 // Op dispatch ({§op-methods-op-dispatch}): admission, operation-owner routing,
 // durable log writing, and proposal lifecycle.
 export default class Dispatcher {
+    // {§log-kill-distillation} The log scheme curates: the hook the registry's log handler publishes.
+    static #curates(handler: SchemeHandler): handler is SchemeHandler & LogCurationHandler {
+        return "curate" in handler && typeof handler.curate === "function";
+    }
+
     static #failure(code: string, status: number, detail: string): DispatchResult;
     static #failure<F extends Readonly<Record<string, unknown>>>(
         code: string,
@@ -1112,7 +1117,7 @@ export default class Dispatcher {
         }
         const result = Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
         const target = statement.target;
-        const handler = binding?.handler as SchemeHandler | undefined;
+        const handler = binding?.handler;
         const selectedChannel = target?.fragment ?? null;
         if (result.status !== 200 || target === null || handler === undefined || manifest?.category !== "data"
             || (selectedChannel !== null && selectedChannel !== manifest.defaultChannel)) {
@@ -1654,7 +1659,8 @@ export default class Dispatcher {
                 plan: null,
             };
         }
-        const handler = this.#schemes.get("log") as LogCurationHandler | undefined;
+        const registered = this.#schemes.get("log");
+        const handler = registered !== undefined && Dispatcher.#curates(registered) ? registered : undefined;
         const manifest = this.#schemes.manifestFor("log");
         if (handler === undefined || manifest === undefined) {
             throw new Error("the core log curation owner is not registered");

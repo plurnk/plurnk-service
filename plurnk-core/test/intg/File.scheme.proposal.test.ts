@@ -338,7 +338,7 @@ test("{§engine-rails} file.applyResolution: malformed accepted proposal state r
     await withWorkspaceRoot(async (_root, ctx) => {
         await assert.rejects(
             new File().applyResolution(
-                { attrs: {} },
+                { attrs: {}, metadata: null },
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,

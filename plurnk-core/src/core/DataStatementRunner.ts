@@ -17,7 +17,8 @@ import { InvalidOperationResultError, type SchemeHandler } from "@plurnk/plurnk-
 import { type BoundEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeMethod, UnaryStatement, SchemeWithEntryAddress } from "./Dispatcher.ts";
 
-type SchemeMethods = Partial<Record<keyof SchemeHandler, SchemeMethod>>;
+// The runner's dispatch view: an op's method takes the statement and the scheme context.
+type SchemeMethods = Partial<Record<string, SchemeMethod>>;
 
 // The statement bound to its scheme: what every op runner shares once the target's
 // scheme, manifest, metadata admission and entry address are settled.
@@ -26,7 +27,7 @@ interface BoundStatement {
     readonly statement: UnaryStatement;
     readonly ctx: PlurnkSchemeContext;
     readonly manifest: SchemeManifest;
-    readonly handler: SchemeMethods;
+    readonly handler: SchemeHandler;
     readonly method: SchemeMethod | undefined;
     readonly addressedScheme: string | null;
     readonly publishedChannel: string;
@@ -76,12 +77,15 @@ export default class DataStatementRunner {
 
     // {§membership-read-refusal} — a data scheme that can tell a plain miss from a refused one
     // (file: exists on disk, not a member) speaks first.
-    async #missRefusal(handler: unknown, address: BoundEntryAddress | null, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
-        const describe = (handler as {
-            missRefusal?: (pathname: string, ctx: PlurnkSchemeContext, fields: Record<string, null>) => Promise<DispatchResult | null>;
-        }).missRefusal;
-        if (typeof describe !== "function" || address === null) return null;
-        return describe.call(handler, address.pathname, ctx, { content: null, mimetype: null, channel: null });
+    static #describesMiss(handler: object): handler is {
+        missRefusal(pathname: string, ctx: PlurnkSchemeContext, fields: Record<string, null>): Promise<DispatchResult | null>;
+    } {
+        return "missRefusal" in handler && typeof handler.missRefusal === "function";
+    }
+
+    async #missRefusal(handler: object, address: BoundEntryAddress | null, ctx: PlurnkSchemeContext): Promise<DispatchResult | null> {
+        if (address === null || !DataStatementRunner.#describesMiss(handler)) return null;
+        return handler.missRefusal(address.pathname, ctx, { content: null, mimetype: null, channel: null });
     }
 
     #entryNotFound(schemeName: string, target: ParsedPath, op: string): DispatchResult {
@@ -113,7 +117,7 @@ export default class DataStatementRunner {
         const resourceRead = statement.op === "READ" || statement.op === "FIND";
         const binding = resourceRead ? await ResourceBindings.resolve(statement.target, ctx) : undefined;
         const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
-        const handler = (resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.workspaceId)) as SchemeMethods | undefined;
+        const handler = resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.workspaceId);
         if (handler === undefined) {
             return this.#failure(
                 "scheme-not-found",
@@ -128,8 +132,9 @@ export default class DataStatementRunner {
             );
         }
         // An execution is named by its runtime, not an op; its handler method is `exec`.
-        const methodName = (isExecution(statement) ? "exec" : statement.op.toLowerCase()) as keyof SchemeHandler;
-        const method = handler[methodName];
+        const methodName = isExecution(statement) ? "exec" : statement.op.toLowerCase();
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the dispatch view: every op method takes its own statement, which the runner narrowed by the op
+        const method = (handler as SchemeMethods)[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
         if (statement.op !== "SEND" && statement.metadata !== null && manifest.metadataModifier !== true) {
@@ -158,7 +163,7 @@ export default class DataStatementRunner {
             ? await this.#resolveDataEntryAddress({
                 target: statement.target,
                 routedScheme: schemeName,
-                handler: handler as unknown as SchemeWithEntryAddress,
+                handler,
                 manifest,
                 ctx,
             })
@@ -210,7 +215,7 @@ export default class DataStatementRunner {
         }
         const writable = await this.#resolveDataEntryAddress({
             target: statement.target, routedScheme: schemeName,
-            handler: handler as unknown as SchemeWithEntryAddress, manifest,
+            handler, manifest,
             ctx: { ...ctx, writer: "model" }, access: "write",
         });
         if (writable.result !== null && writable.result.status >= 500) {
@@ -266,7 +271,7 @@ export default class DataStatementRunner {
                 target: statement.target,
                 metadata: statement.metadata,
                 routedScheme: schemeName,
-                handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
+                handler,
                 manifest,
                 ctx,
                 publishedChannel,
@@ -292,7 +297,7 @@ export default class DataStatementRunner {
             // {§read-bytes} — a scheme that can supply the resource's bytes hands READ its source.
             resolved === null
                 ? undefined
-                : (handler as SchemeHandler).byteSource?.(resolved, schemeCtx),
+                : handler.byteSource?.(resolved, schemeCtx),
         ));
         if (projected.status !== 404 || statement.target === null) return projected;
         // {§membership-auto-add} — a READ that reached an untracked file proposes its admission; the accepted
@@ -321,9 +326,8 @@ export default class DataStatementRunner {
         if (typeof method === "function") {
             return Results.assert(await method.call(handler, statement, schemeCtx));
         }
-        const prepareFind = handler.prepareFind;
-        if (typeof prepareFind === "function") {
-            const prepared = await prepareFind.call(handler, statement, schemeCtx);
+        if (typeof handler.prepareFind === "function") {
+            const prepared = await handler.prepareFind(statement, schemeCtx);
             if (prepared.status >= 300) return Results.assert(prepared);
         }
         return Results.assert(await schemeCtx.entries.operations.find(statement));
@@ -335,7 +339,7 @@ export default class DataStatementRunner {
             target,
             metadata: statement.metadata,
             routedScheme: schemeName,
-            handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
+            handler,
             manifest,
             ctx,
             publishedChannel,
