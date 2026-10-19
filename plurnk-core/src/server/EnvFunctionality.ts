@@ -43,6 +43,9 @@ const reservedNameError = (alias: string): OperationFailureError => actionError(
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
 // One variable. The alias IS the name, so the definition carries only what the name does not.
+interface EnvDefinition {
+    readonly value: string;
+}
 const DEFINITION: JsonSchema = {
     type: "object",
     additionalProperties: false,
@@ -52,7 +55,7 @@ const DEFINITION: JsonSchema = {
     },
 };
 
-export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet> {
+export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, EnvDefinition, null> {
     // {§env-scheme} — the registry as this family's own address space, env:///NAME.
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
@@ -90,7 +93,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     // Values are projected because the ceiling is the security boundary, not this projection:
     // anything admitted is already readable by any command the Worker runs. Withholding it here
     // would be theatre, and would make `list` lie about the environment its commands see.
-    async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
         return Object.entries(ExecEnv.scoped())
             .map(([alias, value]) => ({
                 alias, definition: { value: value ?? "" }, enabled: true,
@@ -117,7 +120,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         }).filter(({ alias }) => !reserved(alias));
     }
 
-    async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
+    async admit(input: unknown, _identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<EnvDefinition>> {
         const record: Readonly<Record<string, unknown>> = isRecord(input) ? input : {};
         const alias = typeof record.alias === "string" ? record.alias : "";
         if (!NAME.test(alias)) {
@@ -135,7 +138,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     // Nothing is launched, so nothing can fail to launch: every enabled definition is active and
     // there is no snapshot to tear down. The environment is read at the spawn that uses it
     // ({§exec-env-scoped}), never held resident — which is why this family publishes no runtimes.
-    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+    async prepare(preparation: FunctionalityPreparation<EnvDefinition, null>): Promise<FunctionalityPrepared<never, null>> {
         preparation.signal.throwIfAborted();
         const outcomes = new Map([...preparation.enabled.keys()].map((alias) => [alias, { state: "active" as const }]));
         return {
@@ -146,7 +149,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         };
     }
 
-    async teardown(_snapshot: unknown, _identity: WorkspaceCapabilityIdentity): Promise<void> {
+    async teardown(_snapshot: null, _identity: WorkspaceCapabilityIdentity): Promise<void> {
         return undefined;
     }
 

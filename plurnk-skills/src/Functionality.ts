@@ -34,7 +34,7 @@ interface Installed {
 interface Snapshot {
     readonly signature: string;
     readonly trees: ReadonlyMap<string, SkillTree>;
-    readonly definitions: ReadonlyMap<string, object>;
+    readonly definitions: ReadonlyMap<string, SkillDefinition>;
     // Aliases whose last preparation was unavailable; an unchanged one stays
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
@@ -73,7 +73,7 @@ export const serviceSkills = (env: NodeJS.ProcessEnv = process.env): ReadonlyMap
     return definitions;
 };
 
-export default class SkillsFunctionality implements FunctionalityAdapter {
+export default class SkillsFunctionality implements FunctionalityAdapter<never, never, SkillDefinition, Snapshot> {
     readonly family = SKILLS_FAMILY;
     readonly aliasPattern = SKILL_NAME;
     readonly namespaceOwner = SKILLS_OWNER;
@@ -147,7 +147,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return union;
     }
 
-    async #signature(workspaceId: number, paths: WorkspacePaths, definitions: ReadonlyMap<string, object>): Promise<string> {
+    async #signature(workspaceId: number, paths: WorkspacePaths, definitions: ReadonlyMap<string, SkillDefinition>): Promise<string> {
         const hash = createHash("sha256");
         hash.update((await this.#seam.readWorkspacePlugins(workspaceId)).signature);
         for (const [name, tree] of await this.#seam.readProvidedSkills()) {
@@ -162,8 +162,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         }
         const settings = environment();
         hash.update(JSON.stringify([...serviceSkills()]));
-        for (const [alias, raw] of definitions) {
-            const definition = raw as SkillDefinition;
+        for (const [alias, definition] of definitions) {
             hash.update(JSON.stringify([alias, definition, settings.enabled(alias)]));
             if (definition.source === undefined) continue;
             try {
@@ -195,11 +194,11 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         await this.#handle.refresh(identity, { gate: "none", ifChanged: current === published.signature });
     }
 
-    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<SkillDefinition>[]> {
         SkillsFunctionality.validateConfiguration();
         const installedSkills = await this.#scan(identity.workspaceId, await this.#seam.workspacePaths(identity.workspaceId));
         const settings = environment();
-        const definitions = new Map<string, FunctionalityServiceDefinition>();
+        const definitions = new Map<string, FunctionalityServiceDefinition<SkillDefinition>>();
         for (const name of (await this.#seam.readProvidedSkills()).keys()) {
             definitions.set(name, { alias: name, definition: { name }, enabled: settings.enabled(name) });
         }
@@ -234,7 +233,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         }
     }
 
-    async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
+    async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<SkillDefinition>> {
         const params = isRecord(input) ? input : {};
         let definition: SkillDefinition;
         try {
@@ -321,7 +320,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         }
     }
 
-    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+    async prepare(preparation: FunctionalityPreparation<SkillDefinition, Snapshot>): Promise<FunctionalityPrepared<never, Snapshot>> {
         preparation.signal.throwIfAborted();
         const paths = await this.#seam.workspacePaths(preparation.workspaceId);
         preparation.signal.throwIfAborted();
@@ -331,14 +330,13 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         preparation.signal.throwIfAborted();
         const provided = await this.#seam.readProvidedSkills();
         preparation.signal.throwIfAborted();
-        const previous = preparation.previous as Snapshot | null;
+        const { previous } = preparation;
         const carried = new Set(previous?.unavailable ?? []);
         const outcomes = new Map<string, FunctionalityOutcome>();
         const trees = new Map<string, SkillTree>();
-        for (const [alias, raw] of definitions) {
+        for (const [alias, definition] of definitions) {
             preparation.signal.throwIfAborted();
             preparation.progress([alias]);
-            const definition = raw as SkillDefinition;
             try {
                 const tree = definition.source === undefined ? provided.get(alias)
                     : await this.#loadSource(definition, preparation.workspaceId, paths, preparation.signal);
@@ -377,7 +375,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         };
     }
 
-    async teardown(_snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
+    async teardown(_snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void> {
         this.#snapshots.delete(identity.workspaceId);
     }
 }

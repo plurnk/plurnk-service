@@ -9,6 +9,7 @@ import type { AgentCard } from "@a2a-js/sdk";
 import type { Client } from "@a2a-js/sdk/client";
 import { Problems,
     type A2AAgentDefinition as A2aAgentDefinition,
+    type FunctionalityAdmission,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
@@ -19,7 +20,8 @@ import { Problems,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
-import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
+import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import A2a from "./A2a.ts";
 import { outboundDefinitions } from "./config.ts";
 import { readDefinition } from "./definition.ts";
@@ -129,7 +131,7 @@ export const renderAgent = (alias: string, card: AgentCard): string => {
     ].join("\n");
 };
 
-export default class A2aFunctionality {
+export default class A2aFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, A2aAgentDefinition, Snapshot> {
     readonly family = A2A_FAMILY;
     readonly namespaceOwner = A2A_OWNER;
     readonly summary = "Manage A2A agents";
@@ -173,7 +175,7 @@ export default class A2aFunctionality {
         return null;
     }
 
-    async available(): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(): Promise<readonly FunctionalityServiceDefinition<A2aAgentDefinition>[]> {
         return outboundDefinitions(this.#env);
     }
 
@@ -218,7 +220,7 @@ export default class A2aFunctionality {
         }];
     }
 
-    async admit(input: unknown): Promise<{ alias: string; definition: object }> {
+    async admit(input: unknown): Promise<FunctionalityAdmission<A2aAgentDefinition>> {
         const params = isRecord(input) ? input : {};
         let definition: A2aAgentDefinition;
         try {
@@ -297,16 +299,15 @@ export default class A2aFunctionality {
         return { definition, card, client };
     }
 
-    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+    async prepare(preparation: FunctionalityPreparation<A2aAgentDefinition, Snapshot>): Promise<FunctionalityPrepared<never, Snapshot>> {
         preparation.signal.throwIfAborted();
-        const previous = preparation.previous as Snapshot | null;
+        const { previous } = preparation;
         const attachments = new Map<string, Attachment>();
         const unavailable = new Map<string, { definition: A2aAgentDefinition; problem: ProblemDetails }>();
         const outcomes = new Map<string, FunctionalityOutcome>();
-        for (const [alias, { definition: raw }] of preparation.enabled) {
+        for (const [alias, { definition }] of preparation.enabled) {
             preparation.signal.throwIfAborted();
             preparation.progress([alias]);
-            const definition = raw as A2aAgentDefinition;
             const kept = previous?.attachments.get(alias);
             if (kept !== undefined && sameDefinition(kept.definition, definition) && preparation.force !== alias) {
                 attachments.set(alias, kept);
@@ -355,7 +356,7 @@ export default class A2aFunctionality {
         };
     }
 
-    async teardown(_snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
+    async teardown(_snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void> {
         this.#snapshots.delete(identity.workspaceId);
     }
 }

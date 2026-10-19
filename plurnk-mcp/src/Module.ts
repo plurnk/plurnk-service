@@ -93,6 +93,8 @@ interface UnavailableAttachment extends McpBinding {
 
 type ConnectedAttachment = ActiveAttachment | AuthorizationAttachment;
 type Attachment = ConnectedAttachment | UnavailableAttachment;
+// The committed attachments a preparation hands the coordinator, by server name.
+type Snapshot = ReadonlyMap<string, Attachment>;
 
 const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
     attachment.kind === "unavailable" ? undefined : attachment.connection;
@@ -373,7 +375,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
         const registry = this.#registry;
-        this.#handle = seam.registerFunctionalityAdapter({
+        this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
             namespaceOwner: OWNER,
             summary: "Manage MCP servers",
@@ -463,7 +465,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
-    async #admit(input: unknown): Promise<FunctionalityDefinitionSource> {
+    async #admit(input: unknown): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
         const params = objectOf(input) ?? {};
         let definition: McpServerDefinition;
         try {
@@ -628,13 +630,13 @@ export default class Module implements DaemonModule<SetupSeam> {
     // attachments, prepare the rest, and hand the coordinator runtimes and
     // outcomes; commit adopts the set and closes what it no longer uses, abort
     // closes only what this attempt opened.
-    async #prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>> {
+    async #prepare(preparation: FunctionalityPreparation<McpServerDefinition, Snapshot>): Promise<FunctionalityPrepared<RuntimeRegistration, Snapshot>> {
         preparation.signal.throwIfAborted();
         this.#assertOpen();
         const { workspaceId, enabled, failure, force, signal } = preparation;
         this.#identities.set(workspaceId, { workspaceId });
         this.#retainWorkspace.set(workspaceId, preparation.retain);
-        const previous = (preparation.previous as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
+        const previous = preparation.previous ?? new Map<string, Attachment>();
         for (const [name, attachment] of previous) {
             const next = enabled.get(name);
             const nextDefinition = next === undefined ? undefined : bindingOf(next);
@@ -840,7 +842,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         };
     }
 
-    async #teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
+    async #teardown(snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void> {
         const { workspaceId } = identity;
         const pending = [...this.#pending.keys()].filter((key) => key.startsWith(`${workspaceId}:`));
         if (pending.length > 0) {
@@ -849,8 +851,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         for (const key of this.#dirty.keys()) {
             if (key.startsWith(`${workspaceId}:`)) this.#clearCatalogRefresh(key);
         }
-        const attachments = (snapshot as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
-        const connections = [...attachments.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
+        const connections = [...snapshot.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
         this.#attachments.delete(workspaceId);
         this.#retainWorkspace.delete(workspaceId);
         this.#identities.delete(workspaceId);

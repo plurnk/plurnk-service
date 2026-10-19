@@ -68,7 +68,9 @@ export interface FunctionalityAddressing {
 // {§functionality-adapter} — one family of managed Functionality beneath the host's coordinator.
 // `Runtime` is what a resident family prepares and `SchemeFacet` the face its manager may expose;
 // both default to none, and the frameworks that own those types name them ({§module-seam-slices}).
-export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
+// `Definition` is what the family's `definitionSchema` admits and `Snapshot` what its preparation
+// commits; the family names both ({§functionality-adapter}).
+export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Definition extends object = object, Snapshot = unknown> {
     readonly scheme?: SchemeFacet;
     // {§capability-admission} — general policy facts of the family's runtime and the resources its
     // scheme face serves (`web` for a family that reaches the network): what a capability policy selects on.
@@ -100,18 +102,18 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never> {
     // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
     // authored teaching beneath the runtime document's generated header.
     readonly docsDir?: string;
-    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
+    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<Definition>[]>;
     // Current partial-source diagnostics; independent valid definitions remain available.
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     // Receives only a query the family's declared discovery admits.
     discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
     // One admission, or, for an addressing family's `add`, one per definition the input names.
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission | readonly FunctionalityAdmission[]>;
-    prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<Runtime>>;
-    teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
+    prepare(preparation: FunctionalityPreparation<Definition, Snapshot>): Promise<FunctionalityPrepared<Runtime, Snapshot>>;
+    teardown(snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace definition installed or provisioned, before the coordinator
     // forgets it on `remove`; a failure rejects the removal.
-    forget?(definition: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    forget?(definition: FunctionalityDefinitionSource<Definition>, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // {§functionality-hotload} — republish when what `available` reads changed out of band; called
     // under the workspace turn gate before packet assembly.
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
@@ -146,7 +148,9 @@ export interface ModuleSetupSeam {
 
 // {§module-functionality-adapter} — registers one family beneath the host's coordinator.
 export interface FunctionalitySeam<Runtime = never, SchemeFacet = never> {
-    registerFunctionalityAdapter(adapter: FunctionalityAdapter<Runtime, SchemeFacet>): FunctionalityFamilyHandle;
+    registerFunctionalityAdapter<Definition extends object = object, Snapshot = unknown>(
+        adapter: FunctionalityAdapter<Runtime, SchemeFacet, Definition, Snapshot>,
+    ): FunctionalityFamilyHandle;
 }
 
 // {§module-contained-configuration} One setting a module contained: it withheld the part the setting

@@ -39,6 +39,11 @@ type MembersDefinition = {
     readonly glob: string;
     readonly provenance?: MembersProvenance;
 };
+// What a preparation commits: the overlay rows its definitions project, for the workspace they belong to.
+interface MembersSnapshot {
+    readonly workspaceId: number;
+    readonly rows: readonly OverlayRow[];
+}
 type MembersSource = "members" | "model";
 // What one definition resolved to on disk: the members it admits or removes, and — for a model's
 // inclusion — the matches the repository's ignore rules refused.
@@ -111,7 +116,7 @@ const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) :
 
 // {§members-configuration} — each `PLURNK_MEMBERS_<alias>=<glob>` is one service definition named by
 // its glob; the environment key is its provenance. Two keys naming one glob fail by name.
-export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
+export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition<MembersDefinition>[] => {
     // {§membership-auto-add} — the family's own control is validated with its definitions, so `config
     // check` fails by name before any dispatch reads it; an absent key is the dispatch's to report.
     if (environ[AUTO_ADD_KEY] !== undefined) AmbientMembers.enabled(environ);
@@ -208,7 +213,7 @@ const isFile = async (path: string): Promise<boolean> => {
     }
 };
 
-export default class MembersFunctionality implements FunctionalityAdapter {
+export default class MembersFunctionality implements FunctionalityAdapter<never, never, MembersDefinition, MembersSnapshot> {
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
     readonly summary = "Manage file membership";
@@ -238,7 +243,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         this.#env = environ;
     }
 
-    async available(): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(): Promise<readonly FunctionalityServiceDefinition<MembersDefinition>[]> {
         return serviceMembers(this.#env);
     }
 
@@ -306,7 +311,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
 
     // {§functionality-addressing} — every glob the body names is admitted, or none is: a bare `!`
     // or a glob past the model's scope refuses the whole add. The same glob twice is one definition.
-    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission[]> {
+    async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission<MembersDefinition>[]> {
         if (!isRecord(input) || !Array.isArray(input.files) || !input.files.every((file): file is string => typeof file === "string")) {
             throw new TypeError("A members add names its files.");
         }
@@ -314,7 +319,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const scope = caller === "operation"
             ? FileCreationPolicy.effective(modelScope(this.#env), (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope)
             : null;
-        const admitted = new Map<string, FunctionalityAdmission>();
+        const admitted = new Map<string, FunctionalityAdmission<MembersDefinition>>();
         for (const raw of files) {
             const glob = raw.trim();
             const pattern = patternOf(glob);
@@ -347,7 +352,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     // inclusions union, an exclusion wins in resolution, and a
     // human-authored row outranks a model-proposed row for the same pattern. Each definition's
     // outcome carries what it resolved to, so the model sees what its glob did.
-    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+    async prepare(preparation: FunctionalityPreparation<MembersDefinition, MembersSnapshot>): Promise<FunctionalityPrepared<never, MembersSnapshot>> {
         preparation.signal.throwIfAborted();
         const { workspaceId, enabled } = preparation;
         const rows = this.#projection(enabled);
@@ -356,9 +361,9 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const outcomes = new Map<string, FunctionalityOutcome>();
         const documents: Array<{ pathname: string; content: string }> = [];
         for (const [alias, { definition }] of enabled) {
-            const resolution = resolutionOf(definition as MembersDefinition, overlay);
+            const resolution = resolutionOf(definition, overlay);
             outcomes.set(alias, { state: "active", detail: resolution });
-            documents.push(membersDocument(definition as MembersDefinition, resolution));
+            documents.push(membersDocument(definition, resolution));
         }
         return {
             documents,
@@ -374,7 +379,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         // Desired state is durable; the overlay keeps reflecting it after the workspace cools.
     }
 
-    #projection(enabled: FunctionalityPreparation["enabled"]): OverlayRow[] {
+    #projection(enabled: FunctionalityPreparation<MembersDefinition>["enabled"]): OverlayRow[] {
         const rows = new Map<string, OverlayRow>();
         const admit = (definition: MembersDefinition): void => {
             const row = rowOf(definition);
@@ -382,7 +387,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
             const current = rows.get(key);
             if (current === undefined || (current.source === "model" && row.source === "members")) rows.set(key, row);
         };
-        for (const { definition } of enabled.values()) admit(definition as MembersDefinition);
+        for (const { definition } of enabled.values()) admit(definition);
         return [...rows.values()];
     }
 

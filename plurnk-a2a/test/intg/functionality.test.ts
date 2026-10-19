@@ -3,13 +3,15 @@
 // preparation outcomes, the per-workspace resolver, and the catalog document.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { A2AAgentDefinition } from "@plurnk/plurnk-contracts";
 import A2aFunctionality, { aliasOfCard, renderAgent, A2aFunctionalityError } from "../../src/Functionality.ts";
 import { ERROR_DETAIL_LIMIT } from "../../src/ErrorDetail.ts";
 import { startDemoAgent } from "../fixtures/DemoAgent.ts";
 
 const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512", PLURNK_A2A_ENABLED: "1" };
 
-const preparation = (workspaceId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
+type Preparation = Parameters<A2aFunctionality["prepare"]>[0];
+const preparation = (workspaceId: number, enabled: Readonly<Record<string, A2AAgentDefinition>>, options: { previous?: Preparation["previous"]; failure?: "publish-unavailable" | "reject"; force?: string } = {}): Preparation => ({
     workspaceId,
     signal: new AbortController().signal,
     enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
@@ -47,7 +49,7 @@ for (const phase of ["card", "token"] as const) {
             entered.resolve();
             return new Promise<Response>((_resolve, reject) => lifetime.signal.addEventListener("abort", () => reject(lifetime.signal.reason), { once: true }));
         });
-        const definition = { name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret: "${SECRET}" } };
+        const definition = { name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret: "${SECRET}" } } satisfies A2AAgentDefinition;
         const work = assert.rejects(family.prepare({ ...preparation(1, { peer: definition, later: { ...definition, name: "later" } }), signal: lifetime.signal }), (cause) => cause === reason);
         try { await entered.promise; }
         finally { lifetime.abort(reason); }
@@ -125,7 +127,7 @@ test("{§a2a-functionality} preparation attaches through the discovered card, re
     const agent = await startDemoAgent();
     try {
         const family = new A2aFunctionality({ ...diagnosticEnv, TOKEN: "s3cret" });
-        const researcher = { name: "researcher", url: agent.baseUrl, authorization: { type: "bearer", token: "${TOKEN}" } };
+        const researcher = { name: "researcher", url: agent.baseUrl, authorization: { type: "bearer", token: "${TOKEN}" } } satisfies A2AAgentDefinition;
         const ghost = { name: "ghost", url: "http://127.0.0.1:9" };
         const first = await family.prepare(preparation(7, { researcher, ghost }));
         assert.equal("runtimes" in first, false, "outbound agents hold no processes; runtimes is the resident family's facet");
@@ -183,7 +185,7 @@ test("{§a2a-outbound-credentials} an oauth2 definition obtains its token from t
     const agent = await startDemoAgent("complete", undefined, { clientId: "plurnk", clientSecret: "agent-secret" });
     try {
         const family = new A2aFunctionality({ ...diagnosticEnv, SECRET: "agent-secret", WRONG: "nope" });
-        const definition = (clientSecret: string) => ({ name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret } });
+        const definition = (clientSecret: string): A2AAgentDefinition => ({ name: "peer", url: agent.baseUrl, authorization: { type: "oauth2", clientId: "plurnk", clientSecret } });
         const prepared = await family.prepare(preparation(3, { peer: definition("${SECRET}") }));
         assert.equal(prepared.outcomes.get("peer")?.state, "active", JSON.stringify(prepared.outcomes.get("peer")));
         assert.deepEqual(agent.tokenRequests, [{ clientId: "plurnk", clientSecret: "agent-secret", scope: "echo" }], "preparation minted once, with the card's scope, after discovering the card without it");

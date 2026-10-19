@@ -171,9 +171,10 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
         adapter: () => { if (adapter === undefined) throw new Error("adapter not registered"); return adapter; },
         identity,
         lane,
+        // As the coordinator does: a family is torn down only with the snapshot its preparation committed.
         teardown: async (workspaceId: number) => {
-            const current = snapshots.get(workspaceId);
-            await adapter!.teardown(current?.prepared?.snapshot ?? null, identity(workspaceId));
+            const prepared = snapshots.get(workspaceId)?.prepared;
+            if (prepared !== undefined && prepared !== null) await adapter!.teardown(prepared.snapshot, identity(workspaceId));
             snapshots.delete(workspaceId);
         },
         action: async (workspaceId: number, name: string, params: Readonly<Record<string, unknown>>) => {

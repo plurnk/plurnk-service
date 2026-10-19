@@ -5,6 +5,7 @@
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { Problems,
+    type FunctionalityAdmission,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
@@ -23,7 +24,8 @@ import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleErr
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
 import { isoString, zoned } from "./temporal.ts";
 import ScheduleResources from "./ScheduleResources.ts";
-import type { FunctionalityDiscovery, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
@@ -69,7 +71,7 @@ const failure = (
 
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
-export default class ScheduleFunctionality {
+export default class ScheduleFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, ScheduleDefinition, Snapshot> {
     readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
@@ -119,7 +121,7 @@ export default class ScheduleFunctionality {
         return this.#scheduler;
     }
 
-    async available(): Promise<readonly FunctionalityServiceDefinition[]> {
+    async available(): Promise<readonly FunctionalityServiceDefinition<ScheduleDefinition>[]> {
         this.#service ??= validateConfiguration(this.#env, this.#readAt);
         return [...this.#service].map(([alias, entry]) => ({ alias, ...entry }));
     }
@@ -144,7 +146,7 @@ export default class ScheduleFunctionality {
         }];
     }
 
-    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<{ alias: string; definition: object; preparation: number }> {
+    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<FunctionalityAdmission<ScheduleDefinition>> {
         const params = isRecord(input) ? input : {};
         if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule definition needs an alias.", { retryable: false });
         let definition: ScheduleDefinition;
@@ -162,10 +164,10 @@ export default class ScheduleFunctionality {
         return { alias: params.alias, definition: { ...definition, rule: parsed.text }, preparation: now };
     }
 
-    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
+    async prepare(preparation: FunctionalityPreparation<ScheduleDefinition, Snapshot>): Promise<FunctionalityPrepared<never, Snapshot>> {
         preparation.signal.throwIfAborted();
         const { workspaceId } = preparation;
-        const previous = preparation.previous as Snapshot | null;
+        const { previous } = preparation;
         let admission: { alias: string; at: number } | undefined;
         const [current] = preparation.admissions;
         if (current !== undefined) {
@@ -227,7 +229,7 @@ export default class ScheduleFunctionality {
 
     // {§schedule-residency} — a schedule is an obligation, not a runtime: cooling the workspace
     // leaves its timers armed.
-    async teardown(_snapshot: unknown, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
+    async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
     // {§schedule-zone} — the zone a rule is read in: the call's own env when it carries one (a
     // worker's `env` metadata), else the invoking Worker's environment (its overrides over the

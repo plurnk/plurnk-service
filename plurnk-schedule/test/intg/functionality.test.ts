@@ -6,8 +6,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as nextTick } from "node:timers/promises";
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
-import type { FunctionalityAdmission, FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 import ScheduleFunctionality, { ScheduleFunctionalityError } from "../../src/Functionality.ts";
+import type { ScheduleDefinition } from "../../src/definition.ts";
 import type { DeliveryPort, SchedulerTimers } from "../../src/Scheduler.ts";
 
 // 2026-09-16 12:30:15.250 UTC.
@@ -73,11 +74,12 @@ class FakePort implements DeliveryPort {
     }
 }
 
+type Preparation = Parameters<ScheduleFunctionality["prepare"]>[0];
 const preparation = (
     workspaceId: number,
-    enabled: Record<string, object>,
-    options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string; admissions?: readonly FunctionalityAdmission[] } = {},
-) => ({
+    enabled: Readonly<Record<string, ScheduleDefinition>>,
+    options: { previous?: Preparation["previous"]; failure?: "publish-unavailable" | "reject"; force?: string; admissions?: Preparation["admissions"] } = {},
+): Preparation => ({
     workspaceId,
     signal: new AbortController().signal,
     enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),

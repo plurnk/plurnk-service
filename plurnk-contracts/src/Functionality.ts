@@ -26,27 +26,29 @@ export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
 // A family may bound the model's authority ({§members-model-scope}) without a second grammar.
 export type FunctionalityCaller = "action" | "operation";
 
-export interface FunctionalityDefinitionSource {
+// `Definition` is the definition a family's `definitionSchema` admits ({§functionality-adapter}); the
+// coordinator's own view is any object.
+export interface FunctionalityDefinitionSource<Definition extends object = object> {
     readonly alias: string;
-    readonly definition: object;
+    readonly definition: Definition;
 }
 
-export interface FunctionalityAdmission extends FunctionalityDefinitionSource {
+export interface FunctionalityAdmission<Definition extends object = object> extends FunctionalityDefinitionSource<Definition> {
     // Attempt-local data carried to prepare, never persisted or used as definition identity.
     readonly preparation?: unknown;
 }
 
 // A service- or configuration-contributed definition with its default
 // enabledness; a workspace's durable state may override the enabledness only.
-export interface FunctionalityServiceDefinition extends FunctionalityDefinitionSource {
+export interface FunctionalityServiceDefinition<Definition extends object = object> extends FunctionalityDefinitionSource<Definition> {
     readonly enabled: boolean;
     readonly provenance?: FunctionalityProvenance;
     // Source-specific interpretation, owned by the adapter; never persisted as a local definition.
     readonly context?: object;
 }
 
-export interface FunctionalityPreparedDefinition {
-    readonly definition: object;
+export interface FunctionalityPreparedDefinition<Definition extends object = object> {
+    readonly definition: Definition;
     readonly context?: object;
 }
 
@@ -62,16 +64,17 @@ export interface FunctionalityDocument {
     readonly content: string;
 }
 
-export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
+// `Definition` and `Snapshot` are the family's own ({§functionality-adapter}).
+export interface FunctionalityPreparation<Definition extends object = object, Snapshot = unknown> extends WorkspaceCapabilityIdentity {
     // {§functionality-preparation-cancellation} The host's lifetime; cancellation still joins cleanup.
     readonly signal: AbortSignal;
     // The enabled definitions to prepare, in alias order.
-    readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
-    // The adapter's previous process snapshot for this workspace, when one exists.
-    readonly previous: unknown;
+    readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition<Definition>>;
+    // The adapter's previous snapshot for this workspace, when one exists.
+    readonly previous: Snapshot | null;
     // The current add or replace's admissions: one, or every definition an addressing family's add
     // names ({§functionality-addressing}); empty on refresh, activation and other verbs.
-    readonly admissions: readonly FunctionalityAdmission[];
+    readonly admissions: readonly FunctionalityAdmission<Definition>[];
     // Whether failures publish as unavailable outcomes (activation, model
     // mutations except replacement) or reject it (explicit client mutations and replacement).
     readonly failure: "publish-unavailable" | "reject";
@@ -90,7 +93,7 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
 // releases what it no longer uses) or `abort` (the adapter discards this
 // attempt and the previous snapshot stays authoritative). The coordinator never
 // tears down a previous snapshot itself; only deactivation calls `teardown`.
-export interface FunctionalityPrepared<Runtime = never> {
+export interface FunctionalityPrepared<Runtime = never, Snapshot = unknown> {
     // {§module-workspace-residency} — the resident facet. Only a family that holds processes
     // (MCP servers) prepares runtimes; every other family publishes its manager, documents and
     // state alone, and leaves this absent. The runtime registration is the exec kind's
@@ -98,7 +101,7 @@ export interface FunctionalityPrepared<Runtime = never> {
     readonly runtimes?: readonly Runtime[];
     readonly documents: readonly FunctionalityDocument[];
     readonly outcomes: ReadonlyMap<string, FunctionalityOutcome>;
-    readonly snapshot: unknown;
+    readonly snapshot: Snapshot;
     // {§functionality-publication} — candidate state goes live here, synchronously and without
     // I/O, inside the coordinator's registry commit; the returned undo restores the preceding
     // live state if that commit rolls back.
