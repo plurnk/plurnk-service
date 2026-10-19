@@ -20,7 +20,7 @@ and `&` graph patterns search members only.
 | --- | --- |
 | git tracks it | it was committed or staged (`git ls-files`), refreshed every turn |
 | a definition includes it | an enabled `members` definition — a shell-path glob such as `docs/**` |
-| plurnk created it | a file your accepted `EDIT`, `COPY`, or `MOVE` wrote gets an exact creation record; it is a member without any `git add` |
+| plurnk created it | a file your accepted `EDIT`, `COPY`, or `MOVE` wrote gets an exact creation record; it is a member at once |
 
 An exclusion (`!glob`) wins over every inclusion. A model definition never
 includes a path the repository ignores.
@@ -62,22 +62,11 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   {"files": ["build/*.json"]}
   ```
 
-- **Untracked, scope `none`** (an operator narrowed it): neither auto-add nor your
-  `add` admits it; the refusal names the recovery, which is git tracking. Staging is enough; no commit is needed, and
-  membership refreshes at the next turn. The scope is fixed for the turn, so a
-  refused `add` is refused again; a client's `/members add` or a raised scope
-  is the user's to give.
-
-  ```sh <!-- git tracks it, so it becomes a member -->
-  git add build/report.json
-  ```
-
-- **Ignored by the repository**: no model definition can include it, and
-  `git add` refuses it too; only a client or operator definition covers an
-  ignored path.
-
-- **Excluded by `!glob`**: an exclusion outranks every inclusion, and a model
-  definition cannot lift it; only the user can.
+- **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
+  ignored by the repository, or excluded by `!glob`, which outranks every
+  inclusion. Neither auto-add nor your `add` admits it, and the scope is fixed
+  for the turn, so a refused `add` is refused again. A client or operator
+  definition can admit it, and that is the user's to give: ask them.
 
 - **Beyond the project root** (an absolute path such as `/srv/shared/notes.md`,
   which is how such a path is spelled; `../notes.md` names the same place): a
@@ -93,7 +82,7 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 An `EDIT` to a path that does not exist creates it when the file-creation
 scope admits it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`). The new file is a member immediately through its
-creation record — you never need `git add` for your own creations. Deleting
+creation record, with no other step. Deleting
 it (`KILL`) retires the record.
 
 ## Changes while you work

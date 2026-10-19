@@ -287,7 +287,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.ok(membersDoc, "the members runtime document is a reference entry");
             assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
             assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
-            assert.match(membersDoc.content, /git add build\/report\.json/u, "the body teaches staging as the recovery under scope none");
+            assert.doesNotMatch(membersDoc.content, /git add/u, "no recovery asks the model to change the repository");
             assert.match(membersDoc.content, /```members \(add\) <!--[^\n]*-->\n\{"files": \[\]\}\n```/u, "the verb table teaches the family's own add input");
             assert.match(membersDoc.content, /```members \(remove\) <!--[^\n]*-->\n\{"file": ""\}\n```/u, "and its select input");
             assert.doesNotMatch(membersDoc.content, /replace/u, "the family serves no replace, so nothing teaches one");
@@ -344,12 +344,12 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.equal(again.status, 200);
             assert.deepEqual(again.definitions?.map(({ alias }) => alias), ["loose.md"]);
 
-            // The model's add under the shipped ceiling (none) is refused up front, naming git add.
+            // The model's add under the shipped ceiling (none) is refused up front, naming the user's path.
             const { result: refused, outcome } = await modelAdd("loose2.md");
             assert.equal(refused.status, 403, "acceptance does not hide the coordinator's refusal");
             assert.equal(outcome.status, 403);
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
-            assert.match(String(outcome.problem?.recovery), /git add/u);
+            assert.doesNotMatch(String(outcome.problem?.recovery), /\bgit\b/u, "its recovery asks nothing of the repository");
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), false, "nothing widened");
             assert.deepEqual(await states(), ["docs/**:service:active", "loose.md:workspace:active"], "no definition was recorded");
 
@@ -447,7 +447,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
     try {
         const closed = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none", PLURNK_MEMBERS_ENABLED: "1" } });
         const refused = await refusedAs(() => closed.admit({ files: ["notes.md"] }, who, "operation"), "model-scope", 403);
-        assert.match(String(refused.recovery), /git add/u);
+        assert.doesNotMatch(String(refused.recovery), /\bgit\b/u, "the recovery asks nothing of the repository");
         await refusedAs(() => closed.admit({ files: ["!notes.md"] }, who, "operation"), "model-scope", 403);
         assert.deepEqual(await closed.admit({ files: ["notes.md"] }, who, "action"), [admission("notes.md", "client-action")]);
         assert.deepEqual(await closed.admit({ files: [" !**/*.lock ", "!**/*.lock"] }, who), [admission("!**/*.lock", "client-action")], "a glob is trimmed, and named twice is one definition");

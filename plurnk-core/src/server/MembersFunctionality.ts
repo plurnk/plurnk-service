@@ -334,7 +334,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                     : `The effective members scope '${scope}' does not admit '${glob}'.`, {
                     scope,
                     glob,
-                    recovery: "`git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE.",
+                    recovery: "A client or operator definition can admit it; that is the user's to give: ask them.",
                 });
             }
             admitted.set(glob, {

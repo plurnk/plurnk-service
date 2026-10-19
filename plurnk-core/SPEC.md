@@ -6657,8 +6657,8 @@ they are validated without creating a definition ({§resource-environment}).
 `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <
 namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). `none`
 refuses every model definition — inclusion or exclusion — as `403
-members/functionality/model-scope`, naming `git add` and the operator's `/members add` as
-the paths that remain; `root` admits patterns inside the root; `namespace` admits `../` too.
+members/functionality/model-scope`, whose recovery is the one path that remains, a client or
+operator definition, the user's to give; `root` admits patterns inside the root; `namespace` admits `../` too.
 `auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
 so the family bounds the model without a second grammar; an admission a read earns
@@ -7332,7 +7332,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `query-invalid` | 400 | '*query*' names no path or pattern. Recovery: Supply a path such as `docs/guide.md` or a pattern such as `docs/**`. |
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
 | `definition-invalid` | 400 | A members definition is { glob }: a shell-path pattern, `!glob` to exclude. |
-| `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: `git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE. |
+| `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: A client or operator definition can admit it; that is the user's to give: ask them. |
 | `workspace-not-found` | 404 | Workspace *id* does not exist. |
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
