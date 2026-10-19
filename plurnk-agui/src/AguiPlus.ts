@@ -75,11 +75,13 @@ export const interactionToolCall = (interaction: ClientInteractionProjection): A
     ];
 };
 
+// {§agui-plurnk-metadata} The interrupt carries Core's projection, the worker, loop and turn asking, as a proposal's does.
 export const interactionInterrupt = (interaction: ClientInteractionProjection): Omit<Interrupt, "id"> => ({
     reason: "tool_call",
     toolCallId: interactionToolCallId(interaction.interactionId),
     message: interaction.request.message ?? "Provide the requested input.",
     responseSchema: interaction.request.responseSchema,
+    metadata: { plurnk: { interaction } },
 });
 
 export interface InteractionResolution {

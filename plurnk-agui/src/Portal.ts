@@ -940,8 +940,20 @@ export default class Portal {
             throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-binding-invalid", 400,
                 "The resume combines interrupts from different Runs."));
         }
+        // {§agui-proposal-resolve} The presentation is the unit a resume answers: every interrupt this Run issued, and
+        // nothing that became pending after it, which the resuming Run presents next.
+        const presented = [...this.#continuations].filter(([, candidate]) => candidate.continuation === continuation).map(([id]) => id);
+        const received = new Set(entries.map(({ interruptId }) => interruptId));
         const resolutions = entries.map((entry, index) => ({ ...entry, interruptId: recorded[index].key }));
         await this.#hitl.resolve(workspaceId, bound.owner, resolutions, (resolution) => {
+            if (presented.some((id) => !received.has(id))) {
+                throw new HttpProblemError(Problems.create("agui:interrupt", "interrupt-set-incomplete", 409,
+                    "The resume does not address every interrupt of its presentation.", {
+                        stage: "interrupt-resolution", retryable: false,
+                        presentedInterruptIds: presented, receivedInterruptIds: [...received],
+                        recovery: "Answer every interrupt of the presentation in one resume.",
+                    }));
+            }
             if (continuation.workspaceId !== workspaceId
                 || continuation.owner !== bound.owner
                 || continuation.threadId !== bound.threadId

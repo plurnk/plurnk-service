@@ -11,6 +11,7 @@ import MessageAddress from "./MessageAddress.ts";
 import { AGUI_BUILTIN_ACTIONS } from "./AguiSurface.ts";
 import type {
     ApplicationActionContext,
+    ClientInteractionProjection,
     LogEntryWire,
     ProblemDetails,
     ProposalProjection,
@@ -2072,6 +2073,8 @@ test("{§agui-message-before-gate} a descendant client interaction round-trips t
                 toolCallId: "int:88",
                 message: "Choose one color.",
                 responseSchema: pending[0].request.responseSchema,
+                // {§agui-plurnk-metadata} The delegated question names the worker asking, on the owner's thread.
+                metadata: { plurnk: { interaction: pending[0] } },
             }],
         });
         assert.deepEqual(loopRuns, [{ prompt: "continue" }], "{§agui-message-before-gate}: the message reaches Core before the pending input is re-presented");
@@ -2091,6 +2094,50 @@ test("{§agui-message-before-gate} a descendant client interaction round-trips t
             resolution: { status: "resolved", payload: { color: "orange" } },
         }]);
         assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§agui-proposal-resolve} {§agui-gate-deferral}: a presentation stays answerable as another gate becomes pending; the resuming Run presents that gate next", async () => {
+    const { seam, emit, loopRuns } = mockSeam();
+    const ask = (interactionId: number, message: string): ClientInteractionProjection => ({
+        interactionId, recipient: "agui://anonymous/threads/two-questions", workerId: 77, loopId: 9, turnId: 1,
+        request: { toolName: "ask", arguments: { n: interactionId }, message, responseSchema: { type: "object" } },
+    });
+    let pending = [ask(88, "First?")];
+    const resolutions: number[] = [];
+    seam.pendingClientInteractions = async () => pending;
+    seam.listWorkers = async () => [workerRow(77, "two-questions")];
+    seam.resolveClientInteraction = async (interactionId) => {
+        resolutions.push(interactionId);
+        pending = pending.filter((item) => item.interactionId !== interactionId);
+        if (pending.length === 0) setImmediate(() => emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9 })));
+    };
+    const mod = await host(seam);
+    try {
+        const binding = { threadId: "two-questions", forwardedProps: { plurnk: { workspace: "two-questions" } } };
+        const first = await post(mod.address().port, { ...binding, runId: "ask-a", messages: [{ role: "user", content: "Begin." }] });
+        const presented = presentedInterrupt(first);
+        assert.equal(presented.toolCallId, "int:88");
+        // The second question becomes pending after the presentation ended its Run.
+        pending = [...pending, ask(89, "Second?")];
+        emit(3, "loop/interaction", pending[1]);
+        await new Promise((resolve) => setImmediate(resolve));
+        const second = await post(mod.address().port, {
+            ...binding, runId: "ask-b", resume: [{ interruptId: presented.id, status: "resolved", payload: { answer: "one" } }],
+        });
+        assert.deepEqual(resolutions, [88], "the complete presentation released exactly what it named");
+        const next = presentedInterrupt(second);
+        assert.equal(next.toolCallId, "int:89", "the gate that became pending after the presentation is presented by the resuming Run");
+        assert.deepEqual(next.metadata, { plurnk: { interaction: pending[0] } });
+        const third = await post(mod.address().port, {
+            ...binding, runId: "ask-c", resume: [{ interruptId: next.id, status: "resolved", payload: { answer: "two" } }],
+        });
+        assert.deepEqual(resolutions, [88, 89]);
+        assert.equal(third.at(-1)?.type, "RUN_FINISHED");
+        assert.deepEqual((third.at(-1) as { outcome?: unknown }).outcome, { type: "success" });
+        assert.equal(loopRuns.length, 1, "a resume never starts fresh inference");
     } finally {
         await mod.close();
     }

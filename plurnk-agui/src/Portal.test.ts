@@ -566,6 +566,8 @@ test("{§agui-message-before-gate} a durable client interaction re-surfaces with
         toolCallId: "int:30",
         message: "Choose one color.",
         responseSchema: interaction().request.responseSchema,
+        // {§agui-plurnk-metadata} The re-surfaced interrupt names the worker asking, as the live one does.
+        metadata: { plurnk: { interaction: interaction({ interactionId: 30, loopId: 7 }) } },
     });
     await portal.resolve(3, thread, [{
         interruptId: presented.id,

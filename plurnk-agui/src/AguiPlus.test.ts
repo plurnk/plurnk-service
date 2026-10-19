@@ -123,7 +123,7 @@ test("{§agui-proposal-resolve} resolutionFromResume: standard cancellation and 
     assert.equal(resolutionFromResume({ interruptId: proposalKey(5), status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
 });
 
-test("{§agui-proposal-resolve} client interaction projects its exact tool call, interrupt guidance, and response schema", () => {
+test("{§agui-proposal-resolve} {§agui-plurnk-metadata} client interaction projects its exact tool call, interrupt guidance, response schema and the projection naming its worker", () => {
     const value = interaction();
     assert.deepEqual(interactionToolCall(value), [
         { type: "TOOL_CALL_START", toolCallId: "int:8", toolCallName: "select_repository" },
@@ -135,6 +135,7 @@ test("{§agui-proposal-resolve} client interaction projects its exact tool call,
         toolCallId: "int:8",
         message: "Choose one repository.",
         responseSchema: value.request.responseSchema,
+        metadata: { plurnk: { interaction: value } },
     });
 });
 

@@ -280,6 +280,7 @@ sequence.
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
   | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). A gated call's settlement folds its settled facts onto the call ({§agui-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
   | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews |
+  | A client interaction's `Interrupt` ({§agui-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
@@ -478,7 +479,7 @@ echoing the opaque `Interrupt.id` it answers.
 | A proposal of the Run's bound worker | The operation's own call, `TOOL_CALL_START/ARGS/END` as its row builds it, unanswered, unless the Run's client holds it | `toolCallId` its coordinate |
 | A proposal of a worker whose subagent segment the Run has open ({§agui-subagents}) | That call in the subagent's namespace | `toolCallId` the namespaced coordinate, and `subagentRunId` |
 | A proposal of any other worker the owner reviews | Nothing: the Run holds no conversation of that worker | No `toolCallId` |
-| A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, and the request's `message` and `responseSchema` |
+| A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, the request's `message` and `responseSchema`, and Core's `ClientInteractionProjection` as `metadata.plurnk.interaction`: the worker, loop and turn asking ({§agui-plurnk-metadata}) |
 
 A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and the decision is no result of its own.
 
@@ -486,7 +487,7 @@ A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `r
 | --- | --- |
 | Settlement | the operation's settlement answers it: the Run that holds the call receives a repeated `TOOL_CALL_START` and `TOOL_CALL_END` under the call's id carrying the settled facts, which the official reducer folds onto the call it holds, its arguments untouched, then the call's result, unless the operation opened an obligation, which what discharges it answers ({§agui-call-result}) |
 | Snapshots | a snapshot holds a pending proposal as its call without a result ({§agui-snapshot}), so a client that resumed holds exactly what a refreshed one builds |
-| Presentations | separate presentations of one gate have separate interrupt IDs, so a resume addresses exactly the presentation its client holds ({§agui-run-disconnect}); unknown presentations require rediscovery, and pending proposals and interactions remain durable in Core; the module resolves the complete pending interrupt set for one worker, restores the thread's live projection state, and only then releases it; the pending Worker's persisted Worker and Loop remain the exact resolution identity |
+| Presentations | separate presentations of one gate have separate interrupt IDs, so a resume addresses exactly the presentation its client holds ({§agui-run-disconnect}); unknown presentations require rediscovery, and pending proposals and interactions remain durable in Core; a resume answers every interrupt of its presentation and nothing more: a gate of the same worker that became pending after that presentation stays durable and the resuming Run presents it next ({§agui-gate-deferral}); the module restores the thread's live projection state and only then releases what the resume answered; the pending Worker's persisted Worker and Loop remain the exact resolution identity |
 | Owner-addressed gates | route under {§agui-worker-owner}: when an owner's thread presents another worker's gate, its resume stays bound to that thread while releasing the exact requesting worker; reconnect discovers pending gates from Core by recorded owner, not inferred ancestry |
 | Ordering | a terminal published after a descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot settle Run A before the interrupt is emitted; concurrent descendant gates are presented one Worker at a time, and resolving one re-surfaces the next without admitting a new prompt; sibling and unrelated threads never receive one another's gates |
 | An invalid resume | one containing foreign, partial, unknown, duplicate, or multi-worker interrupt sets fails before any stopped operation is released; mixing presentations or threads produces `interrupt-binding-invalid`; a connection closed before validated resolution produces `connection-closed` without releasing the stopped work |
@@ -1055,7 +1056,7 @@ reconstruct one from `RUN_ERROR`.
 | `interrupt-binding-invalid` | 400 | The resume combines interrupts from different Runs, or does not match its interrupt's binding. |
 | `connection-closed` | 499 | The connection closed before the interrupt was resolved. |
 | `worker-scope-invalid` | 400 | One resume must address interrupts for exactly one worker. Recovery: Resume each worker separately. |
-| `interrupt-set-incomplete` | 409 | The resume does not address every pending interrupt for worker *id*. Recovery: Resolve every pending interrupt for this worker in one resume. |
+| `interrupt-set-incomplete` | 409 | The resume does not address every interrupt of its presentation. Recovery: Answer every interrupt of the presentation in one resume. |
 | `invalid-json` | 400 | The request body is not valid JSON. |
 | `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
 | `control-invalid` | 400 | control must be a boolean. |

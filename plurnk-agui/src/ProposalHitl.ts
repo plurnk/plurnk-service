@@ -311,22 +311,9 @@ export default class ProposalHitl {
             );
         }
         const workerId = [...workerIds][0];
-        const pending = allPending.filter((item) => item.workerId === workerId);
-        const expected = new Set(pending.map(({ key }) => key));
-        if (expected.size !== received.size || [...expected].some((key) => !received.has(key))) {
-            throw new InterruptInputError(
-                "interrupt-set-incomplete",
-                409,
-                `The resume does not address every pending interrupt for worker ${workerId}.`,
-                {
-                    workerId,
-                    receivedInterruptIds: [...received],
-                    pendingInterruptIds: [...expected],
-                    recovery: "Resolve every pending interrupt for this worker in one resume.",
-                },
-            );
-        }
-        const loopIds = new Set(pending.map(({ loopId }) => loopId));
+        // {§agui-proposal-resolve} The presentation is the unit a resume answers, and the Portal holds it: a gate of this
+        // worker the resume does not name stays pending and is presented next.
+        const loopIds = new Set(addressed.map(({ loopId }) => loopId));
         if (loopIds.size !== 1) {
             throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
         }

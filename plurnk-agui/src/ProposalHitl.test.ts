@@ -151,6 +151,7 @@ test("{§agui-proposal-resolve} start(): a generic loop/interaction is its own c
             toolCallId: "int:40",
             message: "Choose one repository.",
             responseSchema: interaction().request.responseSchema,
+            metadata: { plurnk: { interaction: interaction({ interactionId: 40, workerId: 9 }) } },
         },
     }]);
     assert.deepEqual(m.reads, [], "an interaction reads no row");
@@ -223,23 +224,14 @@ test("{§agui-proposal-resolve} resolve(): proposals and interactions share one 
     }]);
 });
 
-test("{§agui-proposal-resolve} interrupt resume validation exposes exact Problems with the complete pending set", async () => {
+test("{§agui-proposal-resolve} resolve(): an unknown interrupt is refused with the pending set and releases nothing; a resume releases exactly what it names, and a gate it does not name stays pending", async () => {
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, loopId: 7 }),
         proposal({ logEntryId: 6, loopId: 7, coordinate: "1/1/6", target: { scheme: "file", authority: null, pathname: "b" } }),
         proposal({ logEntryId: 7, loopId: 7, coordinate: "1/1/7", disposition: { decision: "accept" } }),
     ];
-    const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
-    await assert.rejects(
-        hitl.resolve(3, OWNER, [{ interruptId: proposalKey(5), status: "resolved", payload: { decision: "accept" } }]),
-        (error: unknown) => {
-            const problem = (error as { problem?: { type?: string; pendingInterruptIds?: string[]; receivedInterruptIds?: string[] } }).problem;
-            assert.equal(problem?.type, "https://problems.plurnk.xyz/agui/interrupt/interrupt-set-incomplete");
-            assert.deepEqual(problem?.pendingInterruptIds, [proposalKey(5), proposalKey(6)]);
-            assert.deepEqual(problem?.receivedInterruptIds, [proposalKey(5)]);
-            return true;
-        },
-    );
+    const m = mockSeam(pending);
+    const hitl = new ProposalHitl(m.seam, collect());
     await assert.rejects(
         hitl.resolve(3, OWNER, [{ interruptId: proposalKey(99), status: "resolved", payload: { decision: "accept" } }]),
         (error: unknown) => {
@@ -249,6 +241,13 @@ test("{§agui-proposal-resolve} interrupt resume validation exposes exact Proble
             return true;
         },
     );
+    assert.deepEqual(m.resolves, [], "a refused resume releases nothing");
+    assert.deepEqual(
+        await hitl.resolve(3, OWNER, [{ interruptId: proposalKey(5), status: "resolved", payload: { decision: "accept" } }]),
+        { loopId: 7, workerId: 1 },
+    );
+    assert.deepEqual(m.resolves, [{ logEntryId: 5, resolution: { decision: "accept" } }],
+        "the presentation is the unit: the gate the resume does not name stays pending for its next presentation");
 });
 
 test("{§agui-proposal-disposition} {§proposal-ownership-notification} proposal disposition owns live gate presentation", async () => {
