@@ -8,7 +8,7 @@ import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type A
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
-import { type ClientEnvelope } from "@plurnk/plurnk-contracts";
+import type { ClientEnvelope, LogEntryWire } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { type ResolvedModuleOptions } from "./config.ts";
 import { type OperationLoopListener } from "./BuiltinActions.ts";
@@ -456,8 +456,8 @@ export default class RunHandler {
     }
 
     // {§agui-snapshot} A snapshot is every message the live projection built, so it reads the whole log, page by page.
-    async #history(workspaceId: number, workerId: number): Promise<Array<Record<string, unknown>>> {
-        const rows: Array<Record<string, unknown>> = [];
+    async #history(workspaceId: number, workerId: number): Promise<LogEntryWire[]> {
+        const rows: LogEntryWire[] = [];
         for (let beforeId: number | undefined; ;) {
             const cursor = beforeId;
             const page = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER, ...(cursor === undefined ? {} : { beforeId: cursor }) });
@@ -492,7 +492,7 @@ export default class RunHandler {
             || (event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.ambient")));
     }
 
-    static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>, replyThreads: readonly string[]): boolean {
+    static #isOriented(input: RunAgentInput, history: readonly LogEntryWire[], replyThreads: readonly string[]): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
             Translator.isResponse(entry, replyThreads)
                     ? [Translator.idOf(entry)]

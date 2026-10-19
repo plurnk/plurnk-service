@@ -33,7 +33,7 @@ import {
 import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { Validator, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket, type LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
@@ -192,7 +192,7 @@ export default class Translator {
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Another worker's row is workspace activity, never interleaved into the messages a generic frontend renders.
-        const workerId = (e as { worker_id?: number }).worker_id;
+        const workerId = typeof e.worker_id === "number" ? e.worker_id : undefined;
         // Lazy binding: a Run that binds no model worker adopts its first model-origin row's worker as the
         // model worker (workers spawn FROM it later).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
@@ -405,15 +405,15 @@ export default class Translator {
     // {§agui-replay} {§agui-snapshot} — the messages as the live projection built them: arrivals, each turn's
     // reasoning, speech, and every other model operation as its tool call and result, under the
     // live identities. Wire rows arrive as the log.read projection (tx parsed).
-    replay(entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
+    replay(entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
         return Translator.replayAll([{ translator: this, entries }], inbox);
     }
 
     // {§agui-snapshot} {§agui-subagents} One conversation from several logs: every row in the order the workspace
     // committed it, each projected by its own worker's translator into one message list.
-    static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: ReadonlyArray<Record<string, unknown>> }>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
+    static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: readonly LogEntryWire[] }>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
         const messages: ReplayMessage[] = [];
-        const order = (e: Record<string, unknown>): number => typeof e.id === "number" ? e.id : Number.MAX_SAFE_INTEGER;
+        const order = (e: LogEntryWire): number => e.id;
         const rows = parts.flatMap(({ translator, entries }) => entries.map((e) => ({ translator, e })))
             .toSorted((left, right) => order(left.e) - order(right.e));
         const delivered = new Map<Translator, Map<number, string[]>>();
@@ -446,7 +446,7 @@ export default class Translator {
             metadata: { plurnk: { message: message.path, loop: message.loopId, lifecycle: message.lifecycle, source: message.source, published: false } } };
     }
 
-    #replayRow(e: Record<string, unknown>, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {
+    #replayRow(e: LogEntryWire, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {
         const attributed = <T extends ReplayMessage>(message: T): T => this.#subagent === null ? message : { ...message, subagentRunId: this.#subagent.runId };
         const id = this.#id(e);
         const metadata = Translator.#rowMetadata(e);
@@ -478,7 +478,7 @@ export default class Translator {
             messages.push(attributed({ id, role: "assistant", content: text, metadata: Translator.#speechMetadata(e) }));
             return;
         }
-        const call = Translator.#callOf(e as LogEntryNotification["entry"]);
+        const call = Translator.#callOf(e);
         if (call === null) return;
         messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: call.name, arguments: call.args }, metadata }] }));
         if (e.state === "proposed") this.#held.add(id);
@@ -488,7 +488,7 @@ export default class Translator {
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
         const diagnostic: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.notice", value: notice };
-        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown; waitUntil?: unknown; packetCount?: unknown; claimedAt?: unknown };
+        const value = isRecord(notice) ? notice : {};
         // {§loop-status-notice} {§agui-status-timing} — the loop's lifecycle with its identity, packet count,
         // stamps and deadline in one delta, never a diagnostic or chat message.
         if (value.source === "engine:lifecycle" && value.kind === "loop_status") {
@@ -496,8 +496,8 @@ export default class Translator {
             if (value.waitUntil !== null && (typeof value.waitUntil !== "number" || !Number.isFinite(value.waitUntil) || value.waitUntil < 0)) {
                 throw new TypeError("A loop_status notice carries a nullable Unix-millisecond waitUntil.");
             }
-            if (!Number.isSafeInteger(value.packetCount) || (value.packetCount as number) < 0) throw new TypeError("A loop_status notice carries its loop's packet count.");
-            if (value.claimedAt !== null && (!Number.isSafeInteger(value.claimedAt) || (value.claimedAt as number) <= 0)) {
+            if (!isSafeInteger(value.packetCount) || value.packetCount < 0) throw new TypeError("A loop_status notice carries its loop's packet count.");
+            if (value.claimedAt !== null && (!isSafeInteger(value.claimedAt) || value.claimedAt <= 0)) {
                 throw new TypeError("A loop_status notice carries a nullable Unix-millisecond claimedAt.");
             }
             if (loopId === null || loopId <= 0) throw new TypeError("A loop_status notice names its loop.");
@@ -580,11 +580,10 @@ export default class Translator {
     }
 
     static #modelArtifactKind(attrs: unknown): "emissionAttempt" | null {
-        const parsed = typeof attrs === "string"
+        const parsed: unknown = typeof attrs === "string"
             ? (() => { try { return JSON.parse(attrs); } catch { return null; } })()
             : attrs;
-        if (parsed === null || typeof parsed !== "object") return null;
-        const kind = (parsed as { kind?: unknown }).kind;
+        const kind = isRecord(parsed) ? parsed.kind : undefined;
         return kind === "emissionAttempt" ? kind : null;
     }
 
@@ -598,8 +597,8 @@ export default class Translator {
         if (!(typeof entry.status_rx === "number" && entry.status_rx >= 200 && entry.status_rx < 300)) return false;
         if (Translator.#txBody(entry.tx).trim().length === 0) return false;
         const rx: unknown = typeof entry.rx === "string" ? JSON.parse(entry.rx) : entry.rx;
-        if (rx === null || typeof rx !== "object") return false;
-        const answers = (rx as { answers?: unknown }).answers;
+        if (!isRecord(rx)) return false;
+        const answers = rx.answers;
         if (!Array.isArray(answers)) return false;
         return answers.some((address) => replyThreads.some((threadId) => MessageAddress.messageId(address, threadId) !== null));
     }
@@ -607,8 +606,8 @@ export default class Translator {
     // The model-facing textual statement body out of the tx. The real
     // wire ships tx PARSED (an object); a string is tolerated and parsed for robustness.
     static #attrKind(attrs: unknown): unknown {
-        const parsed = typeof attrs === "string" ? JSON.parse(attrs) as unknown : attrs;
-        return parsed !== null && typeof parsed === "object" ? (parsed as { kind?: unknown }).kind : undefined;
+        const parsed: unknown = typeof attrs === "string" ? JSON.parse(attrs) : attrs;
+        return isRecord(parsed) ? parsed.kind : undefined;
     }
 
     static #txBody(tx: unknown): string {
@@ -617,10 +616,10 @@ export default class Translator {
             if (tx.length === 0) return "";
             try { parsed = JSON.parse(tx); } catch { return tx; }
         }
-        if (parsed === null || typeof parsed !== "object") return "";
-        const body = (parsed as { body?: unknown }).body;
+        if (!isRecord(parsed)) return "";
+        const body = parsed.body;
         if (typeof body === "string") return body;
-        if (body !== null && typeof body === "object" && typeof (body as { raw?: unknown }).raw === "string") return (body as { raw: string }).raw;
+        if (isRecord(body) && typeof body.raw === "string") return body.raw;
         return "";
     }
 
@@ -638,10 +637,10 @@ export default class Translator {
     // {§agui-snapshot} A row's message identity is its log coordinate L/T/S ({§methods-log-coordinate}).
     static idOf(e: { loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown }): string {
         const { loop_seq: loop, turn_seq: turn, sequence } = e;
-        if (!Number.isSafeInteger(loop) || !Number.isSafeInteger(turn) || !Number.isSafeInteger(sequence)) {
+        if (!isSafeInteger(loop) || !isSafeInteger(turn) || !isSafeInteger(sequence)) {
             throw new TypeError("A log row carries its loop, turn and sequence ordinals.");
         }
-        return `${loop as number}/${turn as number}/${sequence as number}`;
+        return `${loop}/${turn}/${sequence}`;
     }
 
     // {§agui-readable-reasoning} Reasoning is the request that streamed it, live and on replay alike; reasoning a
@@ -658,12 +657,12 @@ export default class Translator {
     // {§message-arrival} An arrival is a user message, live and on replay alike. One a client on this thread sent is that
     // client's own, under its message id and as it sent it; any other is identified by its coordinate and named by its
     // source ({§message-causal-source}).
-    #arrival(e: { origin?: unknown; op?: unknown; attrs?: unknown; source?: unknown; tx?: unknown }): { id: string; content: string; name?: string } | null {
+    #arrival(e: { origin?: unknown; op?: unknown; attrs?: unknown; source?: unknown; tx?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown }): { id: string; content: string; name?: string } | null {
         if (e.origin !== "_plurnk" || e.op !== "SEND" || Translator.#attrKind(e.attrs) !== "message") return null;
         const messageId = MessageAddress.messageId(e.source, this.#threadId);
         if (messageId !== null) return { id: messageId, content: Translator.#txBody(e.tx) };
         return {
-            id: this.#id(e as Parameters<typeof Translator.idOf>[0]),
+            id: this.#id(e),
             content: Translator.#txBody(e.tx),
             ...(typeof e.source === "string" ? { name: e.source } : {}),
         };
@@ -678,8 +677,8 @@ export default class Translator {
     // {§agui-call-result} A call that opened an obligation is answered by the delivery that discharges it, never by its
     // receipt, which rides the row: an execution its stream, a message the reply or conclusion ({§worker-obligations}).
     static #opensObligation(e: { attrs?: unknown; status_rx?: unknown }): boolean {
-        const attrs = typeof e.attrs === "string" ? JSON.parse(e.attrs) as unknown : e.attrs;
-        const opened = attrs !== null && typeof attrs === "object" ? attrs as { stream?: unknown; message?: unknown } : {};
+        const attrs: unknown = typeof e.attrs === "string" ? JSON.parse(e.attrs) : e.attrs;
+        const opened: Readonly<Record<string, unknown>> = isRecord(attrs) ? attrs : {};
         return (typeof opened.stream === "string" || typeof opened.message === "string") && typeof e.status_rx === "number" && e.status_rx < 400;
     }
 
@@ -722,7 +721,7 @@ export default class Translator {
     // {§agui-plurnk-metadata} Speech holds the body; its heading's aside and its receipt have no field in a text message.
     static #speechMetadata(e: RowFacts & { tx?: unknown; rx?: unknown }): { plurnk: Record<string, unknown> } {
         const statement = Translator.#parsed(e.tx);
-        const aside = statement !== null && typeof statement === "object" ? (statement as { aside?: unknown }).aside ?? null : null;
+        const aside = isRecord(statement) ? statement.aside ?? null : null;
         return { plurnk: { ...Translator.#rowMetadata(e).plurnk, aside, receipt: Translator.#parsed(e.rx) } };
     }
 
@@ -755,7 +754,11 @@ export default class Translator {
     #attributed(events: AguiEvent[]): AguiEvent[] {
         const subagent = this.#subagent;
         if (subagent === null) return events;
-        return events.map((event) => Translator.#runScoped.has(event.type) ? event : { ...event, subagentRunId: subagent.runId } as AguiEvent);
+        return events.map((event) => Translator.#runScoped.has(event.type) ? event : Translator.#withSubagent(event, subagent.runId));
+    }
+
+    static #withSubagent<E extends AguiEvent>(event: E, subagentRunId: string): E {
+        return { ...event, subagentRunId };
     }
 
     static readonly #runScoped: ReadonlySet<string> = new Set([EventType.RUN_STARTED, EventType.RUN_FINISHED, EventType.RUN_ERROR, EventType.MESSAGES_SNAPSHOT]);
@@ -776,9 +779,10 @@ export default class Translator {
     // {§agui-parse-refusal} The call a model operation row is: its operation and its statement, or for a parse refusal the
     // statement the worker attempted, its verb and its text as written; null for a refusal that names no attempt.
     static #callOf(e: LogEntryNotification["entry"]): { name: string; args: string } | null {
-        if (e.op !== "error") return { name: e.op as string, args: Translator.#argsFor(e) };
-        const attempt = (Translator.#parsed(e.attrs) as { attempt?: { verb?: unknown; text?: unknown } } | null)?.attempt;
-        return typeof attempt?.verb === "string" && typeof attempt.text === "string"
+        if (e.op !== "error") return e.op === null ? null : { name: e.op, args: Translator.#argsFor(e) };
+        const parsed = Translator.#parsed(e.attrs);
+        const attempt = isRecord(parsed) && isRecord(parsed.attempt) ? parsed.attempt : null;
+        return attempt !== null && typeof attempt.verb === "string" && typeof attempt.text === "string"
             ? { name: attempt.verb, args: JSON.stringify({ text: attempt.text }) } : null;
     }
 
@@ -786,9 +790,9 @@ export default class Translator {
     // exactly as parsed ({§log-sensitive-request-evidence}), without the verb that is the tool's name or the position it
     // was written at. AG-UI streams arguments as deltas; a dispatched operation is atomic, so they arrive as one.
     static #argsFor(e: LogEntryNotification["entry"]): string {
-        const statement = typeof e.tx === "string" && e.tx.length > 0 ? JSON.parse(e.tx) as unknown : e.tx;
-        if (statement === null || typeof statement !== "object" || Array.isArray(statement)) return JSON.stringify({});
-        const { op: _op, position: _position, ...operands } = statement as Record<string, unknown>;
+        const statement: unknown = typeof e.tx === "string" && e.tx.length > 0 ? JSON.parse(e.tx) : e.tx;
+        if (!isRecord(statement)) return JSON.stringify({});
+        const { op: _op, position: _position, ...operands } = statement;
         return JSON.stringify(operands);
     }
 }

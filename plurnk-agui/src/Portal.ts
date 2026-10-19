@@ -17,6 +17,7 @@ import type {
     ApplicationLoopProjection,
     ApplicationWorkerProjection,
     OperationResult,
+    LogEntryWire,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { EventType, isLogEntryNotification, type AguiEvent } from "./types.ts";
@@ -92,7 +93,7 @@ export interface Subagent {
 }
 
 // {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays, parents first, each with its loop's rows.
-export type SubagentHistory = ReadonlyArray<{ readonly subagent: Subagent; readonly entries: Array<Record<string, unknown>> }>;
+export type SubagentHistory = ReadonlyArray<{ readonly subagent: Subagent; readonly entries: readonly LogEntryWire[] }>;
 
 // {§agui-delegation-observation} — a descendant as the daemon's topology names it, depth counted
 // from the bound Worker.
@@ -480,7 +481,7 @@ export default class Portal {
 
     // {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays: each descendant loop a call in view opened,
     // with the rows `history` reads from its worker's log.
-    async subagentHistory(thread: ThreadHandle, history: (workerId: number) => Promise<Array<Record<string, unknown>>>): Promise<SubagentHistory> {
+    async subagentHistory(thread: ThreadHandle, history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<SubagentHistory> {
         const bound = this.#bound(thread);
         if (!bound.descendants || bound.workerId === null) return [];
         bound.tree = await this.#descendantTree(bound.workspaceId, bound.workerId);
@@ -831,7 +832,7 @@ export default class Portal {
     }
 
     // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
-    replay(thread: ThreadHandle, entries: Array<Record<string, unknown>>, inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
+    replay(thread: ThreadHandle, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
         return [
             ...this.#bound(thread).router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
             ...subagents.flatMap(({ subagent }) => Portal.#present(subagent)),

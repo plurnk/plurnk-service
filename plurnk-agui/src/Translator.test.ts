@@ -548,7 +548,7 @@ test("{§agui-plurnk-metadata} an actionless model row without an artifact discr
         /attrs\.kind=emissionAttempt/,
     );
     assert.throws(
-        () => t().replay([{ id: 1, op: null, origin: "model", attrs: {}, loop_seq: 1, turn_seq: 1, sequence: 1 }]),
+        () => t().replay([wireRow({ id: 1, op: null, origin: "model", attrs: {}, loop_seq: 1, turn_seq: 1, sequence: 1 })]),
         /attrs\.kind=emissionAttempt/,
     );
 });
@@ -562,7 +562,7 @@ test("{§agui-plurnk-metadata} reasoning READs remain operation receipts without
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        { id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." },
+        wireRow({ id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." }),
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
@@ -754,13 +754,13 @@ test("{§agui-ambient} a rejected emission attempt remains forensic even if an i
 test("{§agui-plurnk-metadata} the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
-        { id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } },
-        { id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } },
-        { id: 4, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, tx: { body: "finish" } },
-        { id: 3, op: null, origin: "model", loop_seq: 1, turn_seq: 1, sequence: 10, turn_id: 1, attrs: { kind: "emissionAttempt" } },
-        { id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" },
-        { id: 1, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 1, sequence: 1, turn_id: 1, tx: { body: "orient" } },
-        { id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, loop_seq: 1, turn_seq: 1, sequence: 0, tx: { body: { raw: "What is the answer?" } } },
+        wireRow({ id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } }),
+        wireRow({ id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } }),
+        wireRow({ id: 4, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, tx: { body: "finish" } }),
+        wireRow({ id: 3, op: null, origin: "model", loop_seq: 1, turn_seq: 1, sequence: 10, turn_id: 1, attrs: { kind: "emissionAttempt" } }),
+        wireRow({ id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" }),
+        wireRow({ id: 1, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 1, sequence: 1, turn_id: 1, tx: { body: "orient" } }),
+        wireRow({ id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, loop_seq: 1, turn_seq: 1, sequence: 0, tx: { body: { raw: "What is the answer?" } } }),
     ], [{ path: "agui://anonymous/threads/th/messages/current-user", source: "agui://anonymous/threads/th/messages/current-user", body: "Continue.", loopId: 1, lifecycle: "running" }]);
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };

@@ -11,7 +11,7 @@ import { type ProposalResolution,
     PlurnkParseError,
     type CapabilityPolicy,
     type ClientInteractionResolution,
-    type MessageResource } from "@plurnk/plurnk-contracts";
+    type MessageResource, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 
 
@@ -54,7 +54,7 @@ export default class ClientInput {
     }
 
     static assertProjectRoot(context: string, projectRoot: unknown): string | null {
-        const root = (projectRoot as string | null | undefined) ?? null;
+        const root = projectRoot ?? null;
         if (root === null) return null;
         if (typeof root !== "string" || root.length === 0) {
             ClientInput.#invalid(
@@ -205,7 +205,7 @@ export default class ClientInput {
     }
 
     static assertId(context: string, field: string, value: unknown): number {
-        if (!Number.isSafeInteger(value) || (value as number) < 1) {
+        if (!isSafeInteger(value) || value < 1) {
             ClientInput.#invalid(
                 context,
                 "identifier-invalid",
@@ -213,7 +213,7 @@ export default class ClientInput {
                 { field, value, recovery: `Provide a valid ${field}.` },
             );
         }
-        return value as number;
+        return value;
     }
 
     static assertPrompt(context: string, prompt: unknown, allowEmpty = false): string {
@@ -268,7 +268,7 @@ export default class ClientInput {
 
     static assertMaxTurns(context: string, maxTurns: unknown): number | undefined {
         if (maxTurns === undefined) return undefined;
-        if (!Number.isSafeInteger(maxTurns) || (maxTurns as number) < -1) {
+        if (!isSafeInteger(maxTurns) || maxTurns < -1) {
             ClientInput.#invalid(
                 context,
                 "max-turns-invalid",
@@ -280,7 +280,7 @@ export default class ClientInput {
                 },
             );
         }
-        return maxTurns as number;
+        return maxTurns;
     }
 
     static assertOpenPaths(context: string, openPaths: unknown): string[] | undefined {
@@ -293,8 +293,8 @@ export default class ClientInput {
                 { field: "openPaths", recovery: "Provide an array of non-empty paths." },
             );
         }
-        for (let i = 0; i < openPaths.length; i++) {
-            if (typeof openPaths[i] !== "string" || openPaths[i].length === 0) {
+        return openPaths.map((openPath: unknown, i): string => {
+            if (typeof openPath !== "string" || openPath.length === 0) {
                 ClientInput.#invalid(
                     context,
                     "open-path-invalid",
@@ -303,19 +303,19 @@ export default class ClientInput {
                 );
             }
             try {
-                parsePath(PathSyntax.escapeTarget(openPaths[i] as string));
+                parsePath(PathSyntax.escapeTarget(openPath));
             } catch (cause) {
                 if (!(cause instanceof PlurnkParseError)) throw cause;
                 ClientInput.#invalid(context, "open-path-invalid", `openPaths[${i}] is not a valid resource address.`,
                     { field: `openPaths[${i}]` }, cause);
             }
-        }
-        return openPaths as string[];
+            return openPath;
+        });
     }
 
     static assertLimit(context: string, limit: unknown): number | undefined {
         if (limit === undefined) return undefined;
-        if (!Number.isSafeInteger(limit) || (limit as number) < 1) {
+        if (!isSafeInteger(limit) || limit < 1) {
             ClientInput.#invalid(
                 context,
                 "limit-invalid",
@@ -323,11 +323,11 @@ export default class ClientInput {
                 { field: "limit", value: limit, recovery: "Use a positive integer limit." },
             );
         }
-        return limit as number;
+        return limit;
     }
 
     static assertProposalResolution(context: string, resolution: unknown): ProposalResolution {
-        if (typeof resolution !== "object" || resolution === null || Array.isArray(resolution)) {
+        if (!isRecord(resolution)) {
             ClientInput.#invalid(
                 context,
                 "proposal-resolution-invalid",
@@ -335,7 +335,7 @@ export default class ClientInput {
                 { field: "resolution", recovery: "Provide a proposal decision." },
             );
         }
-        const value = resolution as Record<string, unknown>;
+        const value = resolution;
         const supported = new Set(["decision", "body", "outcome"]);
         for (const key of Object.keys(value)) {
             if (!supported.has(key)) {
@@ -391,9 +391,7 @@ export default class ClientInput {
         resolution: unknown,
     ): ClientInteractionResolution {
         try {
-            return Validator.assertClientInteractionResolution(
-                resolution as ClientInteractionResolution,
-            );
+            return Validator.assertClientInteractionResolution(resolution);
         } catch {
             ClientInput.#invalid(
                 context,
