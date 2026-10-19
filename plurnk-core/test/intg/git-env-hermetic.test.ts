@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
 import GitState from "../../src/core/git-state.ts";
-import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import { excludesFile, hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -282,14 +282,12 @@ test("{§membership-git-hermetic} automatic inspection refuses a supplied reposi
 });
 
 test("{§membership-git-hermetic} {§executor-spawn-account}: the daemon trusts the repository it was pointed at by path, and nothing wider", () => {
-    const bare = hermeticGitEnv();
-    assert.equal(bare.GIT_CONFIG_COUNT, "2", "the two program pins and no trust without a root");
+    const pins = (env: NodeJS.ProcessEnv): Record<string, string | undefined> => Object.fromEntries(Array.from({ length: Number(env.GIT_CONFIG_COUNT) },
+        (_, index) => [env[`GIT_CONFIG_KEY_${index}`], env[`GIT_CONFIG_VALUE_${index}`]]));
+    const kept = { "core.fsmonitor": "false", "core.hooksPath": "/dev/null", "core.excludesFile": excludesFile() };
+    assert.deepEqual(pins(hermeticGitEnv()), kept, "the program pins and the user's excludes file, and no trust without a root");
     const trusted = hermeticGitEnv("/srv/work/repo");
-    assert.equal(trusted.GIT_CONFIG_COUNT, "3");
-    assert.equal(trusted.GIT_CONFIG_KEY_2, "safe.directory");
-    assert.equal(trusted.GIT_CONFIG_VALUE_2, "/srv/work/repo");
-    assert.equal(trusted.GIT_CONFIG_KEY_0, "core.fsmonitor");
-    assert.equal(trusted.GIT_CONFIG_KEY_1, "core.hooksPath");
+    assert.deepEqual(pins(trusted), { ...kept, "safe.directory": "/srv/work/repo" }, "a root is trusted by its path alone");
     assert.equal(trusted.GIT_CONFIG_GLOBAL, "/dev/null");
     assert.equal(trusted.GIT_CONFIG_SYSTEM, "/dev/null");
 });

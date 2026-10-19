@@ -25,6 +25,7 @@ import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { resolve, relative, isAbsolute } from "node:path";
 import PathGlob from "./PathGlob.ts";
 import type { Db } from "./Db.ts";
@@ -222,14 +223,14 @@ export default class GitMembership {
         }
     }
 
-    // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
-    // projected from disk, but the standard never outranks the operator's exclusions — a path the
-    // active repository ignores, or an exclusion matches, contributes nothing.
     // The exclusion (`!glob`) covering the path, if one does: it outranks every inclusion and every instruction standard.
     static async exclusionOf(db: Db, workspaceId: number, key: string): Promise<string | null> {
         return (await db.crud_constraint_excluding.get<{ glob: string }>({ workspace_id: workspaceId, key }))?.glob ?? null;
     }
 
+    // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
+    // projected from disk, but the standard never outranks the operator's exclusions — a path the
+    // active repository ignores, or an exclusion matches, contributes nothing.
     static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
         if (await GitMembership.exclusionOf(db, workspaceId, key) !== null) return true;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
@@ -574,6 +575,24 @@ export default class GitMembership {
         };
     }
 
+    // {§membership-ignore-source} The ignore rule that excludes `key`, as git reports it: its file, shown beneath the
+    // repository or the home as `~/`, and its line; null when nothing ignores it or no automatic repository governs it.
+    static async ignoreSource(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<{ file: string; line: number } | null> {
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
+        if (root === null) return null;
+        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        if (repository === null) return null;
+        const repositoryPath = relative(repository, resolve(root, key));
+        if (repositoryPath === "" || repositoryPath.startsWith("..") || isAbsolute(repositoryPath)) return null;
+        // `<source> NUL <line> NUL <pattern> NUL <path> NUL`; no output, nothing ignores it; a negated pattern's match is
+        // a path re-included.
+        const [source = "", line = "", pattern = ""] = (await GitMembership.#checkIgnore(repository, [repositoryPath], true, signal)).split("\u0000");
+        if (source.length === 0 || pattern.startsWith("!")) return null;
+        const home = homedir();
+        const file = isAbsolute(source) && (source === home || source.startsWith(`${home}/`)) ? `~/${relative(home, source)}` : source;
+        return { file, line: Number(line) };
+    }
+
     // Whether the active repository ignores `key`; null when no automatic repository governs it.
     static async isIgnored(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<boolean | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
@@ -603,23 +622,30 @@ export default class GitMembership {
             keys.set(repositoryPath, key);
         }
         if (keys.size === 0) return ignored;
-        const child = spawn("git", ["check-ignore", "-z", "--stdin"], { cwd: repository, env: hermeticGitEnv(repository), signal, stdio: ["pipe", "pipe", "pipe"] });
-        const out: Buffer[] = [];
-        const err: Buffer[] = [];
-        child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
-        child.stdin.end(`${[...keys.keys()].join("\0")}\0`);
-        const code = await new Promise<number | null>((settle, reject) => {
-            child.once("error", reject);
-            child.once("close", settle);
-        });
-        // 0: some path is ignored; 1: none is. Anything else is a failed subprocess.
-        if (code !== 0 && code !== 1) throw new Error(`git check-ignore failed (${code}): ${Buffer.concat(err).toString("utf8").trim()}`);
-        for (const repositoryPath of Buffer.concat(out).toString("utf8").split("\0")) {
+        for (const repositoryPath of (await GitMembership.#checkIgnore(repository, [...keys.keys()], false, signal)).split("\0")) {
             const key = keys.get(repositoryPath);
             if (key !== undefined) ignored.add(key);
         }
         return ignored;
+    }
+
+    // One `git check-ignore --stdin -z` pass over repository paths, verbose when the rule that matched is wanted.
+    static async #checkIgnore(repository: string, paths: readonly string[], verbose: boolean, signal: AbortSignal | undefined): Promise<string> {
+        const child = spawn("git", ["check-ignore", ...(verbose ? ["-v"] : []), "-z", "--stdin"], {
+            cwd: repository, env: hermeticGitEnv(repository), signal, stdio: ["pipe", "pipe", "pipe"],
+        });
+        const out: Buffer[] = [];
+        const err: Buffer[] = [];
+        child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
+        child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+        child.stdin.end(`${paths.join("\0")}\0`);
+        const code = await new Promise<number | null>((settle, reject) => {
+            child.once("error", reject);
+            child.once("close", settle);
+        });
+        // 0: some path matched; 1: none did. Anything else is a failed subprocess.
+        if (code !== 0 && code !== 1) throw new Error(`git check-ignore failed (${code}): ${Buffer.concat(err).toString("utf8").trim()}`);
+        return Buffer.concat(out).toString("utf8");
     }
 
     // Targeted definition scan (SPEC {§membership} `include`) — enumerate disk files

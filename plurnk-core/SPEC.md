@@ -790,6 +790,7 @@ Worker control rides the daemon's inject seam (active→fold, idle→enqueue+dra
 | {§membership-git-membership} | The workspace owns the Git repository containing `project_root`. |
 | {§git-native-default} | Core Git reads use native Git. |
 | {§membership-git-hermetic} | Native Git runs with ambient `GIT_*` and global/system config scrubbed, and with the repository's own… |
+| {§membership-ignore-source} | An ignore verdict names its rule. |
 | {§membership-edit-membership-gate} | Membership-gated edits. |
 | {§membership-create-parents} | Parent-complete creation. |
 | {§membership-auto-add} | Auto-add: the model's reads propose the admission of what they reach. |
@@ -885,7 +886,10 @@ and never re-fetch a match.
 - §membership-git-hermetic Native Git runs with ambient `GIT_*` and
   global/system config scrubbed, and with the repository's own program-running
   keys pinned off at the highest precedence (`core.fsmonitor=false`,
-  `core.hooksPath=/dev/null`), so repository identity follows `project_root`,
+  `core.hooksPath=/dev/null`). The one global setting it keeps is the daemon user's
+  excludes file, pinned as `core.excludesFile`: the file that user's git configures,
+  else git's default `$XDG_CONFIG_HOME/git/ignore` (`~/.config/git/ignore`), so a model
+  sees what that user's git shows (#1181). Repository identity follows `project_root`,
   never the daemon's launch environment, and inspecting a supplied repository
   never runs a program its `.git/config` names. Other repository-local
   configuration is still read (#568). The one program no key can pin off is a
@@ -897,6 +901,9 @@ and never re-fetch a match.
   `engine:membership` / `git_inspection_refused` notice names the key, once per
   workspace until it changes or clears. User- and model-requested Git commands
   stay on their explicit execution path.
+- §membership-ignore-source **An ignore verdict names its rule.** A refusal or a `discover` verdict for a file git
+  ignores names the rule as `git check-ignore -v` reports it: its file, beneath the repository or the home as
+  `~/`, and its line. A negated pattern's match re-includes a path and is never an ignore.
 - §membership-edit-membership-gate **Membership-gated edits.** EDIT is bounded by membership exactly as READ is. An existing **member**'s baseline is its materialized entry snapshot, not an empty body or a fresh disk read at approval ({§membership-edit-write-revision}). An existing **non-member** is refused (403) *before* any content read or write: its bytes never leak into the proposal. A **new path** crosses the creation matrix in {§fs-write-surface}; proposal acceptance cannot bypass its scope, exclusion, or incorporation rules. Shell execution reaches beyond file membership; the file scheme does not.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
@@ -925,7 +932,7 @@ and never re-fetch a match.
   | An accepted creation | Incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}). |
   | The admission | The Worker's own `members (add)` of the exact path, provenance `model-proposal`, under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so scope `none` admits nothing and the read is refused as it is with the knob off; published before the operation runs again ({§functionality-model-mutation}) and announced by one `member_added` notice per file ({§notice-directive}). |
   | Its settlement | As every host effect is ({§proposal-disposition}): by policy where nobody reviews, by the reviewer under `review`; `reject` refuses every admission. |
-  | Outside the universe | A path the repository ignores, a path an exclusion matches, a directory and anything beyond the root: their refusals are unchanged ({§membership-read-refusal}, {§file-directory-target}). |
+  | Outside the universe | A path git ignores, a path an exclusion matches, a directory and anything beyond the root: their refusals are unchanged ({§membership-read-refusal}, {§file-directory-target}). |
   | A person's client operation | Reads members only. |
   | `PLURNK_MEMBERS_AUTO_ADD=0` | Restores the baseline exactly. |
 
@@ -1974,7 +1981,7 @@ invalid range, read-only authority, and occupied hidden state without guessing.
 | Beyond the root | The engine does not look at the disk at all, and the key is named by the absolute path it renders as ({§file-path-normalization}), so two reads there differ only in the address they echo | Speaks of the address too, true under every members scope: `'<address>' is outside the project root: only a members definition under the operator's namespace scope admits it.` |
 | Inside the root, on disk, not a member | Occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ says so: 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.` — unless the model's read admits it first ({§membership-auto-add}) | Admission only |
 | Covered by an exclusion | `entry-not-member`, as above; an exclusion outranks every inclusion, so no admission is offered | `` A members exclusion (`!<glob>`) covers it: only the user can lift it. `` |
-| Ignored by the repository, admitted by no model definition | The members discovery verdict instead | `The repository ignores it: a client or operator members definition can include it, a model definition cannot.` |
+| Ignored by git, admitted by no model definition | The members discovery verdict instead | `` Git ignores it (`<file>` line <n>): a client or operator members definition can include it, a model definition cannot. `` ({§membership-ignore-source}) |
 
 §file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.`; a READ or KILL carries the listing as its recovery, `` `FIND (<key>/)` lists its files. ``, and an EDIT carries none. Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
@@ -7376,4 +7383,4 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |
 | '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"files": ["<path>"]}` body. | a non-member on disk at the addressed path |
-| '*path*' exists on disk but is not a member of this workspace. Recovery: The repository ignores it: a client or operator members definition can include it, a model definition cannot. | a non-member the repository ignores ({§membership-read-refusal}) |
+| '*path*' exists on disk but is not a member of this workspace. Recovery: Git ignores it (`<file>` line `<n>`): a client or operator members definition can include it, a model definition cannot. | a non-member git ignores ({§membership-read-refusal}, {§membership-ignore-source}) |

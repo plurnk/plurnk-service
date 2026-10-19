@@ -4,7 +4,7 @@ import { serverProposals } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -125,7 +125,7 @@ test("{§membership-read-refusal} a non-member an exclusion covers or the reposi
     const { db, ids, root, dispatch } = await runtime(t);
     const ignored = await dispatch("````READ (generated.log)````");
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
-    assert.equal(ignored.problem.recovery, "The repository ignores it: a client or operator members definition can include it, a model definition cannot.");
+    assert.equal(ignored.problem.recovery, "Git ignores it (`.gitignore` line 1): a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("````READ (loose.md)````");
     assert.equal(untracked.problem.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
     await writeFile(join(root, "secret.md"), "hidden\n");
@@ -134,6 +134,47 @@ test("{§membership-read-refusal} a non-member an exclusion covers or the reposi
     assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
     assert.doesNotMatch(excluded.problem.recovery ?? "", /members \(add\)/u, "an exclusion no add lifts is not offered one");
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
+});
+
+// {§membership-ignore-source} Each place an ignore rule lives, named by its file and line: the repository's `.gitignore`,
+// its `.git/info/exclude`, git's default excludes file under the daemon user's configuration home, and a `core.excludesFile`
+// that user configures ({§membership-git-hermetic}); a negated pattern re-includes and is no ignore.
+test("{§membership-ignore-source} an ignored file's refusal names the rule's file and line, wherever the rule lives", async (t) => {
+    const { root, dispatch } = await runtime(t);
+    const prior = { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
+    const homes = await mkdtemp(join(tmpdir(), "ignore-homes-"));
+    t.after(async () => {
+        for (const [key, value] of Object.entries(prior)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+        await rm(homes, { recursive: true, force: true });
+    });
+    const asHome = async (name: string, files: Record<string, string>): Promise<void> => {
+        const home = join(homes, name);
+        for (const [path, content] of Object.entries(files)) {
+            await mkdir(join(home, path, ".."), { recursive: true });
+            await writeFile(join(home, path), content);
+        }
+        process.env.HOME = home;
+        process.env.XDG_CONFIG_HOME = join(home, ".config");
+    };
+    await appendFile(join(root, ".gitignore"), "*.tmp\n!keep.tmp\n");
+    const exclude = join(root, ".git", "info", "exclude");
+    const excludeLine = (await readFile(exclude, "utf8").catch(() => "")).split("\n").filter((line, index, lines) => index < lines.length - 1 || line.length > 0).length + 1;
+    await mkdir(join(root, ".git", "info"), { recursive: true });
+    await appendFile(exclude, "info.md\n");
+    for (const name of ["default.md", "configured.md", "info.md", "drop.tmp", "keep.tmp"]) await writeFile(join(root, name), "x\n");
+    const named = async (path: string): Promise<string | undefined> => (await dispatch(`\`\`\`\`READ (${path})\`\`\`\``)).problem.recovery;
+
+    await asHome("default", { ".config/git/ignore": "default.md\n" });
+    for (const [path, file, line] of [["default.md", "~/.config/git/ignore", 1], ["info.md", ".git/info/exclude", excludeLine], ["drop.tmp", ".gitignore", 2]] as const) {
+        assert.match(await named(path) ?? "", new RegExp(`^Git ignores it \\(\`${file.replaceAll(".", "\\.")}\` line ${line}\\)`, "u"), `${path} names ${file} line ${line}`);
+    }
+    assert.match(await named("keep.tmp") ?? "", /members \(add\)/u, "a re-included path is untracked, not ignored");
+
+    await asHome("configured", { ".gitconfig": "[core]\n\texcludesFile = ~/my-ignore\n", "my-ignore": "configured.md\n" });
+    assert.match(await named("configured.md") ?? "", /^Git ignores it \(`~\/my-ignore` line 1\)/u, "the user's configured excludes file is honored and named");
 });
 
 test("{§log-near-miss} a log miss beside real rows names them", async (t) => {

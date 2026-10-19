@@ -1,6 +1,8 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
@@ -17,12 +19,38 @@ const PINNED_CONFIG: ReadonlyArray<readonly [string, string]> = Object.freeze([
     ["core.hooksPath", "/dev/null"],
 ]);
 
+// {§membership-git-hermetic} The daemon user's excludes file is the one global setting native Git keeps, so a model
+// sees what that user's git shows: the configured `core.excludesFile`, else git's default beneath the XDG
+// configuration home (#1181). Resolved once per home.
+const excludesFiles = new Map<string, string>();
+export const excludesFile = (env: NodeJS.ProcessEnv = process.env): string => {
+    const home = env.HOME ?? homedir();
+    const xdg = env.XDG_CONFIG_HOME;
+    const key = `${home}\u0000${xdg ?? ""}`;
+    const known = excludesFiles.get(key);
+    if (known !== undefined) return known;
+    let configured = "";
+    try {
+        configured = execFileSync("git", ["-C", "/", "config", "--path", "--get", "core.excludesFile"], {
+            env: Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("GIT_"))),
+            encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+    } catch (cause) {
+        // Exit 1 is an unset key; git absent leaves its default, and every later Git call reports its absence.
+        if (!(isRecord(cause) && (cause.status === 1 || cause.code === "ENOENT"))) throw new Error("Git's excludes file could not be read.", { cause });
+    }
+    const resolved = configured.length > 0 ? configured : join(xdg !== undefined && isAbsolute(xdg) ? xdg : join(home, ".config"), "git", "ignore");
+    excludesFiles.set(key, resolved);
+    return resolved;
+};
+
 // `trusted` is the repository the daemon was pointed at, pinned as `safe.directory`: git's ownership
 // check otherwise refuses a repository another account owns, which is exactly the shape when the
 // model's commands own the workspace ({§executor-spawn-account}). The daemon trusts the root it
 // was given, nothing wider; the blanked global and system configuration cannot grant it.
 export const hermeticGitEnv = (trusted: string | null = null): NodeJS.ProcessEnv => {
-    const pins = trusted === null ? PINNED_CONFIG : [...PINNED_CONFIG, ["safe.directory", trusted] as const];
+    const kept: ReadonlyArray<readonly [string, string]> = [...PINNED_CONFIG, ["core.excludesFile", excludesFile()]];
+    const pins = trusted === null ? kept : [...kept, ["safe.directory", trusted] as const];
     return {
         ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
         GIT_CONFIG_GLOBAL: "/dev/null",

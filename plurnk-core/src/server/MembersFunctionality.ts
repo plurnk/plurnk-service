@@ -297,13 +297,15 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         }
         const exclusion = overlay.excludeGlobs.find((pattern) => PathGlob.matches(key, pattern));
         if (exclusion !== undefined) {
-            return { ...candidate, provenance: { kind: "excluded", source: key }, summary: `not a member — excluded by \`!${exclusion}\`` };
+            return { ...candidate, provenance: { kind: "excluded", source: key }, summary: `not a member — excluded by \`!${exclusion}\`; only the user can lift it` };
         }
-        if ((await GitMembership.isIgnored(this.#db, workspaceId, key, undefined)) === true) {
+        const ignoredBy = await GitMembership.ignoreSource(this.#db, workspaceId, key, undefined);
+        if (ignoredBy !== null) {
             return {
                 ...candidate,
                 provenance: { kind: "ignored", source: key },
-                summary: "not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot",
+                // {§membership-ignore-source}
+                summary: `not a member — git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}); a client or operator definition can include it, a model definition cannot`,
             };
         }
         return { ...candidate, provenance: { kind: "candidate", source: key }, summary: "not a member — untracked; add this definition to include it" };

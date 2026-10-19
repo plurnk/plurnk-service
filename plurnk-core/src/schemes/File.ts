@@ -221,7 +221,7 @@ export default class File extends CoreSchemeAdapterBase {
         // {§membership-read-refusal} — admission is the recovery for an untracked file; a file an exclusion covers or
         // the repository ignores no model definition admits, so its refusal says who can (#1005).
         const exclusion = occupied ? await GitMembership.exclusionOf(core.db, core.workspaceId, key) : null;
-        const ignored = occupied && exclusion === null && await GitMembership.isIgnored(core.db, core.workspaceId, key, undefined) === true;
+        const ignoredBy = occupied && exclusion === null ? await GitMembership.ignoreSource(core.db, core.workspaceId, key, undefined) : null;
         const address = entryAddress("file", "", key, root);
         // {§file-path-normalization} The miss names the key inside the root and the absolute address beyond it.
         const named = File.#beyondRoot(key) ? address : key;
@@ -238,8 +238,9 @@ export default class File extends CoreSchemeAdapterBase {
                 recovery: occupied
                     ? exclusion !== null
                         ? `A members exclusion (\`!${exclusion}\`) covers it: only the user can lift it.`
-                        : ignored
-                            ? "The repository ignores it: a client or operator members definition can include it, a model definition cannot."
+                        : ignoredBy !== null
+                            // {§membership-ignore-source}
+                            ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
                             : "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body."
                     : fileMissRecovery(named),
                 retryable: false,

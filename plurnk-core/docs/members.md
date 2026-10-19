@@ -23,7 +23,7 @@ and `&` graph patterns search members only.
 | plurnk created it | a file your accepted `EDIT`, `COPY`, or `MOVE` wrote gets an exact creation record; it is a member at once |
 
 An exclusion (`!glob`) wins over every inclusion. A model definition never
-includes a path the repository ignores.
+includes a path git ignores.
 
 ## What you may change here
 
@@ -50,8 +50,8 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 | --- | --- |
 | `member` | `` member — tracked by git ``, `` member — included by `docs/**` `` or `` member — a creation record: plurnk wrote it `` |
 | `candidate` | `` not a member — untracked; add this definition to include it `` |
-| `excluded` | `` not a member — excluded by `!glob` `` |
-| `ignored` | `` not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot `` |
+| `excluded` | `` not a member — excluded by `!glob`; only the user can lift it `` |
+| `ignored` | `` not a member — git ignores it (`.gitignore` line 4); a client or operator definition can include it, a model definition cannot ``, naming the rule's file and line |
 | `absent` | `` absent — no such file under the project root `` |
 
 - **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on the read
