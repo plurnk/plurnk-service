@@ -455,9 +455,10 @@ export default class Functionality {
                 retryable: false,
             });
         }
-        const input = params as Record<string, unknown>;
-        const scope = (input.scope ?? identity.scope ?? scopesOf(adapter)[0]) as "workspace" | "worker";
-        if (!scopesOf(adapter).includes(scope) || (identity.scope !== undefined && identity.scope !== scope)) {
+        const input = isRecord(params) ? params : {};
+        const requested = input.scope ?? identity.scope ?? scopesOf(adapter)[0];
+        const scope = scopesOf(adapter).find((candidate) => candidate === requested);
+        if (scope === undefined || (identity.scope !== undefined && identity.scope !== scope)) {
             throw failure(family, "scope-mismatch", 400, `The ${family} operation's scope does not match its bound context.`, { retryable: false });
         }
         identity = { ...identity, scope };
@@ -569,8 +570,8 @@ export default class Functionality {
             const provenance = inherited === undefined ? {} : { inherited };
             if (origin === scope) {
                 const result = Validator.validateJsonSchemaInstance(adapter.definitionSchema, definition);
-                if (!result.valid) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
-                definitions[alias] = { origin, enabled, definition: definition as object, ...provenance };
+                if (!result.valid || !isRecord(definition)) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' holds an invalid definition.`);
+                definitions[alias] = { origin, enabled, definition, ...provenance };
             } else {
                 if (definition !== undefined) throw new Error(`Functionality state for ${adapter.family} alias '${alias}' persists a lower-layer definition.`);
                 definitions[alias] = { origin, enabled, ...provenance };
@@ -655,7 +656,9 @@ export default class Functionality {
     // The alias a select verb names: the input's `alias`, or what an addressing family reads from its
     // own select input ({§functionality-addressing}).
     static #selected(adapter: HostFunctionalityAdapter, input: Record<string, unknown>): string {
-        return adapter.addressing === undefined ? input.alias as string : adapter.addressing.alias(input);
+        if (adapter.addressing !== undefined) return adapter.addressing.alias(input);
+        if (typeof input.alias !== "string") throw new TypeError(`A ${adapter.family} select names its alias.`);
+        return input.alias;
     }
 
     // The verb semantics, one implementation for every family ({§functionality-scope}): the next
@@ -681,7 +684,8 @@ export default class Functionality {
             case "add":
             case "replace": {
                 const admitted = await adapter.admit(input, identity, caller, options);
-                admissions = Array.isArray(admitted) ? [...admitted] : [admitted as FunctionalityAdmission];
+                const listed: FunctionalityAdmission[] = [];
+                admissions = listed.concat(admitted);
                 // {§functionality-addressing} — an alias family admits exactly one definition; an addressing
                 // family's add admits each the body names, and all of them or none.
                 if (adapter.addressing === undefined ? admissions.length !== 1 : admissions.length === 0) {

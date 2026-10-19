@@ -26,7 +26,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -473,13 +473,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // quiescent publication boundary; no in-flight proposal can change authority.
     async setWorkspaceCapabilities(args: { workspaceId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
         const workspaceId = ClientInput.assertId("workspace.capabilities.set", "workspaceId", args.workspaceId);
-        const settings = JSON.parse(ClientInput.parseSettings({ capabilities: args.policy })) as { capabilities?: CapabilityPolicy };
-        if (settings.capabilities === undefined) throw daemonFailure(
+        const settings: unknown = JSON.parse(ClientInput.parseSettings({ capabilities: args.policy }));
+        const capabilities = isRecord(settings) && settings.capabilities !== undefined ? Validator.assertCapabilityPolicy(settings.capabilities) : undefined;
+        if (capabilities === undefined) throw daemonFailure(
             "daemon:input", "capability-policy-required", 400, "policy is required.", { field: "policy", retryable: false },
         );
         return this.#residency.exclusively(workspaceId, "capabilities", "try", async () => {
             const row = await this.#db.workspace_capability_policy_update.get({
-                workspace_id: workspaceId, policy: JSON.stringify(settings.capabilities),
+                workspace_id: workspaceId, policy: JSON.stringify(capabilities),
             });
             if (row === undefined) throw daemonFailure(
                 "daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId },
@@ -706,6 +707,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             waitUntil: row.waitUntil,
             invocation: row.invocation === null || row.invocationWorkerId === null ? null : { workerId: row.invocationWorkerId, address: row.invocation },
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
             terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
     }
     // {§methods-workspace-prompts}: root-worker loop seeds, newest-first.
@@ -790,8 +792,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§methods-workspace-attach} Selection is passive and never searches by the stored project folder.
     async attachWorkspace(args: Parameters<ApplicationPort["attachWorkspace"]>[0]): Promise<ClientEnvelope> {
-        const selectors = ["workspaceId", "name", "projectRoot"].filter((key) => Object.hasOwn(args, key));
-        if (selectors.length !== 1 || args[selectors[0] as keyof typeof args] == null) {
+        const selectors = (["workspaceId", "name", "projectRoot"] as const).filter((key) => Object.hasOwn(args, key));
+        if (selectors.length !== 1 || args[selectors[0]] == null) {
             throw daemonFailure("daemon:workspace", "identity-invalid", 400,
                 "Workspace selection requires exactly one ID, name or project root.", { retryable: false });
         }
@@ -1281,10 +1283,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // Per-scheme idle awaits for clean shutdown. New streaming schemes
     // (SSE, WS) add themselves here as they land.
     async #drainStreamingSchemes(): Promise<void> {
-        const exec = this.#schemes.get("exec") as { idle?: () => Promise<void>; abortDetached?: () => void } | undefined;
+        const exec = this.#schemes.get("exec");
+        if (!(exec instanceof Exec)) return;
         // {§exec-lifetime} — a detached spawn ends with the daemon: nothing else ever aborts it.
-        exec?.abortDetached?.();
-        if (exec?.idle !== undefined) await exec.idle();
+        exec.abortDetached();
+        await exec.idle();
     }
 
 
@@ -1337,10 +1340,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // Process-local stream activity is supplied to the drain owner through the
     // scheme registry rather than exposing that registry across the boundary.
     #workerHasActiveStreams(workerId: number): boolean {
-        const exec = this.#schemes.get("exec") as {
-            hasActiveSpawns?: (workerId: number) => boolean;
-        } | undefined;
-        return exec?.hasActiveSpawns?.(workerId) ?? false;
+        const exec = this.#schemes.get("exec");
+        return exec instanceof Exec && exec.hasActiveSpawns(workerId);
     }
 
     // {§methods-event-subscribe} — subscriber failures are transport-local:

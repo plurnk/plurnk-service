@@ -1,4 +1,5 @@
 import {
+    isRecord,
     PathSyntax,
     type FindStatement,
     type KillStatement,
@@ -378,12 +379,15 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetypeRx: row.mimetype_rx,
         });
         const trimmed = LogVisibility.parse(row.folded);
-        const { stream } = JSON.parse(row.attrs) as { stream?: unknown };
-        const result = row.mimetype_rx === "application/json" ? JSON.parse(row.rx) as Record<string, unknown> : {};
-        const media = (result.image ?? result.document ?? result.audio) as { mimetype?: string } | undefined;
+        const attrs: unknown = JSON.parse(row.attrs);
+        const stream = isRecord(attrs) ? attrs.stream : undefined;
+        const parsed: unknown = row.mimetype_rx === "application/json" ? JSON.parse(row.rx) : {};
+        const result = isRecord(parsed) ? parsed : {};
+        const mediaValue = result.image ?? result.document ?? result.audio;
+        const media = isRecord(mediaValue) ? mediaValue : undefined;
         const attributes = {
             ...(typeof stream === "string" ? { stream } : {}),
-            ...(typeof result.nativeContentHash === "string" && media?.mimetype !== undefined
+            ...(typeof result.nativeContentHash === "string" && typeof media?.mimetype === "string"
                 ? { nativeContentHash: result.nativeContentHash, sourceProjection: { mimetype: media.mimetype, facts: media } }
                 : {}),
         };
@@ -980,11 +984,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const result = row.mimetype_rx === "application/json"
             ? JSON.parse(row.rx) as unknown
             : null;
-        const rawAnchors = LogEntryProjection.op(row) === "READ"
-            && result !== null
-            && typeof result === "object"
-            && Object.hasOwn(result, "lineAnchors")
-            ? (result as { lineAnchors: unknown }).lineAnchors
+        const rawAnchors = LogEntryProjection.op(row) === "READ" && isRecord(result) && Object.hasOwn(result, "lineAnchors")
+            ? result.lineAnchors
             : [];
         if (!Array.isArray(rawAnchors)) {
             throw new TypeError("A READ log body carries malformed published line anchors.");

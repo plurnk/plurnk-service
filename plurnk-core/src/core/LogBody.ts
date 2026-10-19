@@ -1,4 +1,4 @@
-import { TurnDisposition, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -131,17 +131,18 @@ export default class LogBody {
         }
 
         // Historical reply receipts remain readable after their former operation is retired.
-        const reply = rx !== null && typeof rx === "object" && Array.isArray((rx as { answers?: unknown }).answers);
+        const reply = isRecord(rx) && Array.isArray(rx.answers);
         if (row.op === "EDIT" || row.op === "KILL" && !reply) {
-            if (rx !== null && typeof rx === "object") {
-                const result = rx as Record<string, unknown>;
+            if (isRecord(rx)) {
+                const result = rx;
                 if (Object.hasOwn(result, "receipt")) {
                     // {§edit-pattern} — a pattern batch keeps the first landed span as its receipt
                     // and the last as `last`; the row shows both boundaries.
                     const last = result.last;
+                    const receipt = assertEditReceipt(result.receipt);
                     return LogBody.#receiptBody([
-                        assertEditReceipt(result.receipt),
-                        ...(last !== undefined && last !== null ? [assertEditReceipt({ ...(result.receipt as object), effect: last })] : []),
+                        receipt,
+                        ...(last !== undefined && last !== null ? [assertEditReceipt({ ...receipt, effect: last })] : []),
                     ]);
                 }
                 if (row.op === "EDIT" && typeof result.span === "string") {
@@ -157,8 +158,8 @@ export default class LogBody {
         }
 
         if (row.op === "COPY" || row.op === "MOVE") {
-            if (rx !== null && typeof rx === "object") {
-                const result = rx as Record<string, unknown>;
+            if (isRecord(rx)) {
+                const result = rx;
                 if (Object.hasOwn(result, "effects")) {
                     const receipts = assertResourceEffects(result.effects)
                         .flatMap(({ receipt }) => receipt === undefined ? [] : [receipt]);
@@ -198,8 +199,8 @@ export default class LogBody {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"
                     ? body
-                    : body !== null && typeof body === "object" && typeof (body as { raw?: unknown }).raw === "string"
-                        ? (body as { raw: string }).raw
+                    : isRecord(body) && typeof body.raw === "string"
+                        ? body.raw
                         : "";
                 if (content.length > 0) {
                     return {

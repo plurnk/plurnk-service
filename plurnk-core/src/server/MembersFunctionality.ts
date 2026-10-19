@@ -9,7 +9,7 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -217,7 +217,10 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     readonly addressing: FunctionalityAddressing = {
         add: ADD,
         select: SELECT,
-        alias: (input) => (input as { file: string }).file.trim(),
+        alias: (input) => {
+            if (!isRecord(input) || typeof input.file !== "string") throw new TypeError("A members select names its file.");
+            return input.file.trim();
+        },
     };
     readonly example = { files: ["docs/**"] };
     readonly docsDir = Paths.packageRoot;
@@ -304,7 +307,10 @@ export default class MembersFunctionality implements FunctionalityAdapter {
     // {§functionality-addressing} — every glob the body names is admitted, or none is: a bare `!`
     // or a glob past the model's scope refuses the whole add. The same glob twice is one definition.
     async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission[]> {
-        const { files } = input as { files: readonly string[] };
+        if (!isRecord(input) || !Array.isArray(input.files) || !input.files.every((file): file is string => typeof file === "string")) {
+            throw new TypeError("A members add names its files.");
+        }
+        const { files } = input;
         const scope = caller === "operation"
             ? FileCreationPolicy.effective(modelScope(this.#env), (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope)
             : null;

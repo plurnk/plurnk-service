@@ -1,4 +1,4 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,7 +31,7 @@ const assertDaemonModule = (
         throw new TypeError(`module package '${packageName}' ${detail}.`);
     }
     for (const member of ["setup", "start", "stop", "close"] as const) {
-        const hook = (value as Record<string, unknown>)[member];
+        const hook = isRecord(value) ? value[member] : undefined;
         if (hook !== undefined && typeof hook !== "function") {
             throw new TypeError(
                 `module package '${packageName}' lifecycle member '${member}' must be a function when present.`,
@@ -108,10 +108,8 @@ export const discoverDaemonModules = async (
             if (sources.plugins.some(({ root }) => root === candidate.dir)) {
                 await EnvDefaults.nativeFile(candidate.dir, manifest.packageName);
             }
-            const imported = await import(pathToFileURL(manifest.module).href) as {
-                default?: unknown;
-            };
-            const exported = imported.default;
+            const imported: unknown = await import(pathToFileURL(manifest.module).href);
+            const exported = isRecord(imported) ? imported.default : undefined;
             if (exported === undefined) {
                 throw new Error(`module package '${manifest.packageName}' exports no default DaemonModule at '${manifest.module}'.`);
             }
@@ -124,13 +122,13 @@ export const discoverDaemonModules = async (
                     `module package '${manifest.packageName}' DaemonModule factory must accept no arguments.`,
                 );
             }
-            const created = await (exported as () => unknown)();
+            const created: unknown = await Reflect.apply(exported, undefined, []);
             modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
         } catch (cause) {
             const owner = `module:${manifest.packageName}`;
             if (errnoCode(cause) === "ERR_MODULE_NOT_FOUND") {
                 configurationErrors.push({ owner, cause: new ConfigurationError(manifest.manifestPath,
-                    `${manifest.packageName}: ${(cause as Error).message}`, { cause }) });
+                    `${manifest.packageName}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause }) });
                 continue;
             }
             if (!(cause instanceof ConfigurationError)) throw cause;

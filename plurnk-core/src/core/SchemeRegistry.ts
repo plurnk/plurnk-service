@@ -13,7 +13,7 @@ import {
     type SchemeHandler,
     type WebMaterializer,type RuntimeSchemeFacet
 } from "@plurnk/plurnk-schemes";
-import type { ParsedPath } from "@plurnk/plurnk-contracts";
+import { isRecord, type ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -27,6 +27,11 @@ import Meta, {
     type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { readTeachingSource, type ReadTeaching } from "./teaching-corpus.ts";
+
+// A handler that binds core services: the adapter contract's one hook, read where the registry binds.
+// An object a scheme package constructs is a handler: every member is optional, and Manifest.of checks the one it must carry.
+const constructedScheme = (value: unknown): value is RegisteredScheme => isRecord(value);
+const bindsCore = (handler: object): handler is CoreSchemeAdapter => "bindCore" in handler && typeof handler.bindCore === "function";
 
 interface NamespaceClaim {
     readonly key: string;
@@ -90,7 +95,8 @@ export default class SchemeRegistry {
     }
 
     outputResource(manifest: SchemeManifest): ExecOutputScheme {
-        const exec = this.#handlers.get("exec") as Exec;
+        const exec = this.#handlers.get("exec");
+        if (!(exec instanceof Exec)) throw new Error("Stored output requires the exec scheme.");
         const handler = new ExecOutputScheme(manifest, exec);
         if (this.#coreServices === undefined) throw new Error("Stored output requires bound core services.");
         handler.bindCore(this.#coreServices);
@@ -114,8 +120,7 @@ export default class SchemeRegistry {
     #registerClaimed(name: string, handler: RegisteredScheme, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
         if (this.#assertClaim(name, claim, sameOwnerRescan) === "same") return false;
         Manifest.of(handler, name);
-        const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
-        if (this.#coreServices !== undefined && typeof bindCore === "function") bindCore.call(handler, this.#coreServices);
+        if (this.#coreServices !== undefined && bindsCore(handler)) handler.bindCore(this.#coreServices);
         this.#handlers.set(name, handler);
         this.#claims.set(name, claim);
         return true;
@@ -164,8 +169,7 @@ export default class SchemeRegistry {
     bindCore(services: CoreSchemeServices): void {
         this.#coreServices = services;
         for (const handler of this.#allHandlers()) {
-            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
-            if (typeof bindCore === "function") bindCore.call(handler, services);
+            if (bindsCore(handler)) handler.bindCore(services);
         }
     }
 
@@ -226,10 +230,7 @@ export default class SchemeRegistry {
             if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
             const handler = new ExecOutputScheme(executor.manifest, exec, facet);
             Manifest.of(handler, tag);
-            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
-            if (this.#coreServices !== undefined && typeof bindCore === "function") {
-                bindCore.call(handler, this.#coreServices);
-            }
+            if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
             prepared.push({ tag, handler, claim });
         }
         return () => {
@@ -276,10 +277,7 @@ export default class SchemeRegistry {
             }
             const handler = new ExecOutputScheme(executor.manifest, exec, facet);
             Manifest.of(handler, tag);
-            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
-            if (this.#coreServices !== undefined && typeof bindCore === "function") {
-                bindCore.call(handler, this.#coreServices);
-            }
+            if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
             await this.#readyHandler(handler);
             handlers.set(tag, handler);
             claims.set(tag, incoming);
@@ -455,10 +453,11 @@ export default class SchemeRegistry {
             // {§extension-discovery} — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
             // absent = the classic single default export. A declared export that isn't a constructor
             // fails the boot hard — a manifest naming a missing class is a misdeclaration, not a skip.
-            const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
-            const Handler = mod[exportName ?? "default"];
+            const mod: unknown = await import(packageName);
+            const Handler = isRecord(mod) ? mod[exportName ?? "default"] : undefined;
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor`);
-            const handler = new Handler();
+            const handler: unknown = Reflect.construct(Handler, []);
+            if (!constructedScheme(handler)) throw new Error(`external scheme '${name}' (${packageName}): the constructor returned no object`);
             this.#registerClaimed(name, handler, claim, true);
             const sources = this.#packageAttributionSources.get(packageName) ?? new Set<object>();
             sources.add(handler);

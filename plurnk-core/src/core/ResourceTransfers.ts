@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { CopyStatement, EditStatement, LineMarker, MoveStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -218,7 +219,7 @@ export default class ResourceTransfers {
             return {
                 ...destinationResult,
                 attrs: {
-                    ...(destinationResult.attrs as Record<string, unknown> | undefined),
+                    ...(isRecord(destinationResult.attrs) ? destinationResult.attrs : {}),
                     moveSource: MutationEffects.deferredMoveSource(
                         selected,
                         resolvedDestination,
@@ -844,7 +845,7 @@ export default class ResourceTransfers {
                 target: selection.target,
                 routedScheme: selection.scheme,
                 handler,
-                manifest: selection.manifest as SchemeManifest & { readonly category: "data" },
+                manifest: selection.manifest,
                 ctx,
                 access: "write",
             });
