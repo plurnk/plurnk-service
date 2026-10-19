@@ -262,14 +262,9 @@ export default class ReadProjector {
             detail: string,
             fields: Readonly<Record<string, unknown>> = {},
             extensions: Readonly<Record<string, unknown>> = {},
-        ): EntryReadResult => ({
-            // {§read-selection-projection} The failure is a read result: the members a read result names, then the
-            // scheme's own fields, as the failure builder lays them out.
-            ...Results.failure(`scheme:${manifest.name}`, code, status, detail, { content: null, mimetype: null, channel, ...fields }, extensions),
-            content: null,
-            mimetype: null,
-            channel,
-        });
+        // {§read-selection-projection} The failure is a read result: the members a read result names, then the
+        // scheme's own fields, as the failure builder lays them out.
+        ): EntryReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, { content: null, mimetype: null, channel, ...fields }, extensions);
 
         // {§read-bytes} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
         if (selected === ByteView.CHANNEL && !Object.hasOwn(manifest.channels, selected)) {

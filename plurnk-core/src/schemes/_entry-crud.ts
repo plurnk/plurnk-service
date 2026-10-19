@@ -78,7 +78,7 @@ export default class EntryCrud {
                 missDetail(scheme, target),
                 { entry: null },
                 missExtensions(scheme, target),
-            ) as ReadEntryResult;
+            );
         }
 
         const channels: StoredEntryData["channels"] = {};
@@ -145,7 +145,7 @@ export default class EntryCrud {
                 `scheme:${scheme}`, "entry-exists", 409,
                 `An entry already exists at ${entryAddress(scheme, authority, pathname, scheme === "file" ? await FileAddress.projectRoot(ctx) : null)}.`,
                 { created: false, entryId: null },
-            ) as WriteEntryResult;
+            );
             throw new Error("writeEntry: publication returned no row");
         }
         const created = published.created === 1;

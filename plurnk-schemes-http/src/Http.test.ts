@@ -127,7 +127,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
                     404,
                     `No entry exists at ${pathname}.`,
                     { entry: null },
-                ) as EntryStorageReadResult
+                )
                 : Results.assert({ status: 200, entry: storedEntry });
         },
         async write(pathname, entry) {
@@ -642,7 +642,7 @@ test("{§http-lifecycle} exact FIND preparation preserves an exact storage-read 
         "The entry store is unavailable.",
         { entry: null },
         { stage: "storage", retryable: true },
-    ) as EntryStorageReadResult;
+    );
     const { ctx, inspect } = makeCtx(null, { read: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
@@ -1552,7 +1552,7 @@ test("{§http-lifecycle} READ preserves an exact storage-read failure before acq
         "The entry store is unavailable.",
         { entry: null },
         { stage: "storage", retryable: true },
-    ) as EntryStorageReadResult;
+    );
     const { ctx, inspect } = makeCtx(null, { read: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {

@@ -89,7 +89,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             "Stored execution output does not accept FIND metadata.", {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
-            }, { retryable: false }) as FindResult;
+            }, { retryable: false });
         // A facet without a find of its own is searched as ordinary entries, under its own
         // representation and after whatever it prepares.
         const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));

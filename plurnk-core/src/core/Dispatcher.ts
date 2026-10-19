@@ -124,6 +124,14 @@ export type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
 // Op dispatch ({§op-methods-op-dispatch}): admission, operation-owner routing,
 // durable log writing, and proposal lifecycle.
 export default class Dispatcher {
+    static #failure(code: string, status: number, detail: string): DispatchResult;
+    static #failure<F extends Readonly<Record<string, unknown>>>(
+        code: string,
+        status: number,
+        detail: string,
+        fields: F,
+        extensions?: Readonly<Record<string, unknown>>,
+    ): DispatchResult & F;
     static #failure(
         code: string,
         status: number,
@@ -280,7 +288,7 @@ export default class Dispatcher {
                     target: renderAddress(address),
                     retryable: false,
                 },
-            ) as ReadEntryResult;
+            );
         }
         const result = Results.assert(await caps.read(pathname));
         return Results.assert({
@@ -317,7 +325,7 @@ export default class Dispatcher {
                     target: renderAddress(address),
                     retryable: false,
                 },
-            ) as WriteEntryResult;
+            );
         }
         return Results.assert(await caps.write(pathname, entry));
     }

@@ -709,6 +709,6 @@ export default class Ws implements SchemeHandler {
             message,
             { shape: "passthrough" },
             extensions,
-        ) as PassthroughResult & ChannelProducerResult;
+        );
     }
 }

@@ -302,7 +302,7 @@ test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its
                     target: "https://example.org/rejected",
                     retryable: false,
                 },
-            ) as Awaited<ReturnType<typeof EntryCrud.writeEntry>>
+            )
             : writeEntry(...args);
     });
     try {

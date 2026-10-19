@@ -911,6 +911,6 @@ export default class Http implements SchemeHandler {
             message,
             { shape: "passthrough" },
             extensions,
-        ) as PassthroughResult & ChannelProducerResult;
+        );
     }
 }

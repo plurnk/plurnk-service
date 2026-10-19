@@ -99,7 +99,7 @@ const findFailure = (
         stage: "mcp-resource",
         ...extensions,
     },
-) as EntryFindResult;
+);
 
 const preparationEntryFailure = (
     failure: EntryOperationFailure,

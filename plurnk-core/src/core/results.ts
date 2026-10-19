@@ -48,6 +48,15 @@ export default class Results {
         return _Results.problem(owner, code, status, detail, extensions);
     }
 
+    static failure(owner: string, code: string, status: number, detail: string): SchemeResult;
+    static failure<F extends Readonly<Record<string, unknown>>>(
+        owner: string,
+        code: string,
+        status: number,
+        detail: string,
+        fields: F,
+        extensions?: Readonly<Record<string, unknown>>,
+    ): SchemeResult & F;
     static failure(
         owner: string,
         code: string,

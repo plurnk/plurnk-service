@@ -569,7 +569,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 - §result-shape-guards `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional result shapes; at most one matches a result, none matches a bare one, and extension-owned fields may ride beside `status` without adopting a shape.
 - §result-error-status `Results.isErrorStatus(status)` — `status >= 400`, and only those.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
-- `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
+- `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result; its type carries the fields it was given.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed extension output.
 - `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, enclosingRegion?, matched? }` shape and shared `TextRegion` contract.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.

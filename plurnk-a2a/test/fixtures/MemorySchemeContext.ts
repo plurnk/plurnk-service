@@ -3,7 +3,6 @@ import {
     type ChannelProducerResult,
     type EntryCaps,
     type EntryData,
-    type EntryStorageReadResult,
     type SchemeCtx,
     type StoredEntryData,
     type StreamSubscription,
@@ -45,7 +44,7 @@ export default class MemorySchemeContext {
                         404,
                         `No entry exists at ${pathname}.`,
                         { entry: null },
-                    ) as EntryStorageReadResult
+                    )
                     : { status: 200, entry };
             },
             write: async (pathname, entry) => {

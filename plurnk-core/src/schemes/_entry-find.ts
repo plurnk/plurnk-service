@@ -812,7 +812,7 @@ export default class EntryFind {
                 match.error,
                 empty,
                 match.extensions,
-            ) as FindResult;
+            );
         }
         const scheme = EntryCrud.identityScheme(manifest);
         const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;

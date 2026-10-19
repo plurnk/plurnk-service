@@ -113,7 +113,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
                 404,
                 "No entry exists.",
                 { entry: null },
-            ) as Awaited<ReturnType<EntryCaps["read"]>>;
+            );
         },
         async write(pathname, entry) {
             wrote = pathname;

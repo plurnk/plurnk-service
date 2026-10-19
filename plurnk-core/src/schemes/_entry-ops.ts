@@ -101,9 +101,9 @@ export default class EntryOps {
             code: string,
             status: number,
             detail: string,
-            fields: Readonly<Record<string, unknown>>,
+            fields: Pick<EditResult, "entryId" | "channel">,
             extensions: Readonly<Record<string, unknown>> = {},
-        ): EditResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields, extensions) as EditResult;
+        ): EditResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields, extensions);
         const statement = statements[0];
         if (statement === undefined) {
             return failure(
@@ -205,7 +205,7 @@ export default class EntryOps {
             return EditCollision.result(precondition.identity, {
                 entryId: existing?.id ?? null,
                 channel: targetChannel,
-            }) as EditResult;
+            });
         }
 
         // `<scope>` always addresses the selected channel's textual representation.
@@ -295,7 +295,7 @@ export default class EntryOps {
                 return EditCollision.result(
                     precondition?.identity ?? EntryManifest.toPath(scheme, authority, pathname),
                     { entryId: null, channel: targetChannel },
-                ) as EditResult;
+                );
             }
             entryId = row.id;
             createdNow = true;
@@ -323,7 +323,7 @@ export default class EntryOps {
             return EditCollision.result(
                 precondition?.identity ?? EntryManifest.toPath(scheme, authority, pathname),
                 { entryId, channel: targetChannel },
-            ) as EditResult;
+            );
         }
         // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body} —
         // and its derived `readable` sibling follows a source write ({§readable-channel}).
@@ -410,9 +410,9 @@ export default class EntryOps {
             code: string,
             status: number,
             detail: string,
-            fields: Readonly<Record<string, unknown>>,
+            fields: Pick<ReadResult, "content" | "mimetype" | "channel">,
             extensions: Readonly<Record<string, unknown>> = {},
-        ): ReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields, extensions) as ReadResult;
+        ): ReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, fields, extensions);
         if (statement.target === null) {
             return failure(
                 "read-target-required",

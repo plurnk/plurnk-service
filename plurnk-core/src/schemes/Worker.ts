@@ -157,7 +157,7 @@ export default class Worker extends CoreSchemeAdapterBase {
             detail,
             { entryId: null, channel: null },
             extensions,
-        ) as EditResult;
+        );
         const statement = statements[0];
         if (statement === undefined) {
             return failure(
@@ -243,7 +243,7 @@ export default class Worker extends CoreSchemeAdapterBase {
             }, {
                 recovery: "Provide the worker target.",
                 retryable: false,
-            }) as FindResult;
+            });
         }
         // {§owner-interaction-ring} The shared reserved tree, as this worker may see it.
         const visible = authority === "" ? await core.referenceVisibility?.() : undefined;

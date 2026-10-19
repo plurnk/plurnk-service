@@ -473,7 +473,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 detail!,
                 fields,
                 extensions,
-            ) as FindResult
+            )
             : { status, ...fields };
     }
 
