@@ -1,7 +1,7 @@
 // {§skills-sources} — where an added Agent Skill comes from: a git remote on any forge, a folder, a
 // lone SKILL.md, or a zip or tar archive, read with git, tar and unzip. Fetching runs nothing it
 // fetched, and an installed skill holds nothing that points out of it.
-import { errnoCode } from "@plurnk/plurnk-contracts";
+import { isRecord, errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,7 +55,7 @@ const isFile = (path: string): Promise<boolean> => stat(path).then((info) => inf
 
 // The reason a tool gave: its last stderr line, or that it outran its deadline.
 const reason = (cause: unknown): string => {
-    const failure = cause as { killed?: boolean; stderr?: unknown };
+    const failure = isRecord(cause) ? cause : {};
     if (failure.killed === true) return "it outran PLURNK_SKILLS_FETCH_TIMEOUT_MS";
     const text = typeof failure.stderr === "string" && failure.stderr.trim().length > 0 ? failure.stderr : messageOf(cause);
     return text.split(/\r?\n/u).map((line) => line.trim()).findLast((line) => line.length > 0) ?? messageOf(cause);

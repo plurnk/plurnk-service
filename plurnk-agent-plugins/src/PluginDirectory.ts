@@ -101,7 +101,7 @@ export default class PluginDirectory {
             try {
                 skills.push(await SkillDirectory.load(join(real, name)));
             } catch (cause) {
-                report(`skills/${name}`, "7.1", "skipped", (cause as Error).message);
+                report(`skills/${name}`, "7.1", "skipped", cause instanceof Error ? cause.message : String(cause));
             }
         }
         return skills;

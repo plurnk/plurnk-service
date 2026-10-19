@@ -39,6 +39,7 @@ export interface RefsQuery {
     captures(node: TreeSitterNode): RefsQueryCapture[];
 }
 
+const isRefKind = (value: string): value is RefKind => REF_KINDS.has(value);
 const REF_KINDS: ReadonlySet<string> = new Set<RefKind>([
     "import", "call", "instantiate", "inherit", "type", "use",
 ]);
@@ -56,7 +57,7 @@ export function collectReferences(
     for (const capture of query.captures(tree.rootNode)) {
         if (!capture.name.startsWith("ref.")) continue;
         const kind = capture.name.slice(4);
-        if (!REF_KINDS.has(kind)) continue;
+        if (!isRefKind(kind)) continue;
         const name = capture.node.text;
         if (name.length === 0) continue;
         const region = coordinates.treeSitterNode(capture.node);
@@ -71,7 +72,7 @@ export function collectReferences(
         const container = enclosingDefPath(defs, line);
         out.push({
             name,
-            kind: kind as RefKind,
+            kind,
             line,
             column,
             endLine: region.endLine,

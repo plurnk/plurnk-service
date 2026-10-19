@@ -111,7 +111,7 @@ const listItems = (element: AnyElement, ordered: boolean): string[] => {
 };
 
 const fenced = (element: AnyElement): string[] => {
-    const codeChild = Array.from(element.childNodes).find((child) => isElement(child) && child.tagName === "CODE") as AnyElement | undefined;
+    const codeChild = Array.from(element.childNodes).find((child): child is AnyElement => isElement(child) && child.tagName === "CODE");
     const body = (codeChild ?? element).textContent ?? "";
     const language = /language-([\w-]+)/.exec(codeChild?.getAttribute("class") ?? "")?.[1] ?? "";
     const longest = Math.max(2, ...[...body.matchAll(/`+/g)].map((m) => m[0].length));

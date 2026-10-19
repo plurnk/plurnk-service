@@ -1,6 +1,9 @@
 import type { Document as XmlDocument, Element, Node as XmlNode } from "@xmldom/xmldom";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 
+// A node whose type is ELEMENT_NODE is an element: the DOM's own contract.
+const isElementNode = (node: XmlNode): node is Element => node.nodeType === 1;
+
 function span(region: TextRegion): { line: number; endLine: number; column: number; endColumn: number } {
     return { line: region.startLine, column: region.startColumn, endLine: region.endLine, endColumn: region.endColumn };
 }
@@ -36,7 +39,7 @@ export function projectDomToJson(document: XmlDocument, regionFor: (node: XmlNod
         } else if (children.length > 0) {
             value.children = children.map((child, index) => {
                 const childPath = pointer + "/children/" + index;
-                if (child.nodeType === 1) return element(child as Element, childPath);
+                if (isElementNode(child)) return element(child, childPath);
                 const fields = coordinate(child, childPath);
                 coordinate(child, childPath + "/text");
                 return { type: "#text", text: child.nodeValue, ...fields };

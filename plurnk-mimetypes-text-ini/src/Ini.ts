@@ -6,6 +6,9 @@ import {
 } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes";
 
+// The record guard, local since this package holds no contracts dependency.
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 // text/x-ini handler: a single-line scan ({§ini-tree}); symbols are {§ini-symbols} and
 // structural queries answer with lexical spans ({§ini-regions}).
 export default class Ini extends BaseHandler {
@@ -34,8 +37,9 @@ export default class Ini extends BaseHandler {
             if (section.name === null) {
                 for (const k of section.keys) root[k.key] = k.value;
             } else {
-                if (typeof root[section.name] !== "object") root[section.name] = Object.create(null);
-                const target = root[section.name] as Record<string, string>;
+                const existing = root[section.name];
+                const target: Record<string, unknown> = isRecord(existing) ? existing : Object.create(null);
+                root[section.name] = target;
                 for (const k of section.keys) target[k.key] = k.value;
             }
         }

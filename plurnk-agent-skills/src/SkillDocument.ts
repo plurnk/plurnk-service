@@ -1,5 +1,5 @@
 import { parse as parseYaml } from "yaml";
-import { SKILL_NAME } from "@plurnk/plurnk-contracts";
+import { isRecord, SKILL_NAME } from "@plurnk/plurnk-contracts";
 
 export interface SkillDocument {
     readonly name: string;
@@ -19,10 +19,10 @@ const frontmatter = (file: string, source: string): { fields: Record<string, unk
     } catch (cause) {
         throw new Error(`${file}: Agent Skill frontmatter is invalid YAML`, { cause });
     }
-    if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+    if (!isRecord(metadata)) {
         throw new Error(`${file}: Agent Skill frontmatter must be a mapping`);
     }
-    return { fields: metadata as Record<string, unknown>, header: header[0] };
+    return { fields: metadata, header: header[0] };
 };
 
 const nameOf = (file: string, fields: Record<string, unknown>): string => {

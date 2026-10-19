@@ -64,6 +64,7 @@ export type ProviderInfo = {
     readonly api?: string;
 };
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the catalog is generated into this shape from the Models.dev snapshot
 const data = catalog as Record<string, Record<string, ModelInfo>>;
 const providerData = providers as Record<string, ProviderInfo>;
 

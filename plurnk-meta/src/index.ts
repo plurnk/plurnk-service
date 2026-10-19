@@ -32,6 +32,9 @@ import { fileURLToPath } from "node:url";
 import ConfigurationError from "./ConfigurationError.ts";
 import { AgentPluginFiles, isObject } from "./AgentPlugin.ts";
 
+// The record guard, local since this package holds no contracts dependency.
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 export { default as Knob } from "./Knob.ts";
 export { default as ConfigurationError } from "./ConfigurationError.ts";
 export { default as ResourceEnvironment } from "./ResourceEnvironment.ts";
@@ -192,7 +195,8 @@ export default class Meta {
     static #panelTrust(): string {
         if (Meta.#shippedTrust === undefined) {
             const panel = path.join(fileURLToPath(new URL("..", import.meta.url)), ".env.defaults");
-            const declared = (parseEnv(readFileSync(panel, "utf8")) as Record<string, string>)[TRUSTED_ONLY];
+            const parsed: unknown = parseEnv(readFileSync(panel, "utf8"));
+            const declared = isRecord(parsed) && typeof parsed[TRUSTED_ONLY] === "string" ? parsed[TRUSTED_ONLY] : undefined;
             if (declared === undefined) {
                 throw new Error(`@plurnk/plurnk-meta: ${TRUSTED_ONLY} is missing from its own .env.defaults — the shipped floor is not optional.`);
             }

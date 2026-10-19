@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import BaseHandler from "./BaseHandler.ts";
 import { disposeAcquired } from "./dispose-acquired.ts";
 import type { HandlerContent } from "./BaseHandler.ts";
@@ -48,12 +49,12 @@ export interface TreeSitterNode {
 // Shared tree-sitter adapter ({§mimetype-backend-selection}). Subclasses supply
 // parser loading and symbol projection; thrown failures remain causal.
 export default abstract class TreeSitterExtractor extends BaseHandler {
-    #parserPromise: Promise<unknown> | null = null;
+    #parserPromise: Promise<TreeSitterParser> | null = null;
     // loadParser() primes the language/query pair used by the shared engine.
     #language: unknown = null;
     #QueryCtor: QueryConstructor | null = null;
     #refsQuery: RefsQuery | null = null;
-    #rawRefsQuery: { delete?(): void } | null = null;
+    #rawRefsQuery: unknown = null;
     #disposePromise: Promise<void> | null = null;
 
     protected abstract loadParser(): Promise<TreeSitterParser>;
@@ -92,7 +93,8 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
                 throw new Error("internal: collectRefs() before loadParser() called setQueryContext()");
             }
             const raw = new this.#QueryCtor(this.#language, source);
-            this.#rawRefsQuery = raw as { delete?(): void };
+            this.#rawRefsQuery = raw;
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a raw web-tree-sitter Query answers the refs query's captures
             this.#refsQuery = wrap ? wrap(raw) : (raw as RefsQuery);
         }
         return this.#refsQuery;
@@ -138,7 +140,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
     // One parser/WASM instance per handler lifetime.
     protected getParser(): Promise<TreeSitterParser> {
         this.#parserPromise ??= this.loadParser();
-        return this.#parserPromise as Promise<TreeSitterParser>;
+        return this.#parserPromise;
     }
 
     // web-tree-sitter retains explicit parser/query resources
@@ -164,12 +166,12 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         this.#QueryCtor = null;
 
         const queryResults = await Promise.allSettled([
-            Promise.resolve().then(() => query?.delete?.()),
+            Promise.resolve().then(() => { if (isRecord(query) && typeof query.delete === "function") Reflect.apply(query.delete, query, []); }),
         ]);
         const parserResults = await Promise.allSettled([
             parser === null
                 ? Promise.resolve()
-                : disposeAcquired(parser, (resolved) => (resolved as TreeSitterParser).delete?.()),
+                : disposeAcquired(parser, (resolved) => resolved.delete?.()),
         ]);
         const errors = [...queryResults, ...parserResults]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")

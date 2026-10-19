@@ -21,6 +21,7 @@ export function htmlToMarkdown(html: string): string | undefined {
     // a crash means "no article here", never a failed projection.
     let articleHtml: string | null | undefined;
     try {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a cloned document is a document; Readability types its input by the browser's Document
         articleHtml = new Readability(document.cloneNode(true) as Document).parse()?.content;
     } catch {
         articleHtml = undefined;

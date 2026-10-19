@@ -61,6 +61,7 @@
 //     <params>y</params>
 //   </function_definition>
 
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 
 const ATTRIBUTE_FIELDS = new Set([
@@ -81,6 +82,8 @@ export const PK_NS = "https://plurnk.xyz/deep-xml/1";
 // resolver keyed by JSON pointer. When present, it owns source coordinates;
 // data fields cannot impersonate parser provenance.
 type ProjectSpan = { line: number; endLine: number; column?: number; endColumn?: number };
+// A region list, which `Array.isArray` cannot tell from a span for a readonly array.
+const isRegionList = (span: ProjectSpan | readonly TextRegion[]): span is readonly TextRegion[] => Array.isArray(span);
 export type ProjectLineFor = (pointer: string) => ProjectSpan | readonly TextRegion[] | undefined;
 type ProjectionKind = "tree" | "value";
 
@@ -99,8 +102,8 @@ function ptrKey(k: string): string {
 function resolvedLineAttrs(lineFor: ProjectLineFor | undefined, pointer: string): string {
     const span = lineFor?.(pointer);
     if (!span) return "";
-    if (Array.isArray(span)) return span.length === 0 ? "" : ` ${PK_PREFIX}:regions="${escapeAttr(JSON.stringify(span))}"`;
-    const single = span as ProjectSpan;
+    if (isRegionList(span)) return span.length === 0 ? "" : ` ${PK_PREFIX}:regions="${escapeAttr(JSON.stringify(span))}"`;
+    const single = span;
     const columns = single.column !== undefined && single.endColumn !== undefined
         ? ` ${PK_PREFIX}:column="${single.column}" ${PK_PREFIX}:endColumn="${single.endColumn}"`
         : "";
@@ -125,7 +128,7 @@ function renderValue(value: unknown, elementName: string, pointer: string, lineF
         return `<${tag}${ns}${la}>${inner}</${tag}>`;
     }
     if (typeof value === "object") {
-        return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, kind, isRoot);
+        return renderObject(isRecord(value) ? value : {}, elementName, pointer, lineFor, kind, isRoot);
     }
     return `<${tag}${ns}/>`;
 }
@@ -161,8 +164,8 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
     // working naturally and is structurally distinguishable from
     // framework bookkeeping.
     const extraAttrs = tree ? obj.attrs : undefined;
-    if (extraAttrs !== null && typeof extraAttrs === "object" && !Array.isArray(extraAttrs)) {
-        for (const [k, v] of Object.entries(extraAttrs as Record<string, unknown>)) {
+    if (isRecord(extraAttrs)) {
+        for (const [k, v] of Object.entries(extraAttrs)) {
             if (v === null || v === undefined) continue;
             if (typeof v === "number" || typeof v === "boolean"
                 || (typeof v === "string" && v.length > 0)) {

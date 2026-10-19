@@ -213,5 +213,6 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             };
         }
     };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the mixin's constructor is the base's with the extractor's members
     return Mixed as unknown as MixedCtor<T>;
 }

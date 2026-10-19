@@ -150,13 +150,6 @@ export default class Results {
     }
 
     static assertMatchEvidence(evidence: unknown): MatchEvidence {
-        if (
-            evidence === null
-            || typeof evidence !== "object"
-            || Array.isArray(evidence)
-        ) {
-            throw new TypeError("invalid match evidence: expected an object");
-        }
         if (!isRecord(evidence)) throw new TypeError("invalid match evidence: expected an object");
         const record = evidence;
         const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region" && key !== "enclosingRegion" && key !== "matched");
@@ -249,9 +242,6 @@ export default class Results {
             throw new TypeError("invalid scope normalizations: expected a non-empty array");
         }
         for (const item of value) {
-            if (item === null || typeof item !== "object" || Array.isArray(item)) {
-                throw new TypeError("invalid scope normalization: expected an object");
-            }
             if (!isRecord(item)) throw new TypeError("invalid scope normalization: expected an object");
             const record = item;
             const extras = Object.keys(record).filter((key) => key !== "requested" && key !== "canonical");

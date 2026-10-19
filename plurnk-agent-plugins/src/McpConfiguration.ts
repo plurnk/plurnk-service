@@ -91,6 +91,8 @@ const remoteProblem = ({ url, headers }: Record<string, unknown>): Finding | nul
     return null;
 };
 
+// A server entry is one the entry checker admits.
+const isServerEntry = (entry: unknown): entry is McpServerEntry => entryProblem(entry) === null;
 const entryProblem = (entry: unknown): Finding | null => {
     if (!isObject(entry)) return problem("7.2.1", "a server configuration must be an object");
     const { type } = entry;
@@ -122,8 +124,8 @@ export const validateMcpConfiguration = (value: unknown): McpConfigurationResult
     const skipped: ServerFinding[] = [];
     for (const [server, entry] of Object.entries(mcpServers)) {
         const found = entryProblem(entry);
-        if (found === null) servers.set(server, entry as McpServerEntry);
-        else skipped.push({ server, ...found });
+        if (found !== null) skipped.push({ server, ...found });
+        else if (isServerEntry(entry)) servers.set(server, entry);
     }
     return { servers, skipped };
 };

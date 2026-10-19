@@ -3,6 +3,8 @@ import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 import { getNodeValue, parseTree, type Node } from "jsonc-parser";
 
+const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every((item): item is string => typeof item === "string");
+
 // application/x-ipynb+json (Jupyter notebook) handler.
 //
 // A .ipynb IS json, but the json IS the noise: a model that wants to read a
@@ -210,7 +212,7 @@ function renderOutputs(outputs?: NbOutput[]): string[] {
             pushText(out, joinSource(o.text));
         } else if ((o.output_type === "execute_result" || o.output_type === "display_data") && o.data) {
             const plain = o.data["text/plain"];
-            if (plain !== undefined) pushText(out, joinSource(plain as string | string[]));
+            if (typeof plain === "string" || isStringList(plain)) pushText(out, joinSource(plain));
         } else if (o.output_type === "error" && Array.isArray(o.traceback)) {
             for (const frame of o.traceback) pushText(out, stripAnsi(frame));
         }

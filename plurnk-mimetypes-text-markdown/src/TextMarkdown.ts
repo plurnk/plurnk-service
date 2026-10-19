@@ -20,6 +20,7 @@ export default class TextMarkdown extends BaseHandler {
         const tokens = new Lexer().lex(content);
         const headingIndex = tokens.findIndex((token) => {
             if (token.type !== "heading") return false;
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- marked's Token union carries a generic member, so a heading's fields are read through the shape its typed member names
             const heading = token as Token & { depth: number; text: string };
             return heading.depth === 2 && heading.text === "Summary";
         });
@@ -27,6 +28,7 @@ export default class TextMarkdown extends BaseHandler {
         for (const token of tokens.slice(headingIndex + 1)) {
             if (token.type === "space") continue;
             if (token.type !== "paragraph") return undefined;
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- marked's Token union carries a generic member, so a paragraph's text is read through its typed member's shape
             return (token as Token & { text: string }).text;
         }
         return undefined;
@@ -59,6 +61,7 @@ export default class TextMarkdown extends BaseHandler {
 // users actually want to query (type, depth, text, lang, items) into named
 // properties; drops parser-internal cursors that aren't queryable.
 function tokenToDeep(token: Token, region: TextRegion | undefined, enclosing?: TextRegion): Record<string, unknown> {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- marked's Token union carries a generic member, so a token's fields are read through the shapes its typed members name
     const t = token as Token & {
         depth?: number;
         text?: string;
@@ -101,6 +104,7 @@ function emitFor(
     open: Array<{ level: number; name: string }>,
 ): void {
     if (token.type === "heading") {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- marked's Token union carries a generic member, so a heading's fields are read through the shape its typed member names
         const headingToken = token as Token & { depth: number; text: string };
         // A heading at level N closes every open heading at level >= N; its
         // container is the dotted path of what remains open.

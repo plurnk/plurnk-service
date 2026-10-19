@@ -19,6 +19,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
 
     protected override async loadParser(): Promise<TreeSitterParser> {
         // Parsing requests alone pay runtime initialization.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- web-tree-sitter's module shape: the runtime, its language loader and its query constructor
         const ts = await import("web-tree-sitter") as {
             Parser: {
                 init(): Promise<void>;
@@ -36,6 +37,7 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
         this.setQueryContext(lang, ts.Query);
         const parser = new ts.Parser();
         parser.setLanguage(lang);
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- web-tree-sitter's parser answers the parser contract this package names
         return parser as unknown as TreeSitterParser;
     }
 

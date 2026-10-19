@@ -38,10 +38,11 @@ export default class Knob {
     // `options` is the vocabulary the operator chooses from, never a choice made for them.
     static choice<T extends string>(name: string, options: readonly T[], environment: Environment = process.env): T {
         const raw = Knob.text(name, environment);
-        if (!(options as readonly string[]).includes(raw)) {
+        const chosen = options.find((option) => option === raw);
+        if (chosen === undefined) {
             throw new ConfigurationError(name, `${name} must be one of ${options.join(", ")}; got ${JSON.stringify(raw)}.`);
         }
-        return raw as T;
+        return chosen;
     }
 
     // The panel's own notation, a share strictly between nothing and everything: `80%` is 0.8.

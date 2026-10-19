@@ -11,6 +11,9 @@ import { ParseError, type Element, type Node as XmlNode } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import XmlSource from "./XmlSource.ts";
 
+// A node whose type is ELEMENT_NODE is an element: the DOM's own contract.
+const isElementNode = (node: XmlNode): node is Element => node.nodeType === 1;
+
 export default class ApplicationXml extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const text = textOf(content);
@@ -27,8 +30,8 @@ export default class ApplicationXml extends BaseHandler {
         };
         append(root, root.tagName, "module");
         for (let child = root.firstChild; child !== null; child = child.nextSibling) {
-            if (child.nodeType !== 1) continue;
-            const element = child as Element;
+            if (!isElementNode(child)) continue;
+            const element = child;
             append(element, element.getAttribute("id") || element.getAttribute("name") || element.tagName, "field", root.tagName);
         }
         return symbols;
@@ -61,11 +64,13 @@ export default class ApplicationXml extends BaseHandler {
             return queryJsonpathObject(value, pattern, (pointer) => regions.get(pointer));
         }
         let result: xpath.SelectReturnType;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- xpath types its nodes by the browser's DOM; the parsed document walks the same tree
         try { result = xpath.select(pattern, source.document as unknown as Node); }
         catch (cause) { throw new InvalidExpressionError({ dialect, expression: pattern, cause }); }
         // oxlint-disable-next-line typescript/no-base-to-string -- a scalar XPath value is a string, number or boolean; a node renders by its own toString
         if (!Array.isArray(result)) return result === null || result === undefined ? [] : [{ matched: String(result), matching: pattern }];
         return result.map((node, index) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an xpath result node is a node of the parsed tree
             const region = source.region(node as unknown as XmlNode);
             return {
                 matched: serializeXpathNode(node),

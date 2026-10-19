@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { trace } from "@opentelemetry/api";
@@ -135,7 +136,10 @@ export default class Digest {
         const loopsById = new Map(loops.map((l) => [l.id, l]));
         const workersById = new Map(workers.map((r) => [r.id, r]));
         const workerRollups = new Map(workerRollupRows.map((r) => [r.worker_id, r]));
-        const environments = new Map(environmentRows.map((row) => [`${row.workspace_id}:${row.stream}`, JSON.parse(row.env) as Record<string, unknown>]));
+        const environments = new Map(environmentRows.map((row) => {
+            const env: unknown = JSON.parse(row.env);
+            return [`${row.workspace_id}:${row.stream}`, isRecord(env) ? env : {}];
+        }));
         const opMixByWorker = new Map<number, OpMixRow[]>();
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 

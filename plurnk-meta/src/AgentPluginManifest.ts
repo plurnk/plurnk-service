@@ -69,5 +69,6 @@ export const validateManifest = (value: unknown): ManifestResult => {
     }
     const manifest = Object.fromEntries(Object.entries(value)
         .filter(([key]) => FIELDS.has(key) && !(key === "extensions" && !isObject(extensions))));
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the checks above are the manifest's validator; the kept fields are the ones it names
     return { manifest: manifest as unknown as PluginManifest, ignored };
 };

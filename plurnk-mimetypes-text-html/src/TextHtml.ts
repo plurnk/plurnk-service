@@ -86,11 +86,13 @@ export default class TextHtml extends BaseHandler {
             return queryJsonpathObject(value, pattern, (pointer) => regions.get(pointer));
         }
         let result: xpath.SelectReturnType;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- xpath types its nodes by the browser's DOM; the parsed document walks the same tree
         try { result = xpath.select(pattern, source.document as unknown as Node); }
         catch (cause) { throw new InvalidExpressionError({ dialect, expression: pattern, cause }); }
         // oxlint-disable-next-line typescript/no-base-to-string -- a scalar XPath value is a string, number or boolean; a node renders by its own toString
         if (!Array.isArray(result)) return result === null || result === undefined ? [] : [{ matched: String(result), matching: pattern }];
         return result.map((node, index) => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an xpath result node is a node of the parsed tree
             const region = source.region(node as unknown as XmlNode);
             return {
                 matched: serializeXpathNode(node),
@@ -197,7 +199,7 @@ function collectText(node: ChildNode | ParentNode): string {
 }
 
 function isElement(node: ChildNode | ParentNode): node is Element {
-    return (node as Element).tagName !== undefined && (node as Element).attrs !== undefined;
+    return "tagName" in node && "attrs" in node;
 }
 
 function isTextNode(node: ChildNode | ParentNode): node is DefaultTreeAdapterMap["textNode"] {
@@ -205,5 +207,5 @@ function isTextNode(node: ChildNode | ParentNode): node is DefaultTreeAdapterMap
 }
 
 function hasChildNodes(node: unknown): node is ParentNode {
-    return Array.isArray((node as { childNodes?: unknown }).childNodes);
+    return typeof node === "object" && node !== null && "childNodes" in node && Array.isArray(node.childNodes);
 }
