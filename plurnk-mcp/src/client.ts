@@ -10,17 +10,14 @@ import {
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
     type AuthProvider,
-    type CallToolRequest,
     type CallToolResult,
     type ClientCapabilities,
     type CompleteRequest,
     type CompleteResult,
     type DiscoverResult,
-    type GetPromptRequest,
     type GetPromptResult,
     type OAuthClientProvider,
     type Progress,
-    type ReadResourceRequest,
     type ReadResourceResult,
     type Request,
     type RequestMethod,
@@ -33,7 +30,9 @@ import {
     StdioClientTransport,
     getDefaultEnvironment,
 } from "@modelcontextprotocol/client/stdio";
+import { CallToolRequestParamsSchema, GetPromptRequestParamsSchema, ReadResourceRequestParamsSchema } from "@modelcontextprotocol/core";
 import {
+    isRecord,
     Validator,
     type McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
@@ -66,6 +65,12 @@ import {
     callToolWithTasks,
     serverSupportsTasks,
 } from "./tasks.ts";
+
+// A request leg's params are proved by the protocol's schema and forwarded whole: the continuation state an
+// input-required round appends rides beside the fields the schema names ({§mcp-host-composition}).
+const CALL_TOOL_PARAMS = CallToolRequestParamsSchema.loose();
+const READ_RESOURCE_PARAMS = ReadResourceRequestParamsSchema.loose();
+const GET_PROMPT_PARAMS = GetPromptRequestParamsSchema.loose();
 
 // {§mcp-authority} — capability source: the modern discover result when the
 // server offered it, else the legacy initialize result the SDK already folded.
@@ -323,6 +328,7 @@ const openTransport = (
             ...Object.fromEntries(Object.keys(getDefaultEnvironment()).map((name) => [name, undefined])),
             ...environment,
             ...definition.env,
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK types the env narrower than spawn's contract; an undefined value omits a key
         } as Record<string, string>,
     });
 };
@@ -364,30 +370,32 @@ class CatalogClient extends Client {
     override request<M extends RequestMethod>(request: { method: M; params?: Record<string, unknown> }, options?: RequestOptions): Promise<ResultTypeMap[M]>;
     override request<T extends StandardSchemaV1>(request: Request, resultSchema: T, options?: RequestOptions): Promise<StandardSchemaV1.InferOutput<T>>;
     override async request(...args: unknown[]): Promise<unknown> {
-        const sent = args[0] as { method?: unknown; params?: { cursor?: unknown } };
-        const collection = typeof sent.method === "string" ? LIST_COLLECTIONS.get(sent.method) : undefined;
+        const sent: unknown = args[0];
+        const method = isRecord(sent) && typeof sent.method === "string" ? sent.method : undefined;
+        const cursor = isRecord(sent) && isRecord(sent.params) ? sent.params.cursor : undefined;
+        const collection = method === undefined ? undefined : LIST_COLLECTIONS.get(method);
         let result: unknown;
         try {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK's overloaded request is forwarded verbatim with the caller's arguments
             result = await (super.request as unknown as (...inner: unknown[]) => Promise<unknown>)(...args);
         } catch (error) {
             // {§mcp-catalog-list-absence} — never turn a later-page error into a partial success.
             if (
-                collection === undefined || typeof sent.method !== "string"
-                || sent.params?.cursor !== undefined
+                collection === undefined || method === undefined
+                || cursor !== undefined
                 || !ProtocolError.isInstance(error) || error.code !== METHOD_NOT_FOUND
             ) throw error;
-            this.#unsupported.add(sent.method);
+            this.#unsupported.add(method);
             return { resultType: "complete", [collection]: [], ttlMs: 0, cacheScope: "private" };
         }
-        if (collection === undefined || typeof sent.method !== "string") return result;
-        this.#unsupported.delete(sent.method);
-        const cursor = sent.params?.cursor;
-        if (cursor === undefined) this.#returned.set(sent.method, new Set());
-        const returned = this.#returned.get(sent.method) ?? new Set<string>();
-        this.#returned.set(sent.method, returned);
-        const next = (result as { nextCursor?: unknown } | null)?.nextCursor;
+        if (collection === undefined || method === undefined) return result;
+        this.#unsupported.delete(method);
+        if (cursor === undefined) this.#returned.set(method, new Set());
+        const returned = this.#returned.get(method) ?? new Set<string>();
+        this.#returned.set(method, returned);
+        const next = isRecord(result) ? result.nextCursor : undefined;
         if (typeof next !== "string") return result;
-        if (next === cursor || returned.has(next)) throw new CatalogNonConvergenceError(sent.method, next);
+        if (next === cursor || returned.has(next)) throw new CatalogNonConvergenceError(method, next);
         returned.add(next);
         return result;
     }
@@ -845,7 +853,7 @@ export default class ServerConnection {
                 onProgress,
                 timeout,
                 requestLeg: (params, options) => client.callTool(
-                    params as CallToolRequest["params"],
+                    CALL_TOOL_PARAMS.parse(params),
                     { ...options, ...(tool === undefined ? {} : { toolDefinition: tool }) },
                 ),
             });
@@ -867,7 +875,7 @@ export default class ServerConnection {
                 interact,
                 timeout: requestTimeoutMs(this.#environ),
                 requestLeg: (params, options, retry) => client.readResource(
-                    params as ReadResourceRequest["params"],
+                    READ_RESOURCE_PARAMS.parse(params),
                     retry ? { ...options, cacheMode: "refresh" } : options,
                 ),
             });
@@ -888,7 +896,7 @@ export default class ServerConnection {
             interact,
             timeout: requestTimeoutMs(this.#environ),
             requestLeg: (params, options) => client.getPrompt(
-                params as GetPromptRequest["params"],
+                GET_PROMPT_PARAMS.parse(params),
                 options,
             ),
         }), signal);
