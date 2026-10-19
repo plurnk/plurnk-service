@@ -34,8 +34,10 @@ export {
     InvalidAguiConformanceKitError,
     InvalidAguiDiscoveryError,
     InvalidJsonSchemaInstanceError,
+    InvalidParsedPathError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
+export { isRecord, isSafeInteger } from "./guards.ts";
 export type { MessageResource, MessageResourceReceipt, MessageEvidence, ApplicationMessage, ApplicationInboxMessage } from "./MessageResource.ts";
 export { lifecycleOfLoopStatus, selectWorkerLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";

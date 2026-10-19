@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, type ParsedPath, type PlurnkStatement, type RangeExtent, type TextLineMarker, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, isRecord, isSafeInteger, type Notice, type ParsedPath, type PlurnkStatement, type RangeExtent, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
 import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
@@ -43,42 +43,11 @@ interface ActionTarget {
     username?: string | null;
     password?: string | null;
 }
-// The durable statement supplies operand identity and bodies without asking the
-// packet mirror to re-serialize the model's complete emission tag.
-interface StatementTx {
-    aside?: unknown;
-    target?: ActionTarget | null;
-    lineMarker?: unknown;
-    metadata?: readonly string[] | null;
-    source?: StatementTx;
-    destination?: StatementTx;
-    matcher?: { raw?: unknown } | null;
-    body?: string | null;
-}
-interface RxView {
-    attachments?: unknown;
-    content?: unknown;
-    resource?: unknown;
-    matched?: unknown;
-    matches?: unknown;
-    channels?: unknown;
-    answers?: unknown;
-    terminal?: unknown;
-    exitCode?: unknown;
-    page?: unknown;
-    mimetype?: unknown;
-    startLine?: unknown;
-    region?: unknown;
-    itemsWeightTotal?: unknown;
-    returnedItemsWeightTotal?: unknown;
-    matchLocationCount?: unknown;
-    range?: unknown;
-    image?: unknown;
-    document?: unknown;
-    audio?: unknown;
-    receipt?: unknown;
-    effects?: unknown;
-}
+// The durable statement supplies operand identity and bodies without asking the packet mirror to re-serialize the
+// model's complete emission tag. Parsed from its stored column, it is a record whose fields are proved where read.
+type StatementTx = Readonly<Record<string, unknown>>;
+// A stored result, parsed: a record whose fields are proved where read.
+type RxView = Readonly<Record<string, unknown>>;
 // One `log_entries` row joined to its loop and turn, as `engine_render_log` yields it.
 export interface StoredLogRow {
     id: number | null; loop_seq: number; turn_seq: number; sequence: number;
@@ -90,7 +59,7 @@ export interface StoredLogRow {
     tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
     producer: string;
 }
-interface LogEntryView {
+export interface LogEntryView {
     id?: number | null;
     coordinate?: unknown;
     signal?: unknown;
@@ -111,14 +80,15 @@ interface LogEntryView {
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
 }
-interface FailurePointer { status?: unknown; coordinate?: unknown }
-interface NoticeView {
-    kind?: unknown;
-    level?: unknown;
-    directive?: unknown;
-    message?: unknown;
-    position?: { type?: unknown; line?: unknown; column?: unknown } | null;
-}
+// A durable operation failure, as PacketBuilder selects it: its status and the coordinate of the row that owns it.
+export interface FailurePointer { readonly status: number; readonly coordinate: string }
+// One thing the worker holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
+export interface OpenWorkPointer { readonly status: number | string; readonly path: string; readonly detail?: string }
+// {§packet-git-status} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
+// their XY status and, for an untracked path, its membership truth.
+export type GitStatusView = GitStatus & {
+    readonly files?: readonly { readonly path: string; readonly status: string; readonly member?: string | null }[];
+};
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
@@ -232,19 +202,15 @@ export default class PacketWire {
 
     // Durable operation failures render as `{status, path}` JSON pointers to the log rows that
     // own their exact RFC 9457 results.
-    static renderFailurePointers(failures: unknown): string {
-        const rows = Array.isArray(failures) ? failures as FailurePointer[] : [];
-        const pointers = rows
-            .filter((row) => typeof row.status === "number" && typeof row.coordinate === "string")
-            .map((row) => JSON.stringify({ status: row.status, path: `log:///${String(row.coordinate)}` }));
+    static renderFailurePointers(failures: readonly FailurePointer[]): string {
+        const pointers = failures.map((row) => JSON.stringify({ status: row.status, path: `log:///${row.coordinate}` }));
         return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 
     // {§notice-callout} — non-terminal observations, deliberately separate from operation failures, in the
     // card's own callout form: the level picks the callout, the directive leads, the fact follows, the kind closes.
-    static renderNotices(notices: unknown): string {
-        const observations = Array.isArray(notices) ? notices as NoticeView[] : [];
-        return observations.map((notice) => {
+    static renderNotices(notices: readonly Notice[]): string {
+        return notices.map((notice) => {
             const kind = typeof notice.kind === "string" ? notice.kind : "notice";
             const callout = notice.level === "error" ? "CAUTION" : notice.level === "warn" ? "WARNING" : "NOTE";
             const text = [notice.directive, notice.message]
@@ -265,14 +231,13 @@ export default class PacketWire {
     // unconcluded workers and its open streams. The model SEES them each turn and reasons for itself
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§packet-empty-sections}).
-    static renderOpenWork(workers: unknown, streams: unknown, messages: unknown = []): string {
+    static renderOpenWork(workers: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
         // {§worker-obligations} — the messages it sent that await completion are the third list it is held on.
         return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
     }
 
-    static #pointers(rows: unknown): string {
-        const items = Array.isArray(rows) ? (rows as Array<{ status: unknown; path: unknown; detail?: unknown }>) : [];
-        const pointers = items.map((r) => JSON.stringify({
+    static #pointers(rows: readonly OpenWorkPointer[]): string {
+        const pointers = rows.map((r) => JSON.stringify({
             status: r.status,
             path: r.path,
             ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
@@ -287,24 +252,23 @@ export default class PacketWire {
     }
 
     // The git section content: the working-tree summary. "" when absent.
-    static renderGit(git: unknown): string {
-        const status = git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
+    static renderGit(git: GitStatusView | null): string {
+        const status = git === null ? "" : PacketWire.#renderGitState(git);
         return status.length === 0 ? "" : `> [!NOTE]\n${status.split("\n").map((line) => `> ${line}`).join("\n")}`;
     }
 
     // The log section's content: the model's curated rows as Markdown-framed records ({§log-wire-format}).
     // Data only — no prose leads the records (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
-    static renderLog(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): string {
+    static renderLog(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions = {}): string {
         return PacketWire.renderLogWithAccounting(entries, weighContent, options).content;
     }
 
     // {§context-gauge} — the wire row and its reclaimable-body accounting come from one render
     // pass; packet assembly never re-parses its text.
-    static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
-        const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], bodied: [] };
-        const rows = PacketWire.#renderLogEntries(log, weighContent, options);
+    static renderLogWithAccounting(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
+        if (entries.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], bodied: [] };
+        const rows = PacketWire.#renderLogEntries(entries, weighContent, options);
         const records = rows.map(({ content }) => content);
         return {
             content: records.join("\n\n"),
@@ -540,8 +504,8 @@ export default class PacketWire {
     // sent side. {§message-causal-source}: a `source` names the actor; absence is the owner.
     static isArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown }): boolean {
         if (e.op !== "SEND" || e.origin !== "_plurnk") return false;
-        const attrs = typeof e.attrs === "string" ? JSON.parse(e.attrs) as unknown : e.attrs;
-        return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
+        const attrs: unknown = typeof e.attrs === "string" ? JSON.parse(e.attrs) : e.attrs;
+        return isRecord(attrs) && attrs.kind === "message";
     }
 
     // {§markerless-first-page} — a body the model did not author or ask for exactly takes its first page in
@@ -622,7 +586,7 @@ export default class PacketWire {
         return `${ScopeFormat.region({ ...local, startLine, endLine })} of ${ScopeFormat.region(complete)}`;
     }
 
-    static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
+    static #renderLogEntries(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
         const bodies = entries.map((e) => {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             return LogBody.resolve({
@@ -639,7 +603,8 @@ export default class PacketWire {
         return entries.map((e, index) => {
             const identity = PacketWire.#rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
-            const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
+            const parsedRx = typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx;
+            const rx = isRecord(parsedRx) ? parsedRx : null;
             const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]);
             const paired = options.paired?.has(String(e.coordinate)) ?? false;
             const projected = paired && bodies[index].provenance === "authored"
@@ -651,23 +616,24 @@ export default class PacketWire {
 
     static #attrsOf(e: { readonly attrs?: unknown }): Record<string, unknown> {
         const attrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
-        return attrs !== null && typeof attrs === "object" && !Array.isArray(attrs) ? attrs as Record<string, unknown> : {};
+        return isRecord(attrs) ? attrs : {};
     }
 
     // One stored log row as the renderer sees it: the durable columns decoded once, a transient
     // open row rendered open ({§invalid-emission-attempts}).
     static entryView(r: StoredLogRow, transientOpenLogEntryId: number | null = null): LogEntryView {
-        const tx = (r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx) as StatementTx | string | null;
-        const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
+        const parsedTx: unknown = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx;
+        const tx = isRecord(parsedTx) ? parsedTx : typeof parsedTx === "string" ? parsedTx : null;
+        const rx: unknown = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
         // {§context-fit} — a READ row's anchors ride with its lines whatever its status: a receipt that
         // carries a prefix carries the prefix's anchors.
-        const readResult = LogEntryProjection.op(r) === "READ" && rx !== null && typeof rx === "object" && typeof (rx as { content?: unknown }).content === "string";
-        const rawLineAnchors = readResult && Object.hasOwn(rx, "lineAnchors") ? (rx as { lineAnchors: unknown }).lineAnchors : undefined;
-        if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
-            throw new TypeError("A READ result's lineAnchors field must be an array.");
+        const readResult = LogEntryProjection.op(r) === "READ" && isRecord(rx) && typeof rx.content === "string" ? rx : null;
+        const rawLineAnchors = readResult !== null && Object.hasOwn(readResult, "lineAnchors") ? readResult.lineAnchors : undefined;
+        if (rawLineAnchors !== undefined && !(Array.isArray(rawLineAnchors) && rawLineAnchors.every((anchor): anchor is string => typeof anchor === "string"))) {
+            throw new TypeError("A READ result's lineAnchors field must be an array of strings.");
         }
-        const lineAnchors = rawLineAnchors as readonly string[] | undefined;
-        const rawLineNumberWidth = readResult && Object.hasOwn(rx, "lineNumberWidth") ? (rx as { lineNumberWidth: unknown }).lineNumberWidth : undefined;
+        const lineAnchors: readonly string[] | undefined = rawLineAnchors;
+        const rawLineNumberWidth = readResult !== null && Object.hasOwn(readResult, "lineNumberWidth") ? readResult.lineNumberWidth : undefined;
         if (rawLineNumberWidth !== undefined && !LineAnchors.isLineNumberWidth(rawLineNumberWidth)) {
             throw new TypeError("A READ result's lineNumberWidth field must be a valid decimal line width.");
         }
@@ -731,14 +697,14 @@ export default class PacketWire {
         // subsystem token when present; absence means the owning worker.
         // {§message-short-identity} an arrival whose source is the transport's own name for it adds
         // nothing to its address; a peer's or an agent's source still shows.
-        const arrivalAttrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
-        const selfAddressed = arrivalAttrs !== null && typeof arrivalAttrs === "object" && (arrivalAttrs as { selfAddressed?: unknown }).selfAddressed === true;
+        const attrs = PacketWire.#attrsOf(e);
+        const selfAddressed = attrs.selfAddressed === true;
         if (typeof e.source === "string" && e.source.length > 0 && !selfAddressed) meta.source = e.source;
         // {§message-causal-source}: every other sender has an address; the operator's message is named
         // for the model, or it reads as the model's own SEND.
         if (PacketWire.isArrival(e) && meta.source === undefined) meta.origin = "user";
-        if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
-            const git = (e.attrs as { git?: unknown }).git;
+        if (e.source === "file" && Object.hasOwn(attrs, "git")) {
+            const git = attrs.git;
             if (typeof git !== "string" || git.length !== 2) {
                 throw new TypeError("A source=file log row carries malformed Git XY metadata.");
             }
@@ -746,17 +712,18 @@ export default class PacketWire {
         }
         // {§log-wire-format}: routine success is implicit, independently of the operation.
         if (typeof e.status === "number" && e.status !== 200) meta.status = e.status;
-        const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
+        const parsedTx = typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx;
+        const tx: StatementTx | null = isRecord(parsedTx) ? parsedTx : null;
         const replay = options.paired?.get(String(e.coordinate));
         const paired = replay !== undefined;
         if (!paired && typeof tx?.aside === "string") meta.aside = tx.aside;
-        const authored = tx?.target as ParsedPath | null | undefined;
-        const target = PacketWire.#operandPath(e.target ?? authored, options.projectRoot ?? null, authored ?? null);
+        const authored = PacketWire.#authoredPath(tx?.target);
+        const target = PacketWire.#operandPath(e.target ?? PacketWire.#actionTarget(tx?.target), options.projectRoot ?? null, authored);
         const pair = op === "COPY" || op === "MOVE";
-        const selections = pair
-            ? [tx?.source, tx?.destination]
+        const selections: Array<StatementTx | null> = pair
+            ? [PacketWire.#selection(tx?.source), PacketWire.#selection(tx?.destination)]
             : [{ ...tx, target: e.target ?? tx?.target }];
-        const paths = selections.map((selection) => PacketWire.#operandPath(selection?.target, options.projectRoot ?? null, authored ?? null));
+        const paths = selections.map((selection) => PacketWire.#operandPath(PacketWire.#actionTarget(selection?.target), options.projectRoot ?? null, authored));
         if (pair && typeof e.status === "number" && e.status < 400 && paths.some((candidate) => candidate === null)) {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
@@ -764,7 +731,7 @@ export default class PacketWire {
             if (paired) continue;
             const values = selections.map((selection) => field === "scope"
                 ? PacketWire.#requestScope(selection?.lineMarker)
-                : selection?.metadata?.length ? selection.metadata : null);
+                : PacketWire.#metadata(selection?.metadata));
             if (pair) {
                 const pairedValues = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
                 if (Object.keys(pairedValues).length > 0) meta[field] = pairedValues;
@@ -772,7 +739,8 @@ export default class PacketWire {
         }
         // {§log-wire-format}: describe resources and patterns directly; never serialize an OP.
         const parts = selections.flatMap((selection, index) => {
-            const pattern = selection?.matcher?.raw;
+            const matcher = selection?.matcher;
+            const pattern = isRecord(matcher) ? matcher.raw : undefined;
             return [
                 ...(paths[index] === null ? [] : [`→ ${paths[index]}`]),
                 ...(typeof pattern !== "string" || pattern.length === 0 ? []
@@ -790,15 +758,14 @@ export default class PacketWire {
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : resolved ? paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ") : null;
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
-        if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
-            && typeof (e.attrs as { worker?: unknown }).worker === "string") {
-            meta.worker = (e.attrs as { worker: string }).worker;
+        if ((op === "WORK" || op === "FORK") && typeof attrs.worker === "string") {
+            meta.worker = attrs.worker;
             // {§worker-scheme-spawn} — a WORK that reached a worker the name already held says so.
-            if ((e.attrs as { delivered?: unknown }).delivered === "message") meta.delivered = "message";
+            if (attrs.delivered === "message") meta.delivered = "message";
         }
         // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
-        if (op === "WAIT" && e.attrs !== null && typeof e.attrs === "object" && "waiting" in e.attrs) {
-            const seconds = e.attrs.waiting;
+        if (op === "WAIT" && Object.hasOwn(attrs, "waiting")) {
+            const seconds = attrs.waiting;
             if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
                 throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
             }
@@ -808,12 +775,12 @@ export default class PacketWire {
         // `stream` link, distinct from the runtime-owned invocation target.
         // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
         // when it is not the project root, and then in project-relative form.
-        if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
-            const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
+        if (isExecutionOp(op) && typeof attrs.cwd === "string") {
+            const cwd = PacketWire.#projectRelativeCwd(attrs.cwd, options.projectRoot ?? null);
             if (cwd !== null) meta.cwd = cwd;
         }
-        if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
-            meta.stream = (e.attrs as { stream: string }).stream;
+        if (isExecutionOp(op) && typeof attrs.stream === "string") {
+            meta.stream = attrs.stream;
         }
         return { meta, op, tx, coordinate, path, renderedLeaf, target, description };
     }
@@ -858,8 +825,8 @@ export default class PacketWire {
             }
             // {§executor-page-receipt} — a producer's full-page fact survives projection as written.
             if (Object.hasOwn(rx, "page")) {
-                const page = rx.page as { size?: unknown; returned?: unknown } | null;
-                if (page === null || typeof page !== "object" || !Number.isSafeInteger(page.size) || !Number.isSafeInteger(page.returned)) {
+                const page = rx.page;
+                if (!isRecord(page) || !isSafeInteger(page.size) || !isSafeInteger(page.returned)) {
                     throw new TypeError("A stream READ result carries a malformed page.");
                 }
                 meta.page = { size: page.size, returned: page.returned };
@@ -876,16 +843,14 @@ export default class PacketWire {
     static #problemFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): void {
         const { meta } = identity;
         if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-            const problem = Validator.assertProblemDetails((rx as { problem?: unknown }).problem);
+            const problem = Validator.assertProblemDetails(rx.problem);
             meta.problem = Problems.project(problem, {
                 status: e.status,
                 row: { ...meta, target: identity.target },
             });
         }
-        if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx === "object"
-            && typeof (rx as { detail?: unknown }).detail === "string"
-            && (rx as { detail: string }).detail.length > 0) {
-            meta.detail = (rx as { detail: string }).detail;
+        if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx.detail === "string" && rx.detail.length > 0) {
+            meta.detail = rx.detail;
         }
     }
 
@@ -895,7 +860,7 @@ export default class PacketWire {
         const { meta, op, tx } = identity;
         let findItems: number | null = null;
         let range: RangeExtent | null = null;
-        const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
+        const patterned = tx !== null && tx !== undefined && typeof tx === "object" && isRecord(tx.matcher) && typeof tx.matcher.raw === "string";
         if (patterned && op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
         // {§channel-selection-visibility} — a READ names the resource's other channels with their
         // tokens, so the row itself shows the choice a FIND listing would.
@@ -914,13 +879,10 @@ export default class PacketWire {
             range = rx !== null && typeof rx === "object" && rx.range !== undefined
                 ? Validator.assertRangeExtent(rx.range)
                 : null;
-            const problemOwnsRange = typeof e.status === "number"
-                && e.status >= 400
-                && meta.problem !== null
-                && typeof meta.problem === "object"
-                && Object.hasOwn(meta.problem, "range");
+            const problem = isRecord(meta.problem) ? meta.problem : null;
+            const problemOwnsRange = typeof e.status === "number" && e.status >= 400 && problem !== null && Object.hasOwn(problem, "range");
             if (problemOwnsRange) {
-                Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
+                Validator.assertRangeExtent(problem?.range);
                 delete meta.scope;
             }
             if (range !== null && !problemOwnsRange) {
@@ -1040,8 +1002,9 @@ export default class PacketWire {
                 ...(enclosingRegion === undefined ? {} : { enclosingRegion: ScopeFormat.region(enclosingRegion) }),
             }));
             if (evidence.length > 0) {
-                meta.matches = BodyPreview.items(evidence, JSON.stringify);
-                if ((meta.matches as unknown[]).length !== evidence.length) meta.matchLocationCount = evidence.length;
+                const shown = BodyPreview.items(evidence, JSON.stringify);
+                meta.matches = shown;
+                if (shown.length !== evidence.length) meta.matchLocationCount = evidence.length;
             }
         }
         const body = emptyFind || projectedText.length === 0
@@ -1151,36 +1114,34 @@ export default class PacketWire {
         coordinate: string | null,
         path: string | null,
     ): PacketAttachment | null {
-        const view = rx as RxView | null | undefined;
-        const contentHash = (rx as { nativeContentHash?: unknown } | null)?.nativeContentHash;
-        if (typeof contentHash !== "string") return null;
+        if (!isRecord(rx) || typeof rx.nativeContentHash !== "string") return null;
+        const contentHash = rx.nativeContentHash;
         const pathname = typeof target?.pathname === "string" && target.pathname.length > 0
             ? target.pathname
             : typeof target?.raw === "string" ? target.raw : null;
         if (pathname === null || coordinate === null || path === null) return null;
         const scheme = target?.scheme ?? "file";
-        const image = view?.image as { mimetype?: unknown; width?: unknown; height?: unknown } | undefined;
-        if (image !== undefined && typeof image.mimetype === "string" && Number.isSafeInteger(image.width) && Number.isSafeInteger(image.height)) {
-            const width = image.width as number;
-            const height = image.height as number;
+        const image = rx.image;
+        if (isRecord(image) && typeof image.mimetype === "string" && isSafeInteger(image.width) && isSafeInteger(image.height)) {
+            const { width, height } = image;
             return { contentHash, coordinate, path, scheme, pathname, mimetype: image.mimetype, kind: "image", width, height, weight: imageWeight(width, height) };
         }
-        const document = view?.document as { mimetype?: unknown; pages?: unknown; bytes?: unknown } | undefined;
-        if (document !== undefined && typeof document.mimetype === "string" && Number.isSafeInteger(document.bytes)) {
-            const pages = Number.isSafeInteger(document.pages) ? document.pages as number : null;
+        const document = rx.document;
+        if (isRecord(document) && typeof document.mimetype === "string" && isSafeInteger(document.bytes)) {
+            const pages = isSafeInteger(document.pages) ? document.pages : null;
             return {
                 contentHash, coordinate, path, scheme, pathname, mimetype: document.mimetype, kind: "pdf",
                 ...(pages === null ? {} : { pages }),
-                weight: pdfWeight(pages, document.bytes as number),
+                weight: pdfWeight(pages, document.bytes),
             };
         }
-        const audio = view?.audio as { mimetype?: unknown; duration?: unknown; bytes?: unknown } | undefined;
-        if (audio !== undefined && typeof audio.mimetype === "string" && Number.isSafeInteger(audio.bytes)) {
+        const audio = rx.audio;
+        if (isRecord(audio) && typeof audio.mimetype === "string" && isSafeInteger(audio.bytes)) {
             const duration = typeof audio.duration === "number" && Number.isFinite(audio.duration) && audio.duration >= 0 ? audio.duration : null;
             return {
                 contentHash, coordinate, path, scheme, pathname, mimetype: audio.mimetype, kind: "audio",
                 ...(duration === null ? {} : { duration }),
-                weight: audioWeight(duration, audio.bytes as number),
+                weight: audioWeight(duration, audio.bytes),
             };
         }
         return null;
@@ -1273,17 +1234,55 @@ export default class PacketWire {
 
     static #requestScope(marker: unknown): string | null {
         if (marker === null || marker === undefined) return null;
-        const marks = (marker as { marks?: unknown }).marks;
-        if (!Array.isArray(marks) || marks.some((mark) => typeof mark !== "string" && typeof mark !== "number")) {
+        const marks = isRecord(marker) ? marker.marks : undefined;
+        const isMark = (mark: unknown): mark is number | string => typeof mark === "string" || typeof mark === "number";
+        if (!Array.isArray(marks) || !marks.every(isMark)) {
             throw new TypeError("An operation scope must retain its authored marks.");
         }
+        const [first, ...rest] = marks;
+        if (first === undefined) throw new TypeError("An operation scope must retain its authored marks.");
         // Failed selections still describe what was attempted; the operation owns validity.
-        return ScopeFormat.marker(marker as TextLineMarker);
+        return ScopeFormat.marker({ marks: [first, ...rest] });
+    }
+
+    // {§packet-stored-shape} A stored operand target: the address columns as nullable strings, the port a number, the
+    // authored `kind` and `raw` read where used. A field of another type is a malformed row.
+    static #actionTarget(value: unknown): ActionTarget | null {
+        if (value === null || value === undefined) return null;
+        if (!isRecord(value)) throw new TypeError("A stored operand target must be an object.");
+        const text = (name: string): string | null | undefined => {
+            const field = value[name];
+            if (field === undefined || field === null || typeof field === "string") return field;
+            throw new TypeError(`A stored operand target carries a malformed ${name}.`);
+        };
+        const port = value.port;
+        if (port !== undefined && port !== null && typeof port !== "number") {
+            throw new TypeError("A stored operand target carries a malformed port.");
+        }
+        return {
+            kind: value.kind, raw: value.raw, scheme: text("scheme"), hostname: text("hostname"), port, pathname: text("pathname"),
+            query: text("query"), fragment: text("fragment"), username: text("username"), password: text("password"),
+        };
+    }
+
+    // The target as the model authored it, when the stored statement's target is a path the grammar names; a row
+    // whose stored target is not renders without its authored spelling.
+    static #authoredPath(value: unknown): ParsedPath | null {
+        if (value === null || value === undefined) return null;
+        return Validator.validateParsedPath(value).valid ? Validator.assertParsedPath(value) : null;
+    }
+
+    static #selection(value: unknown): StatementTx | null {
+        return isRecord(value) ? value : null;
+    }
+
+    static #metadata(value: unknown): readonly string[] | null {
+        return Array.isArray(value) && value.length > 0 && value.every((item): item is string => typeof item === "string") ? value : null;
     }
 
     // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are
     // named because they are NOT members ({§membership-baseline}) — a human `git add`s or picks them.
-    static #renderGitState(git: GitStatus & { files?: readonly { path: string; status: string; member?: string | null }[] }): string {
+    static #renderGitState(git: GitStatusView): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
         const position = git.branch === null ? "detached HEAD" : `branch \`${git.branch}\`${git.unborn ? " (no commits)" : ""}`;
         const head = `${position}${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;

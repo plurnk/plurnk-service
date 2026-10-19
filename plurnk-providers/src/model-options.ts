@@ -1,11 +1,9 @@
+import { isRecord as object } from "@plurnk/plurnk-contracts";
 import { matchesGlob } from "node:path";
 import type { AiSdkProviderOptions } from "./AiSdkProvider.ts";
 import { providerSetting } from "./provider-env.ts";
 
 type Rule = { readonly models: readonly string[]; readonly options: AiSdkProviderOptions };
-
-const object = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 // {§provider-model-options}: provider options a provider declares for the models its globs match; the first rule
 // whose glob matches the route's model applies, and none applies when no rule matches.

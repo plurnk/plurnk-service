@@ -4,8 +4,7 @@
 // outcomes the timers stand behind ({§schedule-delivery}, {§schedule-residency}).
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import {
-    Problems,
+import { Problems,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
@@ -17,8 +16,7 @@ import {
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
-    type WorkspaceCapabilityIdentity,
-} from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
 import { previewOccurrences, validateConfiguration } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
@@ -68,9 +66,6 @@ const failure = (
     extensions: Readonly<Record<string, unknown>> = {},
     cause?: unknown,
 ): ScheduleFunctionalityError => new ScheduleFunctionalityError(problem(code, status, detail, extensions), cause);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 

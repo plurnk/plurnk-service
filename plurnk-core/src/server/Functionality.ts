@@ -4,7 +4,7 @@
 // publication, and both projections: workspace-scoped client actions and a
 // generated runtime whose host verbs propose. An explicit
 // client mutation and an accepted model proposal converge on `invoke`.
-import { Validator } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord } from "@plurnk/plurnk-contracts";
 import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import { isDeepStrictEqual } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
@@ -169,9 +169,6 @@ const failure = (
 ): OperationFailureError => new OperationFailureError(
     Results.failure("functionality", code, status, detail, {}, { family, ...extensions }),
 );
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 export default class Functionality {
     readonly #host: FunctionalityHost;

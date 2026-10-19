@@ -6,14 +6,12 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
-import {
-    SKILL_NAME,
+import { SKILL_NAME,
     Validator,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
-    type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity
-} from "@plurnk/plurnk-contracts";
+    type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
@@ -41,9 +39,6 @@ interface Snapshot {
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 const missing = (cause: unknown): false => {
     if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return false;

@@ -1,5 +1,6 @@
 // {§workspace-env} {§env-functionality} — workspace defaults and worker overrides
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type {
     FunctionalityCandidate,
     FunctionalityDefinitionSource,
@@ -22,9 +23,6 @@ import type { Db } from "../core/Db.ts";
 const ENV_FAMILY = "env";
 // The family's namespace owner — also the key a spawn reads its Worker's state under.
 export const ENV_OWNER = "@plurnk/plurnk-service";
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 // A refusal is the verb's own operation result, the shape both projections convert; anything else
 // thrown here would surface as a fault of the action or the manager rather than as the outcome.

@@ -1,3 +1,4 @@
+import { isRecord } from "@plurnk/plurnk-contracts";
 import {
     AgentCard,
     Artifact,
@@ -23,8 +24,6 @@ export interface A2aTaskContent {
     readonly json: string;
     readonly resources: readonly A2aResource[];
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 // {§a2a-part-resources} — the protocol JSON stays readable, but a raw Part's bytes never ride it: the
 // Part names its resource and its byte count, the same address the body channel links to.

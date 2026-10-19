@@ -1,4 +1,5 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
+import { isRecord as isObject } from "@plurnk/plurnk-contracts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
 import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
@@ -75,9 +76,6 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
         return { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 // {§mcp-file-configuration} Files supply definitions, not installations or another lifecycle.
 export const configuredDefinitions = async (

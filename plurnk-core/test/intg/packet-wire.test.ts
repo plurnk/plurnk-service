@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import PacketWire from "../../src/core/packet-wire.ts";
+import PacketWire, { type LogEntryView } from "../../src/core/packet-wire.ts";
 import GitState from "../../src/core/git-state.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
@@ -1373,7 +1373,7 @@ test("{§tokenomics-agnostic-ruler} render guard: every content-emitting op appl
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
     const execTx = (body: string) => ({ runtime: "sh", target: { kind: "url", raw: "sh:///1/1/1/sh", scheme: "sh", pathname: "/1/1/1/sh", fragment: null }, body, lineMarker: null });
-    const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
+    const cases: Array<{ label: string; entry: LogEntryView; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
         { label: "READ json -> numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n1:\{"k":1\}$/ },
         { label: "READ mixed newlines -> every physical line numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/plain", content: "a\r\nb\rc" } }, want: /1:a\r\n2:b\r3:c/ },
@@ -1626,15 +1626,15 @@ test("{§tokenomics-agnostic-ruler} initialization renders a program READ alongs
     const out = PacketWire.renderLog([
         {
             coordinate: "1/1/1", origin: "_plurnk", op: "FIND", status: 200, folded: [],
-            tags: ["_plurnk", "init"], rx: { results: [] },
+            rx: { results: [] },
         },
         {
             coordinate: "1/1/2", origin: "_plurnk", op: "NOTE", status: 200, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: "Address the message." },
+            tx: { body: "Address the message." },
         },
         {
             coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
-            tags: ["_plurnk", "init"], target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
+            target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
             rx: { content: `\`\`\`\`FIND (*)\`\`\`\`
 \`\`\`\`NOTE
 Address the message.

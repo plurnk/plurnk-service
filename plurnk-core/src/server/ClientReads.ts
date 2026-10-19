@@ -4,7 +4,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { Validator, type ClientEntryChannel, type EntryReadResult, type LogEntryWire } from "@plurnk/plurnk-contracts";
-import LogEntry from "./logEntry.ts";
+import LogEntry, { type LogEntryRow } from "./logEntry.ts";
 import ClientInput from "./client-input.ts";
 import Results from "../core/results.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
@@ -299,7 +299,7 @@ export default class ClientReads {
                     retryable: false },
             );
         }
-        const rows = await this.#db.log_entries_recent.all<Record<string, unknown>>({
+        const rows = await this.#db.log_entries_recent.all<LogEntryRow>({
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null, before_id: args.beforeId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,

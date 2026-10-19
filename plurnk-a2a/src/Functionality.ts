@@ -7,8 +7,7 @@
 import { fileURLToPath } from "node:url";
 import type { AgentCard } from "@a2a-js/sdk";
 import type { Client } from "@a2a-js/sdk/client";
-import {
-    Problems,
+import { Problems,
     type A2AAgentDefinition as A2aAgentDefinition,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
@@ -19,8 +18,7 @@ import {
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
-    type WorkspaceCapabilityIdentity,
-} from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import A2a from "./A2a.ts";
 import { outboundDefinitions } from "./config.ts";
@@ -74,9 +72,6 @@ const failure = (
     extensions: Readonly<Record<string, unknown>> = {},
     cause?: unknown,
 ): A2aFunctionalityError => new A2aFunctionalityError(problem(code, status, detail, extensions), cause);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
 
 const sameDefinition = (left: A2aAgentDefinition, right: A2aAgentDefinition): boolean =>
     JSON.stringify(left) === JSON.stringify(right);
