@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parsePath } from "@plurnk/plurnk-parser";
-import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { isExecution, type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import { Results, type ExecArgs, type ExecInput, type RuntimeInvocationDecl, type Executor } from "@plurnk/plurnk-execs";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
@@ -273,6 +273,38 @@ test("{§executor-invocation} required and unsupported buckets are refused befor
         await ctx.close();
     }
 });
+
+// {§executor-blank-invocation} Each blank an invocation can be: a registry runtime without its target, a registered target
+// without its body, a required target or body absent, or neither supplied. Each fence names the target it shows and
+// whether it carries a body.
+const BLANKS = [
+    { runtime: "registrytool", target: null, body: "{}", code: "target-required", fences: [["enabled_tool", true]] },
+    { runtime: "registrytool", target: "enabled_tool", body: "", code: "body-required", fences: [["enabled_tool", true]] },
+    { runtime: "literaltool", target: null, body: "{}", code: "target-required", fences: [["fixture_tool", true]] },
+    { runtime: "bodyonly", target: null, body: "", code: "body-required", fences: [[null, true]] },
+    { runtime: "pathtool", target: null, body: "", code: "body-required", fences: [[null, true]] },
+    { runtime: "resourcetool", target: null, body: "", code: "input-required", fences: [[null, true]] },
+] as const;
+for (const blank of BLANKS) {
+    test(`{§executor-blank-invocation}: ${blank.runtime}${blank.target === null ? "" : ` (${blank.target})`} refused as ${blank.code} answers with its working form`, async () => {
+        const ctx = await wire();
+        try {
+            const result = await ctx.dispatch(statement(blank.runtime, blank.target, blank.body));
+            assert.equal(result.status, 400);
+            assert.match(result.problem?.type ?? "", new RegExp(`/${blank.code}$`, "u"));
+            const { items } = PlurnkParser.parseStatements(String(result.problem?.recovery), { executors: [blank.runtime] });
+            const fences = items.map((item) => {
+                assert.ok(item.kind === "statement" && isExecution(item.statement) && item.statement.runtime === blank.runtime,
+                    "the recovery is fences of the refused tool");
+                return [item.statement.target?.raw ?? null, (item.statement.body ?? "").length > 0];
+            });
+            assert.deepEqual(fences, blank.fences, "showing the input the invocation lacked");
+            assert.equal(ctx.runs.has(blank.runtime), false, "nothing ran");
+        } finally {
+            await ctx.close();
+        }
+    });
+}
 
 test("{§exec-target-routing} path targets remain targets and refuse non-file addresses", async () => {
     const ctx = await wire();

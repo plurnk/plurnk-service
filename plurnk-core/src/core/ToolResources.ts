@@ -183,6 +183,11 @@ const schemaDocument = (pathname: string, title: string, schema: JsonSchema, det
 };
 
 export default class ToolResources {
+    // {§executor-blank-invocation} An invocation's copyable fence: its header and input preview, as its document shows them.
+    static fence(runtime: string, invocation: RuntimeInvocationDecl, exactTarget?: string): string {
+        return PlurnkParser.frame(invocationHeader(runtime, invocation, exactTarget), invocationInput(invocation) ?? null);
+    }
+
     static documentPath(runtime: string, resourcesPath?: string): string {
         return `${generatedPathname(resourcesPath ?? "/plurnk")}/${runtime}.md`;
     }

@@ -371,6 +371,7 @@ be reported as successful resource publication.
 | {§executor-installation} | Installed capability lifecycle |
 | {§executor-runtime-declaration} | Runtime metadata |
 | {§executor-invocation} | Every runtime declares exactly one invocation contract: |
+| {§executor-blank-invocation} | A blank invocation is answered with its working form. |
 | {§executor-tool-registry} | A runtime representing a finite set of exact tools may implement `toolRegistry()` and return one immutable… |
 | {§executor-tool-catalog} | A registry may carry each tool's original JSON object as `definition`. |
 | {§executor-tool-document} | Tool documents are the model-facing executor directory. |
@@ -494,6 +495,12 @@ registration. Static, dynamic, and module-owned runtimes use this same
 validation path. The enclosing runtime declaration is closed to `name`,
 `glyph`, `summary`, `invocation`, and `details`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
+
+§executor-blank-invocation **A blank invocation is answered with its working form.** A refusal
+of an absent required body or target, or of an invocation that supplies neither, carries in
+`recovery` the invocation's copyable fence: its header and input preview, as the runtime document
+shows them ({§tools-resource-discovery}). A registry runtime named without a target answers with
+every enabled target's fence. Nothing runs.
 
 §executor-tool-registry A runtime representing a finite set of exact tools
 may implement `toolRegistry()` and return one immutable snapshot:

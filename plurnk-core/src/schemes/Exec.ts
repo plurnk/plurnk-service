@@ -281,7 +281,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const hasBody = body.length > 0;
         const execTarget = route.target;
         const hasTarget = execTarget !== null;
-        const shape = Exec.#checkInvocationShape(invocation, runtime, hasBody, hasTarget);
+        const shape = Exec.#checkInvocationShape(invocation, runtime, execTarget?.raw, hasBody, hasTarget);
         if (shape !== null) return shape;
 
         const routed = await this.#routeTarget(core, { runtime, invocation, execTarget, hasBody });
@@ -395,6 +395,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
             const availableTargets = registry.tools.map((tool) => tool.target);
+            // {§executor-blank-invocation} No target: every enabled target's fence. An unknown one: the document listing them.
+            const recovery = availableTargets.length === 0 ? {}
+                : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.fence(runtime, tool.invocation, tool.target)).join("\n\n") }
+                    : { recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
             return Results.failure(
                 "scheme:exec",
                 exactTarget === null ? "target-required" : "target-not-registered",
@@ -406,9 +410,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 {
                     runtime,
                     availableTargetCount: availableTargets.length,
-                    ...(availableTargets.length === 0 ? {} : {
-                        recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.`,
-                    }),
+                    ...recovery,
                     retryable: false,
                 },
             );
@@ -416,14 +418,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return registeredTool?.invocation ?? resolved.invocation;
     }
 
-    // The fence's body and target against the invocation's declaration, refused by name.
-    static #checkInvocationShape(invocation: RuntimeInvocationDecl, runtime: string, hasBody: boolean, hasTarget: boolean): ExecResult | null {
+    // The fence's body and target against the invocation's declaration, refused by name. {§executor-blank-invocation} An
+    // absent input is answered with the invocation's own fence.
+    static #checkInvocationShape(invocation: RuntimeInvocationDecl, runtime: string, exactTarget: string | undefined, hasBody: boolean, hasTarget: boolean): ExecResult | null {
+        const fence = (): string => ToolResources.fence(runtime, invocation, exactTarget);
         if (invocation.body.required && !hasBody) {
             return Exec.#refuse(
                 runtime,
                 "body-required",
                 `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
-                `Provide the ${invocation.body.role} in the ${runtime} body.`,
+                fence(),
             );
         }
         if (invocation.target === undefined && hasTarget) {
@@ -439,7 +443,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 runtime,
                 "target-required",
                 `Executable tool '${runtime}' requires a ${invocation.target.role} target.`,
-                `Provide the ${invocation.target.role} in (target).`,
+                fence(),
             );
         }
         if (!hasBody && !hasTarget) {
@@ -447,7 +451,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 runtime,
                 "input-required",
                 `Executable tool '${runtime}' requires a body or target.`,
-                `Provide ${invocation.target === undefined ? "a body" : "a body or target"}.`,
+                fence(),
             );
         }
         if (invocation.exclusive === true && hasBody && hasTarget) {
