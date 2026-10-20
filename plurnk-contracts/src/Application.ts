@@ -103,6 +103,14 @@ export interface ApplicationLoopPacket {
     readonly packetCount: number;
 }
 
+/** {§methods-worker-gauge} The client gauge ({§tokenomics-client-gauge}) a Worker's latest concluded loop reported. */
+export interface ApplicationWorkerGauge {
+    readonly curationWeight: number | null;
+    readonly curationBudget: number | null;
+    readonly contextTokens: number | null;
+    readonly contextCapacity: number | null;
+}
+
 // Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
 // client renders ordering without re-deriving it from DB keys. {§methods-log-coordinate}
 // A type alias, not an interface: a serialized wire bag must satisfy index-signature

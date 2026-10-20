@@ -460,6 +460,15 @@ export default class Engine {
     // occupancy gauge are derived projections. {§tokenomics-client-gauge},
     // {§notifications-loop-terminated}, {§provider-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
+        const [gauge, requests] = await Promise.all([
+            this.loopGauge(loopId),
+            this.#db.engine_loop_provider_requests.all<ProviderRequestStorageRow>({ loop_id: loopId }),
+        ]);
+        return { accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)), ...gauge };
+    }
+
+    // {§tokenomics-client-gauge} The loop's client gauge and its latest turn's provider metadata.
+    async loopGauge(loopId: number): Promise<Omit<LoopUsage, "accounting">> {
         const row = await this.#db.engine_loop_usage.get<{
             context_tokens: number | null;
             curation_weight: number | null;
@@ -467,10 +476,8 @@ export default class Engine {
             context_capacity: number | null;
             meta: string | null;
         }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`loopUsage: loop ${loopId} does not exist`);
-        const requests = await this.#db.engine_loop_provider_requests.all<ProviderRequestStorageRow>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`loopGauge: loop ${loopId} does not exist`);
         return {
-            accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)),
             // Latest assembled request's stable model-independent weight.
             curationWeight: row.curation_weight,
             // Latest provider-derived calibration used only for curation.

@@ -30,6 +30,7 @@ import type {
     ApplicationWorkerCreation,
     ApplicationLoopAdmission,
     ApplicationLoopProjection,
+    ApplicationWorkerGauge,
     ApplicationProviderAlias,
     LogEntryWire,
     ApplicationEventHandler,
@@ -174,6 +175,11 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly workerId: number;
     }): Promise<ProviderAccounting>;
+    // {§methods-worker-gauge} — the client gauge the worker's latest concluded loop reported.
+    workerGauge(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+    }): Promise<ApplicationWorkerGauge>;
     // {§methods-workspace-prompts} — an omitted workerId lists every model worker's client-addressed seeds.
     listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]>;
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.

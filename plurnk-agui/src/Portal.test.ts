@@ -17,7 +17,7 @@ import type {
 import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { loopUsage } from "../test/accounting-fixture.ts";
+import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
 import { streamEvent, termination } from "../test/notification-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
 
@@ -196,7 +196,7 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     await drain();
     assert.equal(events.length, 0, "nothing patches a gauge the client does not hold yet");
     const status = statusState(null, null, spendState(accounting(1)));
-    events.push(...portal.runStarted(thread, stateSnapshot({ status }), status));
+    events.push(...portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status));
     await drain();
     assert.deepEqual(events.slice(0, 2).map(({ type }) => type), ["RUN_STARTED", "STATE_SNAPSHOT"]);
     assert.deepEqual(spends(), [2], "the spend that settled while the snapshot was read follows it");
@@ -219,7 +219,7 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     hold = false;
 
     spent = 5;
-    events.push(...portal.replaceStatus(thread, statusState(null, null, spendState(accounting(5)))));
+    events.push(...portal.replaceGauge(thread, { status: statusState(null, null, spendState(accounting(5))), budget: NO_GAUGE }));
     await drain();
     settled();
     await drain();

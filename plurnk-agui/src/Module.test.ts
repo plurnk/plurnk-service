@@ -36,7 +36,7 @@ const transcript = (messages: readonly Replayed[] | undefined): Array<Record<str
     toolCalls === undefined ? { id, role, content } : { id, role, calls: toolCalls.map(({ function: { name } }) => name) });
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, Validator, isExecution } from "@plurnk/plurnk-contracts";
-import { loopUsage } from "../test/accounting-fixture.ts";
+import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -191,6 +191,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
         workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
+        workerGauge: async () => NO_GAUGE,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
         rollback: async () => { throw new Error("rollback is not exercised here"); },

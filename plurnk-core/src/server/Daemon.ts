@@ -26,7 +26,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationWorkerGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -671,6 +671,17 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const workerId = ClientInput.assertId("worker.accounting", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
         return this.#engine.workerAccounting(workerId);
+    }
+
+    // {§methods-worker-gauge}
+    async workerGauge(args: { workspaceId: number; workerId: number }): Promise<ApplicationWorkerGauge> {
+        const workspaceId = ClientInput.assertId("worker.gauge", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.gauge", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const concluded = await this.#db.application_latest_concluded_loop.get<{ id: number }>({ worker_id: workerId });
+        if (concluded === undefined) return { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null };
+        const { curationWeight, curationBudget, contextTokens, contextCapacity } = await this.#engine.loopGauge(concluded.id);
+        return { curationWeight, curationBudget, contextTokens, contextCapacity };
     }
 
     async listWorkerLoops(args: {

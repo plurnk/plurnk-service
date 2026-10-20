@@ -299,6 +299,7 @@ export class SqlRiteSync {
 	entry_read_lookup: SqlRiteSyncPreparedStatements;
 	entry_read_channels: SqlRiteSyncPreparedStatements;
 	entry_read_channel_slice: SqlRiteSyncPreparedStatements;
+	application_latest_concluded_loop: SqlRiteSyncPreparedStatements;
 	application_list_worker_loops: SqlRiteSyncPreparedStatements;
 	proposal_list_pending: SqlRiteSyncPreparedStatements;
 	proposal_get_pending: SqlRiteSyncPreparedStatements;
@@ -599,6 +600,7 @@ export default class SqlRite {
 	entry_read_lookup: SqlRitePreparedStatements;
 	entry_read_channels: SqlRitePreparedStatements;
 	entry_read_channel_slice: SqlRitePreparedStatements;
+	application_latest_concluded_loop: SqlRitePreparedStatements;
 	application_list_worker_loops: SqlRitePreparedStatements;
 	proposal_list_pending: SqlRitePreparedStatements;
 	proposal_get_pending: SqlRitePreparedStatements;

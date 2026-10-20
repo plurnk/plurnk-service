@@ -4,7 +4,7 @@ import { type IncomingMessage, type ServerResponse } from "node:http";
 import type Portal from "./Portal.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput, type UserMessage } from "./types.ts";
 import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
@@ -39,10 +39,10 @@ export default class RunHandler {
     readonly #conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
     readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
-    readonly #workerStatus: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiStatusState>;
+    readonly #workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
 
-    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerStatus, action }: {
+    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
@@ -53,7 +53,7 @@ export default class RunHandler {
         conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
         boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
-        workerStatus: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiStatusState>;
+        workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
@@ -66,7 +66,7 @@ export default class RunHandler {
         this.#conversation = conversation;
         this.#boundWorker = boundWorker;
         this.#actionBinding = actionBinding;
-        this.#workerStatus = workerStatus;
+        this.#workerGauge = workerGauge;
         this.#action = action;
     }
 
@@ -283,7 +283,7 @@ export default class RunHandler {
         if (res.destroyed) { disconnected(); return; }
         try {
         // A Run that binds no worker has no worker status to report.
-        const status = workerId === undefined ? undefined : await this.#workerStatus(workspaceId, workerId, input.threadId);
+        const gauge = workerId === undefined ? undefined : await this.#workerGauge(workspaceId, workerId, input.threadId);
         if (finished) return;
         let providers;
         let catalogProblem;
@@ -301,9 +301,8 @@ export default class RunHandler {
                     preparation: this.#seam().workspacePreparationStatus(workspaceId),
                     activity: derivationActivity(this.#seam().workspaceDerivationStatus(workspaceId)),
                 },
-                ...(status === undefined ? {} : { status }),
-            }),
-            status,
+            }, gauge),
+            gauge?.status,
         ));
         // {§agui-message-acceptance} A message Run on a thread it reattached may present a snapshot once its message is
         // admitted; what reaches it before then is held as a sync Run's is.
@@ -420,8 +419,8 @@ export default class RunHandler {
             started = await this.#portal().attach(boundRun, workspaceId, ack);
         }
         if (started !== null && !finished) {
-            const currentStatus = await this.#workerStatus(workspaceId, workerId, input.threadId);
-            if (!finished) emit(this.#portal().replaceStatus(boundRun, currentStatus));
+            const currentGauge = await this.#workerGauge(workspaceId, workerId, input.threadId);
+            if (!finished) emit(this.#portal().replaceGauge(boundRun, currentGauge));
         }
         } catch (err) {
             // {§agui-http-failure} After headers, the frame alone is

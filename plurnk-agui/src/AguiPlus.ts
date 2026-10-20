@@ -220,17 +220,16 @@ export interface AguiBudgetState {
     readonly contextCapacity: number | null;
 }
 
-const EMPTY_BUDGET: AguiBudgetState = Object.freeze({
-    curationWeight: null,
-    curationBudget: null,
-    contextTokens: null,
-    contextCapacity: null,
-});
+// {§agui-state-patches} The bound Worker's gauge: its status and the budget its latest concluded loop reported.
+export interface AguiWorkerGauge {
+    readonly status: AguiStatusState;
+    readonly budget: AguiBudgetState;
+}
 
 // {§agui-workspace-state} The worker's gauge, `status` and `budget`, rides only a Run that binds a worker.
-export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({
+export const stateSnapshot = (s: Omit<AguiPlusState, "status">, gauge?: AguiWorkerGauge): AguiEvent => ({
     type: EventType.STATE_SNAPSHOT,
-    snapshot: s.status === undefined ? { plurnk: s } : { plurnk: s, budget: EMPTY_BUDGET },
+    snapshot: gauge === undefined ? { plurnk: s } : { plurnk: { ...s, status: gauge.status }, budget: gauge.budget },
 });
 // {§agui-daemon-client} — AG-UI 1.0 types STATE_DELTA as a real RFC 6902 patch, so the
 // operation union is the parameter type rather than a loose object shape.

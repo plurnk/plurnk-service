@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
-import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
@@ -54,6 +54,7 @@ export type AguiPort = Pick<
     | "createWorker"
     | "createWorkspace"
     | "workerAccounting"
+    | "workerGauge"
     | "httpAddress"
     | "invokeModuleAction"
     | "listClientDisplayCapabilities"
@@ -117,7 +118,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #activated = false;
     #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this) });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -495,16 +496,17 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return action.scope === "worker" ? "required" : "none";
     }
 
-    async #workerStatus(workspaceId: number, workerId: number, threadId: string): Promise<AguiStatusState> {
-        const [{ model }, loops, children, inbox] = await Promise.all([
+    async #workerGauge(workspaceId: number, workerId: number, threadId: string): Promise<AguiWorkerGauge> {
+        const [{ model }, loops, children, inbox, budget] = await Promise.all([
             this.#seam.readWorkerModel({ workspaceId, workerId }),
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
             this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
             this.#seam.readInbox({ workspaceId, workerId }),
+            this.#seam.workerGauge({ workspaceId, workerId }),
         ]);
         const loop = selectWorkerLoop(loops);
         const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
-        return statusState(model, loop, spendState(spend), aliveChildren(children), inboxState(inbox, threadId));
+        return { status: statusState(model, loop, spendState(spend), aliveChildren(children), inboxState(inbox, threadId)), budget };
     }
 
     // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on

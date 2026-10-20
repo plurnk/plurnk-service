@@ -77,3 +77,6 @@ export const loopUsage = (fixture: LoopUsageFixture = {}): TerminatedNotificatio
         meta: fixture.meta ?? {},
     };
 };
+
+// {§methods-worker-gauge} The gauge of a Worker that has not concluded a loop.
+export const NO_GAUGE = { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null } as const;

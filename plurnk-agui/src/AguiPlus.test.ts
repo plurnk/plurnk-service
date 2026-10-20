@@ -22,6 +22,7 @@ import {
 import type { ProposalNotification } from "./types.ts";
 import type { ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
+import { NO_GAUGE } from "../test/accounting-fixture.ts";
 import { JSONPatchError } from "json-p3";
 
 const OWNER = "agui://anonymous/threads/tui";
@@ -31,7 +32,7 @@ const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, totalTokens: 0,
 const NOTHING_SPENT = { requests: 0, usage: ZERO_USAGE, knownUsage: ZERO_USAGE, costUsd: "0", knownCostUsd: "0" };
 
 test("{§agui-state-patches}: the replay witness refuses non-replace or undefined state paths", () => {
-    const snapshot = stateSnapshot({ status: statusState(null, null, NOTHING_SPENT) });
+    const snapshot = stateSnapshot({}, { status: statusState(null, null, NOTHING_SPENT), budget: NO_GAUGE });
     // The point of this witness is feeding operations the replayer must refuse, so the patch is
     // deliberately not a conforming JsonPatch ({§agui-state-patches}).
     for (const op of ["add", "remove"]) {
@@ -163,12 +164,12 @@ test("{§agui-proposal-resolve} client interaction resume preserves an arbitrary
 
 const WORKSPACE = { id: 1, name: "agui-tui", projectRoot: "/w", projectLabel: "w", preparation: [], activity: null };
 
-test("{§agui-proposal-resolve} reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
+test("{§agui-state-patches} the snapshot owns plurnk state and carries the bound Worker's budget beside it", () => {
+    const budget = { curationWeight: 5751, curationBudget: 409292, contextTokens: 400, contextCapacity: 28672 };
     const snap = stateSnapshot({
         providers: [{ alias: "opus", provider: "anthropic", model: "claude-opus", effort: "adaptive", effortSource: "default", active: true, inputCapacity: 200000 }],
         workspace: WORKSPACE,
-        status: statusState(null, null, NOTHING_SPENT),
-    });
+    }, { status: statusState(null, null, NOTHING_SPENT), budget });
     assert.equal(snap.type, "STATE_SNAPSHOT");
     const snapshot = (snap as {
         snapshot: {
@@ -177,12 +178,7 @@ test("{§agui-proposal-resolve} reads → STATE: snapshot owns plurnk state and 
         };
     }).snapshot;
     assert.equal(snapshot.plurnk.providers[0].active, true);
-    assert.deepEqual(snapshot.budget, {
-        curationWeight: null,
-        curationBudget: null,
-        contextTokens: null,
-        contextCapacity: null,
-    });
+    assert.deepEqual(snapshot.budget, budget, "the budget the Worker's latest conclusion reported, verbatim");
     const delta = stateDelta([{ op: "replace", path: "/plurnk/providers/0/active", value: false }]);
     assert.equal(delta.type, "STATE_DELTA");
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");

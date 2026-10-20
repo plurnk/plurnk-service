@@ -6,7 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, inboxState, spendState, stateDelta, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, inboxState, spendState, stateDelta, type AguiStatusState, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { Problems, Validator, isRecord, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -866,10 +866,13 @@ export default class Portal {
         return events;
     }
 
-    // A whole-gauge replacement: the client's gauge is this status from here on.
-    replaceStatus(thread: ThreadHandle, status: AguiStatusState): AguiEvent[] {
-        this.#presentGauge(this.#bound(thread), status);
-        return [stateDelta([{ op: "replace", path: "/plurnk/status", value: status }])];
+    // A whole-gauge replacement: the client's gauge is this one from here on.
+    replaceGauge(thread: ThreadHandle, gauge: AguiWorkerGauge): AguiEvent[] {
+        this.#presentGauge(this.#bound(thread), gauge.status);
+        return [stateDelta([
+            { op: "replace", path: "/plurnk/status", value: gauge.status },
+            { op: "replace", path: "/budget", value: gauge.budget },
+        ])];
     }
 
     // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
