@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
 import { urlPath } from "./_dsl.ts";
 
@@ -171,6 +171,8 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
         try {
             const workspaceId = await insertWorkspace(db, "turn-artifacts");
             const workerId = await insertWorker(db, workspaceId, null, "analyst");
+            // A workspace entry, so the workspace survey selects something and the initialization program exists.
+            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
             const loopId = await insertLoop(db, workerId, 1, "conclude");
             const response = {
                 assistant: { content: inferenceSource, reasoning: null },

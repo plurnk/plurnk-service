@@ -228,27 +228,17 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
             .filter(({ logPath: path }) => path.startsWith("log:///1/1/"));
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
-            ["FIND", "NOTE", "READ"],
-            "{§worker-initialization-entry}: turn 0 exposes its NOTE, the READ of its own program and its surveys, and nothing else",
+            ["FIND", "NOTE"],
+            "{§worker-initialization-entry}: turn 0 exposes its NOTEs and its surveys, and nothing else",
         );
-        assert.deepEqual(
-            initialization.filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath: path }) => path),
-            ["log:///1/1/2/READ"],
-            "turn 0 reads its own program as an ordinary row; it announces no emission ({§emission-row})",
-        );
+        assert.equal(initialization.some(({ path: target }) => target?.startsWith("ops://") === true), false,
+            "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");
         assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), []);
         const initializationOutcomes = initialization;
         assert.deepEqual(
-            initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 6).map(({ path: target }) => target),
-            [
-                "ops://subject/1/1",
-                "worker:///_plurnk/plurnk/*.md",
-                "worker:///_plurnk/tools/*.md",
-                "worker:///_plurnk/a2a/*.md",
-                "worker:///_plurnk/members/*.md",
-                "*",
-            ],
-            "the program READ leads; reference discovery precedes workspace discovery ({§actor-boundary-catalog-preview})",
+            initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
+            ["worker:///*"],
+            "only the survey with entries runs: no reference is materialized and the worker's own space is new ({§actor-boundary-catalog-preview})",
         );
         assert.doesNotMatch(log, /worker:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
@@ -448,7 +438,7 @@ test("{§schemes-directory} assembled packet: the skills foist surfaces the Work
     }
 });
 
-test("{§actor-boundary-catalog-preview} assembled packet: the bodyless Worker reference catalog succeeds when no references are materialized", async () => {
+test("{§actor-boundary-catalog-preview} assembled packet: a reference catalog with nothing materialized is left out of turn 0, which still completes", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
     const db = await openMigrated();
@@ -460,13 +450,10 @@ test("{§actor-boundary-catalog-preview} assembled packet: the bodyless Worker r
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
-        const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
-        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/*.md");
-        assert.ok(docs !== undefined, "the Worker skills FIND executes without relying on materialized skills");
-        assert.equal(docs.status_rx, 200, "an empty bodyless catalog remains a successful scope query");
-        const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };
-        const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
-        assert.deepEqual(items, [], "the empty Worker skills survey preserves its zero-result response");
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string | null; pathname: string }>({ loop_id: loopId });
+        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "worker" && row.pathname === "/_plurnk/plurnk/*.md"), false,
+            "the reference survey that would select nothing is left out");
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "SEND"), "and the model's turn still runs and completes");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;

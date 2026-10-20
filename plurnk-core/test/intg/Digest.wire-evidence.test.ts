@@ -9,7 +9,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
 
 test("{§emission-history} {§digest-forensic-fidelity}: stored and shared requests preserve interpolated assistant messages byte for byte", async () => {
@@ -88,6 +88,8 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         try {
             const workspaceId = await insertWorkspace(db, "wire-evidence");
             const workerId = await insertWorker(db, workspaceId, null, "analyst");
+            // A workspace entry, so the workspace survey selects something and the initialization program exists.
+            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
             const loopId = await insertLoop(db, workerId, 1, "inspect");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });

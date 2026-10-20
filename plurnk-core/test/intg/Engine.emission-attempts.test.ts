@@ -1352,6 +1352,8 @@ test("{§rejected-emission-entry} digest preserves rejected emissions as forensi
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
+        // A workspace entry, so the workspace survey selects something and the initialization program exists.
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
         const rejected = "````READ (worker:///😀rejected bytes";
         try {
             const provider = new AttemptWitness({

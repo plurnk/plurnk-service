@@ -187,11 +187,15 @@ test("{§emission-row} the turn-0 initialization consists of the real orienting 
                 assert.equal(map.find(([item]) => item.path === "worker:///nested/**")?.[0]?.items, 1,
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
-                assert.deepEqual(
-                    initializationRows.map(({ op }) => op),
-                    ["NOTE", "READ", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
-                    "initialization executes its opening NOTE, the READ of its own program, the eight environment surveys and its closing NOTE, without a reasoning demonstration",
-                );
+                const ops = initializationRows.map(({ op }) => op);
+                assert.deepEqual([ops[0], ops.at(-1)], ["NOTE", "NOTE"], "initialization opens and closes with its NOTEs");
+                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND"),
+                    "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
+                for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
+                    const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
+                    const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
+                    assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
+                }
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
                     "`_plurnk` initialization has no content emission ({§emission-row})");
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -217,7 +221,7 @@ test("{§emission-row} the turn-0 initialization consists of the real orienting 
     }
 });
 
-test("{§actor-boundary-catalog-preview} an empty workspace executes all eight orienting FINDs and preserves empty-surface results", async () => {
+test("{§actor-boundary-catalog-preview} an empty workspace runs only the surveys that select something, in their taught order", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
@@ -230,37 +234,24 @@ test("{§actor-boundary-catalog-preview} an empty workspace executes all eight o
                 const workerName = await WorkerName.forId(db, modelWorkerId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
+                // Nothing is in it: no project files, tools, agents or members definitions, and the worker is new.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "worker", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/a2a/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/members/*.md" },
-                    { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
-                    { scheme: "worker", hostname: workerName, pathname: "/*" },
-                ], "the surveys execute in their taught order ({§actor-boundary-catalog-preview})");
+                ], "the surveys that select something run, in their taught order; the empty surfaces are left out ({§actor-boundary-catalog-preview})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, null, "project root member files", "workspace knowledgebase entries", "worker knowledgebase entries"],
-                    "asides name what each namespace is; the program echo shows them verbatim",
+                    [null, null, "workspace knowledgebase entries"],
+                    "asides name what each namespace is",
                 );
-                const orientations = [
-                    ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
-                    ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), false, 200],
-                    ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === workerName && r.pathname === "/*"), false, 200],
-                    ["skills", finds.find((r) => r.scheme === "skill" && r.hostname === "*" && r.pathname === "/SKILL.md"), false, 200],
-                    ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/tools/*.md"), true, 200],
-                    ["plurnk references", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/plurnk/*.md"), false, 200],
-                    ["enabled members", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/members/*.md"), true, 200],
-                ] as const;
-                for (const [name, row, expectEmpty, expectStatus] of orientations) {
-                    assert.ok(row !== undefined, `${name} FIND executes even when empty`);
-                    assert.equal(row.status_rx, expectStatus, `${name} FIND has its catalog contract status`);
+                for (const row of finds) {
+                    assert.equal(row.status_rx, 200, `${row.scheme}:${row.pathname} has its catalog contract status`);
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
-                    if (expectEmpty) assert.deepEqual(items, [], `${name} preserves the informative zero-result response`);
+                    assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
                 }
+                assert.equal(workerName.length > 0, true);
                 assert.ok(
                     finds.every(({ tx }) => (JSON.parse(tx) as { body?: unknown }).body === null),
                     "Turn 0 catalogs documents without imposing a body-shape eligibility gate",
@@ -303,11 +294,11 @@ test("{§actor-boundary-catalog-preview} an empty workspace executes all eight o
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "READ", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
-                    "initialization contains its opening NOTE, the READ of its own program, then eight environment surveys, its closing NOTE, and nothing else",
+                    ["NOTE", "FIND", "FIND", "FIND", "NOTE"],
+                    "initialization contains its opening NOTE, the three surveys that select something, its closing NOTE, and nothing else",
                 );
-                assert.equal(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops").length, 1,
-                    "turn 0 reads its own program once as an ordinary row, and announces no emission ({§emission-row})");
+                assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
+                    "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

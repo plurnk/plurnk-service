@@ -938,6 +938,14 @@ export default class Dispatcher {
         await this.#notify.operationSettledNotify?.(context.workspaceId, logEntryId);
     }
 
+    // {§actor-boundary-catalog-preview} Whether a survey selects anything: its FIND run through the scheme context and
+    // owner its dispatch would use, writing no row. A survey the FIND refuses counts as selecting, so its dispatch reports it.
+    async selects(survey: FindStatement, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): Promise<boolean> {
+        const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(ids),
+            (ctx) => this.#dataRun.run(schemeNameOf(survey.target), survey, ctx));
+        return found.status >= 300 || !Array.isArray(found.results) || found.results.length > 0;
+    }
+
     capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
         return this.#capabilities.projection(workspaceId);
     }

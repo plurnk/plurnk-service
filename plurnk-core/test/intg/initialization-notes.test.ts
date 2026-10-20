@@ -4,9 +4,8 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
-const CLOSING_NOTE = "Read and resolve the Open Message.";
 // The card's NOTE examples, in the order the card teaches them.
 const cardNoteAsides = async (): Promise<string[]> => [...(await readFile(new URL("../../../plurnk-contracts/plurnk.md", import.meta.url), "utf8"))
     .matchAll(/^`{3,}NOTE <!-- (.+?) -->$/gmu)].map(([, aside]) => aside);
@@ -19,6 +18,8 @@ const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_l
 const runLoop = async (db: Db) => {
     const workspaceId = await insertWorkspace(db, `initialization-notes-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
+    // One workspace entry, so the workspace survey selects something.
+    await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
     const loopId = await insertLoop(db, workerId, 1, "Look around.");
     const provider = new Mock({ contextWindow: 100_000, responses: [
         { assistant: { content: "```NOTE\nReady.\n```\n\n```SEND [200]\nDone.\n```", reasoning: null, finishReason: "stop" } },
@@ -50,15 +51,19 @@ test("{§worker-initialization-entry}: when the surveys run, one NOTE opens the 
         const [opening, ...rest] = rows;
         const closing = rest.pop();
         assert.deepEqual([opening?.op, opening?.origin], ["NOTE", "_plurnk"], "the opening NOTE is the first row");
-        assert.match(JSON.parse(opening.tx).body, /^1\. .+\n2\. .+\n3\. .+$/u, "it is a plan in numbered steps");
-        assert.deepEqual([closing?.op, closing?.origin, JSON.parse(closing!.tx).body], ["NOTE", "_plurnk", CLOSING_NOTE], "the closing NOTE is the last row");
+        const steps = (JSON.parse(opening.tx) as { body: string }).body.split("\n");
+        assert.ok(steps.length > 1 && steps.every((step, index) => step.startsWith(`${index + 1}. `)), "it is a plan in numbered steps");
+        const next = steps[1].slice("2. ".length);
+        assert.deepEqual([closing?.op, closing?.origin, JSON.parse(closing!.tx).body], ["NOTE", "_plurnk", next],
+            "the closing NOTE is the last row, naming the plan's next step in its words");
         assert.ok(rest.length > 0 && rest.every(({ op }) => op === "FIND" || op === "READ"), "the surveys stand between them");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         const program = sources.find((row) => row.turn_id === initialization && row.kind === "ops")?.content ?? "";
         assert.ok((await cardNoteAsides()).includes("plan"), "the card teaches NOTE by labelled examples, a plan among them");
         assert.match(program, /^`{3,}NOTE <!-- plan -->\n1\. /u,
             "the recorded ops:// program begins with the plan NOTE, labelled as the card's plan example is");
-        assert.match(program, /\n`{3,}NOTE <!-- plan -->\nRead and resolve the Open Message\.\n`{3,}\s*$/u,
+        const escaped = next.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+        assert.match(program.trimEnd(), new RegExp(`\\n(\`{3,})NOTE <!-- plan -->\\n${escaped}\\n\\1$`, "u"),
             "and ends with the closing NOTE, a plan of one step");
     });
 });

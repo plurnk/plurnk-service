@@ -243,16 +243,12 @@ const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or 
 // labelled as the card's own plan example is: the worker's plan in steps, then its next step.
 const INITIALIZATION_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: [
-        "1. Survey the tooling, documentation, extended context, and project root: what exists decides what can be done.",
-        "2. Read the Open Message and restate what it asks for and what will show it is done.",
-        "3. Do the work, saving all new facts, ideas, and plans in NOTEs for later turns.",
-    ].join("\n"),
+    body: ["1. Survey the environment.", "2. Evaluate and react to the Open Message."].join("\n"),
     position: UNKNOWN_POSITION,
 };
 const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: "Read and resolve the Open Message.", position: UNKNOWN_POSITION,
+    body: "Evaluate and react to the Open Message.", position: UNKNOWN_POSITION,
 };
 // {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
@@ -865,8 +861,15 @@ export default class TurnRunner {
         // {§emission-row} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
-        const admittedInitializationStatements = initializationStatements.filter((statement) =>
-            this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
+        const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
+        for (const statement of initializationStatements) {
+            if (!this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
+            // {§actor-boundary-catalog-preview} — a survey that would select nothing is left out of the program.
+            if (statement.op === "FIND" && !await this.#dispatcher.selects(statement, {
+                workspaceId, workerId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
+            })) continue;
+            admittedInitializationStatements.push(statement);
+        }
         if (admittedInitializationStatements.length === 0) {
             // Nothing to survey (the preview off, no project guidance): the turn opens and completes empty.
             await Turn.complete(this.#db, initializationTurn.id, 200);
@@ -908,18 +911,11 @@ export default class TurnRunner {
     // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
     // its scheme is registered for the workspace. A positive filesItems caps the
     // project rows.
-    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies, loopSequence }: TurnContainer, filesItems: number): Promise<Array<FindStatement | ReadStatement>> {
+    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<FindStatement[]> {
         const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-        const surveys: Array<FindStatement | ReadStatement> = [
-            {
-                // Trial (#1073): the survey reads its own program, so the log carries one program verbatim
-                // and shows that every ops:// turn is readable.
-                op: "READ", aside: "this program",
-                target: { kind: "url", raw: `ops://${workerName}/${loopSequence}/1`, scheme: "ops", username: null, password: null, hostname: workerName, port: null, pathname: `/${loopSequence}/1`, query: null, fragment: null },
-                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
-            },
+        const surveys: FindStatement[] = [
             {
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },

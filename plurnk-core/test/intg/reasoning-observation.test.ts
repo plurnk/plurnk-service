@@ -5,7 +5,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -22,6 +22,8 @@ test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` o
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         const workspaceId = await insertWorkspace(db, "ops-bootstrap");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
+        // A workspace entry, so the workspace survey selects something and the initialization program exists.
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
         const loopId = await insertLoop(db, workerId, 3, "Inspect the initial program.");
         const context = { workspaceId, workerId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

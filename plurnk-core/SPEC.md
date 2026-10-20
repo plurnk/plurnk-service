@@ -517,13 +517,12 @@ Maintenance turns create neither lineage nor commons broadcasts. Their loops are
 
 §actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
 foists turn-0 discovery into the worker's first turn, so a worker opens with a
-navigable map instead of blank. Its baseline surveys follow this
-order: one READ of the program itself, then bodyless FINDs; unregistered schemes contribute no survey, and workspace capabilities may
-narrow or omit the reference catalogs under {§capability-admission}.
+navigable map instead of blank. Its baseline surveys are bodyless FINDs in this
+order; unregistered schemes contribute no survey, a survey that would select nothing is left out, and workspace
+capabilities may narrow or omit the reference catalogs under {§capability-admission}.
 
 | Surface | Target | Scope / aside |
 | --- | --- | --- |
-| This program | READ `ops://<worker>/<loop>/1` | `this program`; the log carries one program verbatim, and every `ops://` turn is shown readable ({§turn-source-resources}) |
 | Agent Skills | FIND `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
 | Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
 | Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
@@ -540,15 +539,15 @@ Only the three namespace surveys carry asides; the other targets name their surf
 | Catalogs | select documents independently of their authored bodies; ordinary READ supplies examples and complete instructions on demand |
 | A shallow result | renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; runtime rows also carry the concise `{§scheme-catalog-aside}` that drives on-demand capability discovery |
 | Ordinary surveys | FIND without a scope ({§markerless-first-page}), whose range metadata reports the returned set against the complete result total; only the small capability-reference surfaces explicitly select all; the opening survey demonstrates both `*` and `**` without normalizing an all-results override |
-| Every survey | executes even when empty, because zero results are useful orientation |
+| A survey that would select nothing | is left out of the program: before it is recorded, each FIND runs through the scheme context and owner its dispatch would use, writing no row, and only those that select something remain |
 | A positive `N` | explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count |
 | `-1` | enables the ordinary markerless page |
 | Unset / `0` | disables previews |
 
 §worker-initialization-entry **Model-worker initialization is a real `_plurnk` operation turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}; every orienting row is structurally classified `_plurnk` and `init`, and the namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
-- Its program — the READ/FIND surveys, opened by one NOTE and closed by another when the surveys run — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning and reads none back.
-- The two NOTEs show the card's NOTE practice in the example turn, both carrying the aside of the card's plan example, `<!-- plan -->`: the opening one is the worker's plan in numbered steps, each with its purpose — survey what exists, read the Open Message and restate what it asks for and what will show it is done, then do the work saving all new facts, ideas and plans in NOTEs for later turns; the closing one names the next step and reads `Read and resolve the Open Message.`
+- Its program — the instruction READs and the surveys that select something, opened by one NOTE and closed by another when a survey runs — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning, reads none back, and never READs its own `ops://` program, whose operations its rows already show.
+- The two NOTEs show the card's NOTE practice in the example turn, both carrying the aside of the card's plan example, `<!-- plan -->`: the opening one is the worker's plan in numbered steps, `1. Survey the environment.` and `2. Evaluate and react to the Open Message.`; the closing one names the next step in the plan's words, `Evaluate and react to the Open Message.`
 - No emission row is fabricated ({§emission-row}): the first request sees the NOTEs and the surveys' ordinary results, never an assistant-content copy of the program.
 - The initial message arrives as an inbound SEND in the first model turn ({§message-arrival}); initialization never READs it, and neither initialization nor later turns manufacture a task inventory.
 
