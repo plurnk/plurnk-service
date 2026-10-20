@@ -2617,8 +2617,8 @@ test("{§agui-sync} rows that reach a sync Run while its log is read follow its 
             ? [[event.type, index > snapshot, (event as { toolCallId?: string }).toolCallId, (event as { metadata?: { plurnk?: { id?: number; status?: number } } }).metadata?.plurnk]] : []);
         assert.deepEqual(parts, [
             ["TOOL_CALL_START", true, "1/1/3", expectedFacts(3)], ["TOOL_CALL_ARGS", true, "1/1/3", undefined], ["TOOL_CALL_END", true, "1/1/3", undefined],
-            ["TOOL_CALL_RESULT", true, "1/1/3", expectedFacts(3)],
-            ["TOOL_CALL_START", true, "1/1/2", expectedFacts(2, 404)], ["TOOL_CALL_END", true, "1/1/2", undefined], ["TOOL_CALL_RESULT", true, "1/1/2", expectedFacts(2, 404)],
+            ["TOOL_CALL_RESULT", true, "1/1/3", undefined],
+            ["TOOL_CALL_START", true, "1/1/2", expectedFacts(2, 404)], ["TOOL_CALL_END", true, "1/1/2", undefined], ["TOOL_CALL_RESULT", true, "1/1/2", undefined],
         ], "after the snapshot: the row it could not hold, then the later facts folded onto the call it held and its settled receipt, its arguments never sent again");
     } finally { await mod.close(); }
 

@@ -916,7 +916,7 @@ test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity
     assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map(({ id }) => id), [live, "1/2/1/reasoning"]);
 });
 
-test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds, the same live and on replay", () => {
+test("{§agui-plurnk-metadata} a row's facts ride once, on what it builds: its call, speech or arrival, or the result it delivers for another's call; a call's own result repeats none, live and on replay", () => {
     const facts = (row: LogEntryNotification["entry"]) => ({ plurnk: { id: row.id, coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}`,
         worker: row.worker_id, origin: row.origin, op: row.op, source: row.source, address: Translator.addressOf(row), signal: row.signal, status: row.status_rx,
         attrs: row.attrs, state: row.state } });
@@ -928,18 +928,24 @@ test("{§agui-plurnk-metadata} a row's facts ride the metadata of what it builds
         wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, aside: "the answer", body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
         wireRow({ id: 4, turn_id: 3, turn_seq: 3, sequence: 2, op: "WAIT", signal: 202, status_rx: 102, tx: authored("````WAIT\n````"), rx: { status: 102, detail: "Nothing is in flight. Continuing." } }),
         wireRow({ id: 5, turn_id: 3, turn_seq: 3, sequence: 3, op: "WAIT", signal: 202, status_rx: 202, tx: authored("````WAIT <!-- parked -->\nBack soon.\n````"), rx: { status: 202, attrs: { waiting: 1 } } }),
+        wireRow({ id: 6, turn_id: 4, turn_seq: 4, sequence: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"),
+            attrs: { worker: "worker://helper", message: "message://helper/ab12" }, rx: { status: 200, body: "helper" } }),
+        wireRow({ id: 7, turn_id: 5, turn_seq: 5, sequence: 1, origin: "_plurnk", op: "READ", source: "worker://helper", tx: null,
+            attrs: { kind: "loop_termination" }, invocation: "log:///1/4/1/WORK", rx: { status: 200, resource: "ops://helper/1", content: "hello" } }),
     ];
     const live = rows.flatMap((row) => t().logEntry({ entry: row }));
     const carried = (type: string) => live.filter((event) => event.type === type).map((event) => (event as { metadata?: unknown }).metadata);
     assert.deepEqual(carried(EventType.TEXT_MESSAGE_START), [facts(rows[0]), speechOf(rows[2], "the answer"), speechOf(rows[4], "parked")],
         "an arrival carries its row's facts, and speech its heading's aside and its receipt too");
-    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]), facts(rows[3])], "a call carries its row's facts, a bodiless WAIT's among them");
-    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [facts(rows[1]), facts(rows[3])], "and so does its result, its status the failure");
+    assert.deepEqual(carried(EventType.TOOL_CALL_START), [facts(rows[1]), facts(rows[3]), facts(rows[5])],
+        "a call carries its row's facts, its status the failure, a bodiless WAIT's among them");
+    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [undefined, undefined, facts(rows[6])],
+        "a call's own result repeats none; the result another row delivers carries that row's");
     const [snapshot] = t().replay(rows);
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(snapshot.messages.map((message) => "toolCalls" in message && message.toolCalls !== undefined
         ? message.toolCalls.map(({ metadata }) => metadata)[0] : message.metadata),
-        [facts(rows[0]), facts(rows[1]), facts(rows[1]), speechOf(rows[2], "the answer"), facts(rows[3]), facts(rows[3]), speechOf(rows[4], "parked")],
+        [facts(rows[0]), facts(rows[1]), undefined, speechOf(rows[2], "the answer"), facts(rows[3]), undefined, speechOf(rows[4], "parked"), facts(rows[5]), facts(rows[6])],
         "the snapshot holds the same metadata on the same parts");
 });
 
@@ -957,12 +963,12 @@ test("{§agui-parse-refusal} a parse refusal is the call the worker attempted, a
         attrs: { attempt: { verb: "READ", text: "````READ (a.md) <1,\n````" } } });
     const unread = wireRow({ id: 5, sequence: 3, op: "error", status_rx: 400, tx: "", rx: { status: 400, problem: refusal }, attrs: {} });
     const live = [attempted, unread].flatMap((row) => t().logEntry({ entry: row }));
-    const start = live.find((event) => event.type === EventType.TOOL_CALL_START) as { toolCallId: string; toolCallName: string } | undefined;
+    const start = live.find((event) => event.type === EventType.TOOL_CALL_START) as { toolCallId: string; toolCallName: string; metadata?: { plurnk?: { status?: number } } } | undefined;
     assert.deepEqual([start?.toolCallId, start?.toolCallName], ["1/1/2", "READ"], "named by the verb the parser read");
     const args = live.find((event) => event.type === EventType.TOOL_CALL_ARGS) as { delta: string } | undefined;
     assert.deepEqual(JSON.parse(args?.delta ?? "{}"), { text: "````READ (a.md) <1,\n````" }, "its arguments are the statement as written");
-    const result = live.find((event) => event.type === EventType.TOOL_CALL_RESULT) as { content: string; metadata?: { plurnk?: { status?: number } } } | undefined;
-    assert.deepEqual([JSON.parse(result?.content ?? "{}").problem?.type, result?.metadata?.plurnk?.status], [refusal.type, 400], "answered by the refusal, its status the failure");
+    const result = live.find((event) => event.type === EventType.TOOL_CALL_RESULT) as { content: string } | undefined;
+    assert.deepEqual([JSON.parse(result?.content ?? "{}").problem?.type, start?.metadata?.plurnk?.status], [refusal.type, 400], "answered by the refusal, the call's status the failure");
     assert.equal(live.filter((event) => event.type === EventType.TOOL_CALL_START).length, 1, "a refusal that names no attempt is no call");
     assert.ok(live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "it rides whole");
     const [snapshot] = t().replay([attempted, unread]);

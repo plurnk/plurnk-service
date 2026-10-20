@@ -254,7 +254,7 @@ export default class Translator {
             events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: Translator.#callOf(e)!.name, metadata });
             events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
             if (!Translator.#answeredLater(e)) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e), metadata });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e) });
             }
             return events;
         }
@@ -289,9 +289,10 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: call.name, metadata });
         events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: call.args });
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
-        // {§agui-call-result} A call is answered by its receipt, unless something later answers it.
+        // {§agui-call-result} A call is answered by its receipt, unless something later answers it; the call holds the row's
+        // facts, so its own result repeats none ({§agui-plurnk-metadata}).
         if (!Translator.#answeredLater(e)) {
-            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e), metadata });
+            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e) });
         }
         return events;
     }
@@ -488,7 +489,7 @@ export default class Translator {
         messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: call.name, arguments: call.args }, metadata }] }));
         if (e.state === "proposed") this.#held.add(id);
         if (Translator.#answeredLater(e)) return;
-        Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: this.#result(e), metadata }));
+        Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: this.#result(e) }));
     }
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {

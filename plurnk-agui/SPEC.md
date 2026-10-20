@@ -287,7 +287,7 @@ sequence.
   operand exactly as parsed (host, scope, pattern, aside, both COPY/MOVE selections) without the
   verb that is the tool's name or its source position, in one delta because a dispatched plurnk op
   is atomic; its rx is the result, except for a call that opened an obligation, whose discharge
-  is ({§agui-call-result}). The row's facts ride the call's metadata ({§agui-plurnk-metadata}).
+  is ({§agui-call-result}). The row's facts ride the call's metadata, and its own result repeats none ({§agui-plurnk-metadata}).
 - §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
   AG-UI defines encrypted-reasoning events and message values; plurnk emits none and
   stores none ({§provider-open-reasoning}). Implementing a transport for bytes the
@@ -308,7 +308,7 @@ sequence.
   |---|---|
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
-  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), its result (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). A gated call's settlement folds its settled facts onto the call ({§agui-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), a result it delivers for another row's call (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts, once: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). A call's own result carries none: the call it answers holds them. A gated call's settlement folds its settled facts onto the call ({§agui-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
   | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews |
   | A client interaction's `Interrupt` ({§agui-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |

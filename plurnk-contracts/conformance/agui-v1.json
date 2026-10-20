@@ -117,8 +117,7 @@
                     "type": "TOOL_CALL_RESULT",
                     "toolCallId": "1/1/1",
                     "messageId": "1/1/1/result",
-                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
+                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}"
                 },
                 {
                     "type": "STATE_DELTA",
@@ -693,8 +692,7 @@
                     "type": "TOOL_CALL_RESULT",
                     "toolCallId": "1/1/1",
                     "messageId": "1/1/1/result",
-                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}",
-                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
+                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}"
                 }
             ],
             "expect": {
