@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution, Notice, ProposalProjection, ApplicationOwnerIdentity, ApplicationGauge } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -323,7 +323,8 @@ export default class Engine {
             warmWorkspace: (context, invalidate, materialize) =>
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
-            resolveWorkerProviderIdentity: (workerId) => this.resolveWorkerProviderIdentity(workerId) });
+            resolveWorkerProviderIdentity: (workerId) => this.resolveWorkerProviderIdentity(workerId),
+            loopGauge: async (loopId) => Engine.clientGauge(await this.loopGauge(loopId)) });
         schemes.bindCore({
             db,
             mimetypes: this.#mimetypes,
@@ -465,6 +466,11 @@ export default class Engine {
             this.#db.engine_loop_provider_requests.all<ProviderRequestStorageRow>({ loop_id: loopId }),
         ]);
         return { accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)), ...gauge };
+    }
+
+    // {§tokenomics-client-gauge} The four facts a client's gauge shows.
+    static clientGauge({ curationWeight, curationBudget, contextTokens, contextCapacity }: ApplicationGauge): ApplicationGauge {
+        return { curationWeight, curationBudget, contextTokens, contextCapacity };
     }
 
     // {§tokenomics-client-gauge} The loop's client gauge and its latest turn's provider metadata.

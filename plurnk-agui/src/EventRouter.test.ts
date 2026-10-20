@@ -1,5 +1,5 @@
 // The render router, routing daemon events → AG-UI. Confirms the composition: a model
-// SEND becomes assistant speech, a terminated becomes RUN_FINISHED + budget STATE,
+// SEND becomes assistant speech, a packet moves the gauge STATE, a terminated becomes RUN_FINISHED,
 // notices ride their custom, and stopped-world events are deliberately left to ProposalHitl.
 
 import { test } from "node:test";
@@ -9,6 +9,7 @@ import { EventType } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import {
     interaction,
+    packet as loopPacket,
     proposal,
     streamConclusion,
     streamEvent,
@@ -81,16 +82,21 @@ test("{§agui-projection} notice → plurnk.notice custom; stopped-world events 
 
 test("{§agui-state-patches} packet chronology and derivation progress ride replaceable standard STATE", () => {
     const r = router();
-    const packet = r.route("loop/packet", { workerId: 10, loopId: 4, packetCount: 3 });
+    const gauge = { curationWeight: 5751, curationBudget: 409292, contextTokens: 400, contextCapacity: 28672 };
+    const packet = r.route("loop/packet", loopPacket({ workerId: 10, loopId: 4, packetCount: 3, gauge }));
     assert.deepEqual(packet, [{
         type: "STATE_DELTA",
         delta: [
             { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
             { op: "replace", path: "/plurnk/status/loopId", value: 4 },
             { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
+            { op: "replace", path: "/budget/curationWeight", value: 5751 },
+            { op: "replace", path: "/budget/curationBudget", value: 409292 },
+            { op: "replace", path: "/budget/contextTokens", value: 400 },
+            { op: "replace", path: "/budget/contextCapacity", value: 28672 },
         ],
     }]);
-    assert.deepEqual(r.route("loop/packet", { workerId: 11, loopId: 9, packetCount: 1 }), [], "a sibling worker cannot overwrite this thread's gauge");
+    assert.deepEqual(r.route("loop/packet", loopPacket({ workerId: 11, loopId: 9 })), [], "a sibling worker cannot overwrite this thread's gauge");
 
     const progress = r.route("notice/event", {
         workerId: 10,

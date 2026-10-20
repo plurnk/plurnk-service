@@ -16,6 +16,7 @@ import Translator from "./Translator.ts";
 import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
+import { packet } from "../test/notification-fixture.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 // One authored operation, parsed as the service parses it.
@@ -669,10 +670,10 @@ test("{§agui-run-outcome} {§agui-plurnk-metadata} a loop's end is the Run's st
         "requests that reported no tokens report no usage, never zero");
 });
 
-test("{§agui-plurnk-metadata} the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
+test("{§agui-plurnk-metadata} {§agui-state-patches} each packet moves the budget with the daemon's numbers verbatim; a terminal leaves it", () => {
     const tr = t();
-    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ curationWeight: 7654, curationBudget: 40000, inputTokens: 4321, outputTokens: 99, contextCapacity: 35840 }) };
-    const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
+    const gauge = { curationWeight: 7654, curationBudget: 40000, contextTokens: 4321, contextCapacity: 35840 };
+    const delta = tr.packet(packet({ workerId: 2, loopId: 1, packetCount: 4, gauge })).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
     assert.equal(delta.delta.find((d) => d.path === "/budget/curationWeight")?.value, 7654);
     assert.equal(delta.delta.find((d) => d.path === "/budget/curationBudget")?.value, 40000);
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
@@ -683,6 +684,10 @@ test("{§agui-plurnk-metadata} the budget STATE_DELTA carries the daemon's numbe
         "/budget/contextTokens",
         "/budget/contextCapacity",
     ], "AG-UI keeps curation and physical occupancy as separate pairs");
+    // A loop that ends after a packetless turn, or before any packet, leaves the gauge its latest packet set.
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage() };
+    const ending = tr.terminated(term).flatMap((e) => e.type === "STATE_DELTA" ? e.delta : []);
+    assert.deepEqual(ending.filter(({ path }) => path.startsWith("/budget")), [], "the terminal does not touch the budget");
 });
 
 test("{§agui-plurnk-metadata} a failed termination preserves its Problem and maps it to RUN_ERROR", () => {

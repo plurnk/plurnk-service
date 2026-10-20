@@ -101,10 +101,12 @@ export interface ApplicationLoopPacket {
     readonly workerId: number;
     readonly loopId: number;
     readonly packetCount: number;
+    /** The loop's client gauge once this packet's turn has its call. */
+    readonly gauge: ApplicationGauge;
 }
 
-/** {§methods-worker-gauge} The client gauge ({§tokenomics-client-gauge}) a Worker's latest concluded loop reported. */
-export interface ApplicationWorkerGauge {
+/** {§tokenomics-client-gauge} The client gauge: a packet's curation pair and the physical pair of its emission call. */
+export interface ApplicationGauge {
     readonly curationWeight: number | null;
     readonly curationBudget: number | null;
     readonly contextTokens: number | null;

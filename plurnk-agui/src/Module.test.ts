@@ -37,7 +37,7 @@ const transcript = (messages: readonly Replayed[] | undefined): Array<Record<str
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, Validator, isExecution } from "@plurnk/plurnk-contracts";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
-import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
+import { packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { replayState } from "../test/state-replay.ts";
@@ -297,13 +297,15 @@ for (const status of [200, 502]) {
                     source: "engine:derivation", kind: "search_progress", level: "info",
                     phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } });
-                emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 1 });
+                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 1,
+                    gauge: { curationWeight: 100, curationBudget: 4000, contextTokens: 700, contextCapacity: 8000 } }));
                 children = true;
-                emit(3, "loop/packet", { workerId: 88, loopId: 10, packetCount: 1 });
+                emit(3, "loop/packet", packet({ workerId: 88, loopId: 10, packetCount: 1 }));
                 await new Promise<void>((resolve) => setImmediate(resolve));
                 emit(3, "notice/event", { workerId: 88, loopId: 10, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
                 await new Promise<void>((resolve) => setImmediate(resolve));
-                emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 2 });
+                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 2,
+                    gauge: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 } }));
                 emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage,
                     result: status === 200 ? { status } : { status, problem: Problems.create("test:provider", "failed", status, "Provider refused.") },
                 }));
@@ -323,6 +325,7 @@ for (const status of [200, 502]) {
             assert.ok(patches.some((op) => op.path === "/plurnk/workspace/activity" && "value" in op && (op.value as { percent?: number })?.percent === 50), "derivation reaches workspace state");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/children" && "value" in op && op.value === 1), "child activity reaches state");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/spend" && "value" in op && (op.value as { requests?: number })?.requests === 1), "the spend reaches state without promoting the child's notice");
+            assert.ok(patches.some((op) => op.path === "/budget/curationWeight" && "value" in op && op.value === 100), "the budget moves with each packet, before the loop ends");
             // {§agui-workspace-state} Derivation is the workspace's: the worker's terminal leaves it as derivation last reported it.
             const workspace = (initial.snapshot as { plurnk: { workspace: Record<string, unknown> } }).plurnk.workspace;
             assert.deepEqual(replayState(events), {
@@ -349,7 +352,7 @@ test("{§agui-status-timing} a connected observer never pairs one loop's stamp w
             const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
             emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, waitUntil: null, packetCount: 0, claimedAt: claimed } });
             await tick();
-            emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 1 });
+            emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 1 }));
             await tick();
             emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, terminatedAt: ended, usage: loopUsage({ curationBudget: 1000 }) }));
         });

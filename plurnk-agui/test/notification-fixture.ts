@@ -1,4 +1,4 @@
-import type { ClientInteractionProjection, OperationResult, ProposalProjection } from "@plurnk/plurnk-contracts";
+import type { ApplicationLoopPacket, ClientInteractionProjection, OperationResult, ProposalProjection } from "@plurnk/plurnk-contracts";
 import type { TerminatedNotification } from "../src/types.ts";
 import { loopUsage } from "./accounting-fixture.ts";
 
@@ -71,3 +71,12 @@ export const interaction = Object.freeze({
         responseSchema: { type: "object" },
     },
 } satisfies ClientInteractionProjection);
+
+// {§notifications-loop-packet} A packet of worker 10's loop 1, with no gauge facts known yet.
+export const packet = (overrides: Partial<ApplicationLoopPacket> = {}): ApplicationLoopPacket => ({
+    workerId: 10,
+    loopId: 1,
+    packetCount: 1,
+    gauge: { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null },
+    ...overrides,
+});

@@ -1,6 +1,6 @@
 // {§agui-projection} The module's per-worker render core routes a daemon event
 // (method, params) from the seam's event source → AG-UI events, composing the proven
-// projections: log/entry → core vocab, loop/terminated → RUN_FINISHED + budget STATE,
+// projections: log/entry → core vocab, loop/packet → the gauge STATE, loop/terminated → RUN_FINISHED,
 // notices/stream → CUSTOM. Per-AG-UI-Run state (turn tracking, model-worker binding) lives in
 // the Translator. Proposals are ProposalHitl's domain (the terminate-resume tool-call),
 // so this router deliberately leaves loop/proposal to it — one owner per concern.

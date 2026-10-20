@@ -14,7 +14,8 @@
 //                                 emitted outside every operation, never assistant speech)
 //   turn_id advances            → STEP_FINISHED/STEP_STARTED
 //   loop/proposal|interaction   → owned by ProposalHitl (tool call + AG-UI interrupt)
-//   loop/terminated             → STATE_DELTA (budget truth) + RUN_FINISHED or RUN_ERROR
+//   loop/packet                 → STATE_DELTA (packet count and the gauge)
+//   loop/terminated             → STATE_DELTA (lifecycle) + RUN_FINISHED or RUN_ERROR
 // Numbers are passed through verbatim, never recomputed — the daemon's gauge is the gauge
 // ({§agui-numbers-passthrough}).
 
@@ -359,10 +360,6 @@ export default class Translator {
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
                 { op: "replace", path: "/plurnk/status/terminatedAt", value: n.terminatedAt },
                 { op: "replace", path: "/plurnk/status/waitUntil", value: null },
-                { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
-                { op: "replace", path: "/budget/curationBudget", value: n.usage.curationBudget },
-                { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
-                { op: "replace", path: "/budget/contextCapacity", value: n.usage.contextCapacity },
             ],
         });
         // The standard RAW channel (§475): the provider's NATIVE completion frame rides
@@ -522,6 +519,7 @@ export default class Translator {
         return events;
     }
 
+    // {§agui-state-patches} Each packet moves the gauge: its turn's curation pair and its call's physical pair.
     packet(packet: ApplicationLoopPacket): AguiEvent[] {
         if (this.#modelWorkerId === null) this.#modelWorkerId = packet.workerId;
         if (packet.workerId !== this.#modelWorkerId) return [];
@@ -531,6 +529,10 @@ export default class Translator {
                 { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
                 { op: "replace", path: "/plurnk/status/loopId", value: packet.loopId },
                 { op: "replace", path: "/plurnk/status/packetCount", value: packet.packetCount },
+                { op: "replace", path: "/budget/curationWeight", value: packet.gauge.curationWeight },
+                { op: "replace", path: "/budget/curationBudget", value: packet.gauge.curationBudget },
+                { op: "replace", path: "/budget/contextTokens", value: packet.gauge.contextTokens },
+                { op: "replace", path: "/budget/contextCapacity", value: packet.gauge.contextCapacity },
             ],
         }];
     }

@@ -18,7 +18,7 @@ import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
-import { streamEvent, termination } from "../test/notification-fixture.ts";
+import { packet, streamEvent, termination } from "../test/notification-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
@@ -245,7 +245,7 @@ test("{§agui-status-children}: each moment that may change the count reads it a
     const row = (op: string, id: number) => ({ entry: wireRow({ id, worker_id: 10, op }) });
     const MOMENTS: ReadonlyArray<readonly [string, string, unknown]> = [
         ["another worker's terminal", "loop/terminated", termination({ workerId: 20, loopId: 5 })],
-        ["another worker's packet", "loop/packet", { workerId: 20, loopId: 5, packetCount: 1 }],
+        ["another worker's packet", "loop/packet", packet({ workerId: 20, loopId: 5 })],
         ["another worker's queued beat", "notice/event", beat(20, 100)],
         ["another worker's running beat", "notice/event", beat(20, 102)],
         ["another worker's parked beat", "notice/event", beat(20, 202)],

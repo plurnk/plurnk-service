@@ -1,10 +1,11 @@
 -- ApplicationPort runLoop queries. SPEC {§methods-loop-run}.
 
--- PREP: application_latest_concluded_loop
--- {§methods-worker-gauge}: the work loop that concluded last, the one whose terminal reported the worker's gauge.
-SELECT id FROM work_loops
-WHERE worker_id = $worker_id AND terminated_at IS NOT NULL
-ORDER BY terminated_at DESC, sequence DESC
+-- PREP: application_latest_packet_loop
+-- {§methods-worker-gauge}: the loop holding the worker's latest packet, the one whose gauge the worker reported last.
+SELECT turns.loop_id AS id FROM turns
+JOIN loops ON loops.id = turns.loop_id
+WHERE loops.worker_id = $worker_id AND turns.packet IS NOT NULL
+ORDER BY turns.id DESC
 LIMIT 1;
 
 -- PREP: application_list_worker_loops

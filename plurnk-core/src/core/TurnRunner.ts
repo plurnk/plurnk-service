@@ -8,7 +8,7 @@ import {
     aggregateProviderAccounting, ProviderError, scopeEnvToAlias,
     type GrammarEvidence, type Provider, type ProviderAttempt, type ProviderAttemptFinishReason, type ProviderRequestAccounting, type ProviderResponse,
 } from "@plurnk/plurnk-providers";
-import type { BareStatement, CapabilityPolicy, FindStatement, Notice, NoteStatement, ParseAttempt, PlurnkStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, NoteStatement, ParseAttempt, PlurnkStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -442,6 +442,7 @@ export default class TurnRunner {
     readonly #warmWorkspace: WarmWorkspace;
     readonly #dispatch: TurnDispatch;
     readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
+    readonly #loopGauge: (loopId: number) => Promise<ApplicationGauge>;
     // {§operator-grammar} — one read per path per daemon; the file is the operator's and static.
     #grammarCache = new Map<string, string>();
     readonly #materialization: TurnMaterialization;
@@ -465,6 +466,7 @@ export default class TurnRunner {
         warmWorkspace,
         dispatch,
         resolveWorkerProviderIdentity,
+        loopGauge,
     }: {
         db: Db;
         schemes: SchemeRegistry;
@@ -482,6 +484,7 @@ export default class TurnRunner {
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
         resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
+        loopGauge: (loopId: number) => Promise<ApplicationGauge>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -500,6 +503,7 @@ export default class TurnRunner {
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
+        this.#loopGauge = loopGauge;
         this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent, mimetypes: this.#mimetypes });
         this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: this.#providerAttributions.bind(this), providerFailure: TurnRunner.#providerFailure });
         this.#admitted = new AdmittedTurnExecutor({ db: this.#db, schemes: this.#schemes, notices: this.#notices, problems: this.#problems, dispatcher: this.#dispatcher, bareBatch: this.#bareBatch });
@@ -518,10 +522,13 @@ export default class TurnRunner {
             count: number; id: number;
         }>({ loop_id: args.loopId });
         if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
+        // {§tokenomics-client-gauge} The turn's inference is recorded: its packet and its call are the gauge now.
+        const gauge = await this.#loopGauge(args.loopId);
         this.#notify.loopPacketNotify(args.workspaceId, {
             workerId: args.workerId,
             loopId: args.loopId,
             packetCount: packetCount.count,
+            gauge,
         });
     }
 

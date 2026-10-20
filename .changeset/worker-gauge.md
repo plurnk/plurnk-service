@@ -4,7 +4,8 @@
 "@plurnk/plurnk-agui": patch
 ---
 
-`ApplicationPort.workerGauge` returns the client gauge the Worker's latest
-concluded loop reported ({§methods-worker-gauge}). AG-UI snapshots and
-whole-gauge replacements carry it as `budget`, so a reattached observer holds
-the gauge a live one received ({§agui-state-patches}).
+`loop/packet` carries the loop's client gauge after each model turn, and
+`ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
+reported ({§notifications-loop-packet}, {§methods-worker-gauge}). AG-UI moves
+the budget with every packet and its snapshots carry the latest, so a live and
+a reattached observer agree ({§agui-state-patches}).

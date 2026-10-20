@@ -230,7 +230,13 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         workerId: POSITIVE,
         loopId: POSITIVE,
         packetCount: POSITIVE,
-    }, ["workerId", "loopId", "packetCount"])),
+        gauge: object({
+            curationWeight: nullable(NONNEGATIVE),
+            curationBudget: nullable(NONNEGATIVE),
+            contextTokens: nullable(NONNEGATIVE),
+            contextCapacity: nullable(POSITIVE),
+        }, ["curationWeight", "curationBudget", "contextTokens", "contextCapacity"]),
+    }, ["workerId", "loopId", "packetCount", "gauge"])),
     "loop/proposal": notification(ref("ProposalProjection")),
     "loop/interaction": notification(ref("ClientInteractionProjection")),
     "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({
