@@ -13,7 +13,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import { ErrorDetail } from "@plurnk/plurnk-execs";
 import type ServerConnection from "./client.ts";
-import { type ServerCatalog } from "./client.ts";
+import { AuthorizationRequiredError, awaitsSignIn, type ServerCatalog } from "./client.ts";
 import ResourceContent from "./ResourceContent.ts";
 import ContentProjection from "./ContentProjection.ts";
 
@@ -337,6 +337,10 @@ export default class McpResources {
         } catch (error) {
             if (error instanceof EntryOperationFailure) {
                 return preparationEntryFailure(error);
+            }
+            if (error instanceof AuthorizationRequiredError) {
+                // {§mcp-request-unauthorized} — the alias now awaits a sign-in.
+                return preparationFailure(this.#server, "authorization-required", 401, awaitsSignIn(this.#server), { retryable: false });
             }
             const invalidAddress = error instanceof ResourceAddressError;
             return preparationFailure(

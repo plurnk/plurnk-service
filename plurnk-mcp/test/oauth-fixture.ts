@@ -6,10 +6,10 @@ export const serveOAuthMcp = async (
     t: TestContext,
     handler: McpHttpHandler,
     options: { metadata?: boolean; registration?: boolean; code?: string } = {},
-): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>>; tokenRequests: URLSearchParams[] }> => {
+): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>>; tokenRequests: URLSearchParams[]; revoke: () => void }> => {
     let origin = "";
     let exchanged = false;
-    const accessToken = crypto.randomUUID();
+    let accessToken = crypto.randomUUID();
     const tokenRequests: URLSearchParams[] = [];
     const served = await serveMcpHttp(t, handler, async (request) => {
         const url = new URL(request.url);
@@ -52,5 +52,10 @@ export const serveOAuthMcp = async (
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    return { origin, served, tokenRequests };
+    // The grant lapses: its token is refused from now on, and a fresh sign-in may exchange the code again.
+    const revoke = (): void => {
+        exchanged = false;
+        accessToken = crypto.randomUUID();
+    };
+    return { origin, served, tokenRequests, revoke };
 };

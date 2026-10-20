@@ -248,6 +248,7 @@ originating distinction in its canonical Problem/result path.
 | {§mcp-file-configuration} | Standalone `mcp.json` files are read-only configuration inputs, not plugins. |
 | {§mcp-plugin-configuration} | Plugin MCP components use their format's interpretation, not the native file dialect. |
 | {§mcp-activation-isolation} | Cold endpoint failure is capability-local. |
+| {§mcp-unavailable-runtime} | An enabled server that cannot run keeps its alias. |
 | {§mcp-definitions} | A server is not a plugin installation. |
 | {§mcp-launch-directory} | An implicit working directory is workspace-owned state, not the project. |
 | {§mcp-summary-derivation} | Orientation prefers the server's own purpose over display labels; no capabilities are inferred. |
@@ -322,12 +323,22 @@ source repair replaces them, rather than retaining a historical warning.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** An enabled server
 that cannot connect or complete discovery during workspace activation remains
-enabled and client-visible as `unavailable`. It publishes no runtime, tools,
-resources, or documentation and cannot prevent other capabilities or the daemon
-from starting or serving dormant workers. Enabling that already-enabled alias is an explicit reconnect
+enabled and client-visible as `unavailable`. It publishes no tools, resources, or
+documentation, only its alias out of service ({§mcp-unavailable-runtime}), and cannot
+prevent other capabilities or the daemon from starting or serving dormant workers. Enabling that already-enabled alias is an explicit reconnect
 attempt; failure preserves the unavailable snapshot, while success atomically
 replaces it. An interactive enable continues to reject an unavailable candidate
 without changing durable state.
+
+§mcp-unavailable-runtime **An enabled server that cannot run keeps its alias.** Preparation registers
+every enabled server: an active one with its tools and resources, any other as a runtime out of
+service whose availability states what keeps it from running, so a call to the alias is refused with
+that state ({§exec-registry-resolves}) and never as a name nothing registered.
+
+| State | The refusal names |
+| --- | --- |
+| `authorization-required` | the operator's sign-in it awaits |
+| `unavailable` | what preparation observed: its Problem's bounded diagnostic, else its detail |
 
 | Variable | Contract |
 |---|---|
@@ -436,7 +447,7 @@ same workspace-composed operator environment.
 | `available` | the configured service baseline |
 | `add`, `replace` ({§functionality-replacement}), `remove` | change workspace state ({§mcp-definitions}) |
 | `discover` | searches the MCP Registry ({§mcp-registry-discovery}) |
-| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime and resource facet per connected server, one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
+| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime per enabled server, with its resource facet when active ({§mcp-unavailable-runtime}), one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
 | `publish` | adopts the connected set and consumes or records pending authorizations, synchronously |
 | `commit` | closes connections the new set no longer uses |
 | `abort` | closes only what the attempt opened |
@@ -473,7 +484,7 @@ Worker's own accepted mutation publishes them as unavailable
 | Endpoint condition | Problem |
 |---|---|
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and its `type` without exposing credentials |
-| HTTP 401 without configured credentials | Enabled `authorization-required`, no runtime and no URL until the client begins sign-in |
+| HTTP 401 without configured credentials | Enabled `authorization-required`, its alias out of service ({§mcp-unavailable-runtime}), and no URL until the client begins sign-in |
 | HTTP 401 with configured credentials | `502 server-authentication-failed`, non-retryable, with `upstreamStatus: 401`; credentials are not replaced by interactive OAuth |
 | Sign-in discovery lacks validated authorization metadata or a usable client-registration method | `502 oauth-metadata-unavailable` or `oauth-registration-unavailable`, non-retryable; retain the definition and surface the setup boundary, not retryable downtime |
 | The endpoint answers with a redirect | `502 server-redirected`, non-retryable ({§mcp-redirect-refused}) |
@@ -574,7 +585,7 @@ as an accidental failure.
 | Client disconnect | Does not touch the pending candidate; it can still be completed, or replaced by a fresh request. |
 | Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
 | Daemon restart after authorization | The durable definition rehydrates but tokens are gone; a challenged attachment publishes `authorization-required` and enable returns `202`. A URL is present only when a callback is already configured. The operator reauthorizes. |
-| Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued, otherwise re-enters interactive authorization. |
+| Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued; otherwise the request fails and the alias awaits a sign-in ({§mcp-request-unauthorized}). |
 | Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
 | Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
 | Server replacement | Publication discards any superseded pending connection and releases its residency, including replacement by a definition without OAuth. Completion of an unpublished configuration drift fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
@@ -704,6 +715,7 @@ failures are reported. Core's shutdown deadline remains the outer bound
 | {§mcp-input-deadline} | Client-input waits consume the remaining owning operation budget (`PLURNK_MCP_REQUEST_TIMEOUT`); each MRTR… |
 | {§mcp-tool-replay} | A tool call is effectful unless host policy proves otherwise. |
 | {§mcp-tool-problem-detail} | Tool-call Problems keep runtime, tool, and any bounded remote diagnostic as structured extensions. |
+| {§mcp-request-unauthorized} | A request refused for want of a sign-in says so, and its alias then awaits one. |
 | {§mcp-trailing-aside} | A tool call's body is one JSON object. |
 <!-- /map -->
 
@@ -753,6 +765,21 @@ newlines, supply `diagnostic` under the existing executor error-detail bound.
 Nontext parts and structured data are not interpreted as explanations. With no
 text explanation the extension is absent; successful results do not acquire one.
 The complete result and passive output remain unchanged ({§mcp-result-content}).
+
+§mcp-request-unauthorized **A request refused for want of a sign-in says so, and its alias then awaits one.**
+A server may answer its catalog to anyone and challenge only a request, so preparation can publish it
+`active`. A later request — a tool call, a resource or prompt read, or a completion — is refused for
+want of a sign-in when it is answered with HTTP 401, or challenged in a way the SDK cannot meet without
+the operator's consent (an interactive grant it cannot refresh). The refusal depends on the definition:
+
+| Definition | A request refused for want of a sign-in |
+| --- | --- |
+| URL-only, or interactive OAuth | fails `401 authorization-required`, non-retryable, and republishes the alias `authorization-required`, out of service ({§mcp-unavailable-runtime}), with no URL until the client begins sign-in ({§oauth-continuation}) |
+| A bearer token, a client-credentials grant, or an Authorization header | fails as any failed request of its kind; no state changes and no sign-in is offered |
+
+Only a fresh connection answers the awaited sign-in — an accepted sign-in, an explicit enable, a changed
+definition, or the alias's return after disable, removal, cooling or a restart — and it publishes what
+its preparation observes.
 
 §mcp-trailing-aside A tool call's body is one JSON object. HTML comments after
 that object are the writer's aside, not arguments: when the body does not parse
@@ -922,6 +949,7 @@ servers are composition evidence only.
 | `resource-find-failed` | 502 | MCP resource listing failed; retryable, with the bounded upstream diagnostic. |
 | `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant. |
 | `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
+| `authorization-required` | 401 | MCP server '*name*' awaits the operator's sign-in; the request was not completed. |
 | `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. |
 | `oauth-registration-unavailable` | 502 | No client is registered with the authorization server: none is configured for it, it advertises no Dynamic Client Registration endpoint, and no client metadata document it accepts is configured. |
 | `oauth-redirect-invalid` | 400 | The OAuth callback must use HTTPS or HTTP loopback with a usable port. |

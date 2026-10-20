@@ -17,7 +17,7 @@ import type {
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import type ServerConnection from "./client.ts";
-import { type ServerCatalog } from "./client.ts";
+import { AuthorizationRequiredError, awaitsSignIn, type ServerCatalog } from "./client.ts";
 import type { ContentBlock, Progress, Tool } from "@modelcontextprotocol/client";
 import { resourcePath } from "./McpResources.ts";
 import { HeaderDeclarationError } from "./protocolHeaders.ts";
@@ -112,6 +112,33 @@ const pageReceipt = (
     }
     return null;
 };
+
+// {§mcp-unavailable-runtime} An enabled server that cannot run keeps its alias: core refuses a call to it with the
+// reason its availability states, before anything runs ({§exec-registry-resolves}), so this executor never runs.
+export class UnavailableServerExecutor extends BaseExecutor {
+    readonly #availability: RuntimeAvailability;
+
+    constructor(runtime: string, detail: string) {
+        super({ runtime, glyph: "🔌" });
+        this.#availability = { available: false, detail };
+    }
+
+    get channels(): Readonly<Record<string, ChannelDecl>> {
+        return { [CHANNEL]: { mimetype: "application/json" }, json: { mimetype: "application/json" } };
+    }
+
+    override get publishedChannel(): string {
+        return CHANNEL;
+    }
+
+    override async probe(): Promise<RuntimeAvailability> {
+        return this.#availability;
+    }
+
+    async run(): Promise<ExecResult> {
+        throw new Error(`MCP server '${this.runtime}' is unavailable and runs nothing: ${this.#availability.detail ?? ""}`);
+    }
+}
 
 export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean, instructions?: string): RuntimeDecl => ({
     name,
@@ -392,6 +419,10 @@ export default class McpExecutor extends BaseExecutor {
             const page = pageReceipt(args, tool, resultBody);
             return { status: 200, ...(page === null ? {} : { page }) };
         } catch (error) {
+            if (error instanceof AuthorizationRequiredError) {
+                // {§mcp-request-unauthorized} — the alias now awaits a sign-in.
+                return fail("authorization-required", 401, awaitsSignIn(runtime), { tool: target, retryable: false });
+            }
             if (error instanceof HeaderDeclarationError) {
                 // {§mcp-header-declarations} — refused before any request leg; the declaration is a field.
                 return fail(

@@ -14,6 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
     McpServer,
+    completable,
     createMcpHandler,
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
@@ -23,7 +24,9 @@ import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import { serveOAuthMcp } from "../test/oauth-fixture.ts";
+import { context, preparationRequest } from "../test/scheme-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
+import type McpResources from "./McpResources.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
 import ServerConnection from "./client.ts";
@@ -182,7 +185,12 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
             if (registration === undefined) throw new Error(`missing action ${name}`);
             return registration.handler(params, { scope: "workspace", ...identity(workspaceId) });
         },
-        runtimeTags: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? []).map(({ decl }) => decl.name),
+        // The runtimes in service, by name.
+        inService: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? [])
+            .filter(({ availability }) => availability.available).map(({ decl }) => decl.name),
+        // {§mcp-unavailable-runtime} The enabled servers registered out of service, each with the reason a call is refused.
+        unavailable: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? [])
+            .filter(({ availability }) => !availability.available).map(({ decl, availability }) => ({ name: decl.name, detail: availability.detail })),
     };
 };
 
@@ -216,6 +224,172 @@ const httpHandler = (): McpHttpHandler => createMcpHandler(() => {
 const interactiveOAuthFixture = (
     t: TestContext,
 ): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
+
+// {§mcp-request-unauthorized} A server that answers its catalog to anyone and refuses one request kind with HTTP 401 and a
+// JSON-RPC result body, as Google's hosted Workspace servers refuse tools/call.
+const REQUEST_KINDS = ["tools/call", "resources/read", "prompts/get", "completion/complete"] as const;
+type RequestKind = typeof REQUEST_KINDS[number];
+
+const awaitingSignIn: Readonly<Record<RequestKind, string>> = {
+    "tools/call": "https://problems.plurnk.xyz/executor/mcp/authorization-required",
+    "resources/read": "https://problems.plurnk.xyz/scheme/mcp/authorization-required",
+    "prompts/get": "https://problems.plurnk.xyz/scheme/mcp/authorization-required",
+    "completion/complete": "https://problems.plurnk.xyz/mcp/management/authorization-required",
+};
+
+const challengeHandler = (): McpHttpHandler => createMcpHandler(() => {
+    const server = new McpServer({ name: "challenge-fixture", version: "1.0.0" });
+    server.registerTool(
+        "echo",
+        { description: "Echo one message.", inputSchema: z.object({ message: z.string() }) },
+        async ({ message }) => ({ content: [{ type: "text", text: message }] }),
+    );
+    server.registerResource("note", "test:///note", {}, async () => ({ contents: [{ uri: "test:///note", text: "a note" }] }));
+    server.registerPrompt(
+        "note",
+        { argsSchema: z.object({ topic: completable(z.string(), () => ["alpha"]) }) },
+        async ({ topic }) => ({ messages: [{ role: "user", content: { type: "text", text: topic } }] }),
+    );
+    return server;
+}, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+
+const serveChallenge = (t: TestContext, refused: RequestKind) => serveMcpHttp(t, challengeHandler(), async (request) => {
+    if (request.method !== "POST") return null;
+    const body = await request.clone().json().catch(() => null) as { method?: unknown; id?: unknown } | null;
+    if (body?.method !== refused) return null;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id ?? null, result: { content: [{ type: "text", text: "Request is missing required authentication credential." }] } }),
+        { status: 401, headers: { "content-type": "application/json" } });
+});
+
+const callArgs = (runtime: string, target: string, body: string) => ({
+    metadata: null, runtime, body, cwd: null, target, signal: new AbortController().signal,
+    write: () => {}, setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" as const }),
+});
+
+// One request of a kind through the alias's published runtime, as the status and Problem type it settles with.
+const requestThrough = async (h: ReturnType<typeof harness>, alias: string, kind: RequestKind): Promise<{ status: number; type?: string | undefined }> => {
+    const runtime = h.snapshots.get(1)?.prepared?.runtimes.find(({ decl }) => decl.name === alias);
+    assert.ok(runtime?.availability.available, `${alias} is in service`);
+    switch (kind) {
+        case "tools/call": {
+            const result = await runtime.executor.run(callArgs(alias, "echo", JSON.stringify({ message: "hi" })));
+            return { status: result.status, type: result.problem?.type };
+        }
+        case "resources/read":
+        case "prompts/get": {
+            const pathname = kind === "resources/read" ? `/resources/${encodeURIComponent("test:///note")}` : "/prompts/note";
+            const result = await (runtime.scheme as McpResources).prepareRepresentation(preparationRequest(pathname), context().ctx);
+            return { status: result.status, type: result.problem?.type };
+        }
+        case "completion/complete":
+            try {
+                await h.action(1, "workspace.mcp.complete", { server: alias, ref: { type: "ref/prompt", name: "note" }, argument: { name: "topic", value: "a" } });
+                return { status: 200 };
+            } catch (error) {
+                const problem = (error as { problem?: ProblemDetails }).problem;
+                return { status: problem?.status ?? 500, type: problem?.type };
+            }
+    }
+};
+
+// The publication after `before`, which a refusal asks for.
+const republished = async (h: ReturnType<typeof harness>, before: Prepared | null | undefined): Promise<Prepared | null | undefined> => {
+    for (let attempt = 0; attempt < 300 && h.snapshots.get(1)?.prepared === before; attempt += 1) await delay(10);
+    return h.snapshots.get(1)?.prepared;
+};
+
+test("{§mcp-request-unauthorized} each request kind refused for want of a sign-in fails authorization-required and republishes its alias awaiting one, out of service", async (t) => {
+    for (const kind of REQUEST_KINDS) {
+        await t.test(kind, async (t) => {
+            const served = await serveChallenge(t, kind);
+            const h = harness();
+            await h.setup();
+            try {
+                const first = await h.lane(1, new Map([["gmail", httpServer("gmail", served.url)]]));
+                assert.equal(first.outcomes.get("gmail")?.state, "active", "its catalog answers without credentials");
+                assert.deepEqual(await requestThrough(h, "gmail", kind), { status: 401, type: awaitingSignIn[kind] });
+                assert.deepEqual((await republished(h, first))?.outcomes.get("gmail"), { state: "authorization-required", authorization: {} });
+                assert.deepEqual(h.inService(1), []);
+                assert.deepEqual(h.unavailable(1), [{ name: "gmail", detail: "it awaits the operator's sign-in" }]);
+            } finally { await h.teardown(1); await h.module.stop(); }
+        });
+    }
+});
+
+test("{§mcp-request-unauthorized} a configured credential's refused request changes no state and offers no sign-in", async (t) => {
+    for (const kind of REQUEST_KINDS) {
+        await t.test(kind, async (t) => {
+            const served = await serveChallenge(t, kind);
+            const definition: McpServerDefinition = { ...httpServer("gmail", served.url), headers: { Authorization: "Bearer fixture" } };
+            const h = harness();
+            await h.setup();
+            try {
+                await h.lane(1, new Map([["gmail", definition]]));
+                const refused = await requestThrough(h, "gmail", kind);
+                assert.notEqual(refused.status, 200);
+                assert.ok(refused.type?.endsWith("/authorization-required") !== true, `${kind} fails as its kind fails: ${refused.type}`);
+                const again = await h.lane(1, new Map([["gmail", definition]]));
+                assert.equal(again.outcomes.get("gmail")?.state, "active");
+                assert.deepEqual(h.inService(1), ["gmail"]);
+            } finally { await h.teardown(1); await h.module.stop(); }
+        });
+    }
+});
+
+test("{§mcp-request-unauthorized} only a fresh connection answers the awaited sign-in, publishing what it observes", async (t) => {
+    const events: Readonly<Record<string, (h: ReturnType<typeof harness>, definition: McpServerDefinition) => Promise<Prepared>>> = {
+        "an explicit enable": (h, definition) => h.lane(1, new Map([["gmail", definition]]), { force: "gmail" }),
+        "a changed definition": (h, definition) => h.lane(1, new Map([["gmail", { ...definition, headers: { "X-Fixture": "changed" } }]])),
+        "removal and return": async (h, definition) => { await h.lane(1, new Map()); return h.lane(1, new Map([["gmail", definition]])); },
+        "cooling and return": async (h, definition) => { await h.teardown(1); return h.lane(1, new Map([["gmail", definition]])); },
+    };
+    for (const [event, apply] of Object.entries(events)) {
+        await t.test(event, async (t) => {
+            const served = await serveChallenge(t, "tools/call");
+            const definition = httpServer("gmail", served.url);
+            const h = harness();
+            await h.setup();
+            try {
+                const first = await h.lane(1, new Map([["gmail", definition]]));
+                assert.equal((await requestThrough(h, "gmail", "tools/call")).status, 401);
+                assert.equal((await republished(h, first))?.outcomes.get("gmail")?.state, "authorization-required");
+                const answered = await apply(h, definition);
+                assert.equal(answered.outcomes.get("gmail")?.state, "active", "its catalog still answers without credentials");
+                assert.deepEqual(h.inService(1), ["gmail"]);
+            } finally { await h.teardown(1); await h.module.stop(); }
+        });
+    }
+});
+
+test("{§mcp-request-unauthorized} a signed-in grant that lapses mid-run keeps its alias, awaiting a fresh sign-in", async (t) => {
+    const { origin, served, revoke } = await interactiveOAuthFixture(t);
+    const definition = httpServer("oauth", served.url);
+    const h = harness();
+    await h.setup();
+    const signIn = async (): Promise<void> => {
+        const started = await h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { authorization: { url: string } };
+        const callback = new URL("http://127.0.0.1:54321/callback");
+        callback.searchParams.set("code", "fixture-code");
+        callback.searchParams.set("state", new URL(started.authorization.url).searchParams.get("state")!);
+        callback.searchParams.set("iss", origin);
+        await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href });
+        await h.settleRefreshes();
+    };
+    try {
+        await h.lane(1, new Map([["oauth", definition]]));
+        await signIn();
+        assert.deepEqual(h.inService(1), ["oauth"]);
+        const signedIn = h.snapshots.get(1)?.prepared;
+        revoke();
+        assert.deepEqual(await requestThrough(h, "oauth", "tools/call"), { status: 401, type: awaitingSignIn["tools/call"] });
+        assert.deepEqual((await republished(h, signedIn))?.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+        assert.deepEqual(h.unavailable(1), [{ name: "oauth", detail: "it awaits the operator's sign-in" }], "the alias stays registered");
+        await signIn();
+        assert.deepEqual(h.inService(1), ["oauth"], "a fresh sign-in answers it");
+    } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
+});
 
 test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
@@ -447,7 +621,7 @@ test("{§mcp-setup} preparation publishes one runtime and resource facet per ena
     await h.setup();
     try {
         const prepared = await h.lane(1, new Map([["echo", stdio("echo")]]));
-        assert.deepEqual(h.runtimeTags(1), ["echo"]);
+        assert.deepEqual(h.inService(1), ["echo"]);
         const outcome = prepared.outcomes.get("echo");
         assert.equal(outcome?.state, "active");
         assert.ok((outcome as { detail?: { tools?: string[] } }).detail?.tools?.includes("echo"), "active outcomes carry the catalog tool names");
@@ -466,7 +640,13 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
         );
         assert.equal(h.snapshots.has(1), false, "nothing was committed for the rejected preparation");
         const prepared = await h.lane(1, new Map([["echo", stdio("echo")], ["broken", stdio("broken", ["/nonexistent/server.mjs"])]]));
-        assert.deepEqual(h.runtimeTags(1), ["echo"], "only the healthy server publishes a runtime");
+        assert.deepEqual(h.inService(1), ["echo"], "only the healthy server is in service");
+        const [refused] = h.unavailable(1);
+        assert.equal(refused?.name, "broken", "{§mcp-unavailable-runtime} the failed server keeps its alias, out of service");
+        const outcome = prepared.outcomes.get("broken");
+        const problem = outcome?.state === "unavailable" ? outcome.problem : undefined;
+        assert.equal(refused?.detail, typeof problem?.diagnostic === "string" ? problem.diagnostic : problem?.detail,
+            "a call to it is refused with what its preparation observed");
         assert.equal(prepared.outcomes.get("echo")?.state, "active");
         const broken = prepared.outcomes.get("broken");
         assert.equal(broken?.state, "unavailable");
@@ -516,12 +696,13 @@ test("{§mcp-catalog-deadline} {§mcp-preparation-diagnostics} activation publis
         const cause: unknown = diagnostic.mock.calls[0].arguments[1];
         assert.ok(cause instanceof DOMException && cause.name === "TimeoutError"
             || SdkError.isInstance(cause) && cause.code === SdkErrorCode.RequestTimeout, String(cause));
-        assert.deepEqual(h.runtimeTags(1), ["echo"], "a silent catalog does not prevent publishing other tools");
-        assert.equal(prepared.runtimes[0], healthy.runtimes[0], "the healthy connection remains in service");
+        assert.deepEqual(h.inService(1), ["echo"], "a silent catalog does not prevent publishing other tools");
+        assert.equal(prepared.runtimes.find(({ decl }) => decl.name === "echo"), healthy.runtimes.find(({ decl }) => decl.name === "echo"),
+            "the healthy connection remains in service");
         stalled = false;
         const retry = await h.lane(1, enabled, { force: "stall" });
         assert.equal(retry.outcomes.get("stall")?.state, "active");
-        assert.deepEqual(h.runtimeTags(1).toSorted(), ["echo", "stall"]);
+        assert.deepEqual(h.inService(1).toSorted(), ["echo", "stall"]);
         assert.equal(retry.runtimes.find(({ decl }) => decl.name === "echo"), healthy.runtimes[0], "retry replaces only the failed attachment");
     } finally { await h.teardown(1); await h.module.stop(); }
 });
@@ -545,7 +726,7 @@ test("{§mcp-preparation-diagnostics}: connection timeout reports measured prepa
         assert.match(String(outcome.problem.diagnostic), /timed? ?out|timeout/iu);
         assert.equal(outcome.problem.stderr, undefined);
         assert.equal(outcome.problem.exitCode, undefined);
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
@@ -592,7 +773,7 @@ test("{§mcp-preparation-diagnostics}: early stdio exit retains bounded session 
         assert.equal(outcome.problem.signal, undefined, "transport closure is not a process signal");
         assert.doesNotMatch(JSON.stringify(outcome), /fixture-private-value|probe-only diagnostic/u);
         assert.ok(String(outcome.problem.stderr).length <= Number(process.env.PLURNK_EXECS_ERROR_DETAIL_LIMIT));
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
@@ -634,17 +815,17 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
     await h.setup();
     try {
         await h.lane(1, new Map([["a", withMarker("a")], ["b", withMarker("b")]]));
-        assert.deepEqual(h.runtimeTags(1), ["a", "b"]);
+        assert.deepEqual(h.inService(1), ["a", "b"]);
         await h.lane(1, new Map([["a", withMarker("a")]]));
         await waitForFile(marker("b"));
-        assert.deepEqual(h.runtimeTags(1), ["a"], "the removed server's connection closed after the replacement committed");
+        assert.deepEqual(h.inService(1), ["a"], "the removed server's connection closed after the replacement committed");
 
         // abort: a fresh connection is opened, then discarded; the committed one survives.
         const attempt = await h.adapter().prepare({ ...h.identity(1), signal: new AbortController().signal, enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", admissions: [], retain: () => () => undefined, progress: () => undefined });
         assert.equal(attempt.outcomes.get("c")?.state, "active");
         await attempt.abort();
         await waitForFile(marker("c"));
-        assert.deepEqual(h.runtimeTags(1), ["a"]);
+        assert.deepEqual(h.inService(1), ["a"]);
         // {§mcp-catalog-refresh-in-place} — the SDK's connect probes a stdio server on a disposable
         // sibling process; its exit writes the marker too. The committed server is the last started.
         const committedA = (await readFile(started("a"), "utf8")).trim().split("\n").at(-1)!.split(" ")[0];
@@ -665,7 +846,9 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         const prepared = await h.lane(1, new Map([["oauth", definition]]));
         assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
         assert.equal(h.leases(), 0, "no pending browser attempt before the client begins");
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
+        assert.deepEqual(h.unavailable(1), [{ name: "oauth", detail: "it awaits the operator's sign-in" }],
+            "{§mcp-unavailable-runtime} the server keeps its alias, and a call to it names the sign-in it awaits");
         const started = await h.action(1, "workspace.mcp.oauth.begin", {
             alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
         }) as { status: number; authorization: { url: string } };
@@ -683,7 +866,7 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href }) as { status: number };
         assert.equal(completed.status, 202);
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.deepEqual(h.inService(1), ["oauth"]);
         assert.equal(h.leases(), 0);
         assert.deepEqual(h.snapshots.get(1)?.enabled.get("oauth"), definition, "the client callback is session state, not configuration");
     } finally { await h.module.stop(); }
@@ -713,7 +896,7 @@ test("{§oauth-continuation} a callback replayed once the grant is published, be
         };
         await h.settleRefreshes();
         assert.equal(between, 1, "the publication ran once");
-        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.deepEqual(h.inService(1), ["oauth"]);
         assert.equal(h.leases(), 0, "the consumed candidate's lease is released at commit");
         await rejectsManagementProblem(complete, "oauth-not-pending", 404);
     } finally { await h.module.stop(); }
@@ -740,7 +923,7 @@ test("{§oauth-continuation} beginning sign-in can discover usable tools without
         assert.equal(h.snapshots.get(1)?.prepared, initial);
         release.resolve();
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.deepEqual(h.inService(1), ["oauth"]);
         assert.equal(h.leases(), 0);
         assert.deepEqual(await begin(), { status: 200, alias: "oauth" });
     } finally { release.resolve(); await h.module.stop(); }
@@ -822,7 +1005,7 @@ test("{§oauth-continuation} a later client attempt invalidates the old callback
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: stale }), "oauth-callback-invalid", 400);
         await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: current });
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.deepEqual(h.inService(1), ["oauth"]);
         assert.equal(h.leases(), 0);
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: current }), "oauth-not-pending", 404);
         const ready = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { status: number };
@@ -847,7 +1030,7 @@ test("{§oauth-continuation} removal during client preparation prevents a late a
         await h.lane(1, new Map());
         release.resolve();
         await result;
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
         assert.equal(h.leases(), 0);
     } finally { await h.module.stop(); }
 });
@@ -860,7 +1043,7 @@ test("{§oauth-lifetime} an accepted OAuth callback holds residency until ordina
         const prepared = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
         const outcome = prepared.outcomes.get("oauth");
         assert.equal(outcome?.state, "authorization-required");
-        assert.deepEqual(h.runtimeTags(1), [], "a challenged server publishes no runtime");
+        assert.deepEqual(h.inService(1), [], "a challenged server is not in service");
         assert.equal(h.leases(), 1, "the pending authorization holds one residency lease");
         await assert.rejects(() => h.teardown(1), /cannot cool with pending OAuth residency/);
         const state = new URL((outcome as { authorization: { url: string } }).authorization.url).searchParams.get("state");
@@ -871,7 +1054,7 @@ test("{§oauth-lifetime} an accepted OAuth callback holds residency until ordina
         }) as { status: number };
         assert.equal(completed.status, 202);
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["oauth"], "the authorized server is published through catalog refresh");
+        assert.deepEqual(h.inService(1), ["oauth"], "the authorized server is published through catalog refresh");
         assert.equal(h.leases(), 0, "the pending lease was released on publication");
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=x&state=y` }), "oauth-not-pending", 404);
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
@@ -893,7 +1076,7 @@ test(`{§oauth-continuation} accepted callbacks are coalesced and publication re
         const accepted = { status: 202, alias: "oauth" };
         assert.deepEqual(await Promise.all([complete(), complete()]), [accepted, accepted]);
         assert.equal(tokenRequests.length, 1, "one grant exchange for concurrent callbacks");
-        assert.deepEqual(h.runtimeTags(1), [], "the callback does not bypass publication");
+        assert.deepEqual(h.inService(1), [], "the callback does not bypass publication");
         assert.equal(h.refreshes(), 1, "duplicate callbacks do not schedule duplicate publication");
         assert.deepEqual(await h.action(1, "workspace.mcp.oauth.begin", {
             alias: "oauth", redirectUrl: `${origin}/callback`,
@@ -902,7 +1085,7 @@ test(`{§oauth-continuation} accepted callbacks are coalesced and publication re
         if (change === "replace") await h.lane(1, new Map([["oauth", { ...definition, headers: { "X-Replacement": "1" } }]]));
         release.resolve();
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), change === "none" ? ["oauth"] : []);
+        assert.deepEqual(h.inService(1), change === "none" ? ["oauth"] : []);
         assert.equal(h.leases(), change === "replace" ? 1 : 0);
         assert.equal(tokenRequests.length, 1, "publication never replays the grant");
         if (change !== "none") {
@@ -935,7 +1118,7 @@ test("{§oauth-continuation} failed preparation after an accepted grant publishe
         assert.equal((unavailable as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.xyz/mcp/management/server-settings-invalid");
         assert.equal(errors.mock.callCount(), 1, "the preparation failure remains visible");
         assert.equal(h.leases(), 0);
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
         assert.equal(close.mock.callCount(), 1, "the unpublishable authorized candidate is closed, not orphaned");
         assert.equal(tokenRequests.length, 1);
     } finally { release.resolve(); await h.module.stop(); }
@@ -962,11 +1145,11 @@ test("{§oauth-continuation} aborting publication retains the accepted grant for
         assert.equal(attempt.outcomes.get("oauth")?.state, "active");
         await attempt.abort();
         assert.equal(h.leases(), 1);
-        assert.deepEqual(h.runtimeTags(1), []);
+        assert.deepEqual(h.inService(1), []);
         assert.deepEqual(await h.action(1, "workspace.mcp.oauth.complete", params), accepted);
         release.resolve();
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.deepEqual(h.inService(1), ["oauth"]);
         assert.equal(h.leases(), 0);
         assert.equal(tokenRequests.length, 1, "a discarded capability publication never replays the authorization code");
     } finally { release.resolve(); await h.module.stop(); }
@@ -1011,7 +1194,7 @@ for (const authorize of [false, true]) test(`{§oauth-lifetime} a fresh module r
         if (authorize) {
             await original.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl });
             await original.settleRefreshes();
-            assert.deepEqual(original.runtimeTags(1), ["oauth"]);
+            assert.deepEqual(original.inService(1), ["oauth"]);
         } else {
             assert.equal(original.leases(), 1);
         }
@@ -1024,7 +1207,7 @@ for (const authorize of [false, true]) test(`{§oauth-lifetime} a fresh module r
     try {
         const prepared = await restored.lane(1, definitions);
         assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
-        assert.deepEqual(restored.runtimeTags(1), []);
+        assert.deepEqual(restored.inService(1), []);
         await rejectsManagementProblem(() => restored.action(1, "workspace.mcp.oauth.complete", {
             alias: "oauth", callbackUrl,
         }), "oauth-not-pending", 404);
@@ -1062,7 +1245,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(replacementState)}&iss=${encodeURIComponent(origin)}` }) as { status: number };
         assert.equal(completed.status, 202);
         await h.settleRefreshes();
-        assert.deepEqual(h.runtimeTags(1), ["echo", "oauth"]);
+        assert.deepEqual(h.inService(1), ["echo", "oauth"]);
         assert.equal(h.leases(), 0);
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
@@ -1137,7 +1320,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
     console.error("[429-probe] test pid", process.pid, "ppid", process.ppid);
     try {
         const first = await h.lane(1, new Map([["a", definition]]));
-        assert.deepEqual(h.runtimeTags(1), ["a"]);
+        assert.deepEqual(h.inService(1), ["a"]);
         assert.deepEqual(first.runtimes[0]?.decl.summary, { from: "tools", description: "Echo tools for transport testing." });
         assert.equal(first.runtimes[0]?.decl.details, instructions);
         const connectStarts = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).length;
@@ -1148,7 +1331,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
             await delay(10);
         }
         assert.notEqual(h.snapshots.get(1)?.prepared, first, "the catalog change drove a refresh");
-        assert.deepEqual(h.runtimeTags(1), ["a"], "the alias stays in service");
+        assert.deepEqual(h.inService(1), ["a"], "the alias stays in service");
         assert.equal(h.snapshots.get(1)?.prepared?.runtimes[0]?.decl.details, instructions, "catalog refresh retains the complete on-demand instructions");
         // Connect starts the SDK's disposable probe sibling and then the real server; a refresh
         // on the held connection starts nothing more, and never closes the committed server.
@@ -1193,7 +1376,7 @@ test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pen
     await delay(750);
     assert.equal(h.snapshots.get(1)?.prepared, withdrawn, "no retired timer republishes the empty attachment set");
     assert.equal(lists, 2, "withdrawal causes no further remote catalog requests");
-    assert.deepEqual(h.runtimeTags(1), []);
+    assert.deepEqual(h.inService(1), []);
 });
 
 test("{§mcp-launch-directory} direct servers use workspace-owned state and retain their exact definitions", async () => {

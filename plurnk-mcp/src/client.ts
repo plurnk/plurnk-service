@@ -124,12 +124,26 @@ export interface ServerConnectionOptions {
     readonly cwd?: string;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
+    // {§mcp-request-unauthorized} A request was refused for want of a sign-in the definition does not configure.
+    readonly onAuthorizationRequired?: () => void;
 }
 
 export type { ClientInteractionHandler } from "./inputRequired.ts";
 
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
+
+// The first error of a type anywhere in a cause chain or aggregate.
+export const causeOf = <T>(error: unknown, type: abstract new (...args: never[]) => T, seen = new Set<unknown>()): T | undefined => {
+    if (error === null || typeof error !== "object" || seen.has(error)) return undefined;
+    seen.add(error);
+    if (error instanceof type) return error;
+    for (const inner of error instanceof AggregateError ? error.errors : []) {
+        const found = causeOf(inner, type, seen);
+        if (found !== undefined) return found;
+    }
+    return causeOf((error as { cause?: unknown }).cause, type, seen);
+};
 
 const errorsOf = (error: unknown): unknown[] =>
     error instanceof AggregateError ? [...error.errors] : [error];
@@ -414,6 +428,10 @@ export class McpRedirectError extends Error {
     }
 }
 
+// {§mcp-request-unauthorized} The sentence each surface refuses a request awaiting a sign-in with.
+export const awaitsSignIn = (server: string): string =>
+    `MCP server '${server}' awaits the operator's sign-in; the request was not completed.`;
+
 export class AuthorizationRequiredError extends Error {
     readonly authorizationUrl: string | undefined;
 
@@ -693,14 +711,30 @@ export default class ServerConnection {
             try {
                 return await run(opened, signal);
             } catch (cause) {
-                const authorization = this.#takeAuthorization(opened, cause);
-                if (authorization !== null) throw authorization;
+                // A nested request already took its authorization and said so.
+                if (cause instanceof AuthorizationRequiredError) throw cause;
+                const authorization = this.#takeAuthorization(opened, cause) ?? this.#refusedUnsigned(cause);
+                if (authorization !== null) {
+                    this.#options.onAuthorizationRequired?.();
+                    throw authorization;
+                }
                 throw cause;
             }
         } finally {
             this.#requests.delete(settled.promise);
             settled.resolve();
         }
+    }
+
+    // {§mcp-request-unauthorized} A request the server refused with HTTP 401, on a definition that configures no credential
+    // of its own, awaits a sign-in exactly as a challenge at connection does.
+    #refusedUnsigned(cause: unknown): AuthorizationRequiredError | null {
+        if (this.#resolved.type !== "streamable-http") return null;
+        const configured = (this.#resolved.authProvider !== undefined && this.#resolved.oauthProvider === undefined)
+            || Object.keys(this.#resolved.headers ?? {}).some((name) => name.toLowerCase() === "authorization");
+        if (configured) return null;
+        const refused = causeOf(cause, SdkHttpError)?.status === 401 || causeOf(cause, UnauthorizedError) !== undefined;
+        return refused ? new AuthorizationRequiredError(undefined, cause) : null;
     }
 
     #takeAuthorization(opened: OpenClient, cause: unknown): AuthorizationRequiredError | null {

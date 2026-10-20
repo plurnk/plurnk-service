@@ -34,6 +34,8 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 
 import ServerConnection, {
     AuthorizationRequiredError,
+    awaitsSignIn,
+    causeOf,
     isClientCredentialsRejection,
     McpRedirectError,
 } from "./client.ts";
@@ -49,7 +51,7 @@ import {
     type ToolPolicy,
 } from "./config.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
-import McpExecutor, { runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
+import McpExecutor, { UnavailableServerExecutor, runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import { OAuthSetupError } from "./oauth.ts";
 
@@ -99,6 +101,21 @@ type Snapshot = ReadonlyMap<string, Attachment>;
 const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
     attachment.kind === "unavailable" ? undefined : attachment.connection;
 
+// {§mcp-unavailable-runtime} An enabled server that cannot run still answers to its alias: a call to it is refused with
+// the state that keeps it from running, never as a name nothing registered.
+const unavailableRuntime = (attachment: AuthorizationAttachment | UnavailableAttachment): RuntimeRegistration => {
+    const { name } = attachment.definition;
+    const detail = attachment.kind === "authorization-required"
+        ? "it awaits the operator's sign-in"
+        : typeof attachment.problem.diagnostic === "string" ? attachment.problem.diagnostic : attachment.problem.detail;
+    return {
+        namespaceOwner: OWNER,
+        decl: runtimeDecl(name, runtimeServerSummary(name, undefined), false),
+        executor: new UnavailableServerExecutor(name, detail),
+        availability: { available: false, detail },
+    };
+};
+
 // {§oauth-lifetime} — a pending authorization is process memory per
 // (workspace, alias): the challenged connection, its URL, the workspace residency it
 // holds, and the accepted grant awaiting capability publication.
@@ -144,18 +161,6 @@ const actionError = (
 
 const errorsOf = (error: unknown): unknown[] =>
     error instanceof AggregateError ? [...error.errors] : [error];
-
-// The first error of a type anywhere in a cause chain, aggregates included.
-const causeOf = <T>(error: unknown, type: abstract new (...args: never[]) => T, seen = new Set<unknown>()): T | undefined => {
-    if (error === null || typeof error !== "object" || seen.has(error)) return undefined;
-    seen.add(error);
-    if (error instanceof type) return error;
-    for (const inner of error instanceof AggregateError ? error.errors : []) {
-        const found = causeOf(inner, type, seen);
-        if (found !== undefined) return found;
-    }
-    return causeOf((error as { cause?: unknown }).cause, type, seen);
-};
 
 const preparationError = (
     definition: McpServerDefinition,
@@ -342,6 +347,8 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #pending = new Map<string, PendingAuthorization>();
     readonly #authorizing = new Set<string>();
     readonly #dirty = new Map<string, symbol>();
+    // {§mcp-request-unauthorized} The aliases whose server refused a call for want of a sign-in, by pending key.
+    readonly #challenged = new Set<string>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
@@ -566,6 +573,13 @@ export default class Module implements DaemonModule<SetupSeam> {
                 onInfrastructureError: (error) => {
                     console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
                 },
+                onAuthorizationRequired: () => {
+                    const key = this.#pendingKey(workspaceId, definition.name);
+                    if (this.#closed || this.#challenged.has(key)) return;
+                    this.#challenged.add(key);
+                    this.#dirty.set(key, Symbol());
+                    this.#scheduleCatalogRefresh(workspaceId, definition.name);
+                },
             });
             this.#connections.add(candidate);
             const executor = new McpExecutor(
@@ -654,6 +668,8 @@ export default class Module implements DaemonModule<SetupSeam> {
         const fresh: ConnectedAttachment[] = [];
         const consumedPending = new Map<string, PendingAuthorization>();
         const refreshed = new Map<string, symbol | undefined>();
+        // {§mcp-request-unauthorized} The aliases this preparation connects afresh or signs in, which answer any refusal.
+        const answered = new Set<string>();
         try {
             // {§mcp-setup} — every server that needs a connection or a catalog is prepared at once, so a
             // workspace waits for its slowest server, not for the sum of them.
@@ -665,10 +681,14 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
                 const settledBinding = existing !== undefined && force !== name && sameBinding(existing, binding)
                     && pending?.prepared === undefined && pending?.authorized !== true;
-                const mode = settledBinding && !this.#dirty.has(key) ? "reuse"
-                    : pending?.prepared !== undefined && sameBinding(pending, binding) ? "pending"
-                        : settledBinding && heldConnection !== undefined ? "catalog"
-                            : "connect";
+                // {§mcp-request-unauthorized} A server that refused a call for want of a sign-in awaits one on the connection
+                // it holds, whatever its catalog still lists.
+                const mode = settledBinding && this.#challenged.has(key) && existing?.kind === "active" && heldConnection !== undefined ? "challenged"
+                    : settledBinding && !this.#dirty.has(key) ? "reuse"
+                        : pending?.prepared !== undefined && sameBinding(pending, binding) ? "pending"
+                            : settledBinding && heldConnection !== undefined ? "catalog"
+                                : "connect";
+                if (mode === "pending" || mode === "connect") answered.add(key);
                 const authorized = mode === "connect" && pending?.authorized === true && sameBinding(pending, binding);
                 return { name, key, invalidation: this.#dirty.get(key), binding, existing, pending, heldConnection, mode, authorized };
             });
@@ -679,6 +699,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                 signal.throwIfAborted();
                 if (plan.mode === "reuse") return plan.existing!;
                 if (plan.mode === "pending") return plan.pending!.prepared!;
+                if (plan.mode === "challenged") {
+                    return { ...plan.binding, kind: "authorization-required", connection: plan.heldConnection!, authorizationUrl: undefined };
+                }
                 try {
                     if (plan.mode === "catalog") {
                         // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
@@ -745,7 +768,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 }); break;
             }
         }
-        const runtimes = [...next.values()].flatMap((attachment) => attachment.kind === "active" ? [attachment.runtime] : []);
+        const runtimes = [...next.values()].map((attachment) => attachment.kind === "active" ? attachment.runtime : unavailableRuntime(attachment));
         const published: {
             removed: Array<{ key: string; pending: PendingAuthorization; registered: boolean }>;
             added: Array<{ key: string; pending: PendingAuthorization }>;
@@ -812,6 +835,12 @@ export default class Module implements DaemonModule<SetupSeam> {
                         this.#clearCatalogRefresh(key);
                     }
                 }
+                // {§mcp-request-unauthorized} A fresh connection or an accepted sign-in answers a refusal; withdrawal forgets it.
+                for (const key of [...this.#challenged]) {
+                    if (key.startsWith(`${workspaceId}:`) && (answered.has(key) || !next.has(key.slice(`${workspaceId}:`.length)))) {
+                        this.#challenged.delete(key);
+                    }
+                }
                 const retained = new Set([...next.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []));
                 const pendingConnections = new Set([...this.#pending.values()].map(({ connection }) => connection));
                 const obsolete = [...previous.values()]
@@ -851,6 +880,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         for (const key of this.#dirty.keys()) {
             if (key.startsWith(`${workspaceId}:`)) this.#clearCatalogRefresh(key);
         }
+        for (const key of [...this.#challenged]) if (key.startsWith(`${workspaceId}:`)) this.#challenged.delete(key);
         const connections = [...snapshot.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
         this.#attachments.delete(workspaceId);
         this.#retainWorkspace.delete(workspaceId);
@@ -995,7 +1025,15 @@ export default class Module implements DaemonModule<SetupSeam> {
             const issues = completion.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
             throw actionError("completion-parameters-invalid", 400, `MCP completion parameters do not match the protocol: ${issues}.`, { retryable: false });
         }
-        return attachment.connection.complete(completion.data);
+        try {
+            return await attachment.connection.complete(completion.data);
+        } catch (cause) {
+            if (cause instanceof AuthorizationRequiredError) {
+                // {§mcp-request-unauthorized}
+                throw actionError("authorization-required", 401, awaitsSignIn(server), { workspaceId, name: server, retryable: false }, cause);
+            }
+            throw cause;
+        }
     }
 
     // A live catalog change republishes the unchanged state; the dirty alias
@@ -1047,6 +1085,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         for (const timer of this.#refreshTimers.values()) clearTimeout(timer);
         this.#refreshTimers.clear();
         this.#dirty.clear();
+        this.#challenged.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();

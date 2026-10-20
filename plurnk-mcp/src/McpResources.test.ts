@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import type {
-    EntryData,
-    EntryStorageWriteResult,
-    RepresentationPreparationRequest,
-    SchemeCtx,
-} from "@plurnk/plurnk-schemes";
+import type { EntryStorageWriteResult, RepresentationPreparationRequest } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import type { GetPromptResult } from "@modelcontextprotocol/client";
@@ -14,6 +9,7 @@ import McpExecutor from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import { stdioServer } from "../test/definitions.ts";
+import { context, preparationRequest } from "../test/scheme-fixture.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
@@ -38,53 +34,6 @@ const configured = async (): Promise<{
         connection,
         resources: new McpResources("echo", connection, executor.catalog),
     };
-};
-
-const preparationRequest = (pathname: string): RepresentationPreparationRequest => ({
-    target: {
-        kind: "url",
-        raw: `echo://${pathname}`,
-        scheme: "echo",
-        username: null,
-        password: null,
-        hostname: null,
-        port: null,
-        pathname,
-        query: null,
-        fragment: null,
-    },
-    metadata: null,
-    authority: "",
-    pathname,
-});
-
-const context = (): {
-    ctx: SchemeCtx;
-    entries: Map<string, EntryData>;
-} => {
-    const entries = new Map<string, EntryData>();
-    const ctx = {
-        signal: undefined,
-        interactions: {
-            request: async () => ({ status: "cancelled" as const }),
-        },
-        entries: {
-            address: async (pathname: string) => `echo://owner${pathname}`,
-            read: async (pathname: string) => entries.has(pathname)
-                ? { status: 200, entry: entries.get(pathname)! }
-                : Results.failure("scheme:echo", "entry-not-found", 404, "No entry exists at this path.", { entry: null }),
-            write: async (pathname: string, entry: EntryData) => {
-                entries.set(pathname, entry);
-                return {
-                    status: 200,
-                    created: true,
-                    entryId: entries.size,
-                };
-            },
-            operations: {},
-        },
-    } as unknown as SchemeCtx;
-    return { ctx, entries };
 };
 
 const interactionResources = async (): Promise<{
