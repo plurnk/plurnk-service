@@ -330,8 +330,8 @@ try {
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
-    // accounting and the gauge's model. With no live children ({§agui-status-children}),
-    // the client omits the ant. The lifecycle glyph stands alone, and the place (workspace,
+    // accounting and the gauge's model. With an empty tree ({§agui-status-descendants}),
+    // the client omits the ant and the gate light. The lifecycle glyph stands alone, and the place (workspace,
     // loop, turn, worker) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
     await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
@@ -339,6 +339,7 @@ try {
     await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("🐜")) throw new Error(`installed TUI displayed a child indicator with no live children\n${tuiOutput}`);
+    if (tuiOutput.includes("🚦")) throw new Error(`installed TUI displayed a gate indicator with no waiting descendants\n${tuiOutput}`);
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");

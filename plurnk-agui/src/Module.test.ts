@@ -284,9 +284,9 @@ for (const status of [200, 502]) {
     test(`{§agui-state-patches}: HTTP deltas reconstruct the complete gauge through ${status} termination`, async () => {
         const { seam, emit } = mockSeam();
         let children = false;
-        seam.listWorkers = async (_workspaceId, query) => query?.parentWorkerId === 77
-            ? children ? [{ ...workerRow(88, "child", "model", 77), lifecycle: "running" }] : []
-            : [workerRow(77, "state-replay")];
+        seam.listWorkers = async (_workspaceId, query) => [workerRow(77, "state-replay"),
+            ...children ? [{ ...workerRow(88, "child", "model", 77), lifecycle: "running" as const }] : []]
+            .filter(({ parentWorkerId }) => query?.parentWorkerId === undefined || parentWorkerId === query.parentWorkerId);
         // {§agui-status-spend} — the daemon's projection over the worker's and its child's settled spend, verbatim.
         const spent = { requests: [{ provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } }], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" };
         seam.workerAccounting = async () => children ? spent : { requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null };
@@ -323,7 +323,7 @@ for (const status of [200, 502]) {
             const patches = events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : []);
             assert.ok(patches.some(({ path }) => path === "/plurnk/status"), "the whole-gauge replacement is exercised");
             assert.ok(patches.some((op) => op.path === "/plurnk/workspace/activity" && "value" in op && (op.value as { percent?: number })?.percent === 50), "derivation reaches workspace state");
-            assert.ok(patches.some((op) => op.path === "/plurnk/status/children" && "value" in op && op.value === 1), "child activity reaches state");
+            assert.ok(patches.some((op) => op.path === "/plurnk/status/descendants" && "value" in op && Array.isArray(op.value) && op.value.length === 1), "child activity reaches state");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/spend" && "value" in op && (op.value as { requests?: number })?.requests === 1), "the spend reaches state without promoting the child's notice");
             assert.ok(patches.some((op) => op.path === "/budget/curationWeight" && "value" in op && op.value === 100), "the budget moves with each packet, before the loop ends");
             // {§agui-workspace-state} Derivation is the workspace's: the worker's terminal leaves it as derivation last reported it.
@@ -334,7 +334,8 @@ for (const status of [200, 502]) {
                     kind: "derivation", phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } }, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, children: 1, inbox: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
+                    packetCount: 2, inbox: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
+                    descendants: [{ id: 88, name: "child", parentWorkerId: 77, kind: "work", lifecycle: "running", gates: 0 }],
                     spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
@@ -793,7 +794,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
             waitUntil: null,
             claimedAt: null,
             terminatedAt: null,
-            children: 0,
+            descendants: [],
             inbox: [],
             spend: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
         });

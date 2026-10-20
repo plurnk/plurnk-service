@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
-import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
+import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { BODY_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
@@ -523,16 +523,19 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     }
 
     async #workerGauge(workspaceId: number, workerId: number, threadId: string): Promise<AguiWorkerGauge> {
-        const [{ model }, loops, children, inbox, budget] = await Promise.all([
+        const [{ model }, loops, workers, proposals, interactions, inbox, budget] = await Promise.all([
             this.#seam.readWorkerModel({ workspaceId, workerId }),
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
-            this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
+            this.#seam.listWorkers(workspaceId),
+            this.#seam.pendingProposals(workspaceId),
+            this.#seam.pendingClientInteractions(workspaceId),
             this.#seam.readInbox({ workspaceId, workerId }),
             this.#seam.workerGauge({ workspaceId, workerId }),
         ]);
         const loop = selectWorkerLoop(loops);
         const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
-        return { status: statusState(model, loop, spendState(spend), aliveChildren(children), inboxState(inbox, threadId)), budget };
+        const descendants = descendantsState(workerId, workers, [...proposals, ...interactions]);
+        return { status: statusState(model, loop, spendState(spend), descendants, inboxState(inbox, threadId)), budget };
     }
 
     // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on

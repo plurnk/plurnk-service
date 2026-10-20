@@ -18,7 +18,7 @@ import {
     resolutionFromResume,
     stateDelta,
     stateSnapshot,
-    statusState, aliveChildren } from "./AguiPlus.ts";
+    statusState, descendantsState } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 import type { ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
@@ -218,7 +218,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         waitUntil: 123_000,
         claimedAt: 1_792_008_000_000,
         terminatedAt: null,
-        children: 0,
+        descendants: [],
         inbox: [],
         spend: NOTHING_SPENT,
     });
@@ -230,16 +230,24 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         waitUntil: null,
         claimedAt: null,
         terminatedAt: null,
-        children: 0,
+        descendants: [],
         inbox: [],
         spend: NOTHING_SPENT,
     });
-    // {§agui-status-children} — alive means still owing a result: queued, running, or parked.
-    assert.equal(aliveChildren([
-        { lifecycle: "queued" }, { lifecycle: "running" }, { lifecycle: "parked" },
-        { lifecycle: "completed" }, { lifecycle: "failed" }, { lifecycle: "idle" },
-    ]), 3);
-    assert.equal(statusState(null, null, NOTHING_SPENT, 3).children, 3);
+    // {§agui-status-descendants} — the whole tree beneath the bound Worker, each worker with the gates it waits on.
+    const worker = (id: number, parentWorkerId: number | null, lifecycle: "running" | "parked" | "completed") => ({
+        id, name: `w${id}`, created_at: "2026-10-19 12:00:00", origin: "model" as const, owner: OWNER, parentWorkerId,
+        kind: parentWorkerId === null ? "root" as const : "work" as const, lifecycle,
+    });
+    const workers = [worker(1, null, "running"), worker(4, 1, "completed"), worker(2, 1, "parked"), worker(3, 2, "running"),
+        worker(5, null, "running"), worker(6, 5, "running")];
+    const tree = descendantsState(1, workers, [{ workerId: 3 }, { workerId: 3 }, { workerId: 6 }]);
+    assert.deepEqual(tree, [
+        { id: 2, name: "w2", parentWorkerId: 1, kind: "work", lifecycle: "parked", gates: 0 },
+        { id: 3, name: "w3", parentWorkerId: 2, kind: "work", lifecycle: "running", gates: 2 },
+        { id: 4, name: "w4", parentWorkerId: 1, kind: "work", lifecycle: "completed", gates: 0 },
+    ], "every depth, depth first in creation order, a concluded one included; another tree and its gates are not this one's");
+    assert.deepEqual(statusState(null, null, NOTHING_SPENT, tree).descendants, tree);
 });
 
 test("{§agui-workspace-state} derivation activity carries live work into the workspace snapshot and clears completion", () => {

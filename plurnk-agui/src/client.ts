@@ -4,6 +4,7 @@
 export type {
     ActionOutcome,
     AguiBudgetState,
+    AguiDescendant,
     AguiDerivationActivity,
     AguiLifecycle,
     AguiPlusState,

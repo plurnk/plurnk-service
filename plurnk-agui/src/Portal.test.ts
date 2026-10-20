@@ -18,7 +18,7 @@ import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
-import { ORIGIN, packet, streamEvent, termination } from "../test/notification-fixture.ts";
+import { ORIGIN, packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
@@ -164,7 +164,7 @@ const mockSeam = (
 
 const nextTask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-test("{§agui-status-spend} {§agui-status-children}: status deltas follow the snapshot and patch only what the client does not hold; a stale read never lands", async () => {
+test("{§agui-status-spend} {§agui-status-descendants}: status deltas follow the snapshot and patch only what the client does not hold; a stale read never lands", async () => {
     const m = mockSeam();
     const request = { provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
         cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } };
@@ -227,11 +227,14 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     portal.stop();
 });
 
-// {§agui-status-children} Every moment the bound Worker's alive children may change reads them again; nothing else does.
-test("{§agui-status-children}: each moment that may change the count reads it again, and no other event does", async () => {
+// {§agui-status-descendants} Every moment the bound Worker's tree may change reads it again; nothing else does. A worker's
+// row or a stream's conclusion may settle a gate, so either is such a moment while a descendant waits on one.
+test("{§agui-status-descendants}: each moment that may change the tree reads it again, and no other event does", async () => {
     const m = mockSeam();
     let reads = 0;
-    const portal = new Portal({ ...m.seam, listWorkers: async () => { reads += 1; return []; } });
+    let tree: ApplicationWorkerProjection[] = [];
+    let gates: ProposalProjection[] = [];
+    const portal = new Portal({ ...m.seam, listWorkers: async () => { reads += 1; return tree; }, pendingProposals: async () => gates });
     portal.start();
     const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: () => {} });
     const status = statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }));
@@ -242,8 +245,17 @@ test("{§agui-status-children}: each moment that may change the count reads it a
         source: "engine:lifecycle", kind: "loop_status", level: "info", status: lifecycle, waitUntil: null, packetCount: 0, claimedAt: null,
     } });
     const turn = (kind: string) => ({ workerId: 20, loopId: 5, notice: { source: "engine:turn", kind, level: "info" } });
-    const row = (op: string, id: number) => ({ entry: wireRow({ id, worker_id: 10, op }) });
-    const MOMENTS: ReadonlyArray<readonly [string, string, unknown]> = [
+    const row = (op: string, id: number, workerId = 10) => ({ entry: wireRow({ id, worker_id: workerId, op }) });
+    const conclusion = streamConclusion({ entryId: 40, workerId: 21, target: "sh:///aaaa0001" });
+    const check = async (rows: ReadonlyArray<readonly [string, string, unknown]>, rereads: boolean): Promise<void> => {
+        for (const [event, method, params] of rows) {
+            const before = reads;
+            m.fire(3, method, params);
+            await drain();
+            assert.equal(reads, before + (rereads ? 1 : 0), rereads ? `${event} reads the tree again` : `${event} does not`);
+        }
+    };
+    await check([
         ["another worker's terminal", "loop/terminated", termination({ workerId: 20, loopId: 5 })],
         ["another worker's packet", "loop/packet", packet({ workerId: 20, loopId: 5 })],
         ["another worker's queued beat", "notice/event", beat(20, 100)],
@@ -253,24 +265,25 @@ test("{§agui-status-children}: each moment that may change the count reads it a
         ["the bound Worker's WORK row", "log/entry", row("WORK", 31)],
         ["the bound Worker's FORK row", "log/entry", row("FORK", 32)],
         ["the bound Worker's KILL row", "log/entry", row("KILL", 33)],
-    ];
-    const QUIET: ReadonlyArray<readonly [string, string, unknown]> = [
+        ["a proposal presented", "loop/proposal", proposal({ workerId: 21, logEntryId: 41 })],
+        ["an interaction presented", "loop/interaction", interaction({ workerId: 21, interactionId: 42 })],
+    ], true);
+    await check([
         ["the bound Worker's own beat", "notice/event", beat(10, 102)],
         ["another worker's other turn notice", "notice/event", turn("turn_awaiting_model")],
         ["the bound Worker's READ row", "log/entry", row("READ", 34)],
-    ];
-    for (const [moment, method, params] of MOMENTS) {
-        const before = reads;
-        m.fire(3, method, params);
-        await drain();
-        assert.equal(reads, before + 1, `${moment} reads the children again`);
-    }
-    for (const [event, method, params] of QUIET) {
-        const before = reads;
-        m.fire(3, method, params);
-        await drain();
-        assert.equal(reads, before, `${event} does not`);
-    }
+        ["another worker's row, no descendant waiting", "log/entry", row("READ", 35, 21)],
+        ["a stream's conclusion, no descendant waiting", "stream/concluded", conclusion],
+    ], false);
+    // A descendant waits on a gate: the rows and conclusions that may settle it read the tree again.
+    tree = [{ ...worker(21, 10), lifecycle: "running" }];
+    gates = [proposal({ workerId: 21, logEntryId: 43 })];
+    m.fire(3, "loop/proposal", gates[0]);
+    await drain();
+    await check([
+        ["another worker's row, a descendant waiting", "log/entry", row("READ", 36, 21)],
+        ["a stream's conclusion, a descendant waiting", "stream/concluded", conclusion],
+    ], true);
     portal.stop();
 });
 

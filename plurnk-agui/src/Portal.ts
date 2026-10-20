@@ -6,7 +6,7 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import { aliveChildren, inboxState, spendState, stateDelta, type AguiStatusState, type AguiWorkerGauge } from "./AguiPlus.ts";
+import { descendantsState, inboxState, spendState, stateDelta, type AguiStatusState, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { Problems, Validator, isRecord, selectWorkerLoop } from "@plurnk/plurnk-contracts";
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -59,9 +59,9 @@ interface Thread {
     // null; and the subagents among them by loop id, in the order they were judged.
     judged: Map<number, Promise<Subagent | null>>;
     subagents: Map<number, Subagent>;
-    // {§agui-status-children} {§agui-status-spend} — what this Run's client holds: its snapshot's, its
+    // {§agui-status-descendants} {§agui-status-spend} — what this Run's client holds: its snapshot's, its
     // latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
-    gauge: Pick<AguiStatusState, "children" | "spend" | "inbox"> | null;
+    gauge: Pick<AguiStatusState, "descendants" | "spend" | "inbox"> | null;
     // A refresh was asked for before the snapshot was presented; it runs once the snapshot is.
     staleGauge: boolean;
     // The latest refresh begun: an earlier one that completes after it publishes nothing.
@@ -272,16 +272,20 @@ export default class Portal {
         return observing.length === 0 ? undefined : Promise.all(observing).then(() => undefined);
     }
 
-    // {§agui-status-children} {§agui-status-spend} — the events after which the bound Worker's alive
-    // direct children or its spend may differ: another worker's loop concluded, began, or was queued, claimed
-    // or parked (it may be a child), a turn settled its spend (its own or another worker's), or the bound
-    // Worker's own WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
+    // {§agui-status-descendants} {§agui-status-spend} — the events after which the bound Worker's tree or its spend
+    // may differ: another worker's loop concluded, began, or was queued, claimed or parked (it may be a descendant), a
+    // turn settled its spend (its own or another worker's), the bound Worker's own WORK/FORK/KILL row landed (it spawned
+    // or killed one), a gate was presented, or, while a descendant waits on one, another worker's row or a stream's
+    // conclusion arrived (it may be that gate settling). The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "worker") return false;
         const payload = isRecord(params) ? params : {};
         if (method === "loop/terminated" || method === "loop/packet") {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
         }
+        if (method === "loop/proposal" || method === "loop/interaction") return true;
+        const gated = thread.gauge?.descendants.some(({ gates }) => gates > 0) === true;
+        if (method === "stream/concluded") return gated;
         if (method === "notice/event") {
             const notice = isRecord(payload.notice) ? payload.notice : null;
             if (typeof payload.workerId !== "number" || notice === null) return false;
@@ -290,11 +294,11 @@ export default class Portal {
             return notice.source === "engine:lifecycle" && notice.kind === "loop_status" && payload.workerId !== thread.workerId;
         }
         if (method === "log/entry") {
-            // {§agui-message-acceptance} An arrival row moves a message out of the inbox.
             const entry = Portal.#entryOf(params);
-            return entry !== null && entry.worker_id === thread.workerId
-                && (entry.op === "WORK" || entry.op === "FORK" || entry.op === "KILL"
-                    || (entry.op === "SEND" && entry.origin === "_plurnk"));
+            if (entry === null) return false;
+            if (entry.worker_id !== thread.workerId) return gated;
+            // {§agui-message-acceptance} An arrival row moves a message out of the inbox.
+            return entry.op === "WORK" || entry.op === "FORK" || entry.op === "KILL" || (entry.op === "SEND" && entry.origin === "_plurnk");
         }
         return false;
     }
@@ -342,17 +346,19 @@ export default class Portal {
         const workerId = thread.workerId;
         if (workerId === null) return;
         const refresh = ++thread.gaugeRefresh;
-        const [rows, accounting, messages] = await Promise.all([
-            this.#seam.listWorkers(thread.workspaceId, { parentWorkerId: workerId }),
+        const [workers, proposals, interactions, accounting, messages] = await Promise.all([
+            this.#seam.listWorkers(thread.workspaceId),
+            this.#seam.pendingProposals(thread.workspaceId),
+            this.#seam.pendingClientInteractions(thread.workspaceId),
             this.#seam.workerAccounting({ workspaceId: thread.workspaceId, workerId }),
             this.#seam.readInbox({ workspaceId: thread.workspaceId, workerId }),
         ]);
         if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
         if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
         const delta: Parameters<typeof stateDelta>[0] = [];
-        const children = aliveChildren(rows);
-        if (children !== thread.gauge.children) {
-            delta.push({ op: "replace", path: "/plurnk/status/children", value: children });
+        const descendants = descendantsState(workerId, workers, [...proposals, ...interactions]);
+        if (JSON.stringify(descendants) !== JSON.stringify(thread.gauge.descendants)) {
+            delta.push({ op: "replace", path: "/plurnk/status/descendants", value: descendants });
         }
         const spend = spendState(accounting);
         if (JSON.stringify(spend) !== JSON.stringify(thread.gauge.spend)) {
@@ -363,14 +369,14 @@ export default class Portal {
         if (JSON.stringify(inbox) !== JSON.stringify(thread.gauge.inbox)) {
             delta.push({ op: "replace", path: "/plurnk/status/inbox", value: inbox });
         }
-        thread.gauge = { children, spend, inbox };
+        thread.gauge = { descendants, spend, inbox };
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
     }
 
     // The client now holds this status. A refresh asked for before, or racing, its reads runs after it.
     #presentGauge(thread: Thread, status: AguiStatusState): void {
         const stale = thread.staleGauge || thread.gauge !== null;
-        thread.gauge = { children: status.children, spend: status.spend, inbox: status.inbox };
+        thread.gauge = { descendants: status.descendants, spend: status.spend, inbox: status.inbox };
         thread.staleGauge = false;
         thread.gaugeRefresh += 1;
         if (stale) void this.#refreshStatus(thread);
@@ -860,7 +866,7 @@ export default class Portal {
         bound.loopId = loop.loopId;
     }
 
-    // {§agui-status-children} {§agui-status-spend} — the snapshot is the gauge the status deltas patch: the caller
+    // {§agui-status-descendants} {§agui-status-spend} — the snapshot is the gauge the status deltas patch: the caller
     // that built the snapshot names the status it put there.
     runStarted(thread: ThreadHandle, state?: AguiEvent, status?: AguiStatusState): AguiEvent[] {
         const bound = this.#bound(thread);

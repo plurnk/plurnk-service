@@ -81,7 +81,7 @@
                                 "waitUntil": null,
                                 "claimedAt": null,
                                 "terminatedAt": null,
-                                "children": 0,
+                                "descendants": [],
                                 "spend": { "requests": 0, "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "knownUsage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0", "knownCostUsd": "0" }
                             }
                         },

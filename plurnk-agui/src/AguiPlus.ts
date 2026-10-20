@@ -9,7 +9,7 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import MessageAddress from "./MessageAddress.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
-import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
@@ -148,8 +148,8 @@ export interface AguiStatusState {
     readonly loopId: number | null;
     readonly packetCount: number;
     readonly waitUntil: number | null;
-    // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
-    readonly children: number;
+    // {§agui-status-descendants} — the bound Worker's tree beneath it, depth first.
+    readonly descendants: ReadonlyArray<AguiDescendant>;
     // {§agui-status-spend} — what the bound Worker and its descendants have spent since it began.
     readonly spend: AguiSpendState;
     // {§agui-message-acceptance} — the accepted messages the bound Worker has not yet observed.
@@ -176,10 +176,41 @@ export const spendState = ({ requests, ...projection }: ProviderAccounting): Agu
     requests: requests.length,
 });
 
-// {§agui-status-children} — a child that still owes a result is alive; one that concluded is not.
-export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycle>(["queued", "running", "parked"]);
-export const aliveChildren = (rows: readonly { readonly lifecycle: LoopLifecycle }[]): number =>
-    rows.filter(({ lifecycle }) => ALIVE_LIFECYCLES.has(lifecycle)).length;
+// {§agui-status-descendants} One worker of the bound Worker's tree: who it is, beneath whom, its lifecycle, and the gates
+// it waits on.
+export interface AguiDescendant {
+    readonly id: number;
+    readonly name: string;
+    readonly parentWorkerId: number;
+    readonly kind: ApplicationWorkerProjection["kind"];
+    readonly lifecycle: AguiLifecycle;
+    readonly gates: number;
+}
+
+// {§agui-status-descendants} The bound Worker's whole tree beneath it, depth first and in creation order, each with the
+// proposals and client interactions it waits on.
+export const descendantsState = (
+    workerId: number,
+    workers: readonly ApplicationWorkerProjection[],
+    gates: ReadonlyArray<{ readonly workerId: number }>,
+): AguiDescendant[] => {
+    const waiting = new Map<number, number>();
+    for (const gate of gates) waiting.set(gate.workerId, (waiting.get(gate.workerId) ?? 0) + 1);
+    const beneath = new Map<number, ApplicationWorkerProjection[]>();
+    for (const worker of workers) {
+        if (worker.parentWorkerId === null) continue;
+        beneath.set(worker.parentWorkerId, [...beneath.get(worker.parentWorkerId) ?? [], worker]);
+    }
+    const tree: AguiDescendant[] = [];
+    const visit = (parentWorkerId: number): void => {
+        for (const { id, name, kind, lifecycle } of (beneath.get(parentWorkerId) ?? []).toSorted((a, b) => a.id - b.id)) {
+            tree.push({ id, name, parentWorkerId, kind, lifecycle, gates: waiting.get(id) ?? 0 });
+            visit(id);
+        }
+    };
+    visit(workerId);
+    return tree;
+};
 
 export const derivationActivity = (value: unknown): AguiDerivationActivity | null => {
     if (value === null) return null;
@@ -199,7 +230,7 @@ export const statusState = (
     model: ModelRoute | null,
     loop: ApplicationLoopProjection | null,
     spend: AguiSpendState,
-    children = 0,
+    descendants: readonly AguiDescendant[] = [],
     inbox: readonly AguiInboxEntry[] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
@@ -209,7 +240,7 @@ export const statusState = (
     packetCount: loop?.packetCount ?? 0,
     waitUntil: loop?.status === 202 ? loop.waitUntil : null,
     ...loopTiming(loop),
-    children,
+    descendants,
     spend,
     inbox,
 });

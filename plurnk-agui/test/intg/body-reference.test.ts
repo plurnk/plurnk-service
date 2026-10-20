@@ -88,7 +88,7 @@ test("{§agui-body-reference}: a deep conversation with large bodies reaches the
         assert.ok(address, `the body's address is its row's log address at this daemon: ${JSON.stringify(part.source)}`);
         const [, space, worker, loopSeq, turnSeq, sequence] = address.map(Number);
         assert.equal(space, workspaceId);
-        const row = (await daemon.readLog({ workspaceId, workerId: worker!, loopSeq: loopSeq!, turnSeq: turnSeq!, sequence: sequence! }))
+        const row = (await daemon.readLog({ workspaceId, workerId: worker, loopSeq, turnSeq, sequence }))
             .find(({ op }: { op: string | null }) => op === "READ");
         const receipt = (typeof row?.rx === "string" ? JSON.parse(row.rx) : row?.rx) as { content: string; mimetype: string };
         if (receipt.content.length > 500_000) large += 1;
