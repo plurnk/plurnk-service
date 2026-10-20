@@ -259,6 +259,8 @@ originating distinction in its canonical Problem/result path.
 | {§mcp-registry-discovery} | `discover` searches the MCP Registry. |
 | {§mcp-preparation-diagnostics} | Unavailable preparation reports observations. |
 | {§oauth-continuation} | A URL-only HTTP definition is sufficient to reach the client sign-in handoff. |
+| {§oauth-issuer} | A configured issuer is where a sign-in starts and the one server it trusts. |
+| {§oauth-begin-unchallenged} | A sign-in starts where no connection is challenged. |
 <!-- /map -->
 
 MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files, plugin components, and environment declarations
@@ -524,7 +526,8 @@ client is registered, or workspace lease retained merely for that challenge.
 The client binds its callback before `oauth.begin`; absent an explicitly
 configured redirect, it obtains an ephemeral loopback port (RFC 8252 §7.3).
 The MCP SDK owns metadata discovery, registration, PKCE and token exchange.
-An explicit OAuth definition may supply scope and client-registration metadata;
+An explicit OAuth definition may supply scope, client-registration metadata, an issuer and
+authorization parameters ({§oauth-issuer});
 its optional fixed redirect is respected, never silently rewritten. Bearer,
 client-credentials and Authorization-header configurations cannot be replaced
 by `oauth.begin`. Callback addresses and acquired credentials are session state,
@@ -564,6 +567,26 @@ sequenceDiagram
 | Publication failure | Do not claim active tools; retain the accepted candidate for normal refresh/enable retry, without another code exchange. |
 | Preparation failure published as unavailable | Preserve the preparation diagnostic; release the pending lease and close its unused connection. |
 | Callback after publication | The attempt has been consumed; `404 oauth-not-pending`. |
+
+§oauth-issuer **A configured issuer is where a sign-in starts and the one server it trusts.** An
+interactive definition's `authorization.issuer` names the authorization server: discovery reads its
+metadata (RFC 8414, then OpenID Connect Discovery) whether or not the MCP server publishes
+protected-resource metadata, and the client registration, tokens and refresh are bound to it. With
+none named, the SDK discovers the server from the resource's protected-resource metadata, falling
+back to the resource's origin; where neither publishes metadata, a sign-in fails
+`502 oauth-metadata-unavailable` and its recovery names the issuer field. `authorization.authorizationParams`
+join every authorization request the definition makes, such as `access_type=offline` for a server
+that issues a refresh token only when asked; the parameters the flow sets itself cannot be named
+({§mcp-oauth}).
+
+§oauth-begin-unchallenged **A sign-in starts where no connection is challenged.** A server may answer
+its catalog to anyone and refuse only requests ({§mcp-request-unauthorized}), so the connection
+`oauth.begin` prepares meets no challenge.
+
+| The alias awaits a sign-in because | and begin's connection meets no challenge |
+| --- | --- |
+| a request was refused | begin starts the SDK's authorization on that connection and returns its URL as for a challenged one; a refusal of that start is a preparation failure ({§mcp-preparation-diagnostics}) and leaves no pending attempt |
+| its connection was challenged | the connection is accepted as it is: `202` without a URL, publishing at the next boundary |
 
 ## §oauth-lifetime Interactive OAuth lifetime and reauthorization
 
@@ -950,7 +973,7 @@ servers are composition evidence only.
 | `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant. |
 | `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
 | `authorization-required` | 401 | MCP server '*name*' awaits the operator's sign-in; the request was not completed. |
-| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. |
+| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. Recovery, when the definition names no issuer: Name the authorization server as the definition's authorization.issuer. |
 | `oauth-registration-unavailable` | 502 | No client is registered with the authorization server: none is configured for it, it advertises no Dynamic Client Registration endpoint, and no client metadata document it accepts is configured. |
 | `oauth-redirect-invalid` | 400 | The OAuth callback must use HTTPS or HTTP loopback with a usable port. |
 | `oauth-configuration-conflict` | 409 | MCP server '*alias*' is not configured for this interactive OAuth callback. |

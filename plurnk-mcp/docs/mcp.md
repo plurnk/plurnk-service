@@ -108,8 +108,9 @@ and activates the tools. Neither the sign-in URL nor callback is a resource to
 READ. After the user signs in, `list` confirms readiness and the server's tool
 reference becomes available. `enable` alone does not sign in.
 
-An advanced `authorization` definition can specify scope or client registration;
-the add schema describes it. A fixed redirect is optional. Bearer credentials
+An advanced `authorization` definition can specify scope, client registration,
+the authorization server (`issuer`) or extra request parameters; the add schema
+describes it. A fixed redirect is optional. Bearer credentials
 remain environment references. `unavailable` includes a Problem: repair its
 reported cause rather than assuming every failure is an OAuth challenge.
 

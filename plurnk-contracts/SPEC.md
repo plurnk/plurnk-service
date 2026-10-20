@@ -1767,7 +1767,9 @@ authentication fields replace together ({§configuration-definition-resolution})
 HTTP server, included in that server's `authorization`. Interactive OAuth always requires a callback URL, and
 its structurally exclusive identity modes are an HTTPS Client ID Metadata Document URL,
 a pre-registered client ID with a symbolic secret, or neither for server-advertised
-Dynamic Client Registration. A client-credentials grant names its client ID and
+Dynamic Client Registration. Any interactive mode may name the `issuer` its sign-in binds to,
+where discovery starts, and `authorizationParams` added to the authorization request; the
+parameters the flow sets itself cannot be named. A client-credentials grant names its client ID and
 symbolic secret, optionally binding an issuer. Every secret is one complete `${NAME}`
 reference to the operator environment; `Validator.assertMcpOAuth` validates the shape.
 

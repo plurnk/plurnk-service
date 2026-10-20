@@ -849,16 +849,22 @@ type: "oauth"
 redirectUrl?: string
 clientMetadataUrl: string
 scope?: string
+issuer?: InteractiveIssuer
+authorizationParams?: AuthorizationParams
 } | {
 type: "oauth"
 redirectUrl?: string
 clientId: string
 clientSecret: EnvironmentReference
 scope?: string
+issuer?: InteractiveIssuer
+authorizationParams?: AuthorizationParams
 } | {
 type: "oauth"
 redirectUrl?: string
 scope?: string
+issuer?: InteractiveIssuer
+authorizationParams?: AuthorizationParams
 } | {
 type: "client-credentials"
 clientId: string
@@ -867,10 +873,23 @@ scope?: string
 issuer?: string
 })
 /**
+ * The authorization server the sign-in binds to. Discovery starts at its metadata, so a server that publishes no protected-resource metadata can still be signed in to.
+ */
+
+export type InteractiveIssuer = string
+/**
  * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
  */
 
 export type EnvironmentReference = string
+
+/**
+ * Parameters added to the authorization request, such as access_type=offline; the parameters the flow sets itself cannot be named.
+ */
+
+export interface AuthorizationParams {
+[k: string]: string
+}
 
 export type McpOAuthBeginResult = (McpOAuthCompletionResult | {
 status: 200
@@ -957,6 +976,9 @@ headers?: {
 }
 authorization?: McpAuthorization
 }
+/**
+ * Parameters added to the authorization request, such as access_type=offline; the parameters the flow sets itself cannot be named.
+ */
 
 export interface ModelCatalogPage {
 /**

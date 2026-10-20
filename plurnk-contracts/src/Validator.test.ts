@@ -305,6 +305,24 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
     }
 });
 
+test("{§mcp-oauth}: an interactive sign-in may bind its issuer and add authorization parameters, never the flow's own", () => {
+    const additions = { issuer: "https://accounts.example.com", authorizationParams: { access_type: "offline", prompt: "consent" } };
+    for (const mode of [{}, { clientMetadataUrl: "https://plurnk.example/oauth/client.json" }, { clientId: "plurnk", clientSecret: "${GITEA_SECRET}" }]) {
+        const setting = { type: "oauth" as const, ...mode, ...additions };
+        assert.equal(Validator.assertMcpOAuth(setting), setting, JSON.stringify(setting));
+    }
+    const reserved = ["response_type", "client_id", "redirect_uri", "scope", "state", "code_challenge", "code_challenge_method", "resource"];
+    for (const invalid of [
+        ...reserved.map((name) => ({ type: "oauth", authorizationParams: { [name]: "x" } })),
+        { type: "oauth", authorizationParams: {} },
+        { type: "oauth", authorizationParams: { access_type: 1 } },
+        { type: "oauth", issuer: "accounts.example.com" },
+        { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}", authorizationParams: { access_type: "offline" } },
+    ]) {
+        assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
+    }
+});
+
 test("{§client-display-capabilities} ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [
         { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },

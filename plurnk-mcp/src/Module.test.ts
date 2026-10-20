@@ -23,7 +23,7 @@ import type { FunctionalityPreparation, McpServerDefinition, ProblemDetails } fr
 import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
-import { serveOAuthMcp } from "../test/oauth-fixture.ts";
+import { serveIssuerOAuth, serveOAuthMcp } from "../test/oauth-fixture.ts";
 import { context, preparationRequest } from "../test/scheme-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import type McpResources from "./McpResources.ts";
@@ -389,6 +389,90 @@ test("{§mcp-request-unauthorized} a signed-in grant that lapses mid-run keeps i
         await signIn();
         assert.deepEqual(h.inService(1), ["oauth"], "a fresh sign-in answers it");
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
+});
+
+// {§oauth-issuer} {§oauth-begin-unchallenged} A pre-registered client signing in to a server that never challenges its
+// catalog and publishes no OAuth metadata, at the issuer its definition names.
+const issuerSignIn = async (t: TestContext, authorizationParams?: Readonly<Record<string, string>>) => {
+    const client = { id: "plurnk-desktop", secret: "fixture-secret" };
+    const servers = await serveIssuerOAuth(t, httpHandler(), client);
+    const definition: McpServerDefinition = {
+        ...httpServer("calendar", servers.resource),
+        authorization: {
+            type: "oauth", clientId: client.id, clientSecret: "${FIXTURE_CLIENT_SECRET}", scope: "calendar.readonly", issuer: servers.issuer,
+            ...(authorizationParams === undefined ? {} : { authorizationParams }),
+        },
+    };
+    const h = harness({ FIXTURE_CLIENT_SECRET: client.secret });
+    await h.setup();
+    const first = await h.lane(1, new Map([["calendar", definition]]));
+    assert.equal(first.outcomes.get("calendar")?.state, "active", "its catalog answers without credentials");
+    assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 401);
+    assert.equal((await republished(h, first))?.outcomes.get("calendar")?.state, "authorization-required");
+    const started = await h.action(1, "workspace.mcp.oauth.begin", {
+        alias: "calendar", redirectUrl: "http://127.0.0.1:54321/callback",
+    }) as { status: number; authorization?: { url: string } };
+    assert.equal(started.status, 202);
+    assert.ok(started.authorization !== undefined, "the sign-in starts though the connection was never challenged");
+    // The browser: the authorization server answers the consent with a redirect to the client's callback.
+    const consent = await fetch(started.authorization.url, { redirect: "manual" });
+    const callbackUrl = consent.headers.get("location");
+    assert.equal(consent.status, 302);
+    assert.ok(callbackUrl !== null);
+    await h.action(1, "workspace.mcp.oauth.complete", { alias: "calendar", callbackUrl });
+    await h.settleRefreshes();
+    assert.deepEqual(h.inService(1), ["calendar"]);
+    assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 200, "the grant answers the call");
+    return { ...servers, h, url: new URL(started.authorization.url) };
+};
+
+test("{§oauth-issuer} a sign-in starts at the configured issuer and carries the definition's parameters; its refresh token outlives the access token", async (t) => {
+    const { h, url, issuer, authorizations, tokenRequests, expire } = await issuerSignIn(t, { access_type: "offline", prompt: "consent" });
+    try {
+        assert.equal(url.origin, issuer, "discovery started at the issuer, not the resource");
+        assert.equal(url.searchParams.get("access_type"), "offline");
+        assert.equal(url.searchParams.get("prompt"), "consent");
+        assert.equal(url.searchParams.get("client_id"), "plurnk-desktop");
+        assert.equal(url.searchParams.get("scope"), "calendar.readonly");
+        assert.equal(authorizations.length, 1);
+        expire();
+        assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 200, "the refresh token re-acquires an access token");
+        assert.deepEqual(tokenRequests.map((request) => request.get("grant_type")), ["authorization_code", "refresh_token"]);
+        assert.deepEqual(h.inService(1), ["calendar"]);
+    } finally { await h.teardown(1); await h.module.stop(); }
+});
+
+test("{§oauth-issuer} without offline access the lapsed grant awaits a fresh sign-in", async (t) => {
+    const { h, url, tokenRequests, expire } = await issuerSignIn(t);
+    try {
+        assert.equal(url.searchParams.get("access_type"), null);
+        const signedIn = h.snapshots.get(1)?.prepared;
+        expire();
+        assert.deepEqual(await requestThrough(h, "calendar", "tools/call"), { status: 401, type: awaitingSignIn["tools/call"] });
+        assert.deepEqual((await republished(h, signedIn))?.outcomes.get("calendar"), { state: "authorization-required", authorization: {} });
+        assert.deepEqual(tokenRequests.map((request) => request.get("grant_type")), ["authorization_code"]);
+    } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
+});
+
+test("{§oauth-begin-unchallenged} a server that publishes no OAuth metadata, with no issuer named, cannot begin a sign-in", async (t) => {
+    const client = { id: "plurnk-desktop", secret: "fixture-secret" };
+    const servers = await serveIssuerOAuth(t, httpHandler(), client);
+    const definition = httpServer("calendar", servers.resource);
+    const h = harness();
+    await h.setup();
+    try {
+        const first = await h.lane(1, new Map([["calendar", definition]]));
+        assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 401);
+        await republished(h, first);
+        const begin = () => h.action(1, "workspace.mcp.oauth.begin", { alias: "calendar", redirectUrl: "http://127.0.0.1:54321/callback" });
+        await rejectsManagementProblem(begin, "oauth-metadata-unavailable", 502);
+        await assert.rejects(begin, (error: unknown) => {
+            assert.match(String((error as { problem?: { recovery?: unknown } }).problem?.recovery), /authorization\.issuer/, "the refusal names the working form");
+            return true;
+        });
+        assert.equal(h.leases(), 0, "the refused attempt holds no residency");
+        assert.equal(servers.authorizations.length, 0);
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {

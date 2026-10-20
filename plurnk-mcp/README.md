@@ -193,16 +193,19 @@ registered, out of service ({§mcp-unavailable-runtime}). A URL-only definition
 is sufficient; no callback port needs to be configured. The terminal client's
 `/mcp oauth <alias>` binds an available loopback port and calls
 `workspace.mcp.oauth.begin` before opening the returned authorization URL. A
-fixed OAuth redirect, if configured, is respected. Supplying the callback URL
-explicitly also works for remote/headless use. The client submits the complete
-URL through `workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in;
-tools activate at the next safe workspace boundary, without another callback
-submission. `list` shows their current readiness. PKCE, issuer and resource
-validation, refresh, scope escalation, and credentials remain inside the host
-connection. Callback addresses and credentials never replace the saved
-definition. `enable` retries a connection; it does not replace user sign-in.
-Rejected configured credentials are reported as authentication failures rather
-than retryable server downtime.
+fixed OAuth redirect, if configured, is respected. A server that publishes no
+OAuth metadata needs its authorization server named as `authorization.issuer`,
+and `authorization.authorizationParams` adds provider request parameters such as
+`access_type=offline` where a refresh token is issued only on request
+({§oauth-issuer}). Supplying the callback URL explicitly also works for
+remote/headless use. The client submits the complete URL through
+`workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in; tools activate
+at the next safe workspace boundary, without another callback submission. `list`
+shows their current readiness. PKCE, issuer and resource validation, refresh,
+scope escalation, and credentials remain inside the host connection. Callback
+addresses and credentials never replace the saved definition. `enable` retries a
+connection; it does not replace user sign-in. Rejected configured credentials
+are reported as authentication failures rather than retryable server downtime.
 
 ## Verification
 

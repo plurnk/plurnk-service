@@ -9,12 +9,15 @@ import {
     Client,
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
+    auth,
+    createFetchWithInit,
     type AuthProvider,
     type CallToolResult,
     type ClientCapabilities,
     type CompleteRequest,
     type CompleteResult,
     type DiscoverResult,
+    type FetchLike,
     type GetPromptResult,
     type OAuthClientProvider,
     type Progress,
@@ -243,6 +246,8 @@ const resolveDefinition = (
     const oauthProvider = new InteractiveOAuthProvider({
         redirectUrl: redirectUrl!,
         ...(authorization?.scope === undefined ? {} : { scope: authorization.scope }),
+        ...(authorization?.issuer === undefined ? {} : { issuer: authorization.issuer }),
+        ...(authorization?.authorizationParams === undefined ? {} : { authorizationParams: authorization.authorizationParams }),
         ...(authorization !== undefined && "clientMetadataUrl" in authorization ? { clientMetadataUrl: authorization.clientMetadataUrl } : {}),
         ...(authorization !== undefined && "clientId" in authorization
             ? { clientId: authorization.clientId, clientSecret: expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`) }
@@ -267,57 +272,60 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 // The SDK re-wraps a transport failure without keeping it as a cause, so each HTTP transport's refused
 // redirect is kept beside it for the connection failure to carry.
 const refusedRedirects = new WeakMap<StreamableHTTPClientTransport, McpRedirectError>();
+// The fetch each HTTP transport authorizes through, as the SDK composes it, for a sign-in this host starts itself.
+const authorizationFetches = new WeakMap<StreamableHTTPClientTransport, FetchLike>();
 
 const openTransport = (
     definition: ResolvedDefinition,
     environment: NodeJS.ProcessEnv = getDefaultEnvironment(),
 ): StdioClientTransport | StreamableHTTPClientTransport => {
     if (definition.type === "streamable-http") {
+        const requestInit = definition.headers === undefined ? undefined : { headers: definition.headers };
+        const transportFetch: FetchLike = async (url, init) => {
+            const body = typeof init?.body === "string"
+                ? (() => {
+                    try {
+                        return JSON.parse(init.body) as unknown;
+                    } catch {
+                        return undefined;
+                    }
+                })()
+                : undefined;
+            const request = body !== null && typeof body === "object" && !Array.isArray(body)
+                ? body as { method?: unknown; params?: { taskId?: unknown } }
+                : undefined;
+            let sent = init;
+            if (
+                ["tasks/get", "tasks/update", "tasks/cancel"].includes(String(request?.method))
+                && typeof request?.params?.taskId === "string"
+            ) {
+                const headers = new Headers(init?.headers);
+                headers.set("Mcp-Name", mcpRoutingHeaderValue(request.params.taskId));
+                sent = { ...init, headers };
+            }
+            // {§mcp-redirect-refused} — configured headers never reach another origin: no
+            // redirect is followed, and a redirected endpoint fails naming where it pointed.
+            const response = await fetch(url, { ...sent, redirect: "manual" });
+            if (REDIRECT_STATUSES.has(response.status)) {
+                const location = response.headers.get("location");
+                await response.body?.cancel();
+                const refused = new McpRedirectError(String(url), location === null ? null : new URL(location, String(url)).href);
+                refusedRedirects.set(transport, refused);
+                throw refused;
+            }
+            return response;
+        };
         const transport: StreamableHTTPClientTransport = new StreamableHTTPClientTransport(
             new URL(definition.url),
             {
-                ...(definition.headers === undefined
-                    ? {}
-                    : { requestInit: { headers: definition.headers } }),
+                ...(requestInit === undefined ? {} : { requestInit }),
                 ...(definition.authProvider === undefined
                     ? {}
                     : { authProvider: definition.authProvider }),
-                fetch: async (url, init) => {
-                    const body = typeof init?.body === "string"
-                        ? (() => {
-                            try {
-                                return JSON.parse(init.body) as unknown;
-                            } catch {
-                                return undefined;
-                            }
-                        })()
-                        : undefined;
-                    const request = body !== null && typeof body === "object" && !Array.isArray(body)
-                        ? body as { method?: unknown; params?: { taskId?: unknown } }
-                        : undefined;
-                    let sent = init;
-                    if (
-                        ["tasks/get", "tasks/update", "tasks/cancel"].includes(String(request?.method))
-                        && typeof request?.params?.taskId === "string"
-                    ) {
-                        const headers = new Headers(init?.headers);
-                        headers.set("Mcp-Name", mcpRoutingHeaderValue(request.params.taskId));
-                        sent = { ...init, headers };
-                    }
-                    // {§mcp-redirect-refused} — configured headers never reach another origin: no
-                    // redirect is followed, and a redirected endpoint fails naming where it pointed.
-                    const response = await fetch(url, { ...sent, redirect: "manual" });
-                    if (REDIRECT_STATUSES.has(response.status)) {
-                        const location = response.headers.get("location");
-                        await response.body?.cancel();
-                        const refused = new McpRedirectError(String(url), location === null ? null : new URL(location, String(url)).href);
-                        refusedRedirects.set(transport, refused);
-                        throw refused;
-                    }
-                    return response;
-                },
+                fetch: transportFetch,
             },
         );
+        authorizationFetches.set(transport, createFetchWithInit(transportFetch, requestInit));
         return transport;
     }
     // {§mcp-stdio-process-ownership} — stdio servers spawn through the
@@ -676,6 +684,33 @@ export default class ServerConnection {
 
     async connect(): Promise<Client> {
         return (await this.#open()).client;
+    }
+
+    // {§oauth-begin-unchallenged} A server whose catalog answers anonymously challenges no connection, so the SDK never
+    // starts its authorization; a sign-in the client begins starts it here, as the transport would on a challenge.
+    async beginAuthorization(): Promise<string | undefined> {
+        const resolved = this.#resolved;
+        if (resolved.type !== "streamable-http" || resolved.oauthProvider === undefined) {
+            throw new Error(`MCP server '${this.#definition.name}' has no interactive OAuth sign-in.`);
+        }
+        const opened = await this.#open();
+        if (!(opened.transport instanceof StreamableHTTPClientTransport)) {
+            throw new Error(`MCP server '${this.#definition.name}' is not connected over Streamable HTTP.`);
+        }
+        const result = await auth(resolved.oauthProvider, {
+            serverUrl: new URL(resolved.url),
+            fetchFn: authorizationFetches.get(opened.transport),
+        });
+        if (result === "AUTHORIZED") return undefined;
+        const authorizationUrl = resolved.oauthProvider.takeAuthorizationUrl();
+        if (authorizationUrl === undefined) throw new Error("OAuth authorization redirected without an authorization URL.");
+        this.#pendingAuthorization = {
+            transport: opened.transport,
+            provider: resolved.oauthProvider,
+            authorizationUrl: authorizationUrl.href,
+            standaloneTransport: false,
+        };
+        return authorizationUrl.href;
     }
 
     async finishAuthorization(callbackUrl: string): Promise<void> {

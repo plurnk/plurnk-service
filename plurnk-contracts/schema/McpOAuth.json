@@ -13,7 +13,9 @@
                 "type": { "const": "oauth" },
                 "redirectUrl": { "type": "string", "format": "uri" },
                 "clientMetadataUrl": { "type": "string", "format": "uri", "pattern": "^https://.+/.+" },
-                "scope": { "type": "string", "minLength": 1 }
+                "scope": { "type": "string", "minLength": 1 },
+                "issuer": { "$ref": "#/$defs/interactiveIssuer" },
+                "authorizationParams": { "$ref": "#/$defs/authorizationParams" }
             }
         },
         {
@@ -26,7 +28,9 @@
                 "redirectUrl": { "type": "string", "format": "uri" },
                 "clientId": { "type": "string", "minLength": 1 },
                 "clientSecret": { "$ref": "#/$defs/environmentReference" },
-                "scope": { "type": "string", "minLength": 1 }
+                "scope": { "type": "string", "minLength": 1 },
+                "issuer": { "$ref": "#/$defs/interactiveIssuer" },
+                "authorizationParams": { "$ref": "#/$defs/authorizationParams" }
             }
         },
         {
@@ -37,7 +41,9 @@
             "properties": {
                 "type": { "const": "oauth" },
                 "redirectUrl": { "type": "string", "format": "uri" },
-                "scope": { "type": "string", "minLength": 1 }
+                "scope": { "type": "string", "minLength": 1 },
+                "issuer": { "$ref": "#/$defs/interactiveIssuer" },
+                "authorizationParams": { "$ref": "#/$defs/authorizationParams" }
             }
         },
         {
@@ -55,6 +61,21 @@
         }
     ],
     "$defs": {
+        "interactiveIssuer": {
+            "description": "The authorization server the sign-in binds to. Discovery starts at its metadata, so a server that publishes no protected-resource metadata can still be signed in to.",
+            "type": "string",
+            "format": "uri"
+        },
+        "authorizationParams": {
+            "description": "Parameters added to the authorization request, such as access_type=offline; the parameters the flow sets itself cannot be named.",
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {
+                "minLength": 1,
+                "not": { "enum": ["response_type", "client_id", "redirect_uri", "scope", "state", "code_challenge", "code_challenge_method", "resource"] }
+            },
+            "additionalProperties": { "type": "string" }
+        },
         "environmentReference": {
             "description": "An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.",
             "type": "string",

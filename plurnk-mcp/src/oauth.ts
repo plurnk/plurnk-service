@@ -12,10 +12,12 @@ import packageJson from "../package.json" with { type: "json" };
 // {§oauth-continuation} Host-owned diagnostics, without remote error bodies or secrets.
 export class OAuthSetupError extends Error {
     readonly code: string;
-    constructor(code: string, message: string) {
+    readonly recovery: string | undefined;
+    constructor(code: string, message: string, recovery?: string) {
         super(message);
         this.name = "OAuthSetupError";
         this.code = code;
+        this.recovery = recovery;
     }
 }
 
@@ -23,6 +25,8 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     readonly redirectUrl: string;
     readonly clientMetadataUrl: string | undefined;
     readonly #scope: string | undefined;
+    readonly #issuer: string | undefined;
+    readonly #authorizationParams: Readonly<Record<string, string>>;
     readonly #configuredClientInformation: StoredOAuthClientInformation | undefined;
     readonly #clientInformation = new Map<string, StoredOAuthClientInformation>();
     readonly #tokens = new Map<string, StoredOAuthTokens>();
@@ -42,16 +46,22 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         clientId,
         clientSecret,
         scope,
+        issuer,
+        authorizationParams = {},
     }: {
         redirectUrl: string;
         clientMetadataUrl?: string;
         clientId?: string;
         clientSecret?: string;
         scope?: string;
+        issuer?: string;
+        authorizationParams?: Readonly<Record<string, string>>;
     }) {
         this.redirectUrl = redirectUrl;
         this.clientMetadataUrl = clientMetadataUrl;
         this.#scope = scope;
+        this.#issuer = issuer;
+        this.#authorizationParams = authorizationParams;
         this.#configuredClientInformation = clientId === undefined
             ? undefined
             : { client_id: clientId, ...(clientSecret === undefined ? {} : { client_secret: clientSecret }) };
@@ -138,6 +148,8 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     }
 
     redirectToAuthorization(authorizationUrl: URL): void {
+        // {§mcp-oauth} The definition's parameters join the request; the schema keeps the flow's own out of reach.
+        for (const [name, value] of Object.entries(this.#authorizationParams)) authorizationUrl.searchParams.set(name, value);
         this.#awaitingAuthorizationCallback = true;
         this.#authorizationUrl = authorizationUrl;
     }
@@ -167,8 +179,10 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
 
     saveDiscoveryState(state: OAuthDiscoveryState): void {
         if (state.authorizationServerMetadata === undefined) {
+            // {§oauth-issuer} Without a configured issuer, naming one is the working form.
             throw new OAuthSetupError("oauth-metadata-unavailable",
                 "MCP OAuth requires validated authorization-server metadata, and the server provided none.",
+                this.#issuer === undefined ? "Name the authorization server as the definition's authorization.issuer." : undefined,
             );
         }
         this.#discoveryState = state;
@@ -179,7 +193,8 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             this.#presentedToken = false;
             this.#discoveryState = undefined;
         }
-        return this.#discoveryState;
+        // {§oauth-issuer} A configured issuer is where discovery starts, whatever the resource publishes.
+        return this.#discoveryState ?? (this.#issuer === undefined ? undefined : { authorizationServerUrl: this.#issuer });
     }
 
     invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): void {

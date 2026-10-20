@@ -177,7 +177,7 @@ const preparationError = (
         );
     const setup = causeOf(cause, OAuthSetupError);
     if (setup !== undefined) return actionError(setup.code, 502, setup.message,
-        { server: definition.name, retryable: false }, completeCause);
+        { server: definition.name, ...(setup.recovery === undefined ? {} : { recovery: setup.recovery }), retryable: false }, completeCause);
     // {§oauth-client-credentials} — a rejected grant is an authorization fact,
     // never a generic unavailability.
     if (authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
@@ -914,8 +914,11 @@ export default class Module implements DaemonModule<SetupSeam> {
         if (this.#authorizing.has(key)) throw actionError("oauth-busy", 409, `MCP server '${alias}' is already starting authorization.`, { retryable: true });
         this.#authorizing.add(key);
         try {
-            const prepared = await this.#prepareAttachment(identity.workspaceId, current, undefined, redirectUrl);
-            if (prepared.kind === "unavailable") throw new Error("OAuth preparation returned an unavailable attachment.");
+            const connected = await this.#prepareAttachment(identity.workspaceId, current, undefined, redirectUrl);
+            if (connected.kind === "unavailable") throw new Error("OAuth preparation returned an unavailable attachment.");
+            // {§oauth-begin-unchallenged} An alias awaiting a sign-in for a refused request starts one on a connection its
+            // server never challenges; one whose connection was challenged and is no longer is accepted as it is.
+            const prepared = connected.kind === "active" && this.#challenged.has(key) ? await this.#beginUnchallenged(connected) : connected;
             if (this.#attachments.get(identity.workspaceId)?.get(alias) !== current) {
                 await this.#closeOwned([prepared.connection]);
                 throw actionError("oauth-target-conflict", 409, `MCP server '${alias}' changed while its OAuth authorization was pending.`,
@@ -940,6 +943,31 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#refreshCatalog(identity.workspaceId, alias);
             return { status: 202, alias };
         } finally { this.#authorizing.delete(key); }
+    }
+
+    // {§oauth-begin-unchallenged} The SDK's authorization starts on the connection; one it finds authorized stays active.
+    async #beginUnchallenged(connected: ActiveAttachment): Promise<ConnectedAttachment> {
+        let authorizationUrl: string | undefined;
+        try {
+            authorizationUrl = await connected.connection.beginAuthorization();
+        } catch (cause) {
+            let closeCause: unknown;
+            try {
+                await this.#closeOwned([connected.connection]);
+            } catch (error) {
+                closeCause = error;
+            }
+            const { definition } = connected;
+            throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause);
+        }
+        if (authorizationUrl === undefined) return connected;
+        return {
+            definition: connected.definition,
+            ...(connected.context === undefined ? {} : { context: connected.context }),
+            kind: "authorization-required",
+            connection: connected.connection,
+            authorizationUrl,
+        };
     }
 
     // {§oauth-continuation} — grant acceptance precedes ordinary catalog publication.
