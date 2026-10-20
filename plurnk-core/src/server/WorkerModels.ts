@@ -36,13 +36,17 @@ export default class WorkerModels {
     readonly #db: Db;
     // The boot provider, whose input capacity the active alias reports ({§agui-provider-routes}).
     readonly #provider: Provider | null;
+    // {§notifications-worker-policy} Told of each write that changed a worker's stored policy.
+    readonly #policyChanged: (workerId: number) => Promise<void>;
 
-    constructor({ db, provider }: {
+    constructor({ db, provider, policyChanged = async () => {} }: {
         db: Db;
         provider: Provider | null;
+        policyChanged?: (workerId: number) => Promise<void>;
     }) {
         this.#db = db;
         this.#provider = provider;
+        this.#policyChanged = policyChanged;
     }
 
     async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {
@@ -54,9 +58,13 @@ export default class WorkerModels {
             return this.#refuseGenerationChange(workerId, policy);
         }
         const supportedEfforts = await this.supportedEfforts(policy);
+        const stored = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (await this.#db.worker_generation_policy_update.get(params) === undefined) {
             return this.#refuseGenerationChange(workerId, policy);
         }
+        // {§notifications-worker-policy} A write that changed the stored policy is announced; one that changed nothing is not.
+        if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.spawn_model_route_id !== policy.spawn_model_route_id
+            || stored.effort !== policy.effort || stored.effort_source !== policy.effort_source) await this.#policyChanged(workerId);
         return supportedEfforts;
     }
 

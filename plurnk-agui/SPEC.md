@@ -208,6 +208,7 @@ reasoning the same way: its message holds no text and names the reasoning's addr
 | {§agui-numbers-passthrough} | Gauge numbers pass through verbatim. |
 | {§agui-state-patches} | Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s. |
 | {§agui-provider-routes} | `snapshot.plurnk.providers[*]` — `providers.list.aliases[*]` |
+| {§agui-status-model} | `snapshot.plurnk.status.model` — `ApplicationPort.readWorkerModel` |
 | {§agui-status-wait} | `snapshot.plurnk.status.waitUntil` — `ApplicationLoopProjection.waitUntil` |
 | {§agui-workspace-state} | `snapshot.plurnk.workspace` — the Run's client envelope |
 | {§agui-cost-evidence} | AG-UI carries token usage on `RUN_FINISHED` ({§agui-run-outcome}), but it defines no monetary accounting and… |
@@ -371,14 +372,15 @@ state paths that could be mistaken for standard AG-UI fields.
 
 §agui-state-patches Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s.
 Deltas use RFC 6902 `replace` on existing snapshot paths; replay yields the
-current gauge without clients inventing missing fields. `plurnk.status` and `budget` are the
+current gauge without clients inventing missing fields. A delta an event causes reaches the Run before any event the
+daemon published after it, the Run's terminal included, so no change the work made is lost when its Run ends. `plurnk.status` and `budget` are the
 bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}).
 
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | §agui-provider-routes `snapshot.plurnk.providers[*]` | `providers.list.aliases[*]` | Each declared alias as the route a worker seeded from it gets: `alias`, `provider`, `model` and, when the model has an effort dimension, the alias's configured `effort` with `effortSource: "default"`, which is what that worker reads back ({§worker-effort}); then `active` and `inputCapacity`. A client presents the active alias's route for a worker no act has created yet, and creates nothing to learn it. |
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
-| `snapshot.plurnk.status.model`               | `ApplicationPort.readWorkerModel`          | The bound Worker's durable resolved model route, including its alias when selected. |
+| §agui-status-model `snapshot.plurnk.status.model` | `ApplicationPort.readWorkerModel` | The bound Worker's durable resolved model route, including its alias when selected. Computed for every snapshot and whole-gauge replacement, read again when `worker/policy` names the bound Worker ({§notifications-worker-policy}), whoever changed it, and republished as `STATE_DELTA /plurnk/status/model` only when it differs from the route the Run's client holds. |
 | `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |

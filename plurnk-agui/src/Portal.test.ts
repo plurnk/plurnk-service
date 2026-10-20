@@ -11,6 +11,7 @@ import type {
     ApplicationStream,
     ApplicationWorkerProjection,
     ClientInteractionProjection,
+    ModelRoute,
     ProposalProjection,
     ProposalResolution,
     ProviderAccounting,ClientInteractionResolution
@@ -112,6 +113,7 @@ const mockSeam = (
     topology: {
         workers?: ApplicationWorkerProjection[];
         loops?: ReadonlyMap<number, ApplicationLoopProjection[]>;
+        models?: Map<number, ModelRoute | null>;
     } = {},
 ) => {
     // The real seam holds a Set of handlers (Portal subscribes twice: render + HITL);
@@ -129,6 +131,7 @@ const mockSeam = (
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         readInbox: async () => [],
         readStreams: async () => [],
+        readWorkerModel: async ({ workerId }) => ({ model: topology.models?.get(workerId) ?? null, spawnModel: null }),
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
         listWorkers: async () => topology.workers ?? [worker(10)],
@@ -152,7 +155,7 @@ const mockSeam = (
         readLog: async ({ workerId, loopSeq, turnSeq, sequence }) => loopSeq === undefined ? [] : [wireRow({ id: sequence, worker_id: workerId,
             loop_seq: loopSeq, turn_seq: turnSeq, sequence, op: "EDIT", status_rx: 202, rx: { status: 202 }, state: "proposed" })],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "readInbox" | "readStreams" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "readInbox" | "readStreams" | "readWorkerModel" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
@@ -166,7 +169,7 @@ const mockSeam = (
 
 const nextTask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-test("{§agui-status-spend} {§agui-status-descendants}: status deltas follow the snapshot and patch only what the client does not hold; a stale read never lands", async () => {
+test("{§agui-status-spend} {§agui-status-descendants}: status deltas follow the snapshot, patch only what the client does not hold, and land in their events' order; a read a whole-gauge replacement overtook never lands", async () => {
     const m = mockSeam();
     const request = { provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
         cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } };
@@ -212,20 +215,32 @@ test("{§agui-status-spend} {§agui-status-descendants}: status deltas follow th
     settled();
     spent = 4;
     settled();
-    assert.equal(held.length, 2);
-    held[1]();
     await drain();
+    assert.equal(held.length, 1, "the later event waits while the earlier one's read is under way");
     held[0]();
     await drain();
-    assert.deepEqual(spends(), [2, 4], "the later read is published; the earlier one, completing last, is not");
-    hold = false;
+    assert.equal(held.length, 2, "then it reads");
+    held[1]();
+    await drain();
+    assert.deepEqual(spends(), [2, 3, 4], "each republication lands in the order its event arrived");
 
     spent = 5;
-    events.push(...portal.replaceGauge(thread, { status: statusState(null, null, spendState(accounting(5))), budget: NO_GAUGE }));
-    await drain();
     settled();
     await drain();
-    assert.deepEqual(spends(), [2, 4], "a whole-gauge replacement is what the client holds from then on");
+    assert.equal(held.length, 3);
+    // The daemon's word moves on, and a whole-gauge replacement carries it while that read is under way.
+    spent = 6;
+    events.push(...portal.replaceGauge(thread, { status: statusState(null, null, spendState(accounting(6))), budget: NO_GAUGE }));
+    await drain();
+    for (const release of held.slice(3)) release();
+    held[2]();
+    await drain();
+    assert.deepEqual(spends(), [2, 3, 4], "a read a whole-gauge replacement overtook never lands");
+    hold = false;
+
+    settled();
+    await drain();
+    assert.deepEqual(spends(), [2, 3, 4], "the replacement is what the client holds from then on");
     portal.stop();
 });
 
@@ -291,6 +306,65 @@ test("{§agui-status-descendants}: each moment that may change the tree reads it
 
 // {§agui-status-streams} The census of the bound Worker's open streams follows the snapshot and is read again at each
 // moment it may change: a row announcing a stream, a channel state the client does not hold, the stream's conclusion.
+test("{§agui-status-streams}: a republication an event causes reaches the Run before any later event, its terminal included", async () => {
+    const m = mockSeam();
+    const reading = { release: (): void => {} };
+    const portal = new Portal({ ...m.seam, readStreams: async () => { await new Promise<void>((resolve) => { reading.release = resolve; }); return []; } });
+    portal.start();
+    const events: AguiEvent[] = [];
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: (batch) => events.push(...batch) });
+    const drain = async () => { for (let i = 0; i < 10; i++) await nextTask(); };
+    const open: ApplicationStream = { entryId: 40, workerId: 10, target: "sh:///aaaa0001", lifetime: "loop", loop_seq: 1, turn_seq: 1, sequence: 2,
+        channels: [{ channel: "stdout", state: "active", mimetype: "text/stream" }] };
+    const status = { ...statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null })), streams: [open] };
+    events.push(...portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status));
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
+
+    m.fire(3, "stream/concluded", streamConclusion({ entryId: 40, workerId: 10, target: "sh:///aaaa0001" }));
+    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ curationBudget: 1000 }) }));
+    await drain();
+    assert.equal(events.some(({ type }) => type === "RUN_FINISHED"), false, "the terminal waits while the conclusion's census is read");
+    reading.release();
+    await drain();
+    const census = events.findIndex((event) => event.type === "STATE_DELTA" && event.delta.some(({ path }) => path === "/plurnk/status/streams"));
+    const finished = events.findIndex(({ type }) => type === "RUN_FINISHED");
+    assert.ok(census >= 0 && finished > census, "the emptied census reaches the Run before its terminal");
+    portal.stop();
+});
+
+test("{§agui-status-model}: the Worker's model follows a change of its own policy, whoever made it; another worker's change, or one leaving the route as held, patches nothing", async () => {
+    const adaptive: ModelRoute = { alias: "fast", provider: "mock", model: "m1", effort: "adaptive", effortSource: "default" };
+    const low: ModelRoute = { ...adaptive, effort: "low", effortSource: "explicit" };
+    const models = new Map<number, ModelRoute | null>([[10, adaptive]]);
+    const m = mockSeam([], [], { models });
+    const portal = new Portal(m.seam);
+    portal.start();
+    const events: AguiEvent[] = [];
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: (batch) => events.push(...batch) });
+    const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
+    const patches = () => events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
+        .filter((op) => op.path === "/plurnk/status/model").map((op) => ("value" in op ? op.value : null));
+    const status = statusState(adaptive, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }));
+    events.push(...portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status));
+    await drain();
+
+    m.fire(3, "worker/policy", { workerId: 10, model: adaptive, spawnModel: null });
+    await drain();
+    assert.deepEqual(patches(), [], "a change that leaves the route as the client holds it patches nothing");
+    models.set(10, low);
+    m.fire(3, "worker/policy", { workerId: 20, model: low, spawnModel: null });
+    await drain();
+    assert.deepEqual(patches(), [], "another worker's change patches nothing");
+    m.fire(3, "worker/policy", { workerId: 10, model: low, spawnModel: null });
+    await drain();
+    assert.deepEqual(patches(), [low], "the Worker's own change replaces its route, with the effort and its source");
+    models.set(10, null);
+    m.fire(3, "worker/policy", { workerId: 10, model: null, spawnModel: null });
+    await drain();
+    assert.deepEqual(patches(), [low, null], "and a route it no longer has is replaced with null");
+    portal.stop();
+});
+
 test("{§agui-status-streams}: the open streams follow the snapshot; only an opening, a new channel state or a conclusion reads them again", async () => {
     const m = mockSeam();
     let reads = 0;

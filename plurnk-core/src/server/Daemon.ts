@@ -309,7 +309,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
         });
-        this.#workerModels = new WorkerModels({ db: this.#db, provider: this.#provider });
+        this.#workerModels = new WorkerModels({ db: this.#db, provider: this.#provider, policyChanged: (workerId) => this.#announceWorkerPolicy(workerId) });
         this.#delivery = new MessageDelivery({
             db, workerModels: this.#workerModels, functionality: this.#functionality, mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),
@@ -1362,6 +1362,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             try { sub(workspaceId, method, params); }
             catch (e) { console.error(`seam subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
         }
+    }
+
+    // {§notifications-worker-policy} A worker's generation policy, as worker.model.get reads it, to its workspace.
+    async #announceWorkerPolicy(workerId: number): Promise<void> {
+        const workspaceId = (await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId }))?.workspace_id;
+        if (workspaceId === undefined) return;
+        const { model, spawnModel } = await this.#workerModels.readWorkerModel({ workspaceId, workerId });
+        this.#broadcast({ workspaceId }, "worker/policy", { workerId, model, spawnModel });
     }
 
     #broadcast(target: NotifyTarget, method: string, params?: unknown): void {

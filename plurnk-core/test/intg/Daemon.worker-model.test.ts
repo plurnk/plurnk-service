@@ -721,7 +721,7 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
 });
 
 for (const selection of ["model", "spawn model", "reasoning", "prompt model", "prompt spawn model"] as const) {
-    test(`{§worker-lifecycle-live}: queued work blocks ${selection} changes until cancellation`, async (t) => {
+    test(`{§worker-lifecycle-live} {§notifications-worker-policy}: queued work blocks ${selection} changes until cancellation; only a change that lands is announced`, async (t) => {
         const spec = declaredProvider("queued", "queued-model");
         const replacement = declaredProvider("replacement", "replacement-model");
         const mock = new Mock({
@@ -735,8 +735,16 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
         await withDaemon(null, async (db, daemon) => {
             const workspace = await daemon.createWorkspace({ name: `queued-${crypto.randomUUID()}`, projectRoot: null });
             const identity = { workspaceId: workspace.workspaceId, workerId: await namedModelWorker(daemon, workspace.workspaceId, "main") };
+            // {§notifications-worker-policy} What the worker's subscribers are told of its policy.
+            type Policy = Awaited<ReturnType<typeof daemon.readWorkerModel>> & { workerId: number };
+            const policies: Policy[] = [];
+            const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+                if (method === "worker/policy" && (params as Policy).workerId === identity.workerId) policies.push(params as Policy);
+            });
+            t.after(unsubscribe);
             await daemon.setWorkerModel({ ...identity, selector: spec.alias });
             const before = await daemon.readWorkerModel(identity);
+            assert.deepEqual(policies, [{ workerId: identity.workerId, ...before }], "{§notifications-worker-policy}: the worker's first model is announced, as worker.model.get reads it");
             const select = () => {
                 if (selection === "prompt model") return daemon.runLoop({ ...identity, prompt: "change model", selector: replacement.alias });
                 if (selection === "prompt spawn model") return daemon.runLoop({ ...identity, prompt: "change spawn model", childSelector: replacement.alias });
@@ -755,10 +763,13 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             // {§worker-effort-source}: reasserting the value in force is legal mid-loop and marks it chosen.
             const reasserted = { ...before, model: { ...before.model!, effortSource: "explicit" as const } };
             assert.deepEqual(await daemon.readWorkerModel(identity), reasserted, "reasserting the same settings remains legal");
+            assert.deepEqual(policies.map(({ model }) => model?.effortSource), ["default", "explicit"],
+                "{§notifications-worker-policy}: reasserting the model and spawn model in force announces nothing; choosing the effort in force announces its new source");
             await assert.rejects(select(), (error: unknown) => error instanceof OperationFailureError
                 && error.result.status === 409
                 && error.result.problem?.type === "https://problems.plurnk.xyz/daemon/worker/worker-loop-active");
             assert.deepEqual(await daemon.readWorkerModel(identity), reasserted, "a refused selection changes no generation settings");
+            assert.equal(policies.length, 2, "{§notifications-worker-policy}: and announces nothing");
             assert.equal(mock.remaining, 1, "queued work needs no provider call to establish liveness");
 
             await daemon.cancelWorker({ ...identity, reason: "cancel queued task" });
@@ -770,11 +781,13 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
             if (selection === "model" || selection === "prompt model") assert.equal(after.model?.alias, replacement.alias);
             else if (selection === "spawn model" || selection === "prompt spawn model") assert.equal(after.spawnModel?.alias, replacement.alias);
             else assert.equal(after.model?.effort, "high");
+            assert.deepEqual(policies.slice(2), [{ workerId: identity.workerId, ...after }], "{§notifications-worker-policy}: the accepted change is announced once");
 
             drain.mock.restore();
             const fresh = await daemon.runLoop({ ...identity, prompt: "new independent work" });
             await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: fresh.loopId }), (row) => row?.status === 200);
             assert.equal(mock.remaining, 0, "new work runs after cancellation and explicit reselection");
+            assert.equal(policies.length, 3, "{§notifications-worker-policy}: new work on the policy in force announces nothing");
             assert.deepEqual(await db.test_get_loop_status.get({ id: queued.loopId }), { status: 499 }, "cancelled work is not revived");
         });
     });

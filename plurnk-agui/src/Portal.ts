@@ -61,7 +61,7 @@ interface Thread {
     subagents: Map<number, Subagent>;
     // {§agui-status-descendants} {§agui-status-spend} {§agui-status-streams} — what this Run's client holds: its
     // snapshot's, its latest whole-gauge replacement's, then each delta's; null until the snapshot is presented.
-    gauge: Pick<AguiStatusState, "descendants" | "spend" | "inbox" | "streams"> | null;
+    gauge: Pick<AguiStatusState, "model" | "descendants" | "spend" | "inbox" | "streams"> | null;
     // A refresh was asked for before the snapshot was presented; it runs once the snapshot is.
     staleGauge: boolean;
     // The latest refresh begun: an earlier one that completes after it publishes nothing.
@@ -130,6 +130,7 @@ export type PortalPort = Pick<
     | "subscribeToEvents"
     | "readInbox"
     | "readStreams"
+    | "readWorkerModel"
     | "pendingProposals"
     | "resolveProposal"
     | "pendingClientInteractions"
@@ -220,7 +221,8 @@ export default class Portal {
         if (terminated !== null) this.#terminalsDue.delete(terminated);
         const observing: Array<Promise<void>> = [];
         for (const thread of this.#threads.get(workspaceId) ?? []) {
-            if (Portal.#touchesStatus(thread, method, params)) void this.#refreshStatus(thread);
+            // A republication the event causes reaches the Run before any later event, its terminal included.
+            if (Portal.#touchesStatus(thread, method, params)) observing.push(this.#refreshStatus(thread));
             if (thread.held.size > 0 && Portal.#touchesHeld(thread, method, params)) this.#recheckHeld(workspaceId, thread);
             const actor = thread.descendants ? Portal.#observedActor(thread, method, params) : null;
             if (actor !== null) {
@@ -287,6 +289,8 @@ export default class Portal {
             return typeof payload.workerId === "number" && payload.workerId !== thread.workerId;
         }
         if (method === "loop/proposal" || method === "loop/interaction") return true;
+        // {§agui-status-model} The Worker's generation policy changed, whoever changed it.
+        if (method === "worker/policy") return payload.workerId === thread.workerId;
         const gated = thread.gauge?.descendants.some(({ gates }) => gates > 0) === true;
         // {§agui-status-streams} One of the Worker's streams concluded, or reported a channel state its client does not hold.
         if (method === "stream/concluded") return gated || payload.workerId === thread.workerId;
@@ -357,7 +361,8 @@ export default class Portal {
         const workerId = thread.workerId;
         if (workerId === null) return;
         const refresh = ++thread.gaugeRefresh;
-        const [workers, proposals, interactions, accounting, messages, streams] = await Promise.all([
+        const [{ model }, workers, proposals, interactions, accounting, messages, streams] = await Promise.all([
+            this.#seam.readWorkerModel({ workspaceId: thread.workspaceId, workerId }),
             this.#seam.listWorkers(thread.workspaceId),
             this.#seam.pendingProposals(thread.workspaceId),
             this.#seam.pendingClientInteractions(thread.workspaceId),
@@ -368,6 +373,10 @@ export default class Portal {
         if (refresh !== thread.gaugeRefresh || thread.gauge === null) return;
         if (!(this.#threads.get(thread.workspaceId)?.has(thread) ?? false)) return;
         const delta: Parameters<typeof stateDelta>[0] = [];
+        // {§agui-status-model} The Worker's model route, by the daemon's word.
+        if (JSON.stringify(model) !== JSON.stringify(thread.gauge.model)) {
+            delta.push({ op: "replace", path: "/plurnk/status/model", value: model });
+        }
         const descendants = descendantsState(workerId, workers, [...proposals, ...interactions]);
         if (JSON.stringify(descendants) !== JSON.stringify(thread.gauge.descendants)) {
             delta.push({ op: "replace", path: "/plurnk/status/descendants", value: descendants });
@@ -385,14 +394,14 @@ export default class Portal {
         if (JSON.stringify(streams) !== JSON.stringify(thread.gauge.streams)) {
             delta.push({ op: "replace", path: "/plurnk/status/streams", value: streams });
         }
-        thread.gauge = { descendants, spend, inbox, streams };
+        thread.gauge = { model, descendants, spend, inbox, streams };
         if (delta.length > 0) thread.emit([stateDelta(delta)]);
     }
 
     // The client now holds this status. A refresh asked for before, or racing, its reads runs after it.
     #presentGauge(thread: Thread, status: AguiStatusState): void {
         const stale = thread.staleGauge || thread.gauge !== null;
-        thread.gauge = { descendants: status.descendants, spend: status.spend, inbox: status.inbox, streams: status.streams };
+        thread.gauge = { model: status.model, descendants: status.descendants, spend: status.spend, inbox: status.inbox, streams: status.streams };
         thread.staleGauge = false;
         thread.gaugeRefresh += 1;
         if (stale) void this.#refreshStatus(thread);
