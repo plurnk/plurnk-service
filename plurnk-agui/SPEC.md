@@ -304,7 +304,7 @@ sequence.
 | Fact | Rule |
 | --- | --- |
 | Computed | from `ApplicationPort.listWorkers({ parentWorkerId })` for every snapshot and whole-gauge replacement |
-| Read again | after another worker's `loop/terminated` or `loop/packet`, after any `turn_generated` notice, or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands |
+| Read again | after another worker's `loop/terminated`, `loop/packet` or lifecycle beat ({§loop-status-notice}: queued, running, parked), after any `turn_generated` notice, or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands |
 | Republished | as `STATE_DELTA /plurnk/status/children` only when the count differs from the one the Run's client holds (its snapshot's, its latest whole-gauge replacement's, then each delta's), and never before the snapshot: a change that raced the snapshot is published after it |
 
 §agui-status-spend **The spend is the daemon's, from the Worker's beginning, republished, never promoted.** `status.spend` is `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection over every settled request the bound Worker and its descendants have made since the Worker began ({§methods-worker-accounting}), without its request list — `requests` counts them, so zero requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through verbatim ({§agui-numbers-passthrough}). A fresh observer therefore starts from the Worker's spend so far.

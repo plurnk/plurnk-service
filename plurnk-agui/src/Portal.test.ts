@@ -227,6 +227,53 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     portal.stop();
 });
 
+// {§agui-status-children} Every moment the bound Worker's alive children may change reads them again; nothing else does.
+test("{§agui-status-children}: each moment that may change the count reads it again, and no other event does", async () => {
+    const m = mockSeam();
+    let reads = 0;
+    const portal = new Portal({ ...m.seam, listWorkers: async () => { reads += 1; return []; } });
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: () => {} });
+    const status = statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }));
+    portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status);
+    const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
+    await drain();
+    const beat = (workerId: number, lifecycle: 100 | 102 | 202) => ({ workerId, loopId: 5, notice: {
+        source: "engine:lifecycle", kind: "loop_status", level: "info", status: lifecycle, waitUntil: null, packetCount: 0, claimedAt: null,
+    } });
+    const turn = (kind: string) => ({ workerId: 20, loopId: 5, notice: { source: "engine:turn", kind, level: "info" } });
+    const row = (op: string, id: number) => ({ entry: wireRow({ id, worker_id: 10, op }) });
+    const MOMENTS: ReadonlyArray<readonly [string, string, unknown]> = [
+        ["another worker's terminal", "loop/terminated", termination({ workerId: 20, loopId: 5 })],
+        ["another worker's packet", "loop/packet", { workerId: 20, loopId: 5, packetCount: 1 }],
+        ["another worker's queued beat", "notice/event", beat(20, 100)],
+        ["another worker's running beat", "notice/event", beat(20, 102)],
+        ["another worker's parked beat", "notice/event", beat(20, 202)],
+        ["a turn_generated notice", "notice/event", turn("turn_generated")],
+        ["the bound Worker's WORK row", "log/entry", row("WORK", 31)],
+        ["the bound Worker's FORK row", "log/entry", row("FORK", 32)],
+        ["the bound Worker's KILL row", "log/entry", row("KILL", 33)],
+    ];
+    const QUIET: ReadonlyArray<readonly [string, string, unknown]> = [
+        ["the bound Worker's own beat", "notice/event", beat(10, 102)],
+        ["another worker's other turn notice", "notice/event", turn("turn_awaiting_model")],
+        ["the bound Worker's READ row", "log/entry", row("READ", 34)],
+    ];
+    for (const [moment, method, params] of MOMENTS) {
+        const before = reads;
+        m.fire(3, method, params);
+        await drain();
+        assert.equal(reads, before + 1, `${moment} reads the children again`);
+    }
+    for (const [event, method, params] of QUIET) {
+        const before = reads;
+        m.fire(3, method, params);
+        await drain();
+        assert.equal(reads, before, `${event} does not`);
+    }
+    portal.stop();
+});
+
 test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and rejects new binding", () => {
     const m = mockSeam();
     const portal = new Portal(m.seam);

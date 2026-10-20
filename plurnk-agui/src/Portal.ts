@@ -273,9 +273,9 @@ export default class Portal {
     }
 
     // {§agui-status-children} {§agui-status-spend} — the events after which the bound Worker's alive
-    // direct children or its spend may differ: another worker's loop concluded or began (it may be a
-    // child), a turn settled its spend (its own or another worker's), or the bound Worker's own
-    // WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
+    // direct children or its spend may differ: another worker's loop concluded, began, or was queued, claimed
+    // or parked (it may be a child), a turn settled its spend (its own or another worker's), or the bound
+    // Worker's own WORK/FORK/KILL row landed (it spawned or killed one). The daemon is asked, never inferred.
     static #touchesStatus(thread: Thread, method: string, params: unknown): boolean {
         if (thread.notificationScope !== "worker") return false;
         const payload = isRecord(params) ? params : {};
@@ -284,8 +284,10 @@ export default class Portal {
         }
         if (method === "notice/event") {
             const notice = isRecord(payload.notice) ? payload.notice : null;
-            return typeof payload.workerId === "number"
-                && notice !== null && notice.source === "engine:turn" && notice.kind === "turn_generated";
+            if (typeof payload.workerId !== "number" || notice === null) return false;
+            if (notice.source === "engine:turn" && notice.kind === "turn_generated") return true;
+            // {§loop-status-notice} Another worker's lifecycle beat.
+            return notice.source === "engine:lifecycle" && notice.kind === "loop_status" && payload.workerId !== thread.workerId;
         }
         if (method === "log/entry") {
             // {§agui-message-acceptance} An arrival row moves a message out of the inbox.
