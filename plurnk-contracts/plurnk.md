@@ -55,7 +55,7 @@ a final deliverable response
 > The loop continues until all Open Messages receive a `[200]` or `[499]` response and all Open Work is completed.
 
 > [!TIP]
-> YOU SHOULD NOT deliberate while discovering. Submit necessary FIND and READ operations, then deliberate on the next turn.
+> YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 
@@ -139,7 +139,7 @@ bar
 ```
 
 > [!TIP]
-> YOU SHOULD address lines by `<@hash>` or `<@start,@end>` to protect against stale targets.
+> YOU SHOULD address lines with batch-friendly `<@hash>` or `<@start,@end>` anchors to protect against stale targets.
 
 ## Context Curation
 
