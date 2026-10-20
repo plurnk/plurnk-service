@@ -2,7 +2,7 @@
 // the name, the digest text keeps the name verbatim, and two names that slug alike stay apart (#1001).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Digest } from "@plurnk/plurnk-digest";
@@ -22,8 +22,9 @@ const packet = (turn: number): DurablePacket => ({
     assistantRaw: null,
 });
 
-test("{§share-packet-names}: a workspace named by its path is slugged for its packet folder and named verbatim in the digest", async () => {
+test("{§share-packet-names}: a workspace named by its path is slugged for its packet folder and named verbatim in the digest", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-names-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
     const dbPath = join(dir, "plurnk.db");
     const db = await openMigrated(dbPath);
     try {

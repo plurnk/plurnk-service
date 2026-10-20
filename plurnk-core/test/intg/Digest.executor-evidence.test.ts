@@ -3,15 +3,16 @@
 // runs is CLEAN, not DEGENERATE-WIN.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
-test("{§digest-executor-evidence}: executor completion rows never count toward health or errs", async () => {
+test("{§digest-executor-evidence}: executor completion rows never count toward health or errs", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-executor-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
@@ -49,8 +50,9 @@ test("{§digest-executor-evidence}: executor completion rows never count toward 
     assert.match(markdown, /\(1 errors, 0 error-items\)|status=\d+ \(1 errors/, "health counts one error");
 });
 
-test("{§digest-executor-evidence}: a green conclusion over only red commands is CLEAN", async () => {
+test("{§digest-executor-evidence}: a green conclusion over only red commands is CLEAN", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-executor-clean-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);

@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UrlPath, Notice } from "@plurnk/plurnk-contracts";
@@ -101,8 +101,9 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
     }
 });
 
-test("{§derivation-exhaustive}: workspace warm materializes a fresh repository before deriving it", async () => {
+test("{§derivation-exhaustive}: workspace warm materializes a fresh repository before deriving it", async (t) => {
     const root = mkdtempSync(join(tmpdir(), "plurnk-warm-repo-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
     execSync("git init -q && git config user.email fixture@plurnk.invalid && git config user.name fixture", { cwd: root, env: hermeticGitEnv() });
     writeFileSync(join(root, "orientation.md"), "repository orientation evidence\n");
     execSync("git add orientation.md && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit --no-verify -qm seed", { cwd: root, env: hermeticGitEnv() });

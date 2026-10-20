@@ -371,7 +371,7 @@ test("{§fs-canonical-name} an in-root file no grantor admits DOES NOT EXIST; a 
 });
 
 test("{§problems-file} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no fence (#902)", async () => {
-    const { db, ctx } = await setup();
+    const { root, db, ctx } = await setup();
     try {
         const executors = await testExecutors();
         assert.ok(executors.availableRuntimes(ctx.workspaceId).includes("sh"), "the real shell executor is available to the fixture");
@@ -381,5 +381,5 @@ test("{§problems-file} {§diagnostic-observation} a file target named like an e
             assert.equal(miss.status, 404, key);
             assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"files\": [\"<path>\"]}` body.", key);
         }
-    } finally { await db.close(); }
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

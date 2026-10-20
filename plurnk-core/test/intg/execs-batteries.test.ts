@@ -9,10 +9,10 @@
 // every available self-contained tag to be covered and fails when a default tag is undiscovered
 // ({§exec-registry-resolves}).
 
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { ownWorker } from "./_approval.ts";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
@@ -100,6 +100,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 
 
 const tmp = mkdtempSync(join(tmpdir(), "plurnk-batt-"));
+after(() => rmSync(tmp, { recursive: true, force: true }));
 
 // One deterministic specimen per bundled runtime. `gate` verifies its
 // executor-owned effect fact through core admission. {§executor-effect}
