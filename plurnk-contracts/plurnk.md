@@ -51,8 +51,11 @@ a continuing progress update response
 a final deliverable response
 ````
 
-> [!CAUTION]
+> [!TIP]
 > The loop continues until all Open Messages receive a `[200]` or `[499]` response and all Open Work is completed.
+
+> [!TIP]
+> YOU SHOULD NOT deliberate while discovering. Submit necessary FIND and READ operations, then deliberate on the next turn.
 
 ## Delegation (worker:///_plurnk/plurnk/delegation.md)
 
