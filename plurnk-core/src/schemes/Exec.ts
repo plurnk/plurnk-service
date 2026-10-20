@@ -959,6 +959,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
             },
             handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
+            reaperLoopId: core.signal !== undefined && attrs.detached !== true ? core.loopId : null,
             release: () => {
                 detachParent();
                 this.#activeAborts.delete(subscriptionId);

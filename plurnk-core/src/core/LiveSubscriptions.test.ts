@@ -59,3 +59,43 @@ test("{§stream-asked-stop} only the holding worker's KILL marks a stream as ask
     registry.unregister(7);
     assert.equal(registry.wasAsked(7), false, "the mark ends with the registration");
 });
+
+// A subscription's close: committed, unregistered, then delivered.
+const conclude = (registry: LiveSubscriptions, subscriptionId: number): void => {
+    registry.unregister(subscriptionId);
+    registry.delivered(subscriptionId);
+};
+const settledYet = async (promise: Promise<unknown>): Promise<boolean> => {
+    let settled = false;
+    void promise.then(() => { settled = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    return settled;
+};
+
+test("{§exec-lifetime} a loop's reap cancels what its terminal reaps and settles once each has concluded", async () => {
+    const registry = new LiveSubscriptions();
+    const cancelled: number[] = [];
+    registry.register(1, { cancel() { cancelled.push(1); } }, 3, 7);
+    registry.register(2, { cancel() { cancelled.push(2); } }, 3, 7);
+    registry.register(3, { cancel() { cancelled.push(3); } }, 3, 8);
+    registry.register(4, { cancel() { cancelled.push(4); } }, 3);
+    const reap = registry.reapLoop(7);
+    assert.equal(await settledYet(reap), false, "the reap waits for what it cancelled");
+    assert.deepEqual(cancelled, [1, 2], "the loop's own subscriptions, not another loop's, nor one that outlives its loop");
+    conclude(registry, 1);
+    assert.equal(await settledYet(reap), false, "every one of them");
+    conclude(registry, 2);
+    assert.deepEqual(await reap, [1, 2], "it settles with the subscriptions it reaped");
+    assert.deepEqual(await registry.reapLoop(7), [], "nothing left to reap");
+});
+
+test("{§exec-lifetime} a reap reports a cancellation that fails and does not wait on it", async (t) => {
+    const registry = new LiveSubscriptions();
+    const reported = t.mock.method(console, "error", () => {});
+    let attempts = 0;
+    registry.register(1, { cancel() { attempts += 1; throw new Error("teardown failed"); } }, 3, 7);
+    assert.deepEqual(await registry.reapLoop(7), [], "a subscription it could not reap is not among the reaped");
+    assert.equal(reported.mock.callCount(), 1, "the failure is reported");
+    await assert.rejects(registry.cancel(1), /teardown failed/u);
+    assert.equal(attempts, 2, "a failed cancellation leaves its owner for another attempt");
+});

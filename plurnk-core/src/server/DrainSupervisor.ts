@@ -138,6 +138,7 @@ export default class DrainSupervisor {
     readonly #discardLoopNotices: (loopId: number) => void;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
     readonly #subscriptionConcluded: (subscriptionId: number) => Promise<void>;
+    readonly #reapLoopStreams: (loopId: number) => Promise<readonly number[]>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -156,6 +157,8 @@ export default class DrainSupervisor {
     readonly #drainLocks = new Map<number, Promise<unknown>>();
     readonly #admissionLocks = new Map<number, Promise<unknown>>();
     readonly #completionWakeGates = new Map<number, CompletionWakeGate>();
+    // {§notifications-stream-concluded} A closed subscription's `stream/concluded`, until it is published.
+    readonly #streamAnnouncements = new Map<number, Promise<void>>();
     #acceptingWork = false;
 
     constructor({
@@ -169,6 +172,7 @@ export default class DrainSupervisor {
         discardLoopNotices,
         cancelSubscription,
         subscriptionConcluded,
+        reapLoopStreams,
         hasActiveStreams,
         readSystemPrompt,
         emitLogEntry,
@@ -185,6 +189,7 @@ export default class DrainSupervisor {
         discardLoopNotices: (loopId: number) => void;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
         subscriptionConcluded: (subscriptionId: number) => Promise<void>;
+        reapLoopStreams: (loopId: number) => Promise<readonly number[]>;
         hasActiveStreams: (workerId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -202,6 +207,7 @@ export default class DrainSupervisor {
         this.#discardLoopNotices = discardLoopNotices;
         this.#cancelSubscription = cancelSubscription;
         this.#subscriptionConcluded = subscriptionConcluded;
+        this.#reapLoopStreams = reapLoopStreams;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
@@ -499,19 +505,21 @@ export default class DrainSupervisor {
         await this.#withDrainLock(workerId, () => this.#wakeLoop(workspaceId, workerId, loopId, { eventOnly: true }));
     }
 
-    // A loop's terminal: usage, attributions and turns gathered, loop/terminated published, and the result
-    // the drain reports. A loop a cancellation retired is announced by that cancellation instead.
+    // A loop's terminal: its streams reaped, usage, attributions and turns gathered, loop/terminated published, and
+    // the result the drain reports. A loop a cancellation retired is reaped and announced by that cancellation instead.
     async #concludeLoop(
         scope: DrainScope,
         loopId: number,
         result: { result: SchemeResult; hitMaxTurns: boolean },
     ): Promise<{ loopResult: DrainLoopResult; announced: boolean }> {
         const { workspaceId, workerId } = scope;
-        const [usage, attributions, turnIds, cancelled] = await Promise.all([
+        const cancelled = await this.#lifecycle.cancelled(loopId);
+        // {§notifications-loop-terminated} {§exec-lifetime} The streams the loop's terminal reaps conclude before it is announced.
+        if (!cancelled) await this.#reapLoop(loopId);
+        const [usage, attributions, turnIds] = await Promise.all([
             this.#loopUsage(loopId),
             this.#loopAttributions(loopId),
             this.#lifecycle.turnIds(loopId),
-            this.#lifecycle.cancelled(loopId),
         ]);
         const loopResult = {
             loopId: loopId,
@@ -560,6 +568,7 @@ export default class DrainSupervisor {
                 this.#loopAttributions(currentLoopId),
             ]);
             if (cancelled !== null) {
+                await this.#reapLoop(currentLoopId);
                 await this.#publishTermination(workspaceId, {
                     workerId,
                     loopId: currentLoopId,
@@ -612,6 +621,7 @@ export default class DrainSupervisor {
                 if (settled === null) {
                     throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
                 }
+                await this.#reapLoop(currentLoopId);
                 await this.#announce(workspaceId, workerId, currentLoopId, settled);
             }
         }
@@ -736,7 +746,7 @@ export default class DrainSupervisor {
             const drain = drains.get(targetWorkerId);
             const held = [
                 ...drain === undefined ? [] : [drain],
-                ...(subscriptions.get(targetWorkerId) ?? []).map(({ id }) => this.#subscriptionConcluded(id)),
+                ...(subscriptions.get(targetWorkerId) ?? []).map(({ id }) => this.#streamConcluded(id)),
             ];
             if (held.length === 0) await announce();
             else void this.#trackSettlement(Promise.allSettled(held).then(announce), `announce(${loopId})`);
@@ -782,7 +792,27 @@ export default class DrainSupervisor {
     // {§module-shutdown-order}: the producer emits synchronously, while the
     // supervisor owns the asynchronous scheduler work and its shutdown truth.
     notifyWakeWorker(payload: WakeWorkerPayload): void {
-        void this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
+        const { subscriptionId } = payload;
+        const announced = Promise.withResolvers<void>();
+        this.#streamAnnouncements.set(subscriptionId, announced.promise);
+        const handled = this.#handleWakeWorker(payload, announced.resolve).finally(() => {
+            announced.resolve();
+            if (this.#streamAnnouncements.get(subscriptionId) === announced.promise) this.#streamAnnouncements.delete(subscriptionId);
+        });
+        void this.#trackSettlement(handled, "wake-on-completion");
+    }
+
+    // {§notifications-loop-terminated} A subscription's conclusion as its observers receive it: its close delivered,
+    // then its `stream/concluded` published.
+    async #streamConcluded(subscriptionId: number): Promise<void> {
+        await this.#subscriptionConcluded(subscriptionId);
+        await this.#streamAnnouncements.get(subscriptionId);
+    }
+
+    // {§notifications-loop-terminated} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
+    async #reapLoop(loopId: number): Promise<void> {
+        const reaped = await this.#reapLoopStreams(loopId);
+        await Promise.all(reaped.map((subscriptionId) => this.#streamConcluded(subscriptionId)));
     }
 
     async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
@@ -809,16 +839,18 @@ export default class DrainSupervisor {
         return task;
     }
 
-    async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
+    async #handleWakeWorker(payload: WakeWorkerPayload, announced: () => void): Promise<void> {
         const { workspaceId, ...conclusion } = payload;
+        const conclude = (wakeAction: string): void => {
+            this.#emit(workspaceId, "stream/concluded", { ...conclusion, wakeAction });
+            announced();
+        };
         // {§worker-lifecycle-no-resurrection}: scope cancellation, not the
         // command's result code, prevents a wake. Cancelling one command still
         // produces an observation owed to its live worker.
         const scope = this.#workerAborts.get(payload.workerId);
         if (scope?.signal.aborted === true) {
-            this.#emit(workspaceId, "stream/concluded", {
-                ...conclusion, wakeAction: payload.result.status === 499 ? "skipped-aborted" : "skipped-cancelled",
-            });
+            conclude(payload.result.status === 499 ? "skipped-aborted" : "skipped-cancelled");
             return;
         }
 
@@ -837,9 +869,7 @@ export default class DrainSupervisor {
                 payload.workerId,
                 systemPrompt,
             );
-            this.#emit(workspaceId, "stream/concluded", {
-                ...conclusion, wakeAction: "wake-pending",
-            });
+            conclude("wake-pending");
             await settlement;
             return;
         }
@@ -847,17 +877,13 @@ export default class DrainSupervisor {
         // No slept loop. A live loop surfaces the concluded stream ambiently via the
         // environment-observation injector ({§exec-stream}) on its next turn; the client is told.
         if (this.#activeDrains.has(payload.workerId)) {
-            this.#emit(workspaceId, "stream/concluded", {
-                ...conclusion, wakeAction: "no-op-active-loop",
-            });
+            conclude("no-op-active-loop");
             return;
         }
 
         // No slept loop, no active drain — nothing to resume (e.g. a completed worker whose
         // streams were swept). Surface the conclusion without opening a loop.
-        this.#emit(workspaceId, "stream/concluded", {
-            ...conclusion, wakeAction: "no-loop",
-        });
+        conclude("no-loop");
     }
 
     #clearLoopTimer(loopId: number): void {

@@ -6,7 +6,7 @@ import { serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeRawMockResponse } from "./_mock.ts";
 import { namedModelWorker } from "./_workers.ts";
 
@@ -78,3 +78,42 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
         } finally { client.close(); }
     });
 });
+
+// {§exec-lifetime} {§notifications-loop-terminated} A loop-bound run ends with its loop, whichever segment of the loop
+// spawned it: reaped at the loop's terminal, its stream concluded before that terminal is announced.
+for (const spawnedBy of ["the ending segment", "a segment before a park"] as const) {
+    test(`{§exec-lifetime}: a loop-bound run spawned by ${spawnedBy} is reaped at its loop's terminal`, { timeout: 120_000 }, async (t) => {
+        serverProposals(t, "accept");
+        const window = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+        t.after(() => {
+            if (window === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = window;
+        });
+        const parks = spawnedBy === "a segment before a park";
+        const mock = new Mock({ contextWindow: 100_000, responses: [
+            makeRawMockResponse(`\`\`\`\`sh\nsleep 45\n\`\`\`\`\n\n${parks ? "````WAIT [1]\nWaiting on it.\n````" : "````NOTE\nWorking on.\n````"}`, 10),
+            makeRawMockResponse("````NOTE\nWorking on.\n````", 10),
+        ] });
+        await withDaemon(mock, async (db, daemon) => {
+            const { workspaceId } = await daemon.createWorkspace({ name: `exec-lifetime-${parks ? "parked" : "ending"}` });
+            const workerId = await namedModelWorker(daemon, workspaceId, "main");
+            const order: string[] = [];
+            const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
+                const event = params as { scheme?: string; loopId?: number; result?: { status: number } };
+                if (method === "stream/concluded" && event.scheme === "sh") order.push(`concluded ${event.result?.status}`);
+                if (method === "loop/terminated") order.push(`terminated ${event.loopId} ${event.result?.status}`);
+            });
+            try {
+                // The turn ceiling ends the loop in the segment after its spawn, or after the park, while the run still runs.
+                const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Background it.", maxTurns: parks ? 2 : 1 });
+                await waitForDb(async () => order, (events) => events.some((event) => event.startsWith("terminated")), { timeoutMs: 60_000 });
+                assert.deepEqual(order, ["concluded 499", `terminated ${loopId} 429`], "the run is reaped before its loop's terminal is announced");
+                const open = await db.test_count_active_subscriptions.get<{ n: number }>({});
+                assert.equal(open?.n, 0, "no stream outlives its loop");
+            } finally {
+                off();
+            }
+        });
+    });
+}

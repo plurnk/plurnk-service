@@ -521,6 +521,10 @@ export default class Engine {
         return this.#liveSubscriptions.concluded(subscriptionId);
     }
 
+    reapLoopStreams(loopId: number): Promise<number[]> {
+        return this.#liveSubscriptions.reapLoop(loopId);
+    }
+
     discardLoopNotices(loopId: number): void {
         this.#notices.delete(loopId);
     }

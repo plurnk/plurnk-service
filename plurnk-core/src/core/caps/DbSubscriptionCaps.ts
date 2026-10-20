@@ -80,6 +80,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
                 subscriptionId, scheme,
             },
             notify: streamEventNotify, wake: wakeWorkerNotify, release: () => unlink(),
+            reaperLoopId: parent === undefined ? null : this.#ctx.loopId,
             handle: { cancel: async () => {
                 controller.abort("subscription cancelled");
                 await handle.cancel();

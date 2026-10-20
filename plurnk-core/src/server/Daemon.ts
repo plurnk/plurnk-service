@@ -290,6 +290,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             discardLoopNotices: (loopId) => this.#engine.discardLoopNotices(loopId),
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             subscriptionConcluded: (subscriptionId) => this.#engine.subscriptionConcluded(subscriptionId),
+            reapLoopStreams: (loopId) => this.#engine.reapLoopStreams(loopId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§card-read-per-wake}
             emitLogEntry: async (workspaceId, logEntryId) => {

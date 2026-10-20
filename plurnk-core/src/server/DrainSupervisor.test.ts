@@ -33,6 +33,7 @@ const supervisor = (
     discardLoopNotices: () => {},
     cancelSubscription: async () => false,
     subscriptionConcluded: async () => {},
+    reapLoopStreams: async () => [],
     hasActiveStreams: () => false,
     readSystemPrompt,
     emitLogEntry: async () => {},

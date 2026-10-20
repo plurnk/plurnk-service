@@ -8,6 +8,8 @@ interface Options {
     readonly registry: LiveSubscriptions;
     readonly identity: Omit<WakeWorkerPayload, "result" | "summary">;
     readonly handle: SubscriptionHandle;
+    // The loop whose teardown reaps the subscription; null when it outlives its loop.
+    readonly reaperLoopId: number | null;
     readonly release: () => void;
     readonly notify?: StreamEventNotify;
     readonly wake?: WakeWorkerNotify;
@@ -32,7 +34,7 @@ export default class LiveSubscription {
             cancel: () => this.#terminal === null
                 ? options.handle.cancel()
                 : this.close(this.#terminal.result, this.#terminal.summary, this.#terminal.channelResults),
-        }, options.identity.workerId);
+        }, options.identity.workerId, options.reaperLoopId);
     }
 
     close(result: ChannelProducerResult, summary = "", channelResults?: Readonly<Record<string, ChannelProducerResult>>): Promise<void> {
