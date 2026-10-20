@@ -7,7 +7,7 @@ export const latestStableNodeVersion = (index: unknown): string => {
             && typeof release.version === "string", "each Node release has a version string");
         const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(release.version);
         return match === null ? [] : [{ version: release.version, parts: match.slice(1).map(Number) }];
-    }).toSorted((a, b) => b.parts[0]! - a.parts[0]! || b.parts[1]! - a.parts[1]! || b.parts[2]! - a.parts[2]!);
+    }).toSorted((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2]);
     assert.ok(versions[0], "the Node release index contains a stable version");
     return versions[0].version;
 };

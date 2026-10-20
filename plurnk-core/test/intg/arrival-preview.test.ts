@@ -27,8 +27,8 @@ test("{§context-fit} a short message lands as one inbound SEND row", async () =
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
             const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
             assert.ok(prompt, "the arrival row exists");
-            assert.equal(prompt!.lineMarker, null, "message delivery is not a synthetic scoped retrieval");
-            assert.match(prompt!.tx ?? "", /three/, "the complete durable body belongs to the arrival row's sent side");
+            assert.equal(prompt.lineMarker, null, "message delivery is not a synthetic scoped retrieval");
+            assert.match(prompt.tx ?? "", /three/, "the complete durable body belongs to the arrival row's sent side");
             assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "_plurnk").length, 1, "initialization does not duplicate message delivery");
         } finally { ws.close(); }
     });
@@ -68,7 +68,7 @@ test("{§context-fit}: a jumbo message lands folded with its size; Open Messages
             assert.ok(workspace, "the model workspace exists");
             const recovered = await readLog(
                 readStmt(urlPath("log", new URL(bodyTarget!).pathname), { marks: [1, -1] }),
-                makeSchemeCtx({ db, workspaceId: workspace.id, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
+                makeSchemeCtx({ db, workspaceId: workspace.id, workerId: worker.worker_id, mimetypes: DEFAULT_MIMETYPES }),
             );
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");

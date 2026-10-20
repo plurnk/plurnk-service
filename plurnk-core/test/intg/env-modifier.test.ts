@@ -43,11 +43,11 @@ test(`{§env-option} ${op} replaces the child's ${inherited} inherited value bef
             const outputs = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "sh", prefix: "/%" });
             assert.equal(outputs.length, 1, "the child's one command");
             const stdout = await waitForDb(async () => {
-                const channel = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: outputs[0]!.id, name: "stdout" });
+                const channel = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: outputs[0].id, name: "stdout" });
                 return channel?.state === "closed" ? channel.content : null;
             }, (content) => content !== null, { timeoutMs: 10_000 });
             assert.match(stdout ?? "", /kid=\[1\]/u, "the child's first command sees the environment the heading gave it");
-            const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname: outputs[0]!.pathname });
+            const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname: outputs[0].pathname });
             assert.deepEqual((JSON.parse(output!.attributes) as { env: Record<string, unknown> }).env.KID_ONLY, { source: "worker", value: "1" },
                 "recorded as the child's own: it entered the registry, unlike a fence's modifier");
         } finally { ws.close(); }

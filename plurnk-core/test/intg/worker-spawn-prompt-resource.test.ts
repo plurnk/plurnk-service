@@ -26,7 +26,7 @@ delegated
 const childPrompts = async (db: Db, parentWorkerId: number) => {
     const children = await db.test_children_of_worker.all<{ id: number; name: string }>({ worker_id: parentWorkerId });
     assert.equal(children.length, 1, "exactly one child worker exists");
-    const child = children[0]!;
+    const child = children[0];
     const prompts = ((await db.test_messages_by_worker.all({ worker_id: child.id })) as Array<{ body: string }>)
         .map(({ body }) => ({ content: body }));
     return { child, prompts };
@@ -47,8 +47,8 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
                 const work = rows.find((r) => r.op === "WORK" && r.origin === "model");
                 assert.equal(work?.status_rx, 200, work?.rx ?? "no WORK row");
-                assert.match((JSON.parse(work!.tx) as { target: { raw: string } }).target.raw, /brief\.md$/, "the durable row keeps the authored path");
-                assert.match(JSON.parse(work!.rx).attrs?.worker ?? "", /^worker:\/\/[a-f0-9]{8}$/, "the child is auto-named");
+                assert.match((JSON.parse(work.tx) as { target: { raw: string } }).target.raw, /brief\.md$/, "the durable row keeps the authored path");
+                assert.match(JSON.parse(work.rx).attrs?.worker ?? "", /^worker:\/\/[a-f0-9]{8}$/, "the child is auto-named");
                 const { prompts } = await childPrompts(db, modelWorkerId!);
                 assert.equal(prompts.length, 1);
                 assert.equal(prompts[0].content, "Count the lines in every file.", "the file's complete READ text is the child's prompt");
@@ -94,9 +94,9 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
                 const works = rows.filter((r) => r.op === "WORK" && r.origin === "model");
                 assert.equal(works.length, 2);
-                assert.equal(works[0]!.status_rx, 404, "the missing resource's own read failure");
-                assert.equal(works[1]!.status_rx, 400);
-                assert.equal(JSON.parse(works[1]!.rx).problem?.type, "https://problems.plurnk.xyz/scheme/worker/control-address-invalid", "a worker:// path is still an address attempt");
+                assert.equal(works[0].status_rx, 404, "the missing resource's own read failure");
+                assert.equal(works[1].status_rx, 400);
+                assert.equal(JSON.parse(works[1].rx).problem?.type, "https://problems.plurnk.xyz/scheme/worker/control-address-invalid", "a worker:// path is still an address attempt");
                 const children = await db.test_children_of_worker.all<{ id: number; name: string }>({ worker_id: modelWorkerId! });
                 assert.deepEqual(children, [], "nothing was spawned");
             } finally { ws.close(); }

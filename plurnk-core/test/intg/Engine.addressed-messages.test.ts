@@ -23,7 +23,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Keep this original assignment.");
         const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
-        const address = message!.path;
+        const address = message.path;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse([frame("SEND", "Original answer."), frame("SEND [200]", null)].join("\n\n")),
@@ -169,7 +169,7 @@ test("{§message-source-scheme} native message views reject mutations without ca
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Immutable input.");
         const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
-        const path = message!.path;
+        const path = message.path;
         const provider = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse([
             frame(`READ (${path}) <1,-1>`, null),
             frame(`EDIT (${path}) <1,-1>`, "Altered."),

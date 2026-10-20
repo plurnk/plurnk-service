@@ -245,7 +245,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; attrs: string }>({ loop_id: parentLoop }))
             .filter(({ source }) => source === "worker://child");
         assert.deepEqual(observations.map(({ op }) => op), ["sh", "READ"], "the invocation and child conclusion reach the parent; the child's READs and notes do not");
-        assert.equal(JSON.parse(observations[1]!.attrs).kind, "loop_termination", "the child's conclusion still uses the lifecycle channel");
+        assert.equal(JSON.parse(observations[1].attrs).kind, "loop_termination", "the child's conclusion still uses the lifecycle channel");
     } finally {
         await exec.idle();
         await db.close();
@@ -284,7 +284,7 @@ test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable;
         const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ worker_id: parent }))
             .filter(({ source }) => source === "worker://child");
         assert.deepEqual(observations.map(({ op }) => op), ["WORK", "FORK", "SEND"], "only child-authored topology changes and messages reach the parent");
-        const sent = JSON.parse(observations[2]!.tx);
+        const sent = JSON.parse(observations[2].tx);
         assert.equal(sent.target.raw, "worker://research");
         assert.equal(sent.body.raw, "Use the retained evidence.", "the observed SEND is the outgoing message, not the child's received assignment");
     } finally { await db.close(); }

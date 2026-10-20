@@ -251,7 +251,7 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
             content: "```NOTE\nInspect the result.\n```", reasoning: null,
         } }] }) });
         const { id: turnId } = await Turn.open(db, { loopId: env.loopId, producer: "model", kind: "inference" });
-        const coordinates = await db.engine_loop_turn_seqs.get({ loop_id: env.loopId, turn_id: turnId });
+        const coordinates = await db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: env.loopId, turn_id: turnId });
         assert.ok(coordinates);
         const failed = await engine.dispatch({ ...env, turnId, sequence: 1, origin: "model",
             statement: readStmt({ target: urlPath("worker", "/missing.md") }),

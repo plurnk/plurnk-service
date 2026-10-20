@@ -62,7 +62,7 @@ test("{§worker-lifecycle-wake-liveness}: a person's operation can cancel a work
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
             const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
             assert.equal(subscriptions.length, 1);
-            const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0]!.id });
+            const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0].id });
             const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
             const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
@@ -124,7 +124,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
             await parked.promise;
             const subscriptions = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
             assert.equal(subscriptions.length, 1);
-            await daemon.engine.cancelSubscription(subscriptions[0]!.id);
+            await daemon.engine.cancelSubscription(subscriptions[0].id);
             const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
             assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
             assert.deepEqual(Object.keys(events[0]).toSorted(), ["entryId", "loop_seq", "result", "scheme", "sequence", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workerId", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");

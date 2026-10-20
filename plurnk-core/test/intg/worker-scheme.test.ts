@@ -201,7 +201,7 @@ test("{§worker-scheme-spawn}: concurrent WORK and FORK cannot claim the same li
         assert.equal(calls.length, 2, "the branch started the child and the WORK messaged it");
         assert.ok(calls.some((call) => call.spawn !== true && call.prompt === "fresh"), "the WORK's body reached the held name as a message");
     }
-    assert.ok(calls.every((call) => call.workerId === child!.id), "every delivery reached the one worker");
+    assert.ok(calls.every((call) => call.workerId === child.id), "every delivery reached the one worker");
 });
 
 for (const origin of ["model", "client", "_plurnk"] as const) {

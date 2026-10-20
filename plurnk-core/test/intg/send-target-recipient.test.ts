@@ -23,7 +23,7 @@ test("{§problems-dispatch} a SEND addressed to a turn source the model may not 
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
-            const problem = (JSON.parse(sends[0]!.rx) as { problem?: Record<string, unknown> }).problem;
+            const problem = (JSON.parse(sends[0].rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
             assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§problems-dispatch}
             assert.equal(problem?.recovery, "Name a message address or a recipient that implements SEND."); // {§problems-dispatch}
@@ -52,7 +52,7 @@ test("{§problems-dispatch} a SEND addressed to a file path preserves the scheme
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const first = rows.find((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(first?.status_rx, 501);
-            const problem = (JSON.parse(first!.rx) as { problem?: Record<string, unknown> }).problem;
+            const problem = (JSON.parse(first.rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§problems-dispatch}
             assert.equal(problem?.recovery, undefined);
         } finally { ws.close(); }

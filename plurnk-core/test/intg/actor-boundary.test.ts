@@ -90,7 +90,7 @@ test("{§connection-lifecycle} origin is attribution (provenance), never read to
         const packet = await db.engine_render_log.all<{ pathname: string; origin: string }>({ worker_id: workerId });
         const row = packet.find((r) => r.pathname.includes("in-worker"));
         assert.ok(row !== undefined, "an in-worker row renders regardless of origin");
-        assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
+        assert.equal(row.origin, "client", "origin is carried as attribution, not consumed to hide the row");
     } finally { db.close(); }
 });
 

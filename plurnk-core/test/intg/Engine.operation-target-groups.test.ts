@@ -211,8 +211,8 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
                 active_after,
             })),
             [
-                { operation_log_entry_id: kills[1]!.id, target_log_entry_id: firstId, active_before: 1, active_after: 0 },
-                { operation_log_entry_id: kills[2]!.id, target_log_entry_id: secondId, active_before: 1, active_after: 0 },
+                { operation_log_entry_id: kills[1].id, target_log_entry_id: firstId, active_before: 1, active_after: 0 },
+                { operation_log_entry_id: kills[2].id, target_log_entry_id: secondId, active_before: 1, active_after: 0 },
             ],
             "each successful member owns its exact append-only curation effect",
         );

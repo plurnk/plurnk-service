@@ -730,7 +730,7 @@ for (const silent of [false, true]) {
                 assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
                 const prompts = rows.filter((r) => isArrivalRow(r));
                 assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
-                assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1]!.turn_id), "both follow-ups were published in the turn the model completed from");
+                assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1].turn_id), "both follow-ups were published in the turn the model completed from");
                 await flush();
                 const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;
                 assert.deepEqual(ts.map((event) => event.loopId), [loopId], "the observed follow-ups belong to the completed loop, not an orphan recovery loop");

@@ -91,7 +91,7 @@ test("{§env-delta-child-termination} generated child documentation is durable w
             pathname: "/_plurnk/plurnk/tool.md", scheme: "worker", name: "body",
         });
         assert.equal(doc?.content, engine.documents[0].content, "the program actually materialized its resource");
-        const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0]!.id });
+        const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0].id });
         assert.ok(source.some(({ op, status_rx }) => op === "EDIT" && status_rx === 201), "the source operation receipt remains durable");
         assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parentId }), undefined,
             "housekeeping is not an unobserved child result that can wake waiting work or refuse completion");

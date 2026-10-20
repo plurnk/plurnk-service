@@ -189,7 +189,7 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
         const arrivals = (await db.test_messages_by_loop.all<{ source: string; body: string; log_entry_id: number | null }>({ loop_id: accepted.loopId }))
             .filter(({ source }) => source === "schedule://reminder");
         assert.deepEqual(arrivals.map(({ body }) => body), ["scheduled-proof"]);
-        assert.ok(arrivals[0]!.log_entry_id !== null, "the arrival has a published ordinary log receipt");
+        assert.ok(arrivals[0].log_entry_id !== null, "the arrival has a published ordinary log receipt");
         const listing = await daemon.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
         const reminder = listing.definitions.find(({ alias }) => alias === "reminder");
         assert.ok(reminder !== undefined && reminder.state !== "unavailable", "exhaustion follows a successful delivery");

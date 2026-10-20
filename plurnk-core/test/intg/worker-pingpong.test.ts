@@ -46,8 +46,8 @@ test("{§worker-scheme-spawn} ping/pong: WORK spawns a worker once, then WORK to
             const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: modelWorkerId! });
             const works = rows.filter((row) => row.op === "WORK");
             assert.deepEqual(works.map((row) => row.status_rx), [200, 200], "both WORKs succeeded: one spawn, one message");
-            assert.doesNotMatch(works[0]!.rx, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
-            assert.match(works[1]!.rx, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
+            assert.doesNotMatch(works[0].rx, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
+            assert.match(works[1].rx, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
             const last = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
             assert.match(last!.packet, /pong 1/u, "the parent's final packet carries the first answer");
             assert.match(last!.packet, /pong 2/u, "and the second");

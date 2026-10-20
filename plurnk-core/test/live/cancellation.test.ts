@@ -25,11 +25,11 @@ test("live: cancellation settles an active model request", { requires: ["reasoni
         );
         const inference = turns.filter(({ kind }) => kind === "inference");
         assert.equal(inference.length, 1);
-        assert.equal(inference[0]!.status, 499);
-        const requests = await s.db.test_provider_requests.all<{ state: string; outcome: string }>({ turn_id: inference[0]!.id });
+        assert.equal(inference[0].status, 499);
+        const requests = await s.db.test_provider_requests.all<{ state: string; outcome: string }>({ turn_id: inference[0].id });
         assert.equal(requests.length, 1, "cancellation does not start a replacement request");
-        assert.equal(requests[0]!.state, "settled");
-        assert.equal(requests[0]!.outcome, "error");
+        assert.equal(requests[0].state, "settled");
+        assert.equal(requests[0].outcome, "error");
         console.log(JSON.stringify({ runDir: s.runDir, requests }));
     } finally {
         unsubscribe();

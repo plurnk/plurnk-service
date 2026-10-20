@@ -90,7 +90,7 @@ type Fixture = Awaited<ReturnType<typeof setup>>;
 const structuredRow = async (fixture: Fixture, turnId: number) => {
     const rows = await structuredRows(fixture.db, turnId);
     assert.equal(rows.length, 1);
-    return rows[0]!;
+    return rows[0];
 };
 
 const close = async (fixture: Fixture, chunk?: string): Promise<void> => {
@@ -259,7 +259,7 @@ test("{§stream-observation-result}: invalid result liveness cannot advance publ
         for (const terminal of [undefined, null, "true", 1]) {
             await assert.rejects(fixture.db.engine_insert_stream_delta.get({
                 worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: turn.turnId,
-                sequence: 100, subscription_publication_id: channels[0]!.publication_id,
+                sequence: 100, subscription_publication_id: channels[0].publication_id,
                 scheme: "structured-fixture", hostname: null, port: null,
                 pathname: "/1/0/1", fragment: "results",
                 rx: JSON.stringify({ status: 200, content: "output", terminal }),

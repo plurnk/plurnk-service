@@ -50,8 +50,8 @@ test("{§log-row-self-explains} ProblemLog persists one self-identifying RFC 945
             },
         });
         const [row] = await db.test_error_rows_for_worker.all<{ rx: string; weight: number }>({ worker_id: workerId });
-        assert.deepEqual(JSON.parse(row!.rx), minted.result, "the returned and durable failure are identical");
-        assert.equal(row!.weight, 0, "the metadata-only Problem has no canonical body weight");
+        assert.deepEqual(JSON.parse(row.rx), minted.result, "the returned and durable failure are identical");
+        assert.equal(row.weight, 0, "the metadata-only Problem has no canonical body weight");
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             log_entries: Array<{ problem?: unknown }>;

@@ -218,7 +218,7 @@ for (const failOnOperationError of [false, true]) {
         assert.equal(await content("/c.txt"), "first\nsecond", "identical content in another resource does not share the READ anchor");
         const edits = (await rows()).filter(({ op }) => op === "EDIT");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), failOnOperationError ? [200, 409] : [200, 409, 409]);
-        assert.match(JSON.parse(edits[1]!.rx).problem.type, /\/edit-collision$/);
+        assert.match(JSON.parse(edits[1].rx).problem.type, /\/edit-collision$/);
     });
 }
 
@@ -260,7 +260,7 @@ for (const decision of ["reject", "drift"] as const) {
         let index = 0;
         const execution = engine.dispatch({ ...env, origin: "model", sequence: 1,
             statement: editStmt(localPath("*.txt"), "updated\n", fullReplace),
-            onDispatch: (id) => publications[index++]!.resolve(id),
+            onDispatch: (id) => publications[index++].resolve(id),
         });
         for (const [position, published] of publications.entries()) {
             const id = await published.promise;

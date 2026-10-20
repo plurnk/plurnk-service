@@ -131,7 +131,7 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
     const denied = rows.find(({ op }) => op === "KILL");
     assert.equal(denied?.status_rx, 403);
-    assert.equal(JSON.parse(denied!.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
+    assert.equal(JSON.parse(denied.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
     assert.ok(JSON.stringify(provider.received[1]).includes("writer-forbidden"), "the failed cleanup reaches a later packet");
     assert.equal(provider.received.length, 2);
     assert.equal(result.result.status, 200);

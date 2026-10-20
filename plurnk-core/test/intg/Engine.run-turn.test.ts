@@ -151,21 +151,21 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
                 initial_folded: string;
                 folded: string;
             }>({ turn_id: turnId });
-            const initializationRows = await rowsFor(turns[0]!.id);
+            const initializationRows = await rowsFor(turns[0].id);
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
-            const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
+            const initializationSource = sources.find((row) => row.turn_id === turns[0].id && row.kind === "ops");
             assert.equal(initializationSource?.producer, "_plurnk");
-            assert.match(initializationSource!.content, /^```/m);
-            assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
-            assert.match(initializationSource!.content, /^```FIND [^\n]*\n```$/m, "the initialization program renders each operation with a separate closing line");
+            assert.match(initializationSource.content, /^```/m);
+            assert.doesNotMatch(initializationSource.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
+            assert.match(initializationSource.content, /^```FIND [^\n]*\n```$/m, "the initialization program renders each operation with a separate closing line");
             assert.ok(!initializationRows.some(({ op }) => op === null));
             assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
             assert.deepEqual(logEntries(packet).filter(({ logPath }) => logPath.endsWith("/emission")), [],
                 "`_plurnk` initialization never fabricates a content announcement ({§emission-row}); its READ of its own program is an ordinary row");
 
-            const inferenceRows = await rowsFor(turns[1]!.id);
-            const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
+            const inferenceRows = await rowsFor(turns[1].id);
+            const inferenceSource = sources.find((row) => row.turn_id === turns[1].id && row.kind === "ops");
             assert.equal(inferenceSource?.producer, "model");
             assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
             assert.ok(!inferenceRows.some(({ op }) => op === null));

@@ -68,7 +68,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             assert.equal(range.status, 200, "a range READ of the source still works ({§context-verbs})");
             assert.ok("content" in range);
             assert.equal(range.content, reasoning.split("\n").slice(0, 10).join("\n"));
-            const source = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
+            const source = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0];
             assert.equal(source.content, reasoning, "the source stays whole");
         }
         const later = await engine.runTurn({ ...context, provider });
@@ -78,9 +78,9 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         assert.equal(laterRecord.body, record.body, "no automatic re-READ or restoration follows a receipt");
         const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);
-        assert.equal(reads[0]!.id, initial.id);
-        assert.equal(reads[0]!.active, 1);
-        assert.equal(reads[0]!.folded, "[]");
+        assert.equal(reads[0].id, initial.id);
+        assert.equal(reads[0].active, 1);
+        assert.equal(reads[0].folded, "[]");
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet, firstPacket);
         assert.equal(provider.received.length, 2);
     } finally { await db.close(); }

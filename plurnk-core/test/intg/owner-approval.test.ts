@@ -113,7 +113,7 @@ test("{§proposal-ownership-notification} server rejection settles the same admi
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string; rx: string }>({ loop_id: result.loopId });
             const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edit?.status_rx, 400, "the admitted action was declined, not denied at capability admission");
-            const refusal = JSON.parse(edit!.rx) as { outcome?: string };
+            const refusal = JSON.parse(edit.rx) as { outcome?: string };
             assert.equal(refusal.outcome, "policy_veto");
             const [proposal] = await waitFor(
                 () => proposals() as Array<{ disposition?: unknown; owner?: string }>,

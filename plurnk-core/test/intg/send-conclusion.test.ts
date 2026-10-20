@@ -77,7 +77,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
             const childRows = parentRows.filter(({ source }) => source === "worker://alice");
             assert.deepEqual(childRows.map(({ op }) => op), ["READ"], "the parent receives one conclusion, not a duplicate child message or activity");
-            assert.equal(JSON.parse(childRows[0]!.rx).content, final.trim() ? final : "Four.", "the parent's actual conclusion READ contains the child's final answer");
+            assert.equal(JSON.parse(childRows[0].rx).content, final.trim() ? final : "Four.", "the parent's actual conclusion READ contains the child's final answer");
         } finally { await db.close(); }
     });
 }
@@ -124,8 +124,8 @@ test("{§message-completion} {§loop-answer}: an empty completion succeeds witho
         const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
         const conclusions = rows.filter(({ source }) => source === "worker://alice");
         assert.equal(conclusions.length, 1, "the parent receives one ordinary completion observation");
-        assert.equal(conclusions[0]!.op, "READ");
-        const result = JSON.parse(conclusions[0]!.rx);
+        assert.equal(conclusions[0].op, "READ");
+        const result = JSON.parse(conclusions[0].rx);
         assert.equal(result.status, 200, "silence does not become a child failure");
         assert.ok(result.content === undefined || result.content === "", "no answer text is invented");
         assert.equal(result.problem, undefined);

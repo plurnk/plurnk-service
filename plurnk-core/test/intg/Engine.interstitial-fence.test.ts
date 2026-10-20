@@ -51,11 +51,11 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
-        assert.match(JSON.parse(model[0]!.tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
+        assert.match(JSON.parse(model[0].tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
             "the prose and its quoted KILL, one span before the SEND, are the turn's NOTE, literally ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
-        assert.equal(JSON.parse(model[1]!.tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
+        assert.equal(JSON.parse(model[1].tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.", "the quoted KILL never ran: an unlabeled fence quotes");
@@ -88,7 +88,7 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
         assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run ({§unfenced-operation})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ worker_id: workerId });
         assert.equal(sources.some((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside"), false, "and it is not outside text either: the turn has no outside source");
-        assert.equal(JSON.parse(model[0]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
+        assert.equal(JSON.parse(model[0].tx).body.raw, "Explained.", "only the authored SEND is delivered");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
             ["Unfenced `KILL` ignored."]);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
@@ -152,7 +152,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
         const completions = rows.filter(({ origin, op }) => origin === "model" && op === "SEND");
         assert.deepEqual(completions.map(({ status_rx }) => status_rx), [200]);
-        assert.equal(JSON.parse(completions[0]!.tx).body.raw, answer, "the exact SEND body is the reply");
+        assert.equal(JSON.parse(completions[0].tx).body.raw, answer, "the exact SEND body is the reply");
         assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
         assert.equal(rail?.strike_streak, 0);
@@ -310,7 +310,7 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
             const emptyTurn = result.turnIds[2];
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
-            assert.equal(JSON.parse(packetSection(JSON.parse(turn!.packet), "messages")).length, 1, "the progress reply has not resolved the original message");
+            assert.equal(JSON.parse(packetSection(JSON.parse(turn.packet), "messages")).length, 1, "the progress reply has not resolved the original message");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });

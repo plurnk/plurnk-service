@@ -139,7 +139,7 @@ test("{§context-fit}: a READ that does not fit is a bodiless receipt; native ou
                 const images = rows.filter(({ op, pathname }) => op === "READ" && pathname === "logo.png");
                 assert.equal(images.length, 2);
                 assert.deepEqual(images.map(({ status_rx }) => status_rx), [200, 200], "the picture fits twice");
-                assert.equal(JSON.parse(images[0]!.rx).nativeContentHash, JSON.parse(images[1]!.rx).nativeContentHash, "both observations retain the same immutable source bytes");
+                assert.equal(JSON.parse(images[0].rx).nativeContentHash, JSON.parse(images[1].rx).nativeContentHash, "both observations retain the same immutable source bytes");
                 const large = rows.find(({ op, pathname }) => op === "READ" && pathname === "large.txt");
                 assert.ok(large, "the explicit READ of the large file has its row");
                 assert.equal(large.status_rx, 413, "the whole file does not fit the remaining budget");

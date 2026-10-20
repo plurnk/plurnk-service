@@ -38,7 +38,7 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);
-        const read = reads[0]!;
+        const read = reads[0];
         assert.equal(read.origin, "model");
         assert.deepEqual(JSON.parse(read.lineMarker), { marks: [1, -1] });
         const result = JSON.parse(read.rx) as { content: string; lineAnchors?: string[] };
@@ -124,7 +124,7 @@ test("{§reasoning-history}: immutable sources support search, FORK, restart, an
         const context = { workspaceId, workerId, loopId };
         const producing = await engine.runTurn({ ...context, provider: provider(original,
             `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
-        const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
+        const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0];
         const target = `reasoning://alice${resource.pathname}`;
         let sequence = 20;
         const dispatch = (source: string) => engine.dispatch({ ...context,
@@ -156,7 +156,7 @@ Retained determination.
         assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
 Branch-only decision.
 \`\`\`\``, forkContext)).status, 403);
-        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, original);
+        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0].content, original);
         const stillFound = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\`\``);
         assert.equal(stillFound.status, 200, "denied writes leave indexed source unchanged");
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
@@ -171,7 +171,7 @@ Branch-only decision.
         await db.close();
         db = await openMigrated(dbPath);
         engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: forkId }))[0]!.content, original);
+        assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: forkId }))[0].content, original);
         const secondForkLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: forkAfterRead });
         assert.ok(secondForkLoop);
         await engine.runTurn({ workspaceId, workerId: forkAfterRead, loopId: secondForkLoop.id, provider: provider(), messages: [] });
@@ -225,8 +225,8 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource at 
         assert.deepEqual(rows.map(({ content }) => content), ["Admitted reasoning.", "Final rejected reasoning."]);
         const admittedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: admitted.turnId });
         const failedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: failed.turnId });
-        assert.equal(rows[0]!.pathname, `/1/${admittedTurn!.sequence}`);
-        assert.equal(rows[1]!.pathname, `/1/${failedTurn!.sequence}`);
+        assert.equal(rows[0].pathname, `/1/${admittedTurn!.sequence}`);
+        assert.equal(rows[1].pathname, `/1/${failedTurn!.sequence}`);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failed.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
     } finally { await db.close(); }

@@ -120,10 +120,8 @@
         "typescript/explicit-module-boundary-types": "error",
         // An assertion in sources is a stated boundary: an inline disable naming why the shape holds (#1163). Every other
         // value is proved by a schema, a guard or a predicate. Tests are excused below: a witness's assertion is its claim.
-        // The one counted debt, tracked on #1163: assertions in core's tests that tsgolint reads as unnecessary and tsc
-        // still needs, a warning until the two checkers agree.
         "typescript/no-unsafe-type-assertion": "error",
-        "typescript/no-unnecessary-type-assertion": "warn",
+        "typescript/no-unnecessary-type-assertion": "error",
         // A string enum compared with one of its own literals is checked by tsc (TS2367 on any other literal); the literal
         // is the wire name the protocol documents.
         "typescript/no-unsafe-enum-comparison": "off",

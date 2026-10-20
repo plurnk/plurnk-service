@@ -23,6 +23,7 @@ shared `.oxlintrc.json`. The gate fails on errors.
 | Element | Contract |
 | --- | --- |
 | Categories | `correctness`, `suspicious` and `perf` are errors, with the typescript, unicorn, oxc, import, promise and node plugins. |
+| Projects | Type-aware rules read every file through a `tsconfig.json` whose program contains it, the types tsc checks it with: its workspace's, core's tests through `plurnk-core/test/tsconfig.json` (the test-only SqlRite statements), and the development JavaScript no workspace owns through the root `tsconfig.json`. No file is left to a fallback project, whose types depend on the files that share it. |
 | Exceptions | A rule the codebase judges is named in the config with its reason: a warning while its sites are rewritten, or off when it is an opinion rather than an idiom here. |
 | Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
 | Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |

@@ -182,14 +182,14 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
         assert.equal(rows.some(({ op }) => op === "error"), false);
         const task = rows.find(({ op }) => op === "WAIT");
         assert.equal(task?.status_rx, 102);
-        assert.equal(JSON.parse(task!.rx).problem, undefined);
-        assert.equal(JSON.parse(task!.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
+        assert.equal(JSON.parse(task.rx).problem, undefined);
+        assert.equal(JSON.parse(task.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, content);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.equal(attempts[0]?.accepted, 1);
-        const diagnostics = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string }>;
+        const diagnostics = JSON.parse(attempts[0].parse_errors) as Array<{ message: string }>;
         assert.deepEqual(diagnostics, []);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 102);
     } finally { await db.close(); }

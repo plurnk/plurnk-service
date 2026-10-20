@@ -26,7 +26,7 @@ for (const curate of [false, true]) {
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: result.loopId });
                 const model = rows.filter(({ origin }) => origin === "model");
                 assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "SEND"] : ["EDIT", "SEND", "SEND"]);
-                assert.equal(model[0]!.status_rx, 201);
+                assert.equal(model[0].status_rx, 201);
                 assert.deepEqual(model.slice(1).map(({ op, status_rx }) => [op, status_rx]),
                     curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["SEND", 200]] : [["SEND", 200], ["SEND", 200]],
                     "curation cannot select a same-turn receipt before it is published");

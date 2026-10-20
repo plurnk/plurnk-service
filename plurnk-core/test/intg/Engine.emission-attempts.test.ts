@@ -271,7 +271,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         assert.equal(result.status, 102, "invented interstitial output cannot satisfy the observation barrier");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "commentary is not a parser error");
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; tx: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(modelRows.map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op),
@@ -296,9 +296,9 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         const reviewRows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number; attrs: string }>({ turn_id: review.turnId });
         const read = reviewRows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.equal(read?.status_rx, 200);
-        assert.match(read!.rx, /Prelude: preparing the edit\./);
-        assert.match(read!.rx, /3 — invented result, not a receipt\./);
-        assert.match(read!.rx, /Postscript: not a second message\./);
+        assert.match(read.rx, /Prelude: preparing the edit\./);
+        assert.match(read.rx, /3 — invented result, not a receipt\./);
+        assert.match(read.rx, /Postscript: not a second message\./);
     } finally {
         await db.close();
     }
@@ -341,9 +341,9 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
             { sequence: 2, accepted: 0 },
             { sequence: 3, accepted: 1 },
         ]);
-        assert.ok(JSON.parse(attempts[0]!.parse_errors).length > 0);
-        assert.ok(JSON.parse(attempts[1]!.parse_errors).length > 0);
-        assert.deepEqual(JSON.parse(attempts[2]!.parse_errors), []);
+        assert.ok(JSON.parse(attempts[0].parse_errors).length > 0);
+        assert.ok(JSON.parse(attempts[1].parse_errors).length > 0);
+        assert.deepEqual(JSON.parse(attempts[2].parse_errors), []);
 
         const requests = await db.test_provider_requests.all<{
             attempt_sequence: number;
@@ -393,7 +393,7 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
         assert.equal(result.emissionAttempts, 2);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors)[0], {
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors)[0], {
             message: "`### log:///1/1/2/READ` is a log entry, and only the harness writes the log.",
             line: 1, column: 1, source: "harness",
         });
@@ -434,8 +434,8 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string; response: string }>({ turn_id: result.turnId });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]?.accepted, 1);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
-        const assistant = JSON.parse(attempts[0]!.response).assistant;
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
+        const assistant = JSON.parse(attempts[0].response).assistant;
         assert.equal(assistant.content, content);
         assert.equal(assistant.reasoning, reasoning.join(""));
         assert.equal(assistant.finishReason, "stop");
@@ -478,7 +478,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
         });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]?.accepted, 1);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
 
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
@@ -521,7 +521,7 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         assert.equal(first.emissionAttempts, 1, "literal examples cannot reject the admitted EDIT");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: first.turnId });
         assert.equal(attempts[0]?.accepted, 1);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: first.turnId });
         assert.equal(rows.some((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
         assert.equal(rows.some(({ op }) => op === "NOTE"), false, "no nested NOTE was dispatched");
@@ -617,7 +617,7 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
         assert.deepEqual(attempts.map(({ accepted, finish_reason }) => ({ accepted, finish_reason })), [
             { accepted: 1, finish_reason: "length" },
         ]);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
             line: 3,
             column: 0,
             source: "grammar",
@@ -660,7 +660,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
             parse_errors: string;
         }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        const parseErrors = JSON.parse(attempts[0]!.parse_errors) as Array<{ message: string; line: number; source: string }>;
+        const parseErrors = JSON.parse(attempts[0].parse_errors) as Array<{ message: string; line: number; source: string }>;
         assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
         assert.equal(parseErrors[0]?.message, "unexpected `[` (`[metadata]` modifier opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
         assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "parser" });
@@ -712,7 +712,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
             parse_errors: string;
         }>({ turn_id: failed.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        assert.equal(JSON.parse(attempts[0]!.parse_errors).length, 0, "a refused matcher is no parse error");
+        assert.equal(JSON.parse(attempts[0].parse_errors).length, 0, "a refused matcher is no parse error");
 
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -927,7 +927,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         assert.equal(problem.column, 38);
         // {§parse-attempt} The row records the statement the parser refused, as written; the packet shows the model nothing new.
         const [refused] = await db.test_log_entries_by_worker_op_full.all<{ attrs: string }>({ worker_id: workerId, op: "error" });
-        const attempt = (JSON.parse(refused!.attrs) as { attempt?: { verb: string; text: string } }).attempt;
+        const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "COPY");
         assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null).split("\n")[0]), attempt?.text);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
@@ -1080,7 +1080,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
             line: 4, column: 0, source: "grammar",
         }]]], "one admitted attempt, the tail preserved as its diagnostic");
-        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
+        const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
         assert.ok(provider.packets[1]?.includes(message), "the next packet carries the parser-owned boundary diagnosis");
         const replyAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: replyTurn });
@@ -1338,7 +1338,7 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
         for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
             line: 1, column: 0, source: "grammar",
         }], "the undelivered diagnostic remains in forensic evidence");
-        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
+        const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         assert.ok(provider.packets.every((packet) => !packet.includes(message)), "the terminating exhaustion cannot deliver a future recovery packet");
     } finally { await db.close(); }
 });
@@ -1492,7 +1492,7 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
             { state: "error", accepted: null },
             { state: "response", accepted: 1 },
         ]);
-        assert.equal(JSON.parse(attempts[1]!.failure!).status, 503);
+        assert.equal(JSON.parse(attempts[1].failure!).status, 503);
     } finally {
         await db.close();
     }
@@ -1555,7 +1555,7 @@ test("{§turn-never-blank} a classified provider error retains billed usage and 
             cost_amount: string;
             cost_currency: string;
             cost_usd_equivalent: string;
-        }>({ turn_id: turn!.id }))[0]!;
+        }>({ turn_id: turn!.id }))[0];
         assert.equal(request.outcome, "error");
         assert.equal(request.status, 422);
         assert.equal(request.usage_input, 8);
@@ -1573,9 +1573,9 @@ test("{§turn-never-blank} a classified provider error retains billed usage and 
             failure: string;
         }>({ turn_id: turn!.id });
         assert.equal(attempts.length, 1);
-        assert.equal(attempts[0]!.state, "error");
-        assert.equal(attempts[0]!.response, null);
-        assert.equal(JSON.parse(attempts[0]!.failure).status, 422);
+        assert.equal(attempts[0].state, "error");
+        assert.equal(attempts[0].response, null);
+        assert.equal(JSON.parse(attempts[0].failure).status, 422);
     } finally {
         await db.close();
     }
@@ -1718,14 +1718,14 @@ test("{§provider-recovery} a complete-looking resource-interrupted attempt is p
             parse_errors: string;
             finish_reason: string | null;
             model: string;
-        }>({ turn_id: turn!.id });
+        }>({ turn_id: turn.id });
         assert.equal(attempts.length, 2, "the interrupted attempt and the re-issued call");
-        assert.equal(attempts[1]!.accepted, 1);
-        assert.equal(attempts[0]!.accepted, 0);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "the frame was complete but inadmissible");
-        assert.equal(attempts[0]!.finish_reason, "resource_interrupted");
-        assert.equal(attempts[0]!.model, "interrupted-model");
-        const recordedAttempt = JSON.parse(attempts[0]!.response) as Omit<ProviderAttempt, "accounting">;
+        assert.equal(attempts[1].accepted, 1);
+        assert.equal(attempts[0].accepted, 0);
+        assert.deepEqual(JSON.parse(attempts[0].parse_errors), [], "the frame was complete but inadmissible");
+        assert.equal(attempts[0].finish_reason, "resource_interrupted");
+        assert.equal(attempts[0].model, "interrupted-model");
+        const recordedAttempt = JSON.parse(attempts[0].response) as Omit<ProviderAttempt, "accounting">;
         assert.equal("accounting" in recordedAttempt, false, "the normalized ledger is the sole durable accounting representation");
         assert.equal(recordedAttempt.assistant.content, content);
         assert.equal(recordedAttempt.assistant.reasoning, "partial reasoning");
@@ -1737,7 +1737,7 @@ test("{§provider-recovery} a complete-looking resource-interrupted attempt is p
             choices: [{ finish_reason: "insufficient_system_resource" }],
         });
 
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string | null }>({ turn_id: turn!.id });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string | null }>({ turn_id: turn.id });
         assert.equal(
             rows.some(({ origin, tx }) => origin === "model" && (tx ?? "").includes("must never dispatch")),
             false,
@@ -1783,9 +1783,9 @@ test("{§turn-exception-outcome} an internal attempt-processing failure is not m
             response: string | null;
         }>({ turn_id: turn!.id });
         assert.equal(attempts.length, 1);
-        assert.equal(attempts[0]!.state, "response");
-        assert.equal(attempts[0]!.accepted, null, "classification failure never erases the observed response");
-        assert.notEqual(attempts[0]!.response, null);
+        assert.equal(attempts[0].state, "response");
+        assert.equal(attempts[0].accepted, null, "classification failure never erases the observed response");
+        assert.notEqual(attempts[0].response, null);
         assert.equal((await db.test_provider_requests.all({ turn_id: turn!.id })).length, 1);
         classify.run = originalRun;
     } finally {

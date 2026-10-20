@@ -22,10 +22,10 @@ test("{§message-arrival} the arrival row and a normal same-turn op are both bor
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
             const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
             assert.ok(prompt !== undefined, "the message is logged once as an inbound SEND row");
-            assert.equal(prompt!.folded, "[]", "new message delivery is visible");
-            const send = rows.find((r) => r.op === "SEND" && r.origin === "model" && r.turn_id === prompt!.turn_id);
+            assert.equal(prompt.folded, "[]", "new message delivery is visible");
+            const send = rows.find((r) => r.op === "SEND" && r.origin === "model" && r.turn_id === prompt.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
-            assert.equal(send!.folded, "[]", "a normal op in the same turn stays visible");
+            assert.equal(send.folded, "[]", "a normal op in the same turn stays visible");
         } finally { ws.close(); }
     });
 });

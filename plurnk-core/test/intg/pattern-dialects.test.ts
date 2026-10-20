@@ -135,7 +135,7 @@ searched
             const findRows = rows.filter((r) => r.op === "FIND" && r.origin === "model");
             assert.equal(findRows.length, PROBES.length, "one dispatched row per FIND");
             for (const [index, probe] of PROBES.entries()) {
-                const row = findRows[index]!;
+                const row = findRows[index];
                 const tx = JSON.parse(row.tx) as { target?: { raw?: string }; matcher?: { raw?: string } };
                 assert.equal(tx.target?.raw, probe.target, `probe ${index + 1} target`);
                 assert.equal(tx.matcher?.raw, probe.pattern, `probe ${index + 1} pattern`);

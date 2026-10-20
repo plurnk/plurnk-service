@@ -81,7 +81,7 @@ test("{§message-arrival} sister workers' initial messages have independent inbo
         const workerLoop = await insertLoop(db, childWorker, 1, "the worker task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: childWorker, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
 
-        const inboxOf = async (loopId: number) => (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ body: string; log_entry_id: number | null }>;
+        const inboxOf = (loopId: number) => db.test_messages_by_loop.all<{ body: string; log_entry_id: number | null }>({ loop_id: loopId });
         const parentRows = await inboxOf(parentLoop);
         const workerRows = await inboxOf(workerLoop);
         assert.equal(parentRows.length, 1, "the parent's message exists in its own loop's inbox");

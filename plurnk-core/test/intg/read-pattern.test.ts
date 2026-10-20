@@ -124,12 +124,12 @@ test("{§read-fan-out} a pattern READ over a glob fans out into one exact patter
             { target: globTarget.raw, matched: 2, index: 0, count: 2 },
             { target: globTarget.raw, matched: 2, index: 1, count: 2 },
         ], "every fanned-out row names the authored glob and its place in the fan-out ({§read-fan-out})");
-        const dogs = JSON.parse(receipts[1]!.rx) as { content: string; lineOrdinals: number[]; matched: number; lineAnchors: string[] };
+        const dogs = JSON.parse(receipts[1].rx) as { content: string; lineOrdinals: number[]; matched: number; lineAnchors: string[] };
         assert.equal(dogs.content, "but I love dogs.\nHistorically, dogs have been...");
         assert.deepEqual(dogs.lineOrdinals, [2, 4], "the lines keep their physical ordinals inside their own file");
         assert.equal(dogs.matched, 2);
         assert.equal(dogs.lineAnchors.length, 2, "every rendered line carries its anchor, so the receipt is an EDIT coordinate source");
-        const cats = JSON.parse(receipts[0]!.rx) as { content: string; matched: number };
+        const cats = JSON.parse(receipts[0].rx) as { content: string; matched: number };
         assert.deepEqual([cats.content, cats.matched], ["Most cats are afraid of dogs.", 1]);
 
         const none = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "glob", raw: "hamster" }));
@@ -149,7 +149,7 @@ test("{§read-fan-out} a pattern READ over a glob fans out into one exact patter
         assert.equal(every.rowsWritten, 3, "without a pattern every path under the glob is read");
         const previews = (await rows()).slice(-3);
         assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_cats.md"], ["READ", "/pets_dogs.md"], ["READ", "/pets_fish.md"]]);
-        assert.equal((JSON.parse(previews[2]!.rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
+        assert.equal((JSON.parse(previews[2].rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
 
         const fullText = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
         assert.equal(fullText.status, 200, JSON.stringify(fullText));

@@ -89,7 +89,7 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
             line: 7, column: 0, source: "grammar",
         }]]], "the one attempt is admitted and carries the tail as its diagnostic");
-        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
+        const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "EDIT"), true, "the statement that closed before the loss ran");
         const loss = rows.find(({ op }) => op === "error");

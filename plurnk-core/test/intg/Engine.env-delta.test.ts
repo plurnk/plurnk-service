@@ -206,9 +206,9 @@ test("{§env-delta-log-pull} a worker learns a sibling's edit through its own lo
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
-        assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
-        assert.equal(delta!.initial_folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
-        assert.equal(delta!.folded, "[]", "the broadcast does not trim the readable delta");
+        assert.equal(delta.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
+        assert.equal(delta.initial_folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
+        assert.equal(delta.folded, "[]", "the broadcast does not trim the readable delta");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const packetDelta = logEntries(packet).find((entry) => entry.path === "worker:///shared.md" && entry.logPath.endsWith("/EDIT"));
@@ -250,8 +250,7 @@ test("{§env-delta-log-pull} ambient delivery follows monotonic occurrence ident
 
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
         const observed = rows
-            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.startsWith("/equal-") === true)
-            .map((row) => row.pathname)
+            .flatMap(({ origin, op, pathname }) => origin === "_plurnk" && op === "EDIT" && pathname?.startsWith("/equal-") === true ? [pathname] : [])
             .toSorted();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
 
@@ -604,13 +603,13 @@ test("{§env-delta-filesystem-narration} an out-of-band disk change is runtime e
         assert.ok(!rows.some((r) => r.source === "file"), "project-file divergence does not enter an unrelated worker log");
         const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtimeWorker, "the runtime actor owns the reconciliation evidence");
-        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ worker_id: runtimeWorker!.id });
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ worker_id: runtimeWorker.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "notes.md");
         assert.ok(delta, "the runtime log retains exact source=file evidence");
-        const span = JSON.parse(delta!.rx).span as string;
+        const span = JSON.parse(delta.rx).span as string;
         assert.match(span, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
-        assert.equal(delta!.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
-        assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
+        assert.equal(delta.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
+        assert.equal((JSON.parse(delta.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: turn2.turnId });
         const log = packetSection(JSON.parse(packet!.packet), "log");
         assert.doesNotMatch(log, /"git":" M"/, "runtime reconciliation evidence is not projected into the unrelated model packet");
@@ -647,11 +646,11 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
         assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model worker");
         const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtimeWorker);
-        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: runtimeWorker!.id });
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: runtimeWorker.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "removed.md");
         assert.ok(delta, "the observed deletion remains durable runtime evidence");
-        assert.equal((JSON.parse(delta!.rx) as { span: string }).span, "", "the deleted resource has no resulting text to project");
-        assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " D", "Git classifies the observed worktree deletion exactly");
+        assert.equal((JSON.parse(delta.rx) as { span: string }).span, "", "the deleted resource has no resulting text to project");
+        assert.equal((JSON.parse(delta.attrs) as { git?: string }).git, " D", "Git classifies the observed worktree deletion exactly");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -779,29 +778,29 @@ test("{§worker-scheme-collect} a child's loop termination reaches only its pare
         );
         const win = terminations.find((r) => r.source === "worker://worker");
         assert.ok(win, "worker's completion surfaced as a worker delta in A's log");
-        assert.equal(win!.origin, "_plurnk", "the termination delta is the engine's narration");
-        assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
-        assert.equal(win!.status_rx, 200, "the terminal status rides");
-        const projected = JSON.parse(win!.rx);
+        assert.equal(win.origin, "_plurnk", "the termination delta is the engine's narration");
+        assert.equal(win.source, "worker://worker", "attributed with the terminating worker's control identity");
+        assert.equal(win.status_rx, 200, "the terminal status rides");
+        const projected = JSON.parse(win.rx);
         assert.equal(projected.status, deliverable.status);
         assert.equal(projected.content, deliverable.content);
         assert.equal(projected.resource, "ops://worker/1");
-        assert.equal(win!.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
-        assert.equal(win!.folded, "[]", "the deliverable is untrimmed");
+        assert.equal(win.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
+        assert.equal(win.folded, "[]", "the deliverable is untrimmed");
 
         const failed = terminations.find((r) => r.source === "worker://failed-worker");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
-        assert.equal(failed!.status_rx, 502, "the parent edge carries the exact status, not scheduler class 500");
-        const failure = JSON.parse(failed!.rx) as { status: number; problem?: { detail?: string } };
+        assert.equal(failed.status_rx, 502, "the parent edge carries the exact status, not scheduler class 500");
+        const failure = JSON.parse(failed.rx) as { status: number; problem?: { detail?: string } };
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
-        assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
-        assert.equal(failed!.initial_folded, "[]", "a failure is born visible too — its explanation is the deliverable");
-        assert.equal(failed!.folded, "[]", "the failure is still READable");
+        assert.equal(failed.source, "worker://failed-worker", "attributed with the failed worker's control identity");
+        assert.equal(failed.initial_folded, "[]", "a failure is born visible too — its explanation is the deliverable");
+        assert.equal(failed.folded, "[]", "the failure is still READable");
         const cancelled = terminations.find((r) => r.source === "worker://cancelled-worker");
         assert.ok(cancelled, "a KILLed child concludes to its parent through the same retained-outcome READ");
-        assert.equal((JSON.parse(cancelled!.attrs) as { terminatedBy?: string }).terminatedBy, "cancel", "cancellation authorship rides the attrs, not a target");
-        assert.equal(cancelled!.initial_folded, "[]", "a cancellation is born visible like every conclusion");
+        assert.equal((JSON.parse(cancelled.attrs) as { terminatedBy?: string }).terminatedBy, "cancel", "cancellation authorship rides the attrs, not a target");
+        assert.equal(cancelled.initial_folded, "[]", "a cancellation is born visible like every conclusion");
         const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
         assert.equal(
             independentRows.some(({ source }) => source?.startsWith("worker://") === true),

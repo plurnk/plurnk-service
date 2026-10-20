@@ -15,7 +15,7 @@ test("demo: the model schedules and receives a one-time reminder", async (t) => 
         const messages = await workspace.db.test_messages_by_worker.all<{ source: string | null; body: string }>({ worker_id: loop.modelWorkerId });
         const reminders = messages.filter(({ source }) => source?.startsWith("schedule://") === true);
         assert.equal(reminders.length, 1, "the scheduling module delivered exactly one reminder");
-        assert.match(reminders[0]!.body, /schedule-probe-ack/u);
+        assert.match(reminders[0].body, /schedule-probe-ack/u);
         assert.match(loop.lastContent, /schedule-probe-ack/u, "the model acknowledged the received reminder");
     } finally {
         await workspace.cleanup();

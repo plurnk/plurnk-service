@@ -4,7 +4,7 @@ import { readFile, rm } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import test from "node:test";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { Validator, type OperationResult } from "@plurnk/plurnk-contracts";
+import { isRecord, Validator, type OperationResult } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
@@ -125,8 +125,10 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
         const rows = await workspace.db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null }>({ loop_id: completed[0].loopId });
         assert.equal(rows.filter(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === "schedule://beat").length, 1,
             "the occurrence arrives through ordinary source-attributed worker messaging");
-        await waitForDb(list, ({ definitions }) =>
-            (definitions.find(({ alias }) => alias === "beat")?.detail as { exhausted?: boolean } | undefined)?.exhausted === true);
+        await waitForDb(list, ({ definitions }) => {
+            const detail = definitions.find(({ alias }) => alias === "beat")?.detail;
+            return isRecord(detail) && detail.exhausted === true;
+        });
         assert.equal(armed.size, 0, "the one-shot rule is exhausted");
         assert.equal((await list()).definitions.find(({ alias }) => alias === "fixture")?.state, "disabled");
         assert.equal((await mutate("remove", { alias: "beat" })).status, 200);

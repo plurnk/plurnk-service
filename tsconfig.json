@@ -1,0 +1,31 @@
+// {§lint-gate} The project for the development JavaScript no workspace project owns: scripts, bins and fixtures.
+// Type-aware lint and editors find a file's project by this name. A script with a declaration beside it is named
+// under `files`, since a wildcard takes the declaration in its place.
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "allowJs": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true
+    },
+    "files": [
+        "scripts/lib/benchmarks-root.mjs",
+        "scripts/lib/environment.mjs",
+        "scripts/lib/usage.mjs"
+    ],
+    "include": [
+        "**/*.js",
+        "**/*.mjs",
+        "**/*.cjs",
+        "**/*.mts"
+    ],
+    "exclude": [
+        "**/node_modules",
+        "**/dist",
+        "**/generated",
+        "**/vendor",
+        "**/.tmp",
+        "**/.plurnk",
+        "**/coverage"
+    ]
+}

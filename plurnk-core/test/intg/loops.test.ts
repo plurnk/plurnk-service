@@ -89,7 +89,7 @@ test("{§worker-lifecycle-terminal-result} loops: one terminal-result constraint
         assert.ok(loop);
         await assert.rejects(
             () => db.test_set_loop_status.run({
-                id: loop!.id,
+                id: loop.id,
                 status: 500,
                 terminal_result: JSON.stringify({ status: 500 }),
             }),

@@ -76,7 +76,7 @@ test("{§chunk-accumulation-chunks-accumulate} streaming exec: chunks land in th
 
         const sampleStdout = async (): Promise<{ content: string; state: string }> => {
             const row = await db.test_get_channel.get<{ content: string; state: string }>({
-                entry_id: entryRow!.id, name: "stdout",
+                entry_id: entryRow.id, name: "stdout",
             });
             return { content: row?.content ?? "", state: row?.state ?? "?" };
         };
@@ -261,7 +261,7 @@ test("{§exec-target-routing} an empty-body 0o644 script target survives accepta
         // Follow the output address recorded by the accepted operation.
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: new URL(await executionAddress(db, turnId)).pathname });
         assert.ok(entryRow, "the sh exec entry exists at the returned address");
-        const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.match(ch?.content ?? "", /greetings-from-file-target/, "the script ran and its stdout arrived");
         const mode = (await stat(join(dir, "demo_greet.sh"))).mode & 0o777;
         assert.equal(mode, 0o644, "transient exec: the mode is untouched — no chmod magic");

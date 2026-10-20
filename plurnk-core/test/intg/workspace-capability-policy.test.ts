@@ -202,10 +202,10 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         assert.ok(reference?.aside, `worker orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
         const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/worker.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read!.rx).content.includes("worker:///_plurnk/plurnk/delegation.md"));
+        assert.ok(JSON.parse(read.rx).content.includes("worker:///_plurnk/plurnk/delegation.md"));
         const delegation = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/delegation.md");
         assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its worker owner");
-        assert.ok(JSON.parse(delegation!.rx).content.includes("## Lifecycle"));
+        assert.ok(JSON.parse(delegation.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }
 });
 

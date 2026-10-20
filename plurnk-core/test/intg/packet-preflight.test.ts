@@ -30,7 +30,7 @@ test("{§worker-initialization-entry}: packet preflight preserves stream growth 
         const build = () => packets.buildRequestPacket({
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1, provider: model, gitStatus: null,
         });
-        const cursor = async () => (await db.test_subscription_publications.all<{ published_end: number }>({ id: subscriptionId }))[0]!.published_end;
+        const cursor = async () => (await db.test_subscription_publications.all<{ published_end: number }>({ id: subscriptionId }))[0].published_end;
         const now = Date.now();
         t.mock.method(Date, "now", () => now);
         const first = await build();

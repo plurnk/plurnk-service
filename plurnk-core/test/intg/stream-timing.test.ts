@@ -100,7 +100,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
             if (result !== undefined && "status" in result) assert.equal(result.status, 200, specimen.name);
             const after = await clock();
             assert.equal(after?.opened_at, original, "activity never restarts elapsed runtime");
-            if (specimen.changed) assert.ok(after?.output_changed_at !== null && after!.output_changed_at! > original,
+            if (specimen.changed) assert.ok(after?.output_changed_at !== null && after.output_changed_at > original,
                 `${specimen.name} advances the output clock`);
             else assert.equal(after?.output_changed_at, original, `${specimen.name} is not output activity`);
         });

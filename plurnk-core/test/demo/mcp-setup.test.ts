@@ -1,7 +1,7 @@
 // {§mcp-model-projection} {§mcp-configuration}
 import assert from "node:assert/strict";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
-import type { FunctionalityListResult, McpOAuthBeginResult, McpOAuthCompletionResult } from "@plurnk/plurnk-contracts";
+import { isRecord, type FunctionalityListResult, type McpOAuthBeginResult, type McpOAuthCompletionResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { serveOAuthMcp } from "../../../plurnk-mcp/test/oauth-fixture.ts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
@@ -35,7 +35,7 @@ for (const oauth of [false, true]) {
                 assert.equal(result.finalStatus, 200, "the model hands authentication to the user without failing the loop");
                 assert.equal(calls, 0, "the tool cannot be used before sign-in");
                 const listed = await s.invokeWorkspaceAction("workspace.mcp.list", {}) as FunctionalityListResult;
-                const installed = listed.definitions.find(({ definition }) => (definition as { url?: string } | undefined)?.url === served.url);
+                const installed = listed.definitions.find(({ definition }) => isRecord(definition) && definition.url === served.url);
                 assert.equal(installed?.state, "authorization-required");
                 assert.ok(result.lastContent.includes(`/mcp oauth ${installed?.alias}`), "the user receives an actionable client sign-in command");
                 // Simulate the user's client continuation; the built-client test owns browser/callback reception.
@@ -54,7 +54,7 @@ for (const oauth of [false, true]) {
             assert.ok(calls > 0, "the model actually invokes the newly installed remote tool");
             assert.ok(result.lastContent.includes(marker), "the answer contains evidence available only from the tool");
             const listed = await s.invokeWorkspaceAction("workspace.mcp.list", {}) as FunctionalityListResult;
-            const installed = listed.definitions.find(({ definition }) => (definition as { url?: string } | undefined)?.url === served.url);
+            const installed = listed.definitions.find(({ definition }) => isRecord(definition) && definition.url === served.url);
             assert.equal(installed?.state, "active");
             const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
             assert.ok(log.some((row) => row.op === "READ" && row.scheme === installed?.alias && row.status_rx === 200 && JSON.stringify(row.rx).includes(marker)),

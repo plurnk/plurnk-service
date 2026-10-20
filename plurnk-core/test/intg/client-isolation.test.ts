@@ -56,7 +56,7 @@ test("{§connection-lifecycle} {§actor-boundary-isolation} a client op.* journa
             assert.ok(modelWorker !== undefined, "the model loop has a worker");
 
             // The model's packet is rendered from the model worker alone.
-            const modelLog = await db.engine_render_log.all<{ origin: string; pathname: string }>({ worker_id: modelWorker!.worker_id });
+            const modelLog = await db.engine_render_log.all<{ origin: string; pathname: string }>({ worker_id: modelWorker.worker_id });
             assert.ok(modelLog.length > 0, "the model's packet carries its own log");
             assert.ok(
                 modelLog.every((r) => r.origin !== "client"),
@@ -69,7 +69,7 @@ test("{§connection-lifecycle} {§actor-boundary-isolation} a client op.* journa
             assert.ok(entries.some((e) => e.op === "EDIT" && e.origin === "client"), "the client reads its own op from the runtime worker");
             const runtime = await daemon.readWorker({ workspaceId, identity: { name: "_plurnk" } });
             assert.equal(runtime?.origin, "_plurnk");
-            assert.notEqual(runtime?.id, modelWorker!.worker_id, "the runtime worker is distinct from the model worker");
+            assert.notEqual(runtime?.id, modelWorker.worker_id, "the runtime worker is distinct from the model worker");
         } finally { ws.close(); }
     });
 });

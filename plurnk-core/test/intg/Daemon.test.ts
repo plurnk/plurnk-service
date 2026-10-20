@@ -741,7 +741,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
             workspace_id: workspaceId,
             scheme: "worker",
             authority: "",
-            pathname: docs[0]!.pathname,
+            pathname: docs[0].pathname,
         });
         assert.ok(generated !== undefined, "activation publication belongs to the addressed worker");
     } finally {
@@ -2161,7 +2161,7 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
             .filter(({ origin }) => origin === "client");
         assert.equal(clientRows.length, 1, "the client operation journals in the runtime worker");
         const operationLoop = (await daemon.listWorkerLoops({ workspaceId, workerId: runtimeWorkerId }))
-            .find(({ id }) => id === clientRows[0]!.loop_id);
+            .find(({ id }) => id === clientRows[0].loop_id);
         assert.equal(operationLoop?.promptSource, TEST_OWNER, "the operation's loop names its person");
         const modelRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
         assert.equal(

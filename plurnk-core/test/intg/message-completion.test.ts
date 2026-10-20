@@ -69,7 +69,7 @@ for (const code of [null, 200, 499]) {
         const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnId });
         const durable = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
         assert.equal(durable?.status_rx, 200);
-        assert.equal(JSON.parse(durable!.rx).status, 200);
+        assert.equal(JSON.parse(durable.rx).status, 200);
     });
 }
 
@@ -226,8 +226,8 @@ test("{§message-completion}: an attachment-only completion retains its delivera
     });
     const replies = history.filter(({ direction }) => direction === "outbound");
     assert.equal(replies.length, 1);
-    assert.equal(replies[0]!.body, "");
-    assert.deepEqual(JSON.parse(replies[0]!.evidence).attachments.map(({ target, name }: { target: string; name: string }) => ({ target, name })),
+    assert.equal(replies[0].body, "");
+    assert.deepEqual(JSON.parse(replies[0].evidence).attachments.map(({ target, name }: { target: string; name: string }) => ({ target, name })),
         [{ target: "worker:///report.txt", name: "report.txt" }]);
 });
 

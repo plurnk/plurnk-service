@@ -300,7 +300,7 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
             rx: string;
         }>({ loop_id: loopId })).filter(({ op }) => op === "error");
         assert.equal(failures.length, 1, "the provider failure has one durable owner");
-        const durable = JSON.parse(failures[0]!.rx) as { status: number; problem: { detail: string; instance: string } };
+        const durable = JSON.parse(failures[0].rx) as { status: number; problem: { detail: string; instance: string } };
         assert.equal(durable.status, 401);
         assert.equal(durable.problem.detail, "backend rejected the API key");
         assert.match(durable.problem.instance, /^log:\/\/\//);

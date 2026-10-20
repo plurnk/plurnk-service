@@ -364,6 +364,6 @@ test("{§packet-items} turns: id auto-assigns on insert", async () => {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 2, status: 200, packet: MIN_PACKET });
         const rows = await db.test_turns_list_ids.all<{ id: number }>({ loop_id: loopId });
-        assert.equal(rows[1]!.id, rows[0]!.id + 1);
+        assert.equal(rows[1].id, rows[0].id + 1);
     } finally { await db.close(); }
 });

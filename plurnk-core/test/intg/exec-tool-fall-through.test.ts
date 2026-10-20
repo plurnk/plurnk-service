@@ -37,9 +37,9 @@ test("{§exec-tool-fall-through} {§diagnostic-observation} a bare execution of 
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const receipts = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.equal(receipts.length, 1, "one terminal READ, on the channel that holds the shell's complaint");
-            assert.deepEqual((JSON.parse(receipts[0]!.rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
-            assert.equal(receipts[0]!.status_rx, 404, "the named program did not run");
-            const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { type?: string; detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
+            assert.deepEqual((JSON.parse(receipts[0].rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
+            assert.equal(receipts[0].status_rx, 404, "the named program did not run");
+            const receipt = JSON.parse(receipts[0].rx) as { exitCode?: number; problem?: { type?: string; detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);
             assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/exec/program-is-a-tool");
             assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}

@@ -56,7 +56,7 @@ Wait for the child.
                 const receipt = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: accepted.loopId }))
                     .find((row) => row.op === op);
                 assert.equal(receipt?.status_rx, 409, "the stopped delivery has an explicit refusal receipt");
-                assert.equal(JSON.parse(receipt!.rx).problem.type, "https://problems.plurnk.xyz/daemon/admission/source-not-running");
+                assert.equal(JSON.parse(receipt.rx).problem.type, "https://problems.plurnk.xyz/daemon/admission/source-not-running");
             } finally {
                 release.resolve();
                 await daemon.cancelWorker({ workspaceId, workerId });

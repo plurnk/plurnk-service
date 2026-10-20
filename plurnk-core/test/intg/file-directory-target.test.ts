@@ -105,7 +105,7 @@ test("{§file-find-directory}: parsed FIND recognizes a directory with or withou
     });
     assert.equal(rows.length, targets.length + 1);
     for (const [index, target] of targets.entries()) {
-        const row = rows[index]!;
+        const row = rows[index];
         assert.equal(row.status, 200, `FIND (${target}) lists its directory`);
         assert.deepEqual(foundPaths(row), ["packages/chord/README.md", "packages/chord/docs/api.md"],
             "only member descendants appear, excluding hidden files and prefix siblings");

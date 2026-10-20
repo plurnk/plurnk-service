@@ -69,7 +69,7 @@ test("{§machine-processes-fork-copies-the-log} a fork inherits the parent's loo
         const fork = await Fork.fork(db, parent, undefined);
         const loops = await db.test_fork_loops.all<{ status: number }>({ worker_id: fork });
         assert.ok(loops.length > 0, "the fork inherited the parent's loop");
-        assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status)}])`);
+        assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status).join(", ")}])`);
     } finally { await db.close(); }
 });
 

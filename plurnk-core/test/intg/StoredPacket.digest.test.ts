@@ -87,7 +87,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
                 },
             });
             assert.equal(result.status, 200);
-            return (await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: turnId }))[0]!.id;
+            return (await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: turnId }))[0].id;
         };
         const retiredIds: number[] = [];
         for (const source of sources.slice(0, 2)) {
@@ -211,8 +211,8 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
 
             const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
             const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-            initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
-            assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
+            initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0].id && kind === "ops")!.content;
+            assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0].id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
             assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
         } finally {
             await db.close();

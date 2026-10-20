@@ -138,7 +138,7 @@ test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a ba
             const bares = rows.filter((row) => row.op === "BARE" && row.origin === "model");
             assert.deepEqual(bares.map((row) => row.status_rx), [200, 200, 429],
                 "turn 1 is call one; the first two BAREs are calls two and three; the third meets the ceiling and makes no call");
-            const refused = JSON.parse(bares[2]!.rx) as { problem: { type: string; treeModelCalls: number; maximumTurns: number } };
+            const refused = JSON.parse(bares[2].rx) as { problem: { type: string; treeModelCalls: number; maximumTurns: number } };
             assert.match(refused.problem.type, /\/max-turns$/u);
             assert.deepEqual([refused.problem.treeModelCalls, refused.problem.maximumTurns], [3, 3]);
             assert.equal(child.received.length, 2, "the refused BARE never reached the child provider");

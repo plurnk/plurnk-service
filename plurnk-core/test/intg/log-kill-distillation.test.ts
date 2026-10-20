@@ -49,10 +49,10 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
                 { op: "NOTE", pathname: null, sequence: 5, status_rx: 200 },
             ], "the distillation is written at the next sequence after its kill; a whitespace body is a plain KILL; later rows follow in order");
             const [kill, note, plainKill] = curation;
-            assert.equal((JSON.parse(kill!.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
-            assert.deepEqual(JSON.parse(note!.attrs ?? "{}"), { distilled: "log:///1/**/{READ,NOTE}" }, "the NOTE row names the selection it distilled");
-            assert.equal((JSON.parse(note!.tx) as { op: string; body: string }).body, distillation);
-            assert.equal((JSON.parse(plainKill!.tx) as { body: string | null }).body, null, "whitespace is no distillation");
+            assert.equal((JSON.parse(kill.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
+            assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{READ,NOTE}" }, "the NOTE row names the selection it distilled");
+            assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillation);
+            assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
             const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ worker_id: result.modelWorkerId! });
             assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillation),
                 "the distillation is retained as a note source exactly as a NOTE's body is");
@@ -84,8 +84,8 @@ test("{§log-kill-distillation} a failed log KILL still keeps its body as the mo
                 { op: "NOTE", pathname: null, sequence: 4, status_rx: 200 },
             ], "the miss is the receipt, and the body still lands as the NOTE after it");
             const [, kept] = curation;
-            assert.deepEqual(JSON.parse(kept!.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
-            assert.equal((JSON.parse(kept!.tx) as { body: string }).body, "nothing here");
+            assert.deepEqual(JSON.parse(kept.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
+            assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
             const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
             assert.equal(rows(next, "KILL").length, 1, "a missed log KILL's receipt renders");
             assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");

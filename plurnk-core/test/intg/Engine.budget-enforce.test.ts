@@ -231,7 +231,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
         assert.ok(arrival && typeof arrival.body === "string" && arrival.body.includes(PROMPT_CAPACITY_SENTINEL), "the stored request is the request that was sent: the arrival, whole");
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.equal(errors.length, 1, "the failure is one durable error row");
-        assert.equal((JSON.parse(errors[0]!.rx) as { problem?: { status?: number } }).problem?.status, 413);
+        assert.equal((JSON.parse(errors[0].rx) as { problem?: { status?: number } }).problem?.status, 413);
     } finally {
         await db.close();
     }

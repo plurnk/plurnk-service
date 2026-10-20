@@ -51,8 +51,8 @@ test("{§find-candidate-containment} a body FIND over ~2k members with a handler
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: outcome.modelWorkerId! });
                 const find = rows.find(({ op }) => op === "FIND");
                 assert.ok(find, "the FIND row exists");
-                assert.notEqual(find!.status_rx, 500, `FIND must not 500: ${JSON.parse(find!.rx).problem?.detail ?? find!.rx.slice(0, 200)}`);
-                assert.ok([200, 204, 404].includes(find!.status_rx), `truthful status; got ${find!.status_rx}`);
+                assert.notEqual(find.status_rx, 500, `FIND must not 500: ${JSON.parse(find.rx).problem?.detail ?? find.rx.slice(0, 200)}`);
+                assert.ok([200, 204, 404].includes(find.status_rx), `truthful status; got ${find.status_rx}`);
             } finally { ws.close(); }
         });
     } finally {

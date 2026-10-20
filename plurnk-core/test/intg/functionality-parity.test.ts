@@ -492,7 +492,7 @@ ${JSON.stringify({ alias: family.addable.alias })}
             assert.equal((await execution).status, 200);
             const output = await waitForDb(async () => {
                 const entries = await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme: "extra", prefix: "/%" });
-                const latest = entries.toSorted((left, right) => right.id - left.id)[0]!;
+                const latest = entries.toSorted((left, right) => right.id - left.id)[0];
                 return db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: latest.pathname, scheme: "extra", name: "body" });
             }, (channel) => channel?.state === "closed", { timeoutMs: 10_000 });
             assert.equal(output?.content, "legacy echo: replacement works", "the replacement's actual tool is callable");

@@ -37,8 +37,8 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
                 assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///*) catalog preview when set");
-                assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
-                const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
+                assert.equal(cf.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
+                const parsed = JSON.parse(cf.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
                 assert.equal(items.length, 4, "the project-file cap does not govern the model's own memory map");
             } finally { ws.close(); }
@@ -299,7 +299,7 @@ test("{§actor-boundary-catalog-preview} an empty workspace executes all eight o
                 }
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
-                const initializationTurnId = finds[0]!.turn_id;
+                const initializationTurnId = finds[0].turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),

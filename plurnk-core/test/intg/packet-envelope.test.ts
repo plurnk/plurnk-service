@@ -76,7 +76,7 @@ test("{§emission-row}: initialization has no replay; canonical content carries 
     }
     assert.equal(previous(provider.received[0]), "");
     assert.equal(previous(provider.received[1]), canonical, "normalization preserves each operation at its position");
-    assert.equal(JSON.parse(rows[0]!.rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
+    assert.equal(JSON.parse(rows[0].rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
     assert.match(userText(provider.received[1]), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
     const request = provider.received[1];
     assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"], "the turn replays as one assistant message");

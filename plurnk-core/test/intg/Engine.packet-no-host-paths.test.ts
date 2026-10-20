@@ -47,7 +47,7 @@ test("{§fs-answer-in-canon} execution receipts and failed targets do not expose
                 assert.ok(texts.length >= 2, `every turn's packet is inspected; got ${texts.length}`);
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: result.modelWorkerId! });
                 const execs = rows.filter(({ op }) => isExecutionOp(op));
-                assert.deepEqual(execs.map(({ status_rx }) => status_rx).toSorted(), [200, 400], "one command ran, one target was refused");
+                assert.deepEqual(execs.map(({ status_rx }) => status_rx).toSorted((x, y) => x - y), [200, 400], "one command ran, one target was refused");
                 for (const text of texts) {
                     assert.doesNotMatch(text, new RegExp(root.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")), "the host root never appears in what the model sees");
                 }

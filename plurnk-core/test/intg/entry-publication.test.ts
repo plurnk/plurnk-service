@@ -35,13 +35,13 @@ test("{§crud} republishing preserves unchanged derivations and invalidates only
     await EntryCrud.writeEntry(coordinate, changed, ctx, "worker");
     const after = await hashes();
     assert.deepEqual(after[0], before[0], "the unchanged body retains its artifact");
-    assert.equal(after[1]!.deep_hash, null, "changed content cannot retain stale search evidence");
-    assert.notEqual(after[1]!.content_hash, before[1]!.content_hash);
+    assert.equal(after[1].deep_hash, null, "changed content cannot retain stale search evidence");
+    assert.notEqual(after[1].content_hash, before[1].content_hash);
 
     await SearchIndex.maintain(ctx);
     changed.channels.evidence.mimetype = "text/markdown";
     await EntryCrud.writeEntry(coordinate, changed, ctx, "worker");
-    assert.equal((await hashes())[1]!.deep_hash, null, "a changed mimetype also invalidates the representation");
+    assert.equal((await hashes())[1].deep_hash, null, "a changed mimetype also invalidates the representation");
     delete changed.channels.evidence;
     await EntryCrud.writeEntry(coordinate, changed, ctx, "worker");
     assert.deepEqual(await hashes(), [before[0]], "omitted channels are still removed by whole-entry publication");

@@ -185,8 +185,8 @@ test("{§exec-stream-page} a failed execution with output on both channels is on
             assert.equal(rows.length, 2, "one terminal READ per channel that holds content");
             const failed = rows.filter((row) => row.status_rx >= 400);
             assert.equal(failed.length, 1, "the execution's failure rides one row");
-            assert.equal(failed[0]!.fragment, "stdout", "the default channel's row carries it");
-            assert.equal(JSON.parse(failed[0]!.rx).problem?.type, "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal");
+            assert.equal(failed[0].fragment, "stdout", "the default channel's row carries it");
+            assert.equal(JSON.parse(failed[0].rx).problem?.type, "https://problems.plurnk.xyz/executor/subprocess/terminated-by-signal");
             const sibling = rows.find((row) => row.status_rx < 400)!;
             assert.equal(sibling.status_rx, 200);
             assert.equal(JSON.parse(sibling.rx).problem, undefined, "the sibling row is a plain read of its channel");

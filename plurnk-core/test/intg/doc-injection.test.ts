@@ -34,7 +34,7 @@ test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worke
                 }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/AGENTS.md");
                 assert.ok(docRead !== undefined, "model turn-0 carries a READ of worker:///_plurnk/AGENTS.md");
-                assert.equal(docRead!.status_rx, 200, "the stunt READ hits the materialized entry, not a 404");
+                assert.equal(docRead.status_rx, 200, "the stunt READ hits the materialized entry, not a 404");
 
                 const editInInferenceLoop = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/_plurnk/AGENTS.md");
                 assert.equal(editInInferenceLoop, undefined, "the materializing EDIT lives in its own administrative turn");

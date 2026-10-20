@@ -243,11 +243,11 @@ test("{§bare-inference}: missing resources preserve the source error without ca
         assert.deepEqual(child.completions, ["survivor"]);
         const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
         assert.equal(rows.length, 2);
-        const failure = JSON.parse(rows[0]!.rx);
+        const failure = JSON.parse(rows[0].rx);
         assert.equal(failure.status, 404);
         assert.match(failure.problem.type, /\/entry-not-found$/);
-        assert.equal(rows[0]!.model_call_id, null);
-        assert.notEqual(rows[1]!.model_call_id, null);
+        assert.equal(rows[0].model_call_id, null);
+        assert.notEqual(rows[1].model_call_id, null);
         const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
         assert.equal(calls.filter(({ kind }) => kind === "bare").length, 1);
     } finally { await db.close(); }

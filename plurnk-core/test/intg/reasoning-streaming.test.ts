@@ -51,7 +51,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         assert.deepEqual(events.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => event.delta), ["Visible now."]);
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_END").length, 1);
         const rows = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
-        assert.equal(rows[0]!.content, "Visible now.");
+        assert.equal(rows[0].content, "Visible now.");
     } finally {
         await db.close();
     }
@@ -130,7 +130,7 @@ ONLY_${name}
             const { name, workerId } = workers[index];
             assert.equal(status, 200);
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
-            const response = JSON.parse(calls[0]!.response);
+            const response = JSON.parse(calls[0].response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
             assert.equal(response.assistant.content, `\`\`\`\`SEND [200]\nONLY_${name}
 \`\`\`\``);

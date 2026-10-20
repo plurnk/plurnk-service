@@ -43,8 +43,8 @@ test("{§readable-channel} an HTML source lands with its readable projection bes
         assert.equal((await dispatch(editStmt(page, HTML))).status, 201);
         const derived = await channel("/users.html", "readable");
         assert.equal(derived?.mimetype, "text/markdown");
-        assert.match(String(derived?.content), /Team Roster/);
-        assert.doesNotMatch(String(derived?.content), /<h1>/, "the projection is the Markdown, not the markup");
+        assert.match(derived.content, /Team Roster/);
+        assert.doesNotMatch(derived.content, /<h1>/, "the projection is the Markdown, not the markup");
         assert.equal((await dispatch(editStmt(page, "    <h1>Crew Roster</h1>", { marks: [3] }))).status, 200);
         assert.match(String((await channel("/users.html", "readable"))?.content), /Crew Roster/, "a source write refreshes the projection");
         assert.equal((await dispatch(editStmt(page, "<html><body><!-- nothing readable --></body></html>", { marks: [1, -1] }))).status, 200);
@@ -136,7 +136,7 @@ test("{§channel-selection-visibility} a tracked .html member materializes with 
         assert.equal(source?.content, HTML, "the source channel is the file verbatim");
         const projection = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "readable" });
         assert.equal(projection?.mimetype, "text/markdown");
-        assert.match(String(projection?.content), /Team Roster/);
+        assert.match(projection.content, /Team Roster/);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
 
@@ -30,4 +33,25 @@ test("{§native-source-toolchain}: source checking has one modern ECMAScript mod
                 `${workspace} inherits ${option}; browser-specific checking belongs in its own config`);
         }
     }
+});
+
+test("{§lint-gate} every file the type-aware lint reads is in the program of a tsconfig.json", async () => {
+    const repository = fileURLToPath(root);
+    const tracked = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repository, encoding: "utf8" })
+        .split("\n").filter(Boolean);
+    const { ignorePatterns } = JSON.parse((await readFile(new URL(".oxlintrc.json", root), "utf8")).replaceAll(/^\s*\/\/.*$/gmu, ""));
+    const ignored = ignorePatterns.map((pattern) => {
+        const directory = /^\*\*\/([^/*]+)\/\*\*$/u.exec(pattern)?.[1];
+        assert.ok(directory, `${pattern} names one directory`);
+        return directory;
+    });
+    const contained = new Set();
+    for (const project of tracked.filter((file) => path.basename(file) === "tsconfig.json")) {
+        const program = execFileSync(path.join(repository, "node_modules/.bin/tsc"), ["--listFilesOnly", "-p", project], { cwd: repository, encoding: "utf8" });
+        for (const file of program.split("\n").filter(Boolean)) contained.add(path.resolve(repository, file));
+    }
+    const outside = tracked
+        .filter((file) => /\.[cm]?[jt]sx?$/u.test(file) && !path.dirname(file).split("/").some((segment) => ignored.includes(segment)))
+        .filter((file) => !contained.has(path.resolve(repository, file)));
+    assert.deepEqual(outside, [], "files in no tsconfig.json program");
 });

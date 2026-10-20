@@ -75,7 +75,7 @@ test("{§a2a-inbound-exposure}: same-Context Tasks finish and cancel independent
         assert.equal(aWorker.parentWorkerId, bWorker.parentWorkerId);
         assert.equal(aWorker.parentWorkerId, await daemon.ensureRuntimeWorker(workspaceId));
         assert.deepEqual((await daemon.listWorkers(workspaceId, { origin: "model" })).map(({ name }) => name).toSorted(),
-            [a.id, b.id].toSorted((x, y) => String(x).localeCompare(String(y))), "Context identity creates no extra Worker");
+            [a.id, b.id].toSorted((x, y) => x.localeCompare(y)), "Context identity creates no extra Worker");
         const third = observe(client, "Keep another sibling in flight.", a.contextId);
         const c = await third.admitted;
         const signal = await thirdCall.promise;
@@ -349,7 +349,7 @@ test("{§a2a-inbound-exposure}: simultaneous first Tasks share only their opaque
         const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const pending = [observe(client, "First task", "shared"), observe(client, "Second task", "shared")];
         const tasks = await Promise.all(pending.map(({ admitted }) => admitted));
-        assert.notEqual(tasks[0]!.id, tasks[1]!.id);
+        assert.notEqual(tasks[0].id, tasks[1].id);
         const workspaces = await daemon.listWorkspaces();
         assert.equal(workspaces.length, 1, "concurrent admission resolves one workspace");
         const workspaceId = workspaces[0].id;
