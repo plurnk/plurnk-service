@@ -177,12 +177,13 @@ as its `mimeType`; a result without a body is its receipt as text. No receipt ca
 the model edits by (`lineAnchors`, `lineAnchorIdentity`, `lineNumberWidth`). The live `TOOL_CALL_RESULT`, the
 snapshot's tool message and a `plurnk.ambient` row follow one rule, so live and replayed messages agree:
 an ambient row's `rx` is its receipt without the body, beside `body: { url, mimeType }`. A reply's words
-are speech and travel inline ({§agui-call-result}).
+are speech and travel inline ({§agui-call-result}). A Run that negotiated reasoning by link receives a turn's
+reasoning the same way: its message holds no text and names the reasoning's address ({§agui-reasoning-link}).
 
 | Fact | Rule |
 | --- | --- |
-| The address | `<origin>/agui/<workspaceId>/<workerId>/log/L/T/S/OP`: the HTTP form of the row's log address ({§methods-log-coordinate}), at the configured public origin, else the one the Run's request reached ({§http-request-origin}) |
-| The fetch | `GET` at that address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers the body with `content-type: <mimetype>; charset=utf-8` and `cache-control: no-store`; a row that holds none is `404 body-not-found`, and a worker outside the workspace is the daemon's own refusal |
+| The address | `<origin>/agui/<workspaceId>/<workerId>/log/L/T/S/OP`: the HTTP form of the row's log address ({§methods-log-coordinate}), at the configured public origin, else the one the Run's request reached ({§http-request-origin}); a turn's reasoning is `<origin>/agui/<workspaceId>/<workerId>/reasoning/L/T`, the HTTP form of `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
+| The fetch | `GET` at either address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers with `cache-control: no-store`: the body as `content-type: <mimetype>; charset=utf-8`, or the turn's reasoning, `ApplicationPort.readReasoning` ({§methods-reasoning-read}), as `text/plain; charset=utf-8`; a row that holds no body is `404 body-not-found`, a turn that reasoned none `404 reasoning-not-found`, and a worker outside the workspace is the daemon's own refusal |
 
 ## §agui-projection The projection
 
@@ -196,6 +197,7 @@ are speech and travel inline ({§agui-call-result}).
 | {§agui-outside-text} | `outside/event` — `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and… |
 | {§agui-lifecycle-projection} | Lifecycle, memory and speech remain distinct. |
 | {§agui-readable-reasoning} | Readable provider reasoning uses AG-UI's standard reasoning channel. |
+| {§agui-reasoning-link} | A Run may negotiate its reasoning by link. |
 | {§agui-encrypted-reasoning} | The encrypted-reasoning interface is not implemented. |
 | {§agui-custom-namespace} | The custom namespace |
 | {§agui-plurnk-metadata} | plurnk facts ride standard metadata. |
@@ -240,7 +242,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | transport failure after SSE opens          | `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`, the exact Problem Details as its metadata, {§agui-plurnk-metadata}) |
 | `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/workspace/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
 | `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
-| `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
+| `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning}; for a Run that negotiated reasoning by link, each delta is `CUSTOM plurnk.reasoning` instead {§agui-reasoning-link} |
 | §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` alone: execution metadata, the stream's progress and its exact universal `result`, including RFC 9457 Problem Details, as they happen. Never a conversation message; the execution's result reaches the conversation through its observation {§agui-call-result}. AG-UI does not reconstruct failure from a status or summary. |
 
@@ -270,17 +272,27 @@ span it opened before its `RUN_ERROR`; the request streams on to every Run still
 that joins after a request's reasoning began presents none of that request's deltas.
 
 Core also derives a turn's optional complete `reasoning` onto its first model operation
-row from the durable packet ({§methods-readable-reasoning}). When that value was not
-already delivered by the completed live stream, projection emits it atomically before
-that row under the identity of the request that streamed it, `model-call-<call>/request-<n>/reasoning`
-({§methods-readable-reasoning}); history a FORK inherited, which no request of this worker streamed,
-is `<coordinate>/reasoning`. A standard interrupt may divide one durable Loop across consecutive
-AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
+row from the durable packet ({§methods-readable-reasoning}). It reaches the Run's client once per turn,
+before that row: when the client holds the message of the request that streamed it, it is already there;
+otherwise projection emits it atomically under that request's identity,
+`model-call-<call>/request-<n>/reasoning` ({§methods-readable-reasoning}); history a FORK inherited, which
+no request of this worker streamed, is `<coordinate>/reasoning`. A standard interrupt may divide one durable
+Loop across consecutive AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
 before the stopped operation is released. The accepted request's reasoning keeps its live identity in
 `MESSAGES_SNAPSHOT`, once per turn, so a snapshot leaves it where the live stream put it and drops only the
 transient reasoning of failed or rejected requests. Empty evidence emits nothing, NOTE never substitutes for
-reasoning ({§agui-lifecycle-projection}), and a response row still precedes its text
-sequence.
+reasoning ({§agui-lifecycle-projection}), and a response row still precedes its text sequence.
+
+§agui-reasoning-link **A Run may negotiate its reasoning by link.** A Run whose
+`forwardedProps.plurnk.reasoning` is `"link"` receives every turn's reasoning by reference
+({§agui-body-reference}) rather than as text; any other value is `400 reasoning-invalid`.
+
+| Where | What it receives |
+| --- | --- |
+| The live stream | the same balanced lifecycle, its message holding no text; each exact delta as `CUSTOM plurnk.reasoning` `{ messageId, delta }`, a preview no message holds, so its client neither keeps nor uploads it |
+| The turn's row | `metadata.plurnk.body`, `{ url, mimeType: "text/plain" }` at the turn's reasoning address, folded onto the message the client holds by a repeated `REASONING_MESSAGE_START` and `REASONING_MESSAGE_END`, or the message whole, holding no text, when the client holds none |
+| `MESSAGES_SNAPSHOT` | each turn's reasoning once under its live identity, holding no text, with that link |
+| A `plurnk.ambient` row | another worker's row names its reasoning by `reasoning: { url, mimeType }` in place of the text |
 
 - **An op row IS a tool call** — its coordinate `L/T/S`, from the row's ordinals
   ({§methods-log-coordinate}), is the `toolCallId`; its durable statement is the args, every
@@ -294,7 +306,7 @@ sequence.
   service cannot read would add surface without adding capability. Readable reasoning
   streams and snapshot replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
-  `CUSTOM` events named `plurnk.*` (`plurnk.ambient`, `plurnk.notice`, `plurnk.outside`, `plurnk.stream`,
+  `CUSTOM` events named `plurnk.*` (`plurnk.ambient`, `plurnk.notice`, `plurnk.outside`, `plurnk.reasoning` for a Run that negotiated it, `plurnk.stream`,
   `plurnk.descendant` for a descendant outside any subagent, and `plurnk.problem` for a Problem that ends no
   Run, such as an unavailable provider catalog): facts with no standard subject. Generic frontends skip unknown
   customs; plurnk-aware frontends render them richly. Nothing plurnk-specific ever masquerades as a core event.
@@ -312,6 +324,7 @@ sequence.
   | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews |
   | A client interaction's `Interrupt` ({§agui-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
+  | A reasoning message of a Run that negotiated reasoning by link (`REASONING_MESSAGE_START`, folded onto the message, and its snapshot message) | `body`: `{ url, mimeType }`, the address of its turn's reasoning ({§agui-reasoning-link}) |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
@@ -1085,6 +1098,7 @@ reconstruct one from `RUN_ERROR`.
 | `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `body-not-found` | 404 | The row holds no body at this address ({§agui-body-reference}). |
+| `reasoning-not-found` | 404 | The turn holds no reasoning at this address ({§agui-body-reference}). |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
 | `thread-not-found` | 404 | The thread has no conversation. |
@@ -1106,6 +1120,7 @@ reconstruct one from `RUN_ERROR`.
 | `project-root-invalid` | 400 | projectRoot must be a string or null. |
 | `settings-invalid` | 400 | settings must be a string or an object. |
 | `interactive-invalid` | 400 | interactive must be a boolean. |
+| `reasoning-invalid` | 400 | reasoning must be "link" ({§agui-reasoning-link}). |
 | `interrupts-invalid` | 400 | interrupts must be an array of strings. |
 | `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
 | `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |

@@ -60,6 +60,13 @@ JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
 WHERE le.id = $id;
 
+-- PREP: log_turn_reasoning
+-- {§methods-reasoning-read}: a turn's readable reasoning source, by its worker and display coordinate.
+SELECT s.content
+FROM loops l JOIN turns t ON t.loop_id = l.id
+JOIN turn_sources s ON s.turn_id = t.id AND s.kind = 'reasoning' AND s.sequence = 0
+WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq;
+
 -- PREP: log_entries_recent
 -- {§methods-log-read}: the newest rows a client asks for, hydrated exactly as log_entry_by_id
 -- hydrates one — a page is one statement, never one statement per row.

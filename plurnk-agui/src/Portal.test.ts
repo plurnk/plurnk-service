@@ -1030,7 +1030,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
             op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/client/messages/m1"] },
             loop_seq: 1, turn_seq: 1, sequence: 3,
             tx: { body: "continued" },
-            reasoning: "working",
+            reasoning: "working", reasoning_model_call_id: 8, reasoning_request_sequence: 1,
             turn_id: 1,
         },
     });

@@ -48,7 +48,7 @@ type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
     readonly modelWorkerId: number | null;
-    readonly completedReasoning: ReadonlyArray<readonly [number, readonly string[]]>;
+    readonly reasoning: ReadonlyArray<readonly [number, { readonly held: readonly string[]; readonly delivered: boolean }]>;
     readonly held: readonly string[];
 }
 
@@ -62,8 +62,12 @@ export default class Translator {
     #workspaceId: number;
     // {§agui-body-reference} The origin this Run's client reached the daemon at: its rows' bodies are fetched there.
     readonly #origin: string;
-    #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
-    #completedReasoning = new Map<number, string[]>();
+    #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string }>();
+    // {§agui-readable-reasoning} By turn, the reasoning messages this Run's client holds from the live stream, and whether
+    // the turn's admitted reasoning has reached it.
+    #reasoning = new Map<number, { held: Set<string>; delivered: boolean }>();
+    // {§agui-reasoning-link} Whether this Run negotiated its reasoning by link.
+    readonly #reasoningByLink: boolean;
     // {§agui-snapshot} {§agui-message-acceptance} The messages whose words this Run's client holds: those it submitted
     // and those its snapshot carried as accepted; their arrival rows fold their facts onto them.
     #submitted = new Set<string>();
@@ -85,6 +89,8 @@ export default class Translator {
         subagent?: { readonly runId: string; readonly worker: string };
         // {§agui-subagents} A subagent's translator shares its Run's held calls: one client holds them all.
         held?: Set<string>;
+        // {§agui-reasoning-link} The Run negotiated its reasoning by link.
+        reasoningByLink?: boolean;
     }) {
         this.#subagent = args.subagent ?? null;
         this.#threadId = args.threadId;
@@ -92,9 +98,10 @@ export default class Translator {
         this.#runId = args.runId;
         this.#currentTurn = args.continuation?.currentTurn ?? null;
         this.#modelWorkerId = args.continuation?.modelWorkerId ?? args.modelWorkerId ?? null;
-        this.#completedReasoning = new Map(
-            args.continuation?.completedReasoning.map(([turnId, values]) => [turnId, [...values]]) ?? [],
+        this.#reasoning = new Map(
+            args.continuation?.reasoning.map(([turnId, { held, delivered }]) => [turnId, { held: new Set(held), delivered }]) ?? [],
         );
+        this.#reasoningByLink = args.reasoningByLink === true;
         this.#held = args.held ?? new Set(args.continuation?.held ?? []);
         this.#workspaceId = args.workspaceId;
         this.#origin = args.origin;
@@ -107,7 +114,7 @@ export default class Translator {
         return {
             currentTurn: this.#currentTurn,
             modelWorkerId: this.#modelWorkerId,
-            completedReasoning: [...this.#completedReasoning].map(([turnId, values]) => [turnId, [...values]]),
+            reasoning: [...this.#reasoning].map(([turnId, { held, delivered }]) => [turnId, { held: [...held], delivered }]),
             held: [...this.#held],
         };
     }
@@ -158,7 +165,7 @@ export default class Translator {
         }
         this.#currentTurn = null;
         this.#stepOpen = false;
-        this.#completedReasoning.clear();
+        this.#reasoning.clear();
         return this.#attributed(events);
     }
 
@@ -183,7 +190,8 @@ export default class Translator {
     // {§agui-subagents} The translator of a subagent run this Run presents: its own namespace, this Run's client.
     subagentTranslator(args: { readonly modelWorkerId: number; readonly subagent: { readonly runId: string; readonly worker: string } }): Translator {
         return new Translator({ threadId: this.#threadId, runId: this.#runId, origin: this.#origin, modelWorkerId: args.modelWorkerId,
-            workspaceId: this.#workspaceId, subagent: args.subagent, held: this.#held, replyThreads: this.#replyThreads });
+            workspaceId: this.#workspaceId, subagent: args.subagent, held: this.#held, replyThreads: this.#replyThreads,
+            reasoningByLink: this.#reasoningByLink });
     }
 
     // {§agui-proposal-resolve} A gate's call: the operation awaiting its decision, built as its row builds it and so
@@ -207,7 +215,7 @@ export default class Translator {
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-ambient} A row that builds nothing in the conversation rides whole.
-        const ambient = (): AguiEvent => ({ type: EventType.CUSTOM, name: "plurnk.ambient", value: this.#leanRow(e) });
+        const ambient = (): AguiEvent => ({ type: EventType.CUSTOM, name: "plurnk.ambient", value: this.#leanRow(e, foreign) });
         if (foreign) return [ambient()];
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         const arrival = this.#arrival(e);
@@ -258,10 +266,7 @@ export default class Translator {
             }
             return events;
         }
-        if (e.op !== null) {
-            events.push(...Translator.#readableReasoningEvents(Translator.#reasoningId(e, id),
-                Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
-        }
+        if (e.op !== null) events.push(...this.#admittedReasoning(e, id));
         // {§agui-projection} — a reply SEND speaks; so does a WAIT that carries a body (#1003): the card
         // teaches both as the worker's words to the user. A bodiless WAIT is an operation like any other.
         const text = Translator.#txBody(e.tx);
@@ -311,7 +316,6 @@ export default class Translator {
                 loopId: event.loopId,
                 requestSequence: event.requestSequence,
                 messageId,
-                content: "",
             });
             events.push(
                 { type: EventType.REASONING_START, messageId },
@@ -328,14 +332,15 @@ export default class Translator {
         if (active.turnId !== event.turnId || active.loopId !== event.loopId) {
             throw new TypeError(`Reasoning model call ${event.modelCallId} changed its loop or turn identity.`);
         }
+        // {§agui-reasoning-link} The live text: the message's own content, or, for a Run that negotiated reasoning by link,
+        // a preview no message holds.
         if (event.phase === "content") {
-            active.content += event.delta;
-            return [{ type: EventType.REASONING_MESSAGE_CONTENT, messageId: active.messageId, delta: event.delta }];
+            return [this.#reasoningByLink
+                ? { type: EventType.CUSTOM, name: "plurnk.reasoning", value: { messageId: active.messageId, delta: event.delta } }
+                : { type: EventType.REASONING_MESSAGE_CONTENT, messageId: active.messageId, delta: event.delta }];
         }
         this.#activeReasoning.delete(event.modelCallId);
-        const completed = this.#completedReasoning.get(event.turnId) ?? [];
-        completed.push(active.content);
-        this.#completedReasoning.set(event.turnId, completed);
+        this.#turnReasoning(event.turnId).held.add(active.messageId);
         return [
             { type: EventType.REASONING_MESSAGE_END, messageId: active.messageId },
             { type: EventType.REASONING_END, messageId: active.messageId },
@@ -360,7 +365,7 @@ export default class Translator {
         this.#currentTurn = null;
         this.#stepOpen = false;
         this.#activeReasoning.clear();
-        this.#completedReasoning.clear();
+        this.#reasoning.clear();
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
@@ -422,11 +427,12 @@ export default class Translator {
         const order = (e: LogEntryWire): number => e.id;
         const rows = parts.flatMap(({ translator, entries }) => entries.map((e) => ({ translator, e })))
             .toSorted((left, right) => order(left.e) - order(right.e));
-        const delivered = new Map<Translator, Map<number, string[]>>();
+        // {§agui-readable-reasoning} The turns whose reasoning each translator's messages already hold.
+        const reasoned = new Map<Translator, Set<number>>();
         for (const { translator, e } of rows) {
-            const reasoning = delivered.get(translator) ?? new Map<number, string[]>();
-            delivered.set(translator, reasoning);
-            translator.#replayRow(e, messages, reasoning);
+            const turns = reasoned.get(translator) ?? new Set<number>();
+            reasoned.set(translator, turns);
+            translator.#replayRow(e, messages, turns);
         }
         // {§agui-message-acceptance} The accepted messages the bound worker has not yet observed, after every row: each a
         // client on this thread sent, under that client's id; the client then holds its words, and its arrival folds.
@@ -452,7 +458,7 @@ export default class Translator {
             metadata: { plurnk: { message: message.path, loop: message.loopId, lifecycle: message.lifecycle, source: message.source, published: false } } };
     }
 
-    #replayRow(e: LogEntryWire, messages: ReplayMessage[], deliveredReasoning: Map<number, string[]>): void {
+    #replayRow(e: LogEntryWire, messages: ReplayMessage[], reasoned: Set<number>): void {
         const attributed = <T extends ReplayMessage>(message: T): T => this.#subagent === null ? message : { ...message, subagentRunId: this.#subagent.runId };
         const id = this.#id(e);
         const metadata = Translator.#rowMetadata(e);
@@ -477,8 +483,15 @@ export default class Translator {
             }
             return;
         }
-        const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
-        if (reasoning.length > 0) messages.push(attributed({ id: Translator.#reasoningId(e, id), role: "reasoning", content: reasoning }));
+        // {§agui-readable-reasoning} {§agui-reasoning-link} Each turn's admitted reasoning once, under its live identity: its
+        // text, or its link for a Run that negotiated it.
+        if (typeof e.reasoning === "string" && e.reasoning.length > 0 && !reasoned.has(Translator.#reasoningTurn(e))) {
+            reasoned.add(Translator.#reasoningTurn(e));
+            const reasoningId = Translator.#reasoningId(e, id);
+            messages.push(attributed(this.#reasoningByLink
+                ? { id: reasoningId, role: "reasoning", content: "", metadata: { plurnk: { body: this.#reasoningBody(e) } } }
+                : { id: reasoningId, role: "reasoning", content: e.reasoning }));
+        }
         const text = Translator.#txBody(e.tx);
         if (response || Translator.#waitSpeech(e, text)) {
             messages.push(attributed({ id, role: "assistant", content: text, metadata: Translator.#speechMetadata(e) }));
@@ -563,31 +576,58 @@ export default class Translator {
         }
         this.#currentTurn = turnId;
         this.#stepOpen = true;
-        this.#completedReasoning.clear();
+        this.#reasoning.clear();
         events.push({ type: EventType.STEP_STARTED, stepName: `turn-${turnId}` });
         return events;
     }
 
-    static #claimReasoning(delivered: Map<number, string[]>, turnId: unknown, value: unknown): string {
-        if (typeof value !== "string" || value.length === 0) return "";
-        if (typeof turnId !== "number") return value;
-        const prior = delivered.get(turnId) ?? [];
-        if (prior.some((text) => text === value || text.endsWith(value))) return "";
-        delivered.set(turnId, [...prior, value]);
-        return value;
+    #turnReasoning(turnId: number): { held: Set<string>; delivered: boolean } {
+        const known = this.#reasoning.get(turnId);
+        if (known !== undefined) return known;
+        const fresh = { held: new Set<string>(), delivered: false };
+        this.#reasoning.set(turnId, fresh);
+        return fresh;
     }
 
-    // {§agui-readable-reasoning} Durable reasoning precedes the turn's first
-    // speech or note projection when live delivery has not already supplied it.
-    static #readableReasoningEvents(messageId: string, value: unknown): AguiEvent[] {
-        if (typeof value !== "string" || value.length === 0) return [];
-        return [
-            { type: EventType.REASONING_START, messageId },
-            { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
-            { type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta: value },
+    // {§agui-readable-reasoning} A turn's admitted reasoning reaches this Run's client once, before the row that carries it:
+    // nothing more when the client holds the request's message from the live stream, else the message whole. For a Run
+    // that negotiated reasoning by link ({§agui-reasoning-link}) the message holds no text, and its link folds onto the
+    // message the client holds, or rides the message that arrives whole.
+    #admittedReasoning(e: LogEntryNotification["entry"], id: string): AguiEvent[] {
+        if (typeof e.reasoning !== "string" || e.reasoning.length === 0) return [];
+        const turn = this.#turnReasoning(Translator.#reasoningTurn(e));
+        if (turn.delivered) return [];
+        turn.delivered = true;
+        const messageId = Translator.#reasoningId(e, id);
+        const held = turn.held.has(messageId);
+        if (!this.#reasoningByLink) {
+            return held ? [] : [
+                { type: EventType.REASONING_START, messageId },
+                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
+                { type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta: e.reasoning },
+                { type: EventType.REASONING_MESSAGE_END, messageId },
+                { type: EventType.REASONING_END, messageId },
+            ];
+        }
+        const message: AguiEvent[] = [
+            { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning", metadata: { plurnk: { body: this.#reasoningBody(e) } } },
             { type: EventType.REASONING_MESSAGE_END, messageId },
-            { type: EventType.REASONING_END, messageId },
         ];
+        return held ? message : [{ type: EventType.REASONING_START, messageId }, ...message, { type: EventType.REASONING_END, messageId }];
+    }
+
+    // {§methods-readable-reasoning} Reasoning is its turn's: a row carries it only beside the turn it belongs to.
+    static #reasoningTurn(e: { turn_id?: unknown }): number {
+        if (!isSafeInteger(e.turn_id)) throw new TypeError("A row that carries reasoning names its turn.");
+        return e.turn_id;
+    }
+
+    // {§agui-body-reference} The HTTP form of a turn's reasoning source, `reasoning://<worker>/L/T`, at this daemon.
+    #reasoningBody(e: BodyRow): { url: string; mimeType: string } {
+        if (!isSafeInteger(e.worker_id) || !isSafeInteger(e.loop_seq) || !isSafeInteger(e.turn_seq)) {
+            throw new TypeError("A row that carries reasoning names its worker, loop and turn.");
+        }
+        return { url: `${this.#origin}/agui/${this.#workspaceId}/${e.worker_id}/reasoning/${e.loop_seq}/${e.turn_seq}`, mimeType: "text/plain" };
     }
 
     static #modelArtifactKind(attrs: unknown): "emissionAttempt" | null {
@@ -710,11 +750,20 @@ export default class Translator {
         return [{ type: "text", text }, { type: "document", source: { type: "url", value: lean.body.url, ...lean.body.mimeType } }];
     }
 
-    // {§agui-body-reference} A whole row as its client receives it: its receipt as a result's, and its body's URL.
-    #leanRow<T extends BodyRow>(e: T): T | (Omit<T, "rx"> & { rx: Record<string, unknown>; body?: { url: string; mimeType?: string } }) {
+    // {§agui-body-reference} A whole row as its client receives it: its receipt as a result's and its body's URL. Its
+    // reasoning rides it only for another worker's row, whose reasoning no message of this Run holds: the text, or its URL
+    // for a Run that negotiated reasoning by link ({§agui-reasoning-link}).
+    #leanRow(e: BodyRow & { reasoning?: unknown }, foreign: boolean): Record<string, unknown> {
+        const { reasoning, ...row } = e;
         const lean = this.#lean(e);
-        if (lean === null) return e;
-        return { ...e, rx: lean.receipt, ...(lean.body === null ? {} : { body: { url: lean.body.url, ...lean.body.mimeType } }) };
+        const carried = foreign && typeof reasoning === "string" && reasoning.length > 0
+            ? { reasoning: this.#reasoningByLink ? this.#reasoningBody(e) : reasoning }
+            : {};
+        return {
+            ...row,
+            ...(lean === null ? {} : { rx: lean.receipt, ...(lean.body === null ? {} : { body: { url: lean.body.url, ...lean.body.mimeType } }) }),
+            ...carried,
+        };
     }
 
     // {§agui-body-reference} A receipt without its body and the line anchors only the model edits by, and the body's

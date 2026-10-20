@@ -17,7 +17,7 @@ import {
     termination,
 } from "../test/notification-fixture.ts";
 
-const router = () => new EventRouter({ origin: ORIGIN, threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
+const router = (options: { reasoningByLink?: boolean } = {}) => new EventRouter({ origin: ORIGIN, threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3, ...options });
 
 test("{§agui-workspace-state} workspace preparation is replaceable state, never model or transcript traffic", () => {
     const r = router();
@@ -58,6 +58,11 @@ test("{§agui-gate-deferral} reasoning/event validates and projects the standard
         ["REASONING_MESSAGE_END", "REASONING_END"],
     );
     assert.equal(r.reasoningOpen, false, "{§agui-gate-deferral}: the end phase closes the lifecycle");
+    // {§agui-reasoning-link} A Run that negotiated reasoning by link receives each delta as a preview no message holds.
+    const linked = router({ reasoningByLink: true });
+    linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "start" });
+    assert.deepEqual(linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }),
+        [{ type: "CUSTOM", name: "plurnk.reasoning", value: { messageId: "model-call-4/request-1/reasoning", delta: "live" } }]);
 });
 
 test("{§agui-projection} log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {

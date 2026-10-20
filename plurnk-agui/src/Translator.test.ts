@@ -382,10 +382,10 @@ test("{§agui-projection} live provider reasoning projects ordered deltas before
         turn_id: 7,
         loop_seq: 1, turn_seq: 7, sequence: 3,
         tx: { body: "answer" },
-        reasoning: "checked the evidence",
+        reasoning: "checked the evidence", reasoning_model_call_id: 11, reasoning_request_sequence: 1,
         ...( { worker_id: 2 } as object),
     }));
-    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the matching durable projection is replay authority, not a second live message");
+    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the request the client streamed is not delivered a second time");
 });
 
 for (const origin of ["model", "_plurnk"] as const) {
@@ -405,7 +405,8 @@ for (const origin of ["model", "_plurnk"] as const) {
         tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "resumed", continuation: interrupted.continuation });
         assert.deepEqual(tr.runStarted().at(-1), { type: "STEP_STARTED", stepName: "turn-7" });
         events.push(...tr.logEntry(settled));
-        events.push(...tr.logEntry(entry({ op: "WAIT", turn_id: 7, tx: { body: "recorded" }, reasoning: "checked the evidence" })));
+        events.push(...tr.logEntry(entry({ op: "WAIT", turn_id: 7, tx: { body: "recorded" }, reasoning: "checked the evidence",
+            reasoning_model_call_id: 11, reasoning_request_sequence: 1 })));
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
             "receipt updates preserve delivered reasoning across the interruption");
         assert.deepEqual(tr.finish(), [{ type: "STEP_FINISHED", stepName: "turn-7" }]);
@@ -415,11 +416,13 @@ for (const origin of ["model", "_plurnk"] as const) {
 for (const streamed of [false, true]) {
     test(`{§agui-readable-reasoning}: SEND and WAIT share one reasoning projection across interrupts (streamed=${streamed})`, () => {
         let tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 10 });
+        // Every model operation row of a turn names the request that streamed its reasoning.
+        const first = { reasoning_model_call_id: 11, reasoning_request_sequence: 1 };
         const rows = [
-            entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 1, tx: { body: "progress" }, reasoning: "checked the evidence" }),
-            entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "answer" }, reasoning: "checked the evidence" }),
-            entry({ id: 12, op: "WAIT", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 3, tx: { body: "recorded" }, reasoning: "checked the evidence" }),
-            entry({ id: 13, op: "SEND", status_rx: 200, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, tx: { body: "done" }, reasoning: "checked the evidence" }),
+            entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 1, tx: { body: "progress" }, reasoning: "checked the evidence", ...first }),
+            entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "answer" }, reasoning: "checked the evidence", ...first }),
+            entry({ id: 12, op: "WAIT", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 3, tx: { body: "recorded" }, reasoning: "checked the evidence", ...first }),
+            entry({ id: 13, op: "SEND", status_rx: 200, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, tx: { body: "done" }, reasoning: "checked the evidence", reasoning_model_call_id: 12, reasoning_request_sequence: 1 }),
         ];
         const events = streamed ? [
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
@@ -473,10 +476,10 @@ test("{§agui-plurnk-metadata} a retried physical request receives a separate re
         op: "SEND",
         turn_id: 7,
         loop_seq: 1, turn_seq: 7, sequence: 3,
-        reasoning: "accepted reasoning",
+        reasoning: "accepted reasoning", reasoning_model_call_id: 11, reasoning_request_sequence: 2,
         ...( { worker_id: 2 } as object),
     }));
-    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the accepted request's durable reasoning is not replayed");
+    assert.ok(!send.some((event) => event.type.startsWith("REASONING_")), "the accepted request the client streamed is not delivered again");
 });
 
 test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
@@ -514,6 +517,90 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
         send.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
         ["whole reasoning"],
     );
+});
+
+// {§agui-reasoning-link} A Run that negotiated reasoning by link: the text never rides a message, only its link does.
+const linked = (args: { modelWorkerId?: number; continuation?: ReturnType<Translator["interrupt"]>["continuation"] } = {}) =>
+    new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", reasoningByLink: true, modelWorkerId: 2, ...args });
+const link = (worker: number, turn: string) => ({ plurnk: { body: { url: `${ORIGIN}/agui/3/${worker}/reasoning/${turn}`, mimeType: "text/plain" } } });
+
+test("{§agui-reasoning-link} live reasoning opens an empty message, its text an ephemeral preview, and its row folds the link on", () => {
+    const tr = linked();
+    const live = (phase: "start" | "end" | "content", delta = "") => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1,
+        ...(phase === "content" ? { phase, delta } : { phase }) });
+    const messageId = "model-call-11/request-1/reasoning";
+    assert.deepEqual(live("start").filter(({ type }) => type.startsWith("REASONING_")), [
+        { type: "REASONING_START", messageId },
+        { type: "REASONING_MESSAGE_START", messageId, role: "reasoning" },
+    ]);
+    assert.deepEqual([...live("content", "checked "), ...live("content", "the evidence")], [
+        { type: "CUSTOM", name: "plurnk.reasoning", value: { messageId, delta: "checked " } },
+        { type: "CUSTOM", name: "plurnk.reasoning", value: { messageId, delta: "the evidence" } },
+    ], "each exact delta previews the message it belongs to, and no message holds it");
+    assert.deepEqual(live("end"), [{ type: "REASONING_MESSAGE_END", messageId }, { type: "REASONING_END", messageId }]);
+    const row = (sequence: number) => tr.logEntry(entry({ op: "SEND", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence, tx: { body: "answer" },
+        reasoning: "checked the evidence", reasoning_model_call_id: 11, reasoning_request_sequence: 1, ...({ worker_id: 2 } as object) }));
+    assert.deepEqual(row(3).filter(({ type }) => type.startsWith("REASONING_")), [
+        { type: "REASONING_MESSAGE_START", messageId, role: "reasoning", metadata: link(2, "1/7") },
+        { type: "REASONING_MESSAGE_END", messageId },
+    ], "the row folds the link onto the message the client holds, and opens no second one");
+    assert.ok(!row(4).some(({ type }) => type.startsWith("REASONING_")), "a turn's reasoning reaches its client once");
+});
+
+test("{§agui-reasoning-link} reasoning the client did not stream arrives whole and empty, carrying its link: a late join, a FORK's history, a subagent's", () => {
+    const whole = (events: AguiEvent[]) => events.filter(({ type }) => type.startsWith("REASONING_")).map((event) => [event.type, (event as { metadata?: unknown }).metadata]);
+    const late = linked();
+    assert.deepEqual(late.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), [], "no preview of a request joined midway");
+    assert.deepEqual(whole(late.logEntry(entry({ op: "SEND", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 3, reasoning: "whole reasoning",
+        reasoning_model_call_id: 11, reasoning_request_sequence: 1, ...({ worker_id: 2 } as object) }))),
+        [["REASONING_START", undefined], ["REASONING_MESSAGE_START", link(2, "1/7")], ["REASONING_MESSAGE_END", undefined], ["REASONING_END", undefined]]);
+    const forked = linked({ modelWorkerId: 10 });
+    const inherited = forked.logEntry(entry({ op: "SEND", turn_id: 2, loop_seq: 1, turn_seq: 2, sequence: 4, reasoning: "the parent's thought" }));
+    assert.equal((inherited.find(({ type }) => type === "REASONING_MESSAGE_START") as { messageId?: string } | undefined)?.messageId, "1/2/4/reasoning");
+    assert.deepEqual(whole(inherited)[1], ["REASONING_MESSAGE_START", link(10, "1/2")], "history a FORK inherited keeps its row's identity and its link");
+    const subagent = linked({ modelWorkerId: 10 }).subagentTranslator({ modelWorkerId: 20, subagent: { runId: "sub-1", worker: "helper" } });
+    const delegated = subagent.logEntry(entry({ op: "SEND", turn_id: 3, loop_seq: 1, turn_seq: 3, sequence: 1, reasoning: "the helper's thought", ...({ worker_id: 20 } as object) }));
+    const start = delegated.find(({ type }) => type === "REASONING_MESSAGE_START") as { metadata?: unknown; subagentRunId?: string } | undefined;
+    assert.deepEqual([start?.metadata, start?.subagentRunId], [link(20, "1/3"), "sub-1"], "a subagent's reasoning travels as its Run negotiated, attributed to its run");
+    assert.ok(![...inherited, ...delegated].some((event) => JSON.stringify(event).includes("thought")), "no text rides any message");
+});
+
+test("{§agui-reasoning-link} a snapshot holds each turn's reasoning once, empty, under its live identity and with its link; the client holds what it streamed across an interrupt", () => {
+    const rows = [
+        wireRow({ id: 1, op: "WAIT", loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 1, tx: { body: "orient" }, reasoning: "first thought", reasoning_model_call_id: 5, reasoning_request_sequence: 1 }),
+        wireRow({ id: 2, op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 2, rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] },
+            tx: { body: "Answer." }, reasoning: "first thought", reasoning_model_call_id: 5, reasoning_request_sequence: 1 }),
+        wireRow({ id: 3, op: "WAIT", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 1, tx: { body: "again" }, reasoning: "second thought" }),
+    ];
+    const [snapshot] = linked({ modelWorkerId: 10 }).replay(rows);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning"), [
+        { id: "model-call-5/request-1/reasoning", role: "reasoning", content: "", metadata: link(10, "1/1") },
+        { id: "1/2/1/reasoning", role: "reasoning", content: "", metadata: link(10, "1/2") },
+    ]);
+    assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snapshot));
+
+    const before = linked();
+    for (const phase of ["start", "end"] as const) before.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase });
+    const after = linked({ continuation: before.interrupt().continuation });
+    assert.deepEqual(after.logEntry(entry({ op: "WAIT", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "recorded" }, reasoning: "held",
+        reasoning_model_call_id: 11, reasoning_request_sequence: 1, ...({ worker_id: 2 } as object) })).filter(({ type }) => type.startsWith("REASONING_")).map(({ type }) => type),
+        ["REASONING_MESSAGE_START", "REASONING_MESSAGE_END"], "the resumed Run folds the link onto the message Run A presented");
+});
+
+test("{§agui-reasoning-link} {§agui-ambient} another worker's row carries its reasoning by link, the thread's own row none: no row carries reasoning text", () => {
+    const tr = linked();
+    const foreign = tr.logEntry({ entry: wireRow({ id: 9, op: "SEND", status_rx: 200, worker_id: 5, turn_id: 7, loop_seq: 2, turn_seq: 7, sequence: 1,
+        rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, tx: { body: "worker speech" }, reasoning: "worker reasoning" }) });
+    assert.deepEqual((foreign[0] as { value: Record<string, unknown> }).value.reasoning, { url: `${ORIGIN}/agui/3/5/reasoning/2/7`, mimeType: "text/plain" },
+        "its reasoning, which no message of this Run holds, rides the row by reference");
+    const own = tr.logEntry({ entry: wireRow({ id: 2, op: "error", worker_id: 2, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, status_rx: 400, tx: "",
+        rx: { status: 400, problem: { type: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax", title: "Invalid operation syntax", status: 400, detail: "unreadable" } },
+        reasoning: "own reasoning" }) });
+    assert.deepEqual(own.filter(({ type }) => !type.startsWith("STEP_")).map((e) => e.type === "CUSTOM" ? e.name : e.type),
+        ["REASONING_START", "REASONING_MESSAGE_START", "REASONING_MESSAGE_END", "REASONING_END", "plurnk.ambient"]);
+    assert.equal(Object.hasOwn((own.at(-1) as { value: Record<string, unknown> }).value, "reasoning"), false, "the row repeats no reasoning its message holds");
+    assert.ok(!["worker reasoning", "own reasoning"].some((text) => JSON.stringify([...foreign, ...own]).includes(text)), "no row carries reasoning text");
 });
 
 test("{§agui-plurnk-metadata} reasoning lifecycle violations fail at the projection boundary", () => {
@@ -750,6 +837,13 @@ test("{§agui-ambient} a FOREIGN worker's rows never enter the core stream — p
     assert.deepEqual(worker.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"], "a worker's rows ride plurnk.ambient — visible topology, never the thread's messages");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's messages");
+    assert.equal((worker[0] as { value: Record<string, unknown> }).value.reasoning, "worker reasoning", "it rides the row, which no message of this Run repeats");
+    // {§agui-plurnk-metadata} The thread's own row that builds no part: its turn's reasoning message holds the reasoning.
+    const refusal = tr.logEntry({ entry: wireRow({ id: 2, op: "error", worker_id: 2, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, status_rx: 400, tx: "",
+        rx: { status: 400, problem: { type: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax", title: "Invalid operation syntax", status: 400, detail: "unreadable" } },
+        reasoning: "own reasoning" }) });
+    assert.equal((refusal.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined)?.delta, "own reasoning");
+    assert.equal(Object.hasOwn((refusal.at(-1) as { value: Record<string, unknown> }).value, "reasoning"), false, "the row repeats no reasoning its message holds");
 });
 
 test("{§agui-ambient} a rejected emission attempt remains forensic even if an invalid producer supplies readable text", () => {

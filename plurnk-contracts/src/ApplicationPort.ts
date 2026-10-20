@@ -130,6 +130,13 @@ export interface ApplicationPort extends HttpHost {
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;
+    // {§methods-reasoning-read} — a turn's readable reasoning, `reasoning://<worker>/<loop>/<turn>`; null when it has none.
+    readReasoning(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+        readonly loopSeq: number;
+        readonly turnSeq: number;
+    }): Promise<string | null>;
     /** {§agui-provider-routes} Each alias is the route a worker seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;

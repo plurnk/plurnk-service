@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
 import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { BODY_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
+import { BODY_ROUTE, REASONING_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
@@ -63,6 +63,7 @@ export type AguiPort = Pick<
     | "listWorkers"
     | "listWorkspaces"
     | "readInbox"
+    | "readReasoning"
     | "readWorker"
     | "readWorkerReference"
     | "ensureWorkerReference"
@@ -292,6 +293,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, principal, family);
             const body = req.method === "GET" && req.url !== undefined ? BODY_ROUTE.exec(req.url) : null;
             if (body !== null) return await this.#body(res, body);
+            const reasoning = req.method === "GET" && req.url !== undefined ? REASONING_ROUTE.exec(req.url) : null;
+            if (reasoning !== null) return await this.#reasoning(res, reasoning);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -342,6 +345,21 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         const mimetype = typeof receipt.mimetype === "string" ? receipt.mimetype : "text/plain";
         res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
         res.end(receipt.content);
+    }
+
+    // {§agui-body-reference} A turn's reasoning: its readable reasoning source, as text. The perimeter has admitted the
+    // request; the daemon refuses a worker outside the workspace.
+    async #reasoning(res: ServerResponse, [, workspace, worker, loop, turn]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId, loopSeq, turnSeq] = [workspace, worker, loop, turn].map(Number);
+        const reasoning = await this.#seam.readReasoning({ workspaceId, workerId, loopSeq, turnSeq });
+        if (reasoning === null) {
+            writeHttpProblem(res, httpProblem("reasoning-not-found", 404, "The turn holds no reasoning at this address.", {
+                workspaceId, workerId, loop: loopSeq, turn: turnSeq, stage: "routing", retryable: false,
+            }));
+            return;
+        }
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+        res.end(reasoning);
     }
 
     // A row's result as stored: its JSON parsed, or nothing for a result that is not a receipt.

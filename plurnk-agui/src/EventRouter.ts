@@ -17,7 +17,7 @@ const notifications: Readonly<Record<string, AguiNotificationContract>> = AGUI_N
 export default class EventRouter {
     #t: Translator;
 
-    constructor(args: { threadId: string; replyThreads?: readonly string[]; runId: string; origin: string; workspaceId: number; modelWorkerId?: number | null; continuation?: TranslatorContinuation }) {
+    constructor(args: { threadId: string; replyThreads?: readonly string[]; runId: string; origin: string; workspaceId: number; modelWorkerId?: number | null; continuation?: TranslatorContinuation; reasoningByLink?: boolean }) {
         this.#t = new Translator(args);
     }
 

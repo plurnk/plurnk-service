@@ -148,6 +148,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         cancelLoop: async () => false,
         readLog: async () => logRows([{ id: 1, op: "SEND", status_rx: 200, origin: "model" }]),
+        readReasoning: async () => null,
         readMessages: async () => [],
         readInbox: async () => [],
         messageAdmission: async () => "new" as const,
@@ -3294,6 +3295,53 @@ test("{§agui-body-reference}: a row's body is served at its address, typed as i
             assert.equal(none.status, 404, `${address} holds no body`);
             assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/body-not-found");
         }
+    } finally { await mod.close(); }
+});
+
+// {§agui-body-reference} {§methods-reasoning-read} A turn's reasoning at its address: the daemon's reading of the turn's
+// reasoning source as text, and a turn that reasoned none is refused; the perimeter admits the request first.
+test("{§agui-body-reference}: a turn's reasoning is served at its address as text, and a turn without one is refused", async () => {
+    const { seam } = mockSeam("expected");
+    const reads: unknown[] = [];
+    seam.readReasoning = async (args) => {
+        reads.push(args);
+        return args.turnSeq === 2 ? "Weighing it.\nThen deciding." : null;
+    };
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const base = `http://127.0.0.1:${mod.address().port}`;
+    try {
+        const refused = await fetch(`${base}/agui/3/77/reasoning/1/2`);
+        assert.equal(refused.status, 401, "the perimeter admits a reasoning request as it admits a Run");
+        assert.deepEqual(reads, [], "nothing is read for a request the perimeter refused");
+        const authorization = { authorization: `Bearer ${await mintAccess(mod.address().port, { id: "operator", secret: "expected" })}` };
+        const reasoning = await fetch(`${base}/agui/3/77/reasoning/1/2`, { headers: authorization });
+        assert.equal(reasoning.status, 200);
+        assert.equal(reasoning.headers.get("content-type"), "text/plain; charset=utf-8");
+        assert.equal(reasoning.headers.get("cache-control"), "no-store");
+        assert.equal(await reasoning.text(), "Weighing it.\nThen deciding.", "the reasoning, verbatim");
+        assert.deepEqual(reads.at(-1), { workspaceId: 3, workerId: 77, loopSeq: 1, turnSeq: 2 }, "the address names its turn exactly");
+        const none = await fetch(`${base}/agui/3/77/reasoning/1/3`, { headers: authorization });
+        assert.equal(none.status, 404);
+        assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/reasoning-not-found");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-reasoning-link} a Run negotiates its reasoning by link with \"link\" and with no other value", async () => {
+    const { seam } = mockSeam();
+    existingWorkspace(seam, "t1");
+    const mod = await host(seam);
+    try {
+        const port = mod.address().port;
+        for (const reasoning of [true, "text", "", null]) {
+            const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: "t1", forwardedProps: { plurnk: { workspace: "t1", reasoning } } })) });
+            assert.equal(refused.status, 400, `reasoning ${JSON.stringify(reasoning)} is refused`);
+            assert.match((await refused.json() as { type: string }).type, /reasoning-invalid$/u);
+        }
+        const negotiated = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify(standardInput({ threadId: "t1", forwardedProps: { plurnk: { workspace: "t1", reasoning: "link" } } })) });
+        assert.equal(negotiated.status, 200, "\"link\" negotiates reasoning by link");
+        await negotiated.text();
     } finally { await mod.close(); }
 });
 

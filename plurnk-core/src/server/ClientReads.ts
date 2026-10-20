@@ -236,31 +236,7 @@ export default class ClientReads {
         loopId?: number; turnId?: number; sinceId?: number; beforeId?: number; limit?: number;
         loopSeq?: number; turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
-        const workspaceId = ClientInput.assertId("log.read", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("log.read", "workerId", args.workerId);
-        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (target === undefined) {
-            throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
-                404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
-            );
-        }
-        if (target.workspace_id !== workspaceId) {
-            throw daemonFailure(
-                "daemon:worker",
-                "workspace-mismatch",
-                409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                {
-                    workerId,
-                    workspaceId,
-                    actualWorkspaceId: target.workspace_id,
-                    retryable: false },
-            );
-        }
+        const workerId = await this.#ownedWorker("log.read", args);
         const coordinateFields = {
             loopId: args.loopId,
             turnId: args.turnId,
@@ -306,6 +282,47 @@ export default class ClientReads {
             // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
             limit: Math.min(args.limit ?? Knob.integer("PLURNK_SERVICE_LOG_READ_PAGE", 1), Knob.integer("PLURNK_SERVICE_LOG_READ_MAX", 1)) });
         return rows.map((row) => LogEntry.wire(row));
+    }
+
+    // {§methods-reasoning-read} — a turn's readable reasoning source, the text its first model operation row projects
+    // ({§methods-readable-reasoning}), by the worker's display coordinate; null when the turn reasoned none.
+    async readReasoning(args: { workspaceId: number; workerId: number; loopSeq: number; turnSeq: number }): Promise<string | null> {
+        const workerId = await this.#ownedWorker("reasoning.read", args);
+        const loopSeq = ClientInput.assertId("reasoning.read", "loopSeq", args.loopSeq);
+        const turnSeq = ClientInput.assertId("reasoning.read", "turnSeq", args.turnSeq);
+        const row = await this.#db.log_turn_reasoning.get<{ content: string }>({ worker_id: workerId, loop_seq: loopSeq, turn_seq: turnSeq });
+        return row === undefined || row.content.length === 0 ? null : row.content;
+    }
+
+    // A read names a worker of the workspace it reads (a workspace reads only its own workers — the model worker
+    // included, {§methods-log-coordinate}): the worker's id, or the Problem that refuses it.
+    async #ownedWorker(context: string, args: { workspaceId: number; workerId: number }): Promise<number> {
+        const workspaceId = ClientInput.assertId(context, "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId(context, "workerId", args.workerId);
+        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        if (target === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (target.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                {
+                    workerId,
+                    workspaceId,
+                    actualWorkspaceId: target.workspace_id,
+                    retryable: false },
+            );
+        }
+        return workerId;
     }
 
 }

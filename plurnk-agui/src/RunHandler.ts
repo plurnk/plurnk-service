@@ -110,6 +110,7 @@ export default class RunHandler {
             throw new HttpProblemError(httpProblem("interactive-invalid", 400, "interactive must be a boolean.",
                 { stage: "request-validation", retryable: false }));
         }
+        const negotiated = RunHandler.#reasoningByLink(forwarded);
         // {§agui-run-input} A Run does one thing, chosen by its input before anything binds: a resume resolves, an
         // action acts, a new message submits, and a Run that carries none of them synchronizes ({§agui-sync}).
         const action = parseAction(input.forwardedProps);
@@ -255,6 +256,8 @@ export default class RunHandler {
                 : "result";
         // {§agui-delegation-observation} — a message Run may ask for its descendants' rows.
         const descendants = action === null && forwarded?.descendants === true;
+        // {§agui-reasoning-link} — and may negotiate its reasoning by link.
+        const reasoningByLink = negotiated && action === null;
         const boundRun = this.#portal().openThread({
             workspaceId,
             // {§agui-broadcast-fan} An operation Run learns its Worker and Loop from the dispatch that opens them.
@@ -266,6 +269,7 @@ export default class RunHandler {
             owner: address,
             family,
             descendants,
+            reasoningByLink,
             emit: routed,
             modelWorkerId: workerId,
             inputRunId: input.runId,
@@ -492,6 +496,13 @@ export default class RunHandler {
         const value = forwarded[key];
         if (typeof value !== "string") throw forwardedRefusal(key, expected);
         return value;
+    }
+
+    // {§agui-reasoning-link} A Run negotiates its reasoning by link with `reasoning: "link"`; it is no other value.
+    static #reasoningByLink(forwarded: Readonly<Record<string, unknown>> | undefined): boolean {
+        if (forwarded === undefined || !Object.hasOwn(forwarded, "reasoning")) return false;
+        if (forwarded.reasoning !== "link") throw forwardedRefusal("reasoning", "\"link\"");
+        return true;
     }
 
     static #forwardedStrings(forwarded: Readonly<Record<string, unknown>>, key: string): string[] {
