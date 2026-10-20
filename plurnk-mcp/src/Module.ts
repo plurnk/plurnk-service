@@ -303,8 +303,9 @@ const statusOf = (error: unknown): number | null => {
     return typeof problem?.status === "number" ? problem.status : null;
 };
 
-const catalogDetail = (executor: McpExecutor): object => {
-    const catalog = executor.catalog;
+// An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-grant}).
+const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): object => {
+    const grant = connection.oauthGrant?.summary;
     return {
         protocolVersion: catalog.protocolVersion,
         server: catalog.server ?? null,
@@ -313,6 +314,7 @@ const catalogDetail = (executor: McpExecutor): object => {
         resources: catalog.resources.length,
         resourceTemplates: catalog.resourceTemplates.length,
         prompts: catalog.prompts.length,
+        ...(grant === undefined ? {} : { grant }),
     };
 };
 
@@ -765,7 +767,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         }
         for (const [name, attachment] of next) {
             switch (attachment.kind) {
-                case "active": outcomes.set(name, { state: "active", detail: catalogDetail(attachment.executor) }); break;
+                case "active": outcomes.set(name, { state: "active", detail: activeDetail(attachment) }); break;
                 case "unavailable": outcomes.set(name, { state: "unavailable", problem: attachment.problem }); break;
                 case "authorization-required": outcomes.set(name, {
                     state: "authorization-required",

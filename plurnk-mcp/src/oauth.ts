@@ -24,6 +24,14 @@ export class OAuthSetupError extends Error {
 // {§oauth-grant} What a sign-in leaves for its alias's later connections: the client registered and the tokens issued,
 // per authorization server, with the redirect the registration names. Each connection's provider reads and writes the one
 // grant, so a refreshed or rotated token serves every connection after it.
+// {§oauth-grant} What `list` shows of a grant; never a token.
+export interface OAuthGrantSummary {
+    readonly issuer: string;
+    // As the authorization server stated it.
+    readonly scope?: string;
+    readonly refreshable: boolean;
+}
+
 export class OAuthGrant {
     readonly redirectUrl: string;
     readonly clientInformation = new Map<string, StoredOAuthClientInformation>();
@@ -40,6 +48,16 @@ export class OAuthGrant {
 
     get signedIn(): boolean {
         return this.currentTokens !== undefined;
+    }
+
+    get summary(): OAuthGrantSummary | undefined {
+        const tokens = this.currentTokens;
+        if (tokens?.issuer === undefined) return undefined;
+        return {
+            issuer: tokens.issuer,
+            ...(tokens.scope === undefined ? {} : { scope: tokens.scope }),
+            refreshable: tokens.refresh_token !== undefined,
+        };
     }
 }
 

@@ -449,7 +449,7 @@ same workspace-composed operator environment.
 | `available` | the configured service baseline |
 | `add`, `replace` ({§functionality-replacement}), `remove` | change workspace state ({§mcp-definitions}) |
 | `discover` | searches the MCP Registry ({§mcp-registry-discovery}) |
-| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime per enabled server, with its resource facet when active ({§mcp-unavailable-runtime}), one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
+| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime per enabled server, with its resource facet when active ({§mcp-unavailable-runtime}), one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — and any grant it presents ({§oauth-grant}), `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
 | `publish` | adopts the connected set and consumes or records pending authorizations, synchronously |
 | `commit` | closes connections the new set no longer uses |
 | `abort` | closes only what the attempt opened |
@@ -623,6 +623,7 @@ configures still has a client waiting at it once the sign-in is accepted.
 | When | The grant |
 | --- | --- |
 | A connection the module opens for the alias with that definition, after cooling, an explicit enable, or disable and enable | is presented, and refreshed as it lapses |
+| An active alias's connection presents it | is listed in the alias's `detail.grant`: the `issuer` its tokens came from, the `scope` that authorization server stated, and whether it is `refreshable`; never a token or a time. An active alias presenting no grant lists none |
 | A connection serves another definition, or another workspace | is never presented |
 | Its server refuses it, at connection or on a request ({§mcp-request-unauthorized}) | starts a sign-in only at a redirect the definition configures; otherwise the alias awaits the sign-in a client begins ({§oauth-continuation}) |
 | A sign-in for the alias is accepted | is replaced by the new one |

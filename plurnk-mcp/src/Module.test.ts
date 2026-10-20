@@ -27,6 +27,7 @@ import { serveIssuerOAuth, serveOAuthMcp } from "../test/oauth-fixture.ts";
 import { context, preparationRequest } from "../test/scheme-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import type McpResources from "./McpResources.ts";
+import type { OAuthGrantSummary } from "./oauth.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
 import ServerConnection from "./client.ts";
@@ -51,7 +52,7 @@ interface RuntimeRegistration {
 }
 
 type Outcome =
-    | { state: "active"; detail?: { tools?: string[]; protocolVersion?: string } }
+    | { state: "active"; detail?: { tools?: string[]; protocolVersion?: string; grant?: OAuthGrantSummary } }
     | { state: "unavailable"; problem: ProblemDetails }
     | { state: "authorization-required"; authorization: { url?: string } };
 
@@ -499,6 +500,8 @@ interface SignedIn {
     readonly h: ReturnType<typeof harness>;
     readonly alias: string;
     readonly definition: McpServerDefinition;
+    // What `list` shows of the grant while a connection presents it.
+    readonly summary: OAuthGrantSummary;
     // The access token lapses, where the server issued a refresh token that still answers.
     readonly lapse?: () => void;
     // The server refuses the grant from now on, and refuses to refresh it.
@@ -529,7 +532,7 @@ const SIGNED_IN: Readonly<Record<string, (t: TestContext) => Promise<SignedIn>>>
         await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: fixtureCallback(redirectUrl, started.authorization.url, origin) });
         await h.settleRefreshes();
         assert.deepEqual(h.inService(1), ["oauth"]);
-        return { h, alias: "oauth", definition, revoke };
+        return { h, alias: "oauth", definition, summary: { issuer: origin, scope: "mcp:read", refreshable: false }, revoke };
     },
     "a challenging server at its configured redirect": async (t) => {
         const { origin, served, revoke } = await interactiveOAuthFixture(t);
@@ -541,11 +544,11 @@ const SIGNED_IN: Readonly<Record<string, (t: TestContext) => Promise<SignedIn>>>
         await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: fixtureCallback(`${origin}/callback`, url, origin) });
         await h.settleRefreshes();
         assert.deepEqual(h.inService(1), ["oauth"]);
-        return { h, alias: "oauth", definition, revoke };
+        return { h, alias: "oauth", definition, summary: { issuer: origin, scope: "mcp:read", refreshable: false }, revoke };
     },
     "a server refusing calls at its named issuer": async (t) => {
-        const { h, definition, expire, revoke } = await issuerSignIn(t, { access_type: "offline" });
-        return { h, alias: "calendar", definition, lapse: expire, revoke };
+        const { h, definition, issuer, expire, revoke } = await issuerSignIn(t, { access_type: "offline" });
+        return { h, alias: "calendar", definition, summary: { issuer, refreshable: true }, lapse: expire, revoke };
     },
 };
 
@@ -580,18 +583,26 @@ const FRESH_CONNECTIONS: Readonly<Record<string, { readonly presents: boolean; r
 const answersCall = async (h: ReturnType<typeof harness>, alias: string, workspaceId: number): Promise<boolean> =>
     h.inService(workspaceId).includes(alias) && (await requestThrough(h, alias, "tools/call", workspaceId)).status === 200;
 
+// The grant the alias's published outcome lists in the workspace.
+const listedGrant = (h: ReturnType<typeof harness>, alias: string, workspaceId: number): OAuthGrantSummary | undefined => {
+    const outcome = h.snapshots.get(workspaceId)?.prepared?.outcomes.get(alias);
+    return outcome?.state === "active" ? outcome.detail?.grant : undefined;
+};
+
 const settle = async (h: ReturnType<typeof harness>): Promise<void> => {
     for (const workspaceId of [1, 2]) await h.teardown(workspaceId).catch(() => undefined);
     await h.module.stop();
 };
 
-test("{§oauth-grant} an accepted sign-in outlives its connection: each later connection with its definition presents it, and no other", async (t) => {
+test("{§oauth-grant} an accepted sign-in outlives its connection: each later connection with its definition presents it and lists its summary, and no other", async (t) => {
     for (const [server, signIn] of Object.entries(SIGNED_IN)) {
         for (const [event, { presents, open }] of Object.entries(FRESH_CONNECTIONS)) {
             await t.test(`${server}: ${event}`, async (t) => {
                 const signedIn = await signIn(t);
                 try {
+                    assert.deepEqual(listedGrant(signedIn.h, signedIn.alias, 1), signedIn.summary, "the accepted sign-in lists its grant");
                     const workspaceId = await open(signedIn);
+                    assert.deepEqual(listedGrant(signedIn.h, signedIn.alias, workspaceId), presents ? signedIn.summary : undefined);
                     // A presented grant refreshes its lapsed access token, where the server issued a refresh token.
                     signedIn.lapse?.();
                     assert.equal(await answersCall(signedIn.h, signedIn.alias, workspaceId), presents);
@@ -631,7 +642,7 @@ test("{§oauth-grant} a carried grant its server refuses starts a sign-in only a
 });
 
 test("{§oauth-grant} a grant ends when its authorization server rejects it, and the next accepted sign-in replaces it", async (t) => {
-    const { h, definition, revoke, tokenRequests, authorizations } = await issuerSignIn(t, { access_type: "offline" });
+    const { h, definition, issuer, revoke, tokenRequests, authorizations } = await issuerSignIn(t, { access_type: "offline" });
     const call = async (): Promise<number> => (await requestThrough(h, "calendar", "tools/call")).status;
     const coolAndReturn = async (): Promise<Prepared> => {
         await h.teardown(1);
@@ -645,11 +656,13 @@ test("{§oauth-grant} a grant ends when its authorization server rejects it, and
         await h.settleRefreshes();
         assert.deepEqual(tokenRequests.map((request) => request.get("grant_type")), ["authorization_code", "refresh_token"]);
         const ended = await coolAndReturn();
+        assert.equal(listedGrant(h, "calendar", 1), undefined, "the ended grant is not listed");
         assert.equal(await call(), 401);
         assert.equal(tokenRequests.length, 2, "the ended grant is neither presented nor refreshed");
         await republished(h, ended);
         await h.settleRefreshes();
         await signInAtIssuer(h, "calendar");
+        assert.deepEqual(listedGrant(h, "calendar", 1), { issuer, refreshable: true }, "the new grant is listed");
         assert.equal(await call(), 200);
         await coolAndReturn();
         assert.equal(await call(), 200, "the new grant is carried");

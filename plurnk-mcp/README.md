@@ -206,7 +206,9 @@ shows their current readiness. A sign-in outlives its connection: the alias's
 later connections with the same definition present it, refreshing it as it
 lapses — when an idle workspace returns, on `enable`, or on `disable` then
 `enable` — until its authorization server rejects it, another sign-in replaces
-it, or the daemon stops ({§oauth-grant}). PKCE, issuer and resource validation,
+it, or the daemon stops ({§oauth-grant}). `list` shows an active alias's grant
+as its `detail.grant`: its issuer, the scope its authorization server stated,
+and whether it refreshes, never a token. PKCE, issuer and resource validation,
 refresh, scope escalation, and credentials remain inside the host. Callback
 addresses and credentials never replace the saved definition. `enable` retries a
 connection; it does not replace user sign-in. Rejected configured credentials
