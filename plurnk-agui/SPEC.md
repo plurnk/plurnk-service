@@ -157,7 +157,7 @@ holds an interrupt while its person decides stays informed by connecting with th
 | A held interrupt | one a Run of this thread presented, whose gate is still pending: the Run does not present that gate again, and presents no other gate while it holds one; that other gate stays durable and is presented after |
 | While held | the Run observes as a connection does, waiting when the worker is idle |
 | Settlement | when a held gate settles, through any presentation's resume or by Core, the Run finishes with `RUN_FINISHED` success, which clears the standard client's pending interrupts; the client connects again to follow the work that continues |
-| An interrupt not held | unknown, settled, from before a restart, or another thread's: the Run ignores it, so a pending gate is presented again under a new id |
+| An interrupt not held | unknown, settled, from before a restart, or another thread's: no longer its client's to answer. A Run holding no gate presents a pending one under a new id; otherwise it finishes with `RUN_FINISHED` success after its snapshots, as at a settlement |
 | Answering | a held interrupt is answered by an ordinary resume ({§agui-proposal-resolve}); one whose gate another answer settled first is refused, 409, and settles nothing |
 
 §agui-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new

@@ -1574,20 +1574,63 @@ for (const kind of ["proposal", "interaction"] as const) {
     }
 }
 
-test("{§agui-held-interrupts}: an interrupt the Run does not hold, unknown or another thread's, is ignored and the pending gate is presented again", async () => {
-    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })], [], { loops: new Map([[10, [loop(10, 7)]]]) });
+// {§agui-held-interrupts} An interrupt a Run names that no gate of its thread holds pending: one settled since its
+// presentation, an unknown one, or another thread's. The Run presents a pending gate under a new id; with none to present it
+// finishes as at a settlement, whether its worker idles or works on.
+for (const named of ["an interrupt settled since its presentation", "an unknown interrupt", "another thread's interrupt"] as const) {
+    for (const now of ["a gate is pending", "no gate is pending and the worker idles", "no gate is pending and the worker works on"] as const) {
+        test(`{§agui-held-interrupts}: a Run naming ${named} holds nothing; when ${now}, it ${now === "a gate is pending" ? "presents that gate under a new id" : "finishes as at a settlement"}`, async () => {
+            const pending = [proposal({ logEntryId: 42, loopId: 7 })];
+            const loops = new Map([[10, [loop(10, 7)]]]);
+            const m = mockSeam(pending, [], { loops });
+            const portal = new Portal(m.seam);
+            portal.start();
+            let namedId = "no-such-interrupt";
+            if (named !== "an unknown interrupt") {
+                const presentation = viewRun(portal, undefined, { threadId: named === "another thread's interrupt" ? "web" : "tui" });
+                assert.equal(await portal.synchronize(3, presentation.thread), false);
+                portal.closeRun(3, presentation.thread);
+                namedId = presentation.view.interrupt("1/1/42").id;
+            }
+            const later = now === "a gate is pending" && named === "an interrupt settled since its presentation" ? [proposal({ logEntryId: 43, loopId: 7 })] : [];
+            if (named === "an interrupt settled since its presentation" || now !== "a gate is pending") pending.splice(0, pending.length, ...later);
+            if (now === "no gate is pending and the worker idles") loops.set(10, []);
+
+            const view = viewRun(portal);
+            assert.equal(await portal.synchronize(3, view.thread, true, [namedId]), false, "the Run waits on nothing");
+            await drained();
+            if (now === "a gate is pending") {
+                const presented = view.view.interrupts.map(({ id }) => id);
+                assert.equal(presented.length, 1, "the pending gate is presented");
+                assert.ok(!presented.includes(namedId), "under a new id");
+                assert.deepEqual(view.finished(), []);
+            } else {
+                assert.deepEqual([view.finished(), view.view.interrupts], [["success"], []], "the Run finishes as at a settlement, presenting nothing");
+            }
+            portal.stop();
+        });
+    }
+}
+
+test("{§agui-held-interrupts}: a Run naming one interrupt it holds and one no longer pending finishes as at a settlement", async () => {
+    const pending = [proposal({ logEntryId: 42, loopId: 7 }), proposal({ logEntryId: 61, workerId: 20, loopId: 9 })];
+    const m = mockSeam(pending, [], { workers: [worker(10), worker(20, 10)], loops: new Map([[10, [loop(10, 7)]], [20, [loop(20, 9)]]]) });
     const portal = new Portal(m.seam);
     portal.start();
-    const elsewhere = viewRun(portal, undefined, { threadId: "web" });
-    assert.equal(await portal.synchronize(3, elsewhere.thread), false);
-    portal.closeRun(3, elsewhere.thread);
-    const foreign = elsewhere.view.interrupt("1/1/42");
-    for (const [what, named] of [["an unknown interrupt", ["no-such-interrupt"]], ["another thread's interrupt", [foreign.id]]] as const) {
-        const view = viewRun(portal);
-        assert.equal(await portal.synchronize(3, view.thread, true, named), false, `${what} holds nothing`);
-        assert.ok(![foreign.id, ...named].includes(view.view.interrupt("1/1/42").id), `${what}: the gate is presented again under a new id`);
-        portal.closeRun(3, view.thread);
-    }
+    const own = viewRun(portal);
+    await portal.synchronize(3, own.thread);
+    portal.closeRun(3, own.thread);
+    const child = viewRun(portal, undefined, { workerId: 20 });
+    await portal.synchronize(3, child.thread);
+    portal.closeRun(3, child.thread);
+    const held = own.view.interrupt("1/1/42").id;
+    const gone = child.view.interrupt("1/1/61").id;
+    pending.splice(1, 1);
+
+    const view = viewRun(portal);
+    assert.equal(await portal.synchronize(3, view.thread, true, [held, gone]), false, "the Run waits on nothing");
+    await drained();
+    assert.deepEqual([view.finished(), view.view.interrupts], [["success"], []], "it finishes, presenting nothing");
     portal.stop();
 });
 

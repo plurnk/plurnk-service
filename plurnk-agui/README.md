@@ -57,7 +57,8 @@ resume Runs. Core decides their owner and disposition, including delegated
 gates; clients do not infer approval policy from tool names. A client whose person
 is still deciding stays informed by reattaching with `forwardedProps.plurnk.interrupts`
 naming the interrupts it holds: the Run waits on them instead of presenting them
-again, and finishes when any view or Core settles one ({§agui-held-interrupts}).
+again, and finishes when any view or Core settles one, at once when one already
+has ({§agui-held-interrupts}).
 The exact mappings, event schemas, and settlement rules live in [SPEC.md](./SPEC.md).
 
 ## Integration

@@ -1,8 +1,11 @@
 // {§agui-held-interrupts} {§agui-proposal-resolve} — two views of one worker on the real daemon. The official HttpAgent
 // holds its interrupt on a connection while its person decides; another view answers, or the loop is cancelled, and the held
 // connection finishes, clearing the official client's pending interrupts; the gate settles once and a late answer of the
-// held interrupt is refused. Simultaneous answers settle the gate once.
+// held interrupt is refused. One another view answered before its client connected again finishes that connection at once.
+// Simultaneous answers settle the gate once.
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { HttpAgent } from "@ag-ui/client";
@@ -23,16 +26,16 @@ interface Frame {
 const frames = (body: string): Frame[] => body.split("\n\n")
     .filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as Frame);
 
-const until = async (what: string, predicate: () => boolean, timeoutMs = 15_000): Promise<void> => {
+const until = async (what: string, predicate: () => boolean | Promise<boolean>, timeoutMs = 15_000): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
-    while (!predicate()) {
+    while (!await predicate()) {
         if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
 };
 
 // A daemon whose model runs one shell command, which its owner reviews, then answers; the owner's thread is `operator`.
-const boot = async (t: TestContext, workspace: string) => {
+const boot = async (t: TestContext, workspace: string, command = "echo held-once") => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")), import(join(SERVICE, "test/intg/_mock.ts")),
@@ -40,7 +43,7 @@ const boot = async (t: TestContext, workspace: string) => {
     const db = await openTestDatabase();
     const http = await bindListener();
     const daemon = new Daemon({ db, http, nodeModulesPath: join(SERVICE, "node_modules"), provider: new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````sh\necho held-once\n````"), makeMockResponse("````SEND [200]\nDone.\n````"),
+        makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\``), makeMockResponse("````SEND [200]\nDone.\n````"),
     ] }) });
     const agents: HttpAgent[] = [];
     const cancellation = new AbortController();
@@ -67,7 +70,7 @@ const boot = async (t: TestContext, workspace: string) => {
         assert.equal(rows.length, 1, "one operation, one row");
         return (rows[0] as { status_rx: number }).status_rx;
     };
-    return { daemon, forwardedProps, post, viewer, settled };
+    return { daemon, url, forwardedProps, post, viewer, settled };
 };
 
 const accept = (interruptId: string) => ({ resume: [{ interruptId, status: "resolved", payload: { decision: "accept" } }] });
@@ -115,6 +118,49 @@ for (const settledBy of ["another view's answer", "the loop's cancellation"] as 
         const late = (await post("", accept(held.id))).at(-1);
         assert.deepEqual([late?.type, late?.metadata?.plurnk?.problem?.status], ["RUN_ERROR", 409], "a late answer of the held interrupt is refused");
         assert.equal(await settled(), status, "and settles nothing");
+    });
+}
+
+// The ordering a view that holds its review can meet: another view answers between the gate's presentation and this client's
+// connecting again, through either reattachment ({§agui-owner-connection}), whether the work that answer let go has ended by
+// then or still runs.
+for (const reattach of ["running with nothing new", "the connect endpoint"] as const) for (const work of ["has ended", "still runs"] as const) {
+    test(`{§agui-held-interrupts}: an interrupt another view settled before its client reattached by ${reattach} finishes that Run at once, while the work ${work}`, { timeout: 60_000 }, async (t) => {
+        const dir = await mkdtemp(join(tmpdir(), "held-settled-"));
+        const release = join(dir, "release");
+        t.after(async () => { await writeFile(release, ""); await rm(dir, { recursive: true, force: true }); });
+        const command = work === "still runs" ? `while [ ! -e ${release} ]; do sleep 0.05; done; echo held-once` : "echo held-once";
+        const { daemon, url, forwardedProps, post, viewer, settled } = await boot(t, `held-before-${reattach === "the connect endpoint" ? "connect" : "run"}-${work === "has ended" ? "ended" : "running"}`, command);
+        const holder = viewer();
+        holder.messages = [{ id: "m1", role: "user", content: "Run the shell command." }];
+        await holder.runAgent({ forwardedProps });
+        const [held] = holder.pendingInterrupts;
+        assert.ok(held !== undefined, "the gate ends the message Run with its interrupt");
+
+        const other = (await post("/connect")).at(-1)?.outcome?.interrupts?.[0];
+        assert.ok(other !== undefined && other.id !== held.id, "a second view is presented the same gate under its own id");
+        const answered = post("", accept(other.id));
+        const [{ id: workspaceId }] = await daemon.listWorkspaces();
+        const { id: workerId } = await daemon.readWorker({ workspaceId, identity: { name: "operator" } });
+        if (work === "has ended") assert.equal((await answered).at(-1)?.outcome?.type, "success", "the answering view follows the work to its end");
+        else await until("the accepted command to run", async () => (await daemon.readStreams({ workspaceId, workerId })).length > 0);
+        assert.deepEqual(await daemon.pendingProposals(workspaceId), [], "the gate settled before its holder connects again");
+
+        let finished: string | undefined;
+        if (reattach === "the connect endpoint") holder.url = `${url}/connect`;
+        const holding = holder.connectAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, interrupts: [held.id] } } }, {
+            onRunFinishedEvent: ({ event }) => { finished = event.outcome?.type; },
+        });
+        await until("the holding connection to finish", () => finished !== undefined);
+        await holding;
+        assert.equal(finished, "success", "the Run finishes as at a settlement, presenting nothing");
+        assert.deepEqual(holder.pendingInterrupts, [], "and the official client's pending interrupts are clear");
+        if (work === "still runs") {
+            assert.equal((await daemon.readStreams({ workspaceId, workerId })).length, 1, "while the work it let go still runs");
+            await writeFile(release, "");
+            assert.equal((await answered).at(-1)?.outcome?.type, "success", "which the answering view follows to its end");
+        }
+        assert.ok(await settled() < 400, "the gate settled once, by the other view's answer");
     });
 }
 

@@ -955,17 +955,23 @@ export default class Portal {
         }
         // {§agui-held-interrupts} A pending gate this thread presented whose interrupt the Run's client holds is held: the
         // Run does not present it again, and presents no other gate while it holds one.
+        let unheld = false;
         for (const id of holding) {
             const presented = this.#continuations.get(id);
-            if (presented === undefined) continue;
-            const { continuation } = presented;
-            if (continuation.workspaceId === workspaceId && continuation.owner === thread.owner && continuation.threadId === thread.threadId) {
-                thread.held.set(presented.key, continuation.gate.workerId);
-            }
+            const continuation = presented?.continuation;
+            if (presented !== undefined && continuation?.workspaceId === workspaceId && continuation.owner === thread.owner
+                && continuation.threadId === thread.threadId) thread.held.set(presented.key, continuation.gate.workerId);
+            else unheld = true;
         }
-        if (deliveries.length === 0 || thread.held.size > 0) return false;
-        const delivery = deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
-        if (delivery === undefined) return false;
+        const delivery = thread.held.size > 0 ? undefined : deliveries.find(({ workerId }) => thread.workerId === workerId) ?? deliveries[0];
+        if (delivery === undefined) {
+            // An interrupt its client holds that this thread's gates no longer hold pending: the Run finishes as at a settlement.
+            if (unheld) {
+                thread.held.clear();
+                this.#finishThread(thread, [], undefined);
+            }
+            return unheld;
+        }
         if (thread.loopId === null) {
             thread.loopId = delivery.workerId === thread.workerId
                 ? delivery.loopId
