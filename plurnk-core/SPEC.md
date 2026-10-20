@@ -6649,7 +6649,7 @@ already present. Required schema fields use {§executor-input-schema-preview};
 authored examples take precedence. Family alternatives and descriptive summaries
 remain one compact orientation line, not an expansion of every tool's signature.
 
-§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project root; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
+§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project root, or absolute: it is matched against member keys, so its spelling is canonicalized as a path's is ({§fs-canonical-name}) and an absolute glob admits exactly what its root-relative spelling does; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
 
 | Verb | Input | Effect |
 | --- | --- | --- |
@@ -6672,7 +6672,7 @@ they are validated without creating a definition ({§resource-environment}).
 namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). `none`
 refuses every model definition — inclusion or exclusion — as `403
 members/functionality/model-scope`, whose recovery is the one path that remains, a client or
-operator definition, the user's to give; `root` admits patterns inside the root; `namespace` admits `../` too.
+operator definition, the user's to give; `root` admits patterns inside the root, however spelled; `namespace` admits `../` too.
 `auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
 so the family bounds the model without a second grammar; an admission a read earns

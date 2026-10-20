@@ -456,6 +456,10 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
         assert.deepEqual(await rooted.admit({ files: ["notes.md", "!drafts/**"] }, who, "operation"), [admission("notes.md", "model-proposal"), admission("!drafts/**", "model-proposal")]);
         await refusedAs(() => rooted.admit({ files: ["../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
         await refusedAs(() => rooted.admit({ files: ["notes.md", "../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
+        // {§members-functionality} The scope judges the glob in key space, whatever its spelling.
+        assert.deepEqual(await rooted.admit({ files: [join(root, "notes.md")] }, who, "operation"), [admission(join(root, "notes.md"), "model-proposal")],
+            "an absolute glob inside the root is a root pattern");
+        await refusedAs(() => rooted.admit({ files: [join(dirname(root), "secrets", "*.pem")] }, who, "operation"), "model-scope", 403);
         const bare = await refusedAs(() => rooted.admit({ files: ["!"] }, who, "operation"), "definition-invalid", 400);
         assert.match(String(bare.recovery), /docs\/\*\*/u);
 
@@ -470,4 +474,60 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
+});
+
+// {§members-functionality} {§fs-canonical-name} A definition's glob is matched against member keys: written absolute or from
+// the root, beside it or farther out, it admits the same members, which READ reaches by either spelling; an exclusion
+// spelled absolute removes what it names, and no member is stored under an absolute key.
+test("{§members-functionality} {§fs-canonical-name} a glob spelled absolute or from the root admits the same members beyond the root, near or far, and READ reaches them", { timeout: 60_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const base = await mkdtemp(join(tmpdir(), "plurnk-members-beyond-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const root = join(base, "ws", "project");
+    await mkdir(root, { recursive: true });
+    const git = (args: string[]) => execFileP("git", args, { cwd: root, env: hermeticGitEnv() });
+    await git(["init", "-q"]);
+    await writeFile(join(root, "README.md"), "# tracked\n");
+    await git(["add", "README.md"]);
+    await git(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: seed"]);
+    // Beside the root and farther out: one file per spelling, and one an exclusion removes.
+    const places = [{ dir: join(base, "ws", "shared"), key: "../shared" }, { dir: join(base, "far"), key: "../../far" }];
+    for (const { dir } of places) {
+        await mkdir(dir, { recursive: true });
+        for (const name of ["relative.md", "absolute.md", "excluded.md"]) await writeFile(join(dir, name), `${dir}/${name}\n`);
+    }
+    await withEnv({ PLURNK_SERVICE_GIT_ALLOWED: "1", PLURNK_SERVICE_GIT_AUTO: "1", PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace", PLURNK_MEMBERS_ENABLED: "1" }, async () => {
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `members-beyond-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const model = await insertWorker(db, workspaceId, null, "model", "model");
+        await ownWorker(db, workspaceId, model);
+        const daemon = new Daemon({ db, provider: null });
+        await daemon.start();
+        try {
+            const operate = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
+            const files = places.flatMap(({ dir, key }) => [`${key}/relative.md`, join(dir, "absolute.md"), `${key}/excluded.md`, `!${join(dir, "excluded.md")}`]);
+            await operate(`\`\`\`\`members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "members", after: 0, timeoutMs: 30_000 }) as Receipt;
+            assert.equal(outcome.status, 201);
+            await daemon.settleFunctionality(workspaceId);
+            for (const { dir, key } of places) {
+                assert.deepEqual(outcome.definitions?.find(({ alias }) => alias === join(dir, "absolute.md"))?.detail?.files, [`${key}/absolute.md`],
+                    `${key}: the absolute glob resolves to the member's key`);
+                for (const name of ["relative.md", "absolute.md"]) {
+                    assert.equal(await memberOf(db, workspaceId, `${key}/${name}`), true, `${key}/${name} is a member`);
+                    for (const spelling of [`${key}/${name}`, join(dir, name)]) {
+                        const read = await operate(`\`\`\`\`READ (${spelling})\`\`\`\``) as { status: number; content?: string | null };
+                        assert.deepEqual([read.status, read.content], [200, `${dir}/${name}\n`], `READ ${spelling} reaches it`);
+                    }
+                }
+                assert.equal(await memberOf(db, workspaceId, `${key}/excluded.md`), false, `${key}: an exclusion spelled absolute removes the member`);
+            }
+            assert.deepEqual(await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "file", prefix: "/%" }), [],
+                "no member is stored under an absolute key");
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
 });

@@ -15,6 +15,7 @@ import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-me
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
+import Namespace from "../core/namespace.ts";
 import AmbientMembers, { AUTO_ADD_KEY } from "../core/AmbientMembers.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
@@ -146,12 +147,16 @@ export const modelScope = (environ: NodeJS.ProcessEnv = process.env): FileCreate
 const outsideRoot = (pattern: string): boolean =>
     pattern.startsWith("/") || pattern === ".." || pattern.startsWith("../") || pattern.includes("/../") || pattern.endsWith("/..");
 
+// {§members-functionality} A glob is matched against member keys, so its spelling is canonicalized as a path's is
+// ({§fs-canonical-name}): an absolute spelling and its root-relative one name the same files. Headless, it stays as written.
+const keyPattern = (pattern: string, root: string | null): string => (root === null ? null : Namespace.canonicalize(pattern, root)) ?? pattern;
+
 const sourceOf = (definition: MembersDefinition): MembersSource =>
     definition.provenance?.kind === "model-proposal" ? "model" : "members";
 
-const rowOf = (definition: MembersDefinition): OverlayRow => ({
+const rowOf = (definition: MembersDefinition, root: string | null): OverlayRow => ({
     effect: isExclusion(definition.glob) ? "exclude" : "include",
-    glob: patternOf(definition.glob),
+    glob: keyPattern(patternOf(definition.glob), root),
     source: sourceOf(definition),
 });
 
@@ -159,7 +164,7 @@ const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" :
 const sample = (paths: readonly string[]): string => (paths.length === 0 ? "" : `: ${paths.slice(0, sampleSize()).join(", ")}${paths.length > sampleSize() ? ", …" : ""}`);
 
 const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution | null): MembersResolution => {
-    const { effect, glob: pattern } = rowOf(definition);
+    const { effect, glob: pattern } = rowOf(definition, overlay?.root ?? null);
     if (overlay === null) return { effect, pattern, matched: 0, files: [], ignored: 0 };
     if (effect === "exclude") {
         const files = overlay.excluded.filter((path) => PathGlob.matches(path, pattern));
@@ -263,11 +268,11 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         }
         return [isExclusion(glob) || PathSyntax.hasGlob(glob)
             ? await this.#preview(glob, overlay, identity.workspaceId)
-            : await this.#verdict(glob, overlay, identity.workspaceId)];
+            : await this.#verdict(keyPattern(glob, overlay.root), overlay, identity.workspaceId)];
     }
 
     async #preview(glob: string, overlay: OverlayResolution, workspaceId: number): Promise<FunctionalityCandidate> {
-        const pattern = patternOf(glob);
+        const pattern = keyPattern(patternOf(glob), overlay.root);
         const candidate = { alias: glob, definition: { glob }, provenance: { kind: "preview", source: glob } };
         if (isExclusion(glob)) {
             const excluded = overlay.members.filter((path) => PathGlob.matches(path, pattern));
@@ -321,6 +326,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         const scope = caller === "operation"
             ? FileCreationPolicy.effective(modelScope(this.#env), (await WorkspaceSettings.read(this.#db, identity.workspaceId)).membersModelScope)
             : null;
+        const root = scope === null ? null : await GitMembership.workspaceRoot(this.#db, identity.workspaceId);
         const admitted = new Map<string, FunctionalityAdmission<MembersDefinition>>();
         for (const raw of files) {
             const glob = raw.trim();
@@ -330,7 +336,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
                     recovery: "Name a pattern such as `docs/**` or `!**/*.lock`.",
                 });
             }
-            if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(pattern))) {
+            if (scope !== null && !FileCreationPolicy.admits(scope, outsideRoot(keyPattern(pattern, root)))) {
                 throw refuse("model-scope", 403, scope === "none"
                     ? "The model may not change membership here: the members scope is none."
                     : `The effective members scope '${scope}' does not admit '${glob}'.`, {
@@ -357,7 +363,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     async prepare(preparation: FunctionalityPreparation<MembersDefinition, MembersSnapshot>): Promise<FunctionalityPrepared<never, MembersSnapshot>> {
         preparation.signal.throwIfAborted();
         const { workspaceId, enabled } = preparation;
-        const rows = this.#projection(enabled);
+        const rows = this.#projection(enabled, await GitMembership.workspaceRoot(this.#db, workspaceId));
         const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
         preparation.signal.throwIfAborted();
         const outcomes = new Map<string, FunctionalityOutcome>();
@@ -381,10 +387,10 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         // Desired state is durable; the overlay keeps reflecting it after the workspace cools.
     }
 
-    #projection(enabled: FunctionalityPreparation<MembersDefinition>["enabled"]): OverlayRow[] {
+    #projection(enabled: FunctionalityPreparation<MembersDefinition>["enabled"], root: string | null): OverlayRow[] {
         const rows = new Map<string, OverlayRow>();
         const admit = (definition: MembersDefinition): void => {
-            const row = rowOf(definition);
+            const row = rowOf(definition, root);
             const key = `${row.effect}\0${row.glob}`;
             const current = rows.get(key);
             if (current === undefined || (current.source === "model" && row.source === "members")) rows.set(key, row);
