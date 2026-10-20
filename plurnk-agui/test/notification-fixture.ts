@@ -80,3 +80,6 @@ export const packet = (overrides: Partial<ApplicationLoopPacket> = {}): Applicat
     gauge: { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null },
     ...overrides,
 });
+
+// {§agui-body-reference} The origin a test Run's client reached the daemon at.
+export const ORIGIN = "http://agui.test";

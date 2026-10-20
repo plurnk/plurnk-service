@@ -16,3 +16,16 @@ export async function bindListener(): Promise<{ httpAddress(): { host: string; p
     const { default: HttpListener } = await import(join(SERVICE, "src/server/HttpListener.ts"));
     return HttpListener.bind({ host: "127.0.0.1", port: 0 });
 }
+
+// {§agui-body-reference} A result as an ordinary client reads it: its receipt, and its body fetched from the document part
+// that carries it; a result without a body is its receipt alone.
+export async function resultOf(content: unknown): Promise<{ receipt: Record<string, unknown>; body: string | null }> {
+    if (typeof content === "string") return { receipt: JSON.parse(content) as Record<string, unknown>, body: null };
+    const parts = content as ReadonlyArray<{ type: string; text?: string; source?: { type: string; value?: string } }>;
+    const text = parts.find((part) => part.type === "text")?.text;
+    const source = parts.find((part) => part.type === "document")?.source;
+    if (text === undefined || source?.type !== "url" || source.value === undefined) throw new TypeError("A result's parts are its receipt's text and its body's document.");
+    const fetched = await fetch(source.value);
+    if (fetched.status !== 200) throw new Error(`the body at ${source.value} answered ${fetched.status}`);
+    return { receipt: JSON.parse(text) as Record<string, unknown>, body: await fetched.text() };
+}

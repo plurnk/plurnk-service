@@ -16,7 +16,7 @@ import Translator from "./Translator.ts";
 import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
-import { packet } from "../test/notification-fixture.ts";
+import { ORIGIN, packet } from "../test/notification-fixture.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 // One authored operation, parsed as the service parses it.
@@ -26,7 +26,7 @@ const authored = (source: string): Record<string, unknown> => {
     return item.statement as unknown as Record<string, unknown>;
 };
 
-const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
+const t = (): Translator => new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
     const rx = over.op === "SEND" && (tx as { target?: unknown } | undefined)?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
@@ -103,11 +103,14 @@ test("{§agui-call-result} {§methods-invocation} a started execution is answere
     ];
     const tr = t();
     const live = rows.flatMap((row) => tr.logEntry(row));
-    const results = live.filter((event) => event.type === EventType.TOOL_CALL_RESULT) as Array<{ toolCallId: string; messageId: string; content: string }>;
+    const results = live.filter((event) => event.type === EventType.TOOL_CALL_RESULT) as Array<{ toolCallId: string; messageId: string; content: unknown }>;
     assert.deepEqual(results.map(({ toolCallId, messageId }) => [toolCallId, messageId]),
         [["1/1/2", "1/1/2/result"], ["1/1/3", "1/1/3/result"], ["1/1/1", "1/2/1"], ["1/1/1", "1/2/2"]],
         "the started command's receipt is no result; each observation answers it under its own coordinate, and a failed command's receipt is its result");
-    assert.equal(JSON.parse(results[2].content).content, "hi\n", "the observation carries the output");
+    assert.deepEqual(results[2].content, [
+        { type: "text", text: JSON.stringify({ status: 200, exitCode: 0, terminal: true }) },
+        { type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/2/1/READ` } },
+    ], "{§agui-body-reference} the observation carries its receipt, and its output by reference");
     assert.ok(!live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "an observation that answers a call is not ambient");
 
     const [snapshot] = tr.replay(rows.map(({ entry: row }) => row));
@@ -137,8 +140,11 @@ test("{§agui-call-result} {§worker-obligations} {§agui-progress-reply} a dele
     const tr = t();
     const live = rows.flatMap((row) => tr.logEntry(row));
     assert.deepEqual(live.filter((event) => event.type === EventType.TOOL_CALL_RESULT).map((event) => [event.toolCallId, event.messageId, event.content]),
-        [["1/1/1", "1/2/2", JSON.stringify({ status: 200, resource: "ops://helper/1", content: "hello" })], ["1/1/2", "1/2/3", "forty-two"]],
-        "neither receipt is a result; the child's conclusion answers the WORK and the reply's words the SEND");
+        [["1/1/1", "1/2/2", [
+            { type: "text", text: JSON.stringify({ status: 200, resource: "ops://helper/1" }) },
+            { type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/2/2/READ` } },
+        ]], ["1/1/2", "1/2/3", "forty-two"]],
+        "neither receipt is a result; the child's conclusion answers the WORK, its body by reference, and the reply's words the SEND");
     assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_START).map((event) => [event.messageId, event.role, event.name]),
         [["1/2/1", "user", "worker://peer"]], "a progress reply is a message from the peer that reported it");
     const stray = t().logEntry(entry({ id: 6, loop_seq: 1, turn_seq: 2, sequence: 4, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer",
@@ -177,7 +183,7 @@ test("{§agui-call-result} {§proposal-202-pauses} a gated call is answered by i
 });
 
 test("{§agui-subagents} {§agui-snapshot} a subagent's conversation is its own: attributed to its run and identified in its worker's namespace, live and in one replay with its delegator's", () => {
-    const helper = new Translator({ threadId: "th-1", runId: "run-1", modelWorkerId: 20, subagent: { runId: "ops://helper/1", worker: "helper" } });
+    const helper = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 20, subagent: { runId: "ops://helper/1", worker: "helper" } });
     const own = [
         wireRow({ id: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"), attrs: { worker: "worker://helper", message: "message://helper/ab12" } }),
         wireRow({ id: 5, turn_id: 2, turn_seq: 2, sequence: 1, origin: "_plurnk", op: "READ", source: "worker://helper", attrs: { kind: "loop_termination" },
@@ -354,7 +360,7 @@ test("{§agui-plurnk-metadata} readable provider reasoning precedes SEND speech 
 });
 
 test("{§agui-projection} live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
-    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
     const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked " });
     const second = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "the evidence" });
@@ -384,7 +390,7 @@ test("{§agui-projection} live provider reasoning projects ordered deltas before
 
 for (const origin of ["model", "_plurnk"] as const) {
     test(`{§agui-projection}: late ${origin} receipts do not rewind a streaming or resumed turn`, () => {
-        let tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 10 });
+        let tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 10 });
         const prior = entry({ id: 6, turn_id: 6, loop_seq: 1, turn_seq: 6, sequence: 1, origin, status_rx: 102 });
         tr.logEntry(prior);
         tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
@@ -396,7 +402,7 @@ for (const origin of ["model", "_plurnk"] as const) {
         events.push(...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }));
         const interrupted = tr.interrupt();
         assert.equal(interrupted.continuation.currentTurn, 7);
-        tr = new Translator({ threadId: "th", runId: "resumed", continuation: interrupted.continuation });
+        tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "resumed", continuation: interrupted.continuation });
         assert.deepEqual(tr.runStarted().at(-1), { type: "STEP_STARTED", stepName: "turn-7" });
         events.push(...tr.logEntry(settled));
         events.push(...tr.logEntry(entry({ op: "WAIT", turn_id: 7, tx: { body: "recorded" }, reasoning: "checked the evidence" })));
@@ -408,7 +414,7 @@ for (const origin of ["model", "_plurnk"] as const) {
 
 for (const streamed of [false, true]) {
     test(`{§agui-readable-reasoning}: SEND and WAIT share one reasoning projection across interrupts (streamed=${streamed})`, () => {
-        let tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 10 });
+        let tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 10 });
         const rows = [
             entry({ id: 10, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 1, tx: { body: "progress" }, reasoning: "checked the evidence" }),
             entry({ id: 11, op: "SEND", status_rx: 200, turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "answer" }, reasoning: "checked the evidence" }),
@@ -421,7 +427,7 @@ for (const streamed of [false, true]) {
             ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
         ] : [];
         events.push(...tr.logEntry(rows[0]));
-        tr = new Translator({ threadId: "th-1", runId: "resumed", continuation: tr.interrupt().continuation });
+        tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "resumed", continuation: tr.interrupt().continuation });
         for (const row of rows.slice(1)) events.push(...tr.logEntry(row));
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 2,
             "one reasoning value per turn, including when a later turn repeats the same text");
@@ -435,7 +441,7 @@ for (const streamed of [false, true]) {
 }
 
 test("{§agui-plurnk-metadata} a retried physical request receives a separate reasoning message instead of splicing attempts", () => {
-    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
     const emit = (requestSequence: number, phase: "start" | "end" | "content", delta?: string) => tr.reasoning({
         workerId: 2,
         loopId: 4,
@@ -474,7 +480,7 @@ test("{§agui-plurnk-metadata} a retried physical request receives a separate re
 });
 
 test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
-    const tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 2 });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "end" });
@@ -494,7 +500,7 @@ test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different
 });
 
 test("{§agui-readable-reasoning} a Run that joins mid-request presents none of it and receives the durable reasoning once, with its row", () => {
-    const tr = new Translator({ threadId: "th-1", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 2 });
     assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), []);
     assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }), []);
     const send = tr.logEntry(entry({
@@ -511,7 +517,7 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
 });
 
 test("{§agui-plurnk-metadata} reasoning lifecycle violations fail at the projection boundary", () => {
-    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
     tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     assert.throws(
         () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
@@ -600,7 +606,7 @@ test("{§agui-plurnk-metadata} turn boundaries are STEPs; termination closes the
 });
 
 test("{§agui-cost-evidence} {§agui-plurnk-metadata} a Run's end carries the full terminal record as metadata, including attribution outside usage", () => {
-    const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 512, threadId: "th-1", runId: "run-1" });
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 77,
@@ -646,7 +652,7 @@ test("{§agui-run-outcome} {§agui-plurnk-metadata} a loop's end is the Run's st
         usage: loopUsage({ accounting: { requests: [...reported], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null } }),
     });
     const ended = (n: TerminatedNotification) => t().terminated(n).filter(({ type }) => type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR);
-    const terminal = (n: TerminatedNotification) => ({ plurnk: { terminal: { ...n, workspaceId: null } } });
+    const terminal = (n: TerminatedNotification) => ({ plurnk: { terminal: { ...n, workspaceId: 3 } } });
     const usage = [{ provider: "openai", model: "a", inputTokens: 150, outputTokens: 30, totalTokens: 180, reasoningTokens: 5, cachedInputTokens: 40, cacheWriteInputTokens: 0 }];
 
     const done = loopEnd({ status: 200 });
@@ -712,7 +718,7 @@ test("{§agui-plurnk-metadata} a failed termination preserves its Problem and ma
     const error = events.find((e) => e.type === "RUN_ERROR") as { code?: string; message?: string; metadata?: { plurnk?: { terminal?: unknown } } };
     assert.deepEqual(
         error?.metadata?.plurnk?.terminal,
-        { ...term, workspaceId: null },
+        { ...term, workspaceId: 3 },
         "{§agui-plurnk-metadata} the Run's error carries the exact Problem in its terminal record, without translation loss",
     );
     assert.equal(error?.code, problem.type);
@@ -737,7 +743,7 @@ test("{§agui-plurnk-metadata} a failed termination without a Problem is rejecte
 });
 
 test("{§agui-ambient} a FOREIGN worker's rows never enter the core stream — plurnk.ambient only", () => {
-    const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: wireRow({ id: 1, op: "WAIT", worker_id: 2, tx: JSON.stringify({ body: "mine" }) }) });
     assert.ok(own.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "the thread's own WAIT speaks its body");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
@@ -757,7 +763,7 @@ test("{§agui-ambient} a rejected emission attempt remains forensic even if an i
 });
 
 test("{§agui-plurnk-metadata} the newest-first workspace log replays user prompts, WAIT and SEND speech chronologically without rejected attempts", () => {
-    const tr = new Translator({ threadId: "th", runId: "r" });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "r" });
     const events = tr.replay([
         wireRow({ id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } }),
         wireRow({ id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } }),
@@ -816,7 +822,7 @@ test("{§agui-plurnk-metadata} an interrupt closes the current AG-UI step and it
     const paused = interrupted.interrupt();
     assert.deepEqual(paused.events, [{ type: "STEP_FINISHED", stepName: "turn-7" }]);
 
-    const resumed = new Translator({ threadId: "th-1", runId: "run-2", continuation: paused.continuation });
+    const resumed = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-2", continuation: paused.continuation });
     assert.deepEqual(resumed.runStarted({ type: EventType.STATE_SNAPSHOT, snapshot: { ready: true } }).map(({ type }) => type), [
         "RUN_STARTED",
         "STATE_SNAPSHOT",
@@ -836,7 +842,7 @@ test("{§agui-plurnk-metadata} runtime protocol and family dependencies are decl
 });
 
 test("{§agui-outside-text}: outside text projects one plurnk.outside per admitted emission for the thread's worker, and nothing for a foreign one", () => {
-    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
     const event = { workerId: 2, loopId: 4, turnId: 7, coordinate: "alice-4-7", text: "Thinking out loud.", tokens: 9 };
     assert.deepEqual(tr.outside(event), [
         { type: EventType.STEP_STARTED, stepName: "turn-7" },

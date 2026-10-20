@@ -37,7 +37,7 @@ const transcript = (messages: readonly Replayed[] | undefined): Array<Record<str
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, Validator, isExecution } from "@plurnk/plurnk-contracts";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
-import { packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
+import { ORIGIN, packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { replayState } from "../test/state-replay.ts";
@@ -432,7 +432,7 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
         });
         const outcome = actionOutcome(events) as { kind: string; ok: boolean; result: { entries: unknown[] } } | undefined;
         assert.deepEqual(outcome, { kind: "log.read", ok: true, result: { entries: rows } }, "{§agui-plurnk-metadata} the Run's result is the action's outcome");
-        const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
+        const translator = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "history", runId: "live", modelWorkerId: 20 });
         for (const [index, row] of rows.entries()) {
             const live = translator.logEntry({ entry: row });
             const whole = live.find((event) => event.type === "CUSTOM" && event.name === "plurnk.ambient") as { value?: unknown } | undefined;
@@ -3261,6 +3261,38 @@ test("{§credential-authority} PLURNK-owned HTTP failures use application/proble
         });
         assert.equal(missingRoute.type, "https://problems.plurnk.xyz/agui/http/route-not-found");
         assert.equal(missingRoute.path, "/agui/missing");
+    } finally { await mod.close(); }
+});
+
+// {§agui-body-reference} A row's body at its address: the address names the row exactly, the body is typed as its
+// receipt types it, and an address that holds no body is refused; the perimeter admits the request first.
+test("{§agui-body-reference}: a row's body is served at its address, typed as its receipt types it, and nothing else is", async () => {
+    const { seam } = mockSeam("expected");
+    const reads: unknown[] = [];
+    seam.readLog = async (args) => {
+        reads.push(args);
+        const row = { worker_id: 77, loop_seq: 1, turn_seq: 2, sequence: args.sequence ?? 0, origin: "model" };
+        if (args.sequence === 3) return logRows([{ ...row, id: 7, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "# Title\n" } }]);
+        if (args.sequence === 4) return logRows([{ ...row, id: 8, op: "NOTE", rx: { status: 200 } }]);
+        return [];
+    };
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const base = `http://127.0.0.1:${mod.address().port}`;
+    try {
+        const refused = await fetch(`${base}/agui/3/77/log/1/2/3/READ`);
+        assert.equal(refused.status, 401, "the perimeter admits a body request as it admits a Run");
+        assert.deepEqual(reads, [], "nothing is read for a request the perimeter refused");
+        const authorization = { authorization: `Bearer ${await mintAccess(mod.address().port, { id: "operator", secret: "expected" })}` };
+        const body = await fetch(`${base}/agui/3/77/log/1/2/3/READ`, { headers: authorization });
+        assert.equal(body.status, 200);
+        assert.equal(body.headers.get("content-type"), "text/markdown; charset=utf-8", "typed as its receipt types it");
+        assert.equal(await body.text(), "# Title\n", "the body, verbatim");
+        assert.deepEqual(reads.at(-1), { workspaceId: 3, workerId: 77, loopSeq: 1, turnSeq: 2, sequence: 3 }, "the address names its row exactly");
+        for (const address of ["1/2/4/NOTE", "1/2/3/EDIT", "1/2/5/READ"]) {
+            const none = await fetch(`${base}/agui/3/77/log/${address}`, { headers: authorization });
+            assert.equal(none.status, 404, `${address} holds no body`);
+            assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/body-not-found");
+        }
     } finally { await mod.close(); }
 });
 

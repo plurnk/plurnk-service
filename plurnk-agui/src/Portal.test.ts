@@ -18,7 +18,7 @@ import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
-import { packet, streamEvent, termination } from "../test/notification-fixture.ts";
+import { ORIGIN, packet, streamEvent, termination } from "../test/notification-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
 
 const OWNER = "agui://anonymous/threads/tui";
@@ -184,7 +184,7 @@ test("{§agui-status-spend} {§agui-status-children}: status deltas follow the s
     } });
     portal.start();
     const events: AguiEvent[] = [];
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: (batch) => events.push(...batch) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: (batch) => events.push(...batch) });
     // Another worker's turn settled: a moment the bound worker's spend may have changed, and nothing else to route.
     const settled = () => m.fire(3, "notice/event", { workerId: 20, loopId: 5, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
     const spends = () => events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
@@ -233,7 +233,7 @@ test("{§agui-status-children}: each moment that may change the count reads it a
     let reads = 0;
     const portal = new Portal({ ...m.seam, listWorkers: async () => { reads += 1; return []; } });
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: () => {} });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: () => {} });
     const status = statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }));
     portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status);
     const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
@@ -279,7 +279,7 @@ test("{§agui-shutdown}: close bypasses stream deferral, releases Runs once and 
     const portal = new Portal(m.seam);
     portal.start();
     const events: AguiEvent[] = [];
-    const args = { workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker" as const,
+    const args = { origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker" as const,
         emit: (batch: AguiEvent[]) => events.push(...batch) };
     const thread = portal.openThread(args);
     m.fire(3, "stream/event", streamEvent({ entryId: 5, workerId: 10, target: "sh:///abcd1234", scheme: "sh", contentLength: 5 }));
@@ -301,9 +301,9 @@ test("{§agui-worker-owner} {§agui-proposal-resolve}: an idle owner receives a 
     const observer = capture([]);
     const portal = new Portal(m.seam);
     portal.start();
-    portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER,
+    portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER,
         notificationScope: "worker", emit: owner.emit });
-    portal.openThread({ workspaceId: 3, workerId: 20, threadId: "observer",
+    portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 20, threadId: "observer",
         notificationScope: "worker", emit: observer.emit });
     m.fire(3, "loop/proposal", proposal({ workerId: 20, loopId: 22 }));
     await nextTask();
@@ -321,7 +321,7 @@ test("{§agui-proposal-resolve} a worker without pending interrupts drives the l
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (evs) => seen.push(...evs) });
 
     const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
     assert.ok(ack !== null);
@@ -386,7 +386,7 @@ test("{§agui-sync}: synchronization observes an already-active loop without tak
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({
+    const thread = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "observer",
@@ -428,7 +428,7 @@ test("{§agui-proposal-resolve} live stopped-worlds select their exact loop Run 
     const concurrentSeen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const owning = portal.openThread({
+    const owning = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "owning", owner: OWNER,
@@ -436,7 +436,7 @@ test("{§agui-proposal-resolve} live stopped-worlds select their exact loop Run 
         emit: owningView.emit,
     });
     await portal.run(owning, { workspaceId: 3, workerId: 10, prompt: "go" });
-    portal.openThread({
+    portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "concurrent-action",
@@ -472,7 +472,7 @@ test("{§agui-proposal-resolve} a terminal arriving before the loop acknowledgem
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "client", owner: OWNER, notificationScope: "worker", emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "client", owner: OWNER, notificationScope: "worker", emit: (events) => seen.push(...events) });
     const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
     await entered.promise;
 
@@ -502,7 +502,7 @@ test("{§agui-message-before-gate}: a message run during a durable proposal is d
     const portal = new Portal(m.seam);
     portal.start();
     const presented: Interrupt[] = [];
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events, interrupts = []) => {
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (events, interrupts = []) => {
         seen.push(...events);
         presented.push(...interrupts);
         if (interrupts.length > 0) deliveredBeforeGate.push(m.workers.length);
@@ -530,7 +530,7 @@ test("{§agui-gate-deferral}: a descendant gate arriving during the bound worker
     const batches: Array<{ events: AguiEvent[]; interrupts: Interrupt[] }> = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker",
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker",
         emit: (events, interrupts = []) => { batches.push({ events, interrupts }); } });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
@@ -564,7 +564,7 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
     const view = capture(seen);
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
     m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
@@ -584,7 +584,7 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
 
     pending.push(gate);
     const next = capture([]);
-    const nextThread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: next.emit });
+    const nextThread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: next.emit });
     assert.equal(await portal.run(nextThread, { workspaceId: 3, workerId: 10, prompt: "again" }), null);
     assert.deepEqual(next.interrupts.map(({ metadata }) => metadata?.plurnk?.proposal?.coordinate), ["1/1/42"],
         "the durable gate is re-presented by the next Run");
@@ -597,7 +597,7 @@ test("{§agui-message-before-gate} a durable client interaction re-surfaces with
     const view = capture(seen);
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({
+    const thread = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
@@ -636,7 +636,7 @@ test("{§agui-proposal-resolve} a live proposal is the operation's call and an i
     const portal = new Portal(m.seam);
     const view = capture(seen);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
 
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
     await nextTask();
@@ -674,7 +674,7 @@ test("{§agui-proposal-resolve} a descendant proposal interrupts its owning thre
     const portal = new Portal(m.seam);
     const view = capture(firstSeen);
     portal.start();
-    const first = portal.openThread({
+    const first = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
@@ -694,7 +694,7 @@ test("{§agui-proposal-resolve} a descendant proposal interrupts its owning thre
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
-    const resumed = portal.openThread({
+    const resumed = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
@@ -739,7 +739,7 @@ test("{§agui-proposal-resolve} a queued descendant gate precedes a later contro
     const portal = new Portal(m.seam);
     portal.start();
     let thread: ThreadHandle | null = null;
-    thread = portal.openThread({
+    thread = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "controlling", owner: OWNER,
@@ -751,7 +751,7 @@ test("{§agui-proposal-resolve} a queued descendant gate precedes a later contro
         },
     });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
-    const independentThread = portal.openThread({
+    const independentThread = portal.openThread({ origin: ORIGIN,
         workspaceId: 4,
         workerId: 10,
         threadId: "independent",
@@ -807,7 +807,7 @@ test("{§agui-message-before-gate} an owning thread re-surfaces a durable descen
     const portal = new Portal(m.seam);
     const view = capture(seen);
     portal.start();
-    const thread = portal.openThread({
+    const thread = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "client", owner: OWNER,
@@ -829,7 +829,7 @@ test("{§agui-message-before-gate} an owning thread re-surfaces a durable descen
         status: "resolved" as const,
         payload: { color: "orange" },
     }];
-    const resumed = portal.openThread({
+    const resumed = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "client", owner: OWNER,
@@ -865,7 +865,7 @@ test("{§agui-proposal-resolve} multiple descendant gates serialize through one 
     const portal = new Portal(m.seam);
     const view = capture(firstSeen);
     portal.start();
-    const first = portal.openThread({
+    const first = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
@@ -888,7 +888,7 @@ test("{§agui-proposal-resolve} multiple descendant gates serialize through one 
         payload: { decision: "accept" },
     }];
     const secondView = capture(secondSeen);
-    const second = portal.openThread({
+    const second = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "tui", owner: OWNER,
@@ -913,7 +913,7 @@ test("{§agui-proposal-resolve} a descendant gate never leaks to an unrelated th
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    portal.openThread({
+    portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "unrelated",
@@ -934,7 +934,7 @@ test("{§agui-proposal-resolve}: resume binds the persisted loop before releasin
     const portal = new Portal(m.seam);
     const view = capture(seen);
     portal.start();
-    const thread = portal.openThread({
+    const thread = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         threadId: "client", owner: OWNER,
@@ -975,7 +975,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
     const portal = new Portal(m.seam);
     const view = capture(firstSeen);
     portal.start();
-    const first = portal.openThread({
+    const first = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 10,
@@ -997,7 +997,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         status: "resolved" as const,
         payload: { decision: "accept" },
     }];
-    const second = portal.openThread({
+    const second = portal.openThread({ origin: ORIGIN,
         workspaceId: 3,
         workerId: 10,
         modelWorkerId: 10,
@@ -1051,7 +1051,7 @@ const label = (event: AguiEvent): string => event.type === "CUSTOM" ? (event as 
 // {§agui-broadcast-fan} An operation Run as the Run handler opens it: no worker until its dispatch announces the loop
 // it opened in the runtime worker (10).
 const openOperation = (portal: Portal, inputRunId: string, seen: AguiEvent[], loopId = 6) => {
-    const thread = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId, notificationScope: "operation",
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: null, threadId: "tui", inputRunId, notificationScope: "operation",
         emit: (events) => seen.push(...events) });
     portal.bindOperation(thread, { workerId: 10, loopId });
     return thread;
@@ -1133,7 +1133,7 @@ test("{§agui-broadcast-fan} an operation Run observes exactly its own loop of t
     portal.start();
     const thread = openOperation(portal, "mine", mine, 6);
     openOperation(portal, "theirs", theirs, 7);
-    portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "management", notificationScope: "result", emit: (events) => management.push(...events) });
+    portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "management", notificationScope: "result", emit: (events) => management.push(...events) });
 
     m.fire(3, "log/entry", startedExec());
     m.fire(3, "log/entry", { entry: { ...startedExec({ stream: "sh:///7777aaaa" }).entry, id: 56, loop_id: 7 } });
@@ -1181,7 +1181,7 @@ test("{§agui-run-disconnect} an operation Run's disconnect cancels nothing, bef
     portal.disconnect(bound);
     assert.deepEqual(m.cancelledLoops, [], "an admitted operation runs on without its connection");
 
-    const early = portal.openThread({ workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "early", notificationScope: "operation",
+    const early = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: null, threadId: "tui", inputRunId: "early", notificationScope: "operation",
         emit: () => undefined });
     portal.disconnect(early);
     portal.bindOperation(early, { workerId: 10, loopId: 7 });
@@ -1199,8 +1199,8 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
     const quiet: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
-    portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "plain", notificationScope: "worker", emit: (events) => quiet.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "plain", notificationScope: "worker", emit: (events) => quiet.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
     const row = (id: number, workerId: number) => ({ entry: { id, worker_id: workerId, loop_id: 80 + workerId, origin: "model", op: "READ", status_rx: 200, rx: {}, loop_seq: 1, turn_seq: 1, sequence: id, tx: { body: "" }, turn_id: 1 } });
@@ -1253,7 +1253,7 @@ test("{§agui-subagents}: a loop a call in view opened is that call's subagent: 
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(2, 20, 100));
     m.fire(3, "log/entry", delegated(3, 30, 110));
@@ -1291,7 +1291,7 @@ test("{§agui-subagents}: a subagent's parent is presented before it, and a loop
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(3, 30, 110));
     await nextTask();
@@ -1313,7 +1313,7 @@ test("{§agui-subagents}: a conclusion still on its way when its loop is judged 
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(2, 20, 100));
     m.fire(3, "loop/terminated", termination({ workerId: 20, loopId: 100 }));
@@ -1334,7 +1334,7 @@ test("{§agui-subagents}: the bound Worker's events wait while a descendant's lo
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(2, 20, 100));
     m.fire(3, "log/entry", { entry: wireRow({ id: 3, loop_id: 77, turn_id: 2, turn_seq: 2, sequence: 1 }) });
@@ -1353,7 +1353,7 @@ test("{§agui-subagents} {§agui-snapshot}: a snapshot replays each subagent's c
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     const logs = new Map([[20, [delegated(2, 20, 100).entry]], [30, [delegated(3, 30, 110).entry]]]);
     const subagents = await portal.subagentHistory(thread, async (workerId) => logs.get(workerId) ?? []);
     const [snapshot, ...presented] = portal.replay(thread, [wireRow({ id: 1, sequence: 2, op: "WORK", attrs: { message: "message://worker-20/ab12" } })], undefined, subagents);
@@ -1391,7 +1391,7 @@ test("{§agui-subagents}: an interrupt that finishes the Run suspends its runnin
     const portal = new Portal(m.seam);
     const view = capture(seen);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(2, 20, 100));
     await nextTask();
@@ -1412,7 +1412,7 @@ test("{§agui-proposal-resolve} {§agui-subagents}: a subagent's gate names its 
     const view = capture([]);
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
     m.fire(3, "log/entry", delegated(2, 20, 100));
     await nextTask();
@@ -1429,7 +1429,7 @@ test("{§agui-outside-text}: outside/event fans to the bound thread for its work
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: (evs) => seen.push(...evs) });
     const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
     assert.ok(ack !== null);
     m.fire(3, "outside/event", { workerId: 10, loopId: 77, turnId: 1, coordinate: "w-77-1", text: "Thinking out loud.", tokens: 9 });
@@ -1444,7 +1444,7 @@ test("{§agui-outside-text}: outside/event fans to the bound thread for its work
 const viewRun = (portal: Portal, resume?: ResumeEntry[], { threadId = "tui", workerId = 10 } = {}) => {
     const seen: AguiEvent[] = [];
     const view = capture(seen);
-    const thread = portal.openThread({ workspaceId: 3, workerId, threadId, owner: OWNER, notificationScope: "worker", emit: view.emit,
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId, threadId, owner: OWNER, notificationScope: "worker", emit: view.emit,
         ...(resume === undefined ? {} : { resume }) });
     const finished = (): Array<string | undefined> => seen.filter(({ type }) => type === EventType.RUN_FINISHED)
         .map((event) => (event as { outcome?: { type: string } }).outcome?.type);

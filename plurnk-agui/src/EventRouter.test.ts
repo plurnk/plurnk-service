@@ -8,6 +8,7 @@ import EventRouter from "./EventRouter.ts";
 import { EventType } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import {
+    ORIGIN,
     interaction,
     packet as loopPacket,
     proposal,
@@ -16,7 +17,7 @@ import {
     termination,
 } from "../test/notification-fixture.ts";
 
-const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
+const router = () => new EventRouter({ origin: ORIGIN, threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
 test("{§agui-workspace-state} workspace preparation is replaceable state, never model or transcript traffic", () => {
     const r = router();

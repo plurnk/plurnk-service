@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { HttpAgent } from "@ag-ui/client";
 import type { Message, RunAgentInput } from "@ag-ui/core";
 import { Mock } from "@plurnk/plurnk-providers";
-import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, resultOf, SERVICE } from "./_helpers.ts";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 
 const conversation = (messages: readonly Message[]) => messages.flatMap((message) =>
@@ -213,7 +213,7 @@ test("{§agui-official-client-conformance} ordinary clients observe a tool gate 
     assert.ok(conversation(pending.messages).some(({ content }) => content === "Approved command completed."));
     const results = pending.messages.filter((message) => message.role === "tool" && message.toolCallId === interrupt.toolCallId);
     assert.equal(results.length, 1, "one standard result answers the gated call");
-    assert.deepEqual(JSON.parse(results[0].content as string).content, "approved\n");
+    assert.equal((await resultOf(results[0].content)).body, "approved\n", "{§agui-body-reference} the command's output is one fetch from its result");
     const reopened = client(t, url, submitter.threadId);
     await reopened.runAgent();
     assert.deepEqual(reopened.messages, pending.messages, "the resumed and reconstructed standard conversations agree");

@@ -41,8 +41,9 @@ export default class RunHandler {
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
     readonly #workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
+    readonly #origin: (req: IncomingMessage) => string;
 
-    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action }: {
+    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action, origin }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
@@ -55,6 +56,8 @@ export default class RunHandler {
         actionBinding: (action: ActionRequest) => WorkerBinding;
         workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
+        // {§agui-body-reference} The origin a request reached this daemon at, where its Run's bodies are fetched.
+        origin: (req: IncomingMessage) => string;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -68,6 +71,7 @@ export default class RunHandler {
         this.#actionBinding = actionBinding;
         this.#workerGauge = workerGauge;
         this.#action = action;
+        this.#origin = origin;
     }
 
     // {§agui-http-authorization} — the principal and credential family the perimeter admitted this request under.
@@ -256,6 +260,7 @@ export default class RunHandler {
             // {§agui-broadcast-fan} An operation Run learns its Worker and Loop from the dispatch that opens them.
             workerId: notificationScope === "operation" ? null : workerId ?? null,
             threadId: input.threadId,
+            origin: this.#origin(req),
             replyThreads,
             notificationScope,
             owner: address,

@@ -31,12 +31,16 @@ import {
     type ToolMessage,
     type UserMessage,
 } from "./types.ts";
-import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type TokenUsage } from "@ag-ui/core";
+import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type ContentPart, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { Validator, isRecord, isSafeInteger, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket, type LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
+// {§agui-body-reference} A receipt's facts only the model uses: the line anchors it edits by.
+const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
+// A row whose result may hold a body ({§agui-body-reference}).
+type BodyRow = { op?: unknown; tx?: unknown; rx?: unknown; worker_id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown };
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
     source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown; state?: unknown;
     scheme?: unknown; hostname?: unknown; port?: unknown; pathname?: unknown; query?: unknown; fragment?: unknown };
@@ -55,7 +59,9 @@ export default class Translator {
     #currentTurn: number | null = null;
     #stepOpen = false;
     #modelWorkerId: number | null;
-    #workspaceId: number | null;
+    #workspaceId: number;
+    // {§agui-body-reference} The origin this Run's client reached the daemon at: its rows' bodies are fetched there.
+    readonly #origin: string;
     #activeReasoning = new Map<number, { turnId: number; loopId: number; requestSequence: number; messageId: string; content: string }>();
     #completedReasoning = new Map<number, string[]>();
     // {§agui-snapshot} {§agui-message-acceptance} The messages whose words this Run's client holds: those it submitted
@@ -72,8 +78,9 @@ export default class Translator {
         threadId: string;
         replyThreads?: readonly string[];
         runId: string;
+        origin: string;
+        workspaceId: number;
         modelWorkerId?: number | null;
-        workspaceId?: number | null;
         continuation?: TranslatorContinuation;
         subagent?: { readonly runId: string; readonly worker: string };
         // {§agui-subagents} A subagent's translator shares its Run's held calls: one client holds them all.
@@ -89,7 +96,8 @@ export default class Translator {
             args.continuation?.completedReasoning.map(([turnId, values]) => [turnId, [...values]]) ?? [],
         );
         this.#held = args.held ?? new Set(args.continuation?.held ?? []);
-        this.#workspaceId = args.workspaceId ?? null;
+        this.#workspaceId = args.workspaceId;
+        this.#origin = args.origin;
     }
 
     #continuation(): TranslatorContinuation {
@@ -174,8 +182,8 @@ export default class Translator {
 
     // {§agui-subagents} The translator of a subagent run this Run presents: its own namespace, this Run's client.
     subagentTranslator(args: { readonly modelWorkerId: number; readonly subagent: { readonly runId: string; readonly worker: string } }): Translator {
-        return new Translator({ threadId: this.#threadId, runId: this.#runId, modelWorkerId: args.modelWorkerId, workspaceId: this.#workspaceId,
-            subagent: args.subagent, held: this.#held, replyThreads: this.#replyThreads });
+        return new Translator({ threadId: this.#threadId, runId: this.#runId, origin: this.#origin, modelWorkerId: args.modelWorkerId,
+            workspaceId: this.#workspaceId, subagent: args.subagent, held: this.#held, replyThreads: this.#replyThreads });
     }
 
     // {§agui-proposal-resolve} A gate's call: the operation awaiting its decision, built as its row builds it and so
@@ -199,8 +207,8 @@ export default class Translator {
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-ambient} A row that builds nothing in the conversation rides whole.
-        const ambient = { type: EventType.CUSTOM, name: "plurnk.ambient", value: e } as const;
-        if (foreign) return [ambient];
+        const ambient = (): AguiEvent => ({ type: EventType.CUSTOM, name: "plurnk.ambient", value: this.#leanRow(e) });
+        if (foreign) return [ambient()];
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         const arrival = this.#arrival(e);
         if (arrival !== null) {
@@ -220,7 +228,7 @@ export default class Translator {
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: Translator.#delivered(e), metadata: Translator.#rowMetadata(e) });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: this.#delivered(e), metadata: Translator.#rowMetadata(e) });
                 return events;
             }
             // {§agui-progress-reply} Progress on a message this worker sent is a message from the one who reported it.
@@ -232,7 +240,7 @@ export default class Translator {
                 events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
                 return events;
             }
-            events.push(ambient);
+            events.push(ambient());
             return events;
         }
         const id = this.#id(e);
@@ -246,7 +254,7 @@ export default class Translator {
             events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: Translator.#callOf(e)!.name, metadata });
             events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
             if (!Translator.#answeredLater(e)) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
+                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e), metadata });
             }
             return events;
         }
@@ -268,13 +276,13 @@ export default class Translator {
             if (Translator.#modelArtifactKind(e.attrs) === null) {
                 throw new TypeError("An actionless model-origin row must carry attrs.kind=emissionAttempt.");
             }
-            events.push(ambient);
+            events.push(ambient());
             return events;
         }
         // {§agui-parse-refusal} A refusal is the call the worker attempted; one that names no attempt builds no part.
         const call = Translator.#callOf(e);
         if (call === null) {
-            events.push(ambient);
+            events.push(ambient());
             return events;
         }
         const metadata = Translator.#rowMetadata(e);
@@ -283,7 +291,7 @@ export default class Translator {
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
         // {§agui-call-result} A call is answered by its receipt, unless something later answers it.
         if (!Translator.#answeredLater(e)) {
-            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: Translator.#asText(e.rx), metadata });
+            events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: id, messageId: `${id}/result`, content: this.#result(e), metadata });
         }
         return events;
     }
@@ -455,7 +463,7 @@ export default class Translator {
         const response = Translator.isResponse(e, this.#replyThreads);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
-            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: Translator.#delivered(e), metadata }));
+            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: this.#delivered(e), metadata }));
             // {§agui-progress-reply}
             else if (typeof e.answering === "string") {
                 messages.push(attributed({ id, role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}), metadata }));
@@ -480,7 +488,7 @@ export default class Translator {
         messages.push(attributed({ id, role: "assistant", toolCalls: [{ id, type: "function", function: { name: call.name, arguments: call.args }, metadata }] }));
         if (e.state === "proposed") this.#held.add(id);
         if (Translator.#answeredLater(e)) return;
-        Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: Translator.#asText(e.rx), metadata }));
+        Translator.#placeResult(messages, attributed({ id: `${id}/result`, role: "tool", toolCallId: id, content: this.#result(e), metadata }));
     }
 
     notice(notice: unknown, loopId: number | null = null): AguiEvent[] {
@@ -686,8 +694,46 @@ export default class Translator {
 
     // {§agui-call-result} What the worker received for its call: a reply's words, as an arrival's ({§agui-snapshot}),
     // or an observation's result.
-    static #delivered(e: { op?: unknown; tx?: unknown; rx?: unknown }): string {
-        return e.op === "SEND" ? Translator.#txBody(e.tx) : Translator.#asText(e.rx);
+    // What another row delivered for a call: a reply's words, which are speech, or what was observed.
+    #delivered(e: BodyRow): string | ContentPart[] {
+        return e.op === "SEND" ? Translator.#txBody(e.tx) : this.#result(e);
+    }
+
+    // {§agui-body-reference} A result as its client receives it: the receipt, and the receipt's body as a document the
+    // client fetches by URL when it wants it. A result without a body is its receipt alone.
+    #result(e: BodyRow): string | ContentPart[] {
+        const lean = this.#lean(e);
+        if (lean === null) return Translator.#asText(e.rx);
+        const text = JSON.stringify(lean.receipt);
+        if (lean.body === null) return text;
+        return [{ type: "text", text }, { type: "document", source: { type: "url", value: lean.body.url, ...lean.body.mimeType } }];
+    }
+
+    // {§agui-body-reference} A whole row as its client receives it: its receipt as a result's, and its body's URL.
+    #leanRow<T extends BodyRow>(e: T): T | (Omit<T, "rx"> & { rx: Record<string, unknown>; body?: { url: string; mimeType?: string } }) {
+        const lean = this.#lean(e);
+        if (lean === null) return e;
+        return { ...e, rx: lean.receipt, ...(lean.body === null ? {} : { body: { url: lean.body.url, ...lean.body.mimeType } }) };
+    }
+
+    // {§agui-body-reference} A receipt without its body and the line anchors only the model edits by, and the body's
+    // URL and type when it holds one; null for a result that is not a receipt.
+    #lean(e: BodyRow): { receipt: Record<string, unknown>; body: { url: string; mimeType: { mimeType?: string } } | null } | null {
+        const receipt = Translator.#parsed(e.rx);
+        if (!isRecord(receipt)) return null;
+        const body = typeof receipt.content === "string" && receipt.content.length > 0
+            ? { url: this.#bodyUrl(e), mimeType: typeof receipt.mimetype === "string" ? { mimeType: receipt.mimetype } : {} }
+            : null;
+        const kept = Object.entries(receipt).filter(([key]) => !MODEL_FACTS.has(key) && !(body !== null && key === "content"));
+        return { receipt: Object.fromEntries(kept), body };
+    }
+
+    // {§agui-body-reference} The HTTP form of a row's log address in its worker's log: `log:///L/T/S/OP` at this daemon.
+    #bodyUrl(e: BodyRow): string {
+        if (!isSafeInteger(e.worker_id) || typeof e.op !== "string") {
+            throw new TypeError("A row with a body names its worker and operation.");
+        }
+        return `${this.#origin}/agui/${this.#workspaceId}/${e.worker_id}/log/${Translator.idOf(e)}/${encodeURIComponent(e.op)}`;
     }
 
     // {§agui-call-result} The call a discharging row answers: the operation it names ({§methods-invocation}), in the

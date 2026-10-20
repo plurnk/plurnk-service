@@ -10,7 +10,7 @@ import test from "node:test";
 import { HttpAgent } from "@ag-ui/client";
 import type { Message, RunAgentInput } from "@ag-ui/core";
 import type { ApplicationLoopProjection, ApplicationWorkerProjection } from "@plurnk/plurnk-contracts";
-import { bindListener, openTestDatabase, SERVICE } from "./_helpers.ts";
+import { bindListener, openTestDatabase, resultOf, SERVICE } from "./_helpers.ts";
 
 // HttpAgent leaves AbstractAgent's connect() to its subclasses: a standing observer is the official client's own run
 // pipeline pointed at /agui/connect ({§agui-owner-connection}), carrying its copy of the conversation ({§agui-run-input}).
@@ -173,10 +173,10 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     assert.equal((JSON.parse(refusal?.content as string ?? "{}") as { status?: number }).status, 400, "answered by the refusal");
     const commandId = command(refreshed)!;
     const outputs = truth.filter(({ role, toolCallId }) => role === "tool" && toolCallId === commandId);
-    assert.deepEqual(outputs.map(({ content }) => {
-        const { status, exitCode, terminal, content: output } = JSON.parse(content as string) as Record<string, unknown>;
+    assert.deepEqual(await Promise.all(outputs.map(async ({ content }) => {
+        const { receipt: { status, exitCode, terminal }, body: output } = await resultOf(content);
         return { status, exitCode, terminal, output };
-    }), [{ status: 200, exitCode: 0, terminal: true, output: "hello\n" }], "the command's result is its output and conclusion, not its start receipt");
+    })), [{ status: 200, exitCode: 0, terminal: true, output: "hello\n" }], "the command's result is its output and conclusion, not its start receipt");
     for (const [vantage, agent] of [["attached before the prompt", before], ["the submitting client", submitter], ["attached mid-request", late],
         ["attached while the command ran", running]] as const) {
         assert.deepEqual(view(agent.messages), truth, `${vantage} built exactly the refreshed conversation`);
@@ -273,10 +273,10 @@ test("{§agui-proposal-resolve} {§agui-snapshot} {§agui-call-result} a reviewe
 
     const truth = view(refreshed.messages);
     assert.deepEqual(commandOf(refreshed).map(({ id }) => id), [command?.id], "the operation is one call: no approval call beside it");
-    assert.deepEqual(answersOf(refreshed, command?.id).map(({ content }) => {
-        const { status, exitCode, content: output } = JSON.parse(content as string) as Record<string, unknown>;
+    assert.deepEqual(await Promise.all(answersOf(refreshed, command?.id).map(async ({ content }) => {
+        const { receipt: { status, exitCode }, body: output } = await resultOf(content);
         return { status, exitCode, output };
-    }), [{ status: 200, exitCode: 0, output: "approved\n" }], "answered once, by the approved command's output and conclusion");
+    })), [{ status: 200, exitCode: 0, output: "approved\n" }], "answered once, by the approved command's output and conclusion");
     assert.ok(refreshed.messages.some((message) => message.role === "assistant" && message.content === "Ran it."), "the loop continued past the gate");
     assert.deepEqual(view(pending.messages), truth, "the client that resumed built exactly the refreshed conversation");
 });
@@ -346,7 +346,7 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-prog
     const answersOf = (callId: string | undefined) => truth.filter(({ role, toolCallId }) => role === "tool" && toolCallId === callId).map(({ content }) => content);
     const conclusion = answersOf(callOf("WORK"));
     assert.equal(conclusion.length, 1, "the WORK has one result: no receipt beside its child's conclusion");
-    assert.equal((JSON.parse(conclusion[0] as string) as { content?: unknown }).content, "hello from the helper", "the child's conclusion answers the WORK");
+    assert.equal((await resultOf(conclusion[0])).body, "hello from the helper", "the child's conclusion answers the WORK");
     assert.deepEqual(answersOf(callOf("SEND")), ["forty-two"], "the peer's completion answers the SEND, in its own words");
     assert.deepEqual(truth.filter(({ role, name }) => role === "user" && name === "worker://peer").map(({ content }) => content), ["Still looking."],
         "the peer's progress is its message to main");

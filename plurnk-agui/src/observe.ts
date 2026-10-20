@@ -11,7 +11,10 @@ const TRACER_NAME = "plurnk.agui";
 
 const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
 
-export type AguiRouteTemplate = "/agui" | "/agui/connect" | "preflight" | "unmatched";
+export type AguiRouteTemplate = "/agui" | "/agui/connect" | "/agui/{workspace}/{worker}/log/{loop}/{turn}/{sequence}/{op}" | "preflight" | "unmatched";
+
+// {§agui-body-reference} A row's body at this daemon: workspace, worker, then the row's log address `L/T/S/OP`.
+export const BODY_ROUTE = /^\/agui\/(\d+)\/(\d+)\/log\/(\d+)\/(\d+)\/(\d+)\/([^/?#]+)$/u;
 
 export const aguiRouteTemplate = (
     method: string | undefined,
@@ -20,6 +23,7 @@ export const aguiRouteTemplate = (
     if (method === "OPTIONS") return "preflight";
     if (method === "POST" && url === "/agui") return "/agui";
     if (method === "POST" && url === "/agui/connect") return "/agui/connect";
+    if (method === "GET" && url !== undefined && BODY_ROUTE.test(url)) return "/agui/{workspace}/{worker}/log/{loop}/{turn}/{sequence}/{op}";
     return "unmatched";
 };
 

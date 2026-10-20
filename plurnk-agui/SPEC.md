@@ -168,6 +168,22 @@ ends the transport Run, not a worker obligation. Already-ended Runs receive noth
 further; repeated closure is inert. Preparation finishing after closure cannot open
 a new stream. Clients need not disconnect for the daemon to stop.
 
+## §agui-body-reference Bodies by reference
+
+A result's body travels when its client asks for it. A result whose receipt holds a body (`content`, a
+non-empty string) reaches its client as two standard parts: a text part, the receipt without its body, and
+a document part whose `url` source is the body's address at this daemon, carrying the receipt's `mimetype`
+as its `mimeType`; a result without a body is its receipt as text. No receipt carries the line anchors only
+the model edits by (`lineAnchors`, `lineAnchorIdentity`, `lineNumberWidth`). The live `TOOL_CALL_RESULT`, the
+snapshot's tool message and a `plurnk.ambient` row follow one rule, so live and replayed messages agree:
+an ambient row's `rx` is its receipt without the body, beside `body: { url, mimeType }`. A reply's words
+are speech and travel inline ({§agui-call-result}).
+
+| Fact | Rule |
+| --- | --- |
+| The address | `<origin>/agui/<workspaceId>/<workerId>/log/L/T/S/OP`: the HTTP form of the row's log address ({§methods-log-coordinate}), at the configured public origin, else the one the Run's request reached ({§http-request-origin}) |
+| The fetch | `GET` at that address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers the body with `content-type: <mimetype>; charset=utf-8` and `cache-control: no-store`; a row that holds none is `404 body-not-found`, and a worker outside the workspace is the daemon's own refusal |
+
 ## §agui-projection The projection
 
 <!-- map -->
@@ -371,7 +387,8 @@ ignore the metadata; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-ambient **A row outside the conversation rides whole** — a row that builds no part of the
-  conversation rides `CUSTOM plurnk.ambient` carrying the complete client-facing row: a foist, delta or
+  conversation rides `CUSTOM plurnk.ambient` carrying the complete client-facing row, its body by reference
+  ({§agui-body-reference}): a foist, delta or
   narration, another worker's row, a descendant's row outside any subagent ({§agui-subagents}), an
   emission the daemon rejected, and a parse refusal that names no attempt ({§agui-parse-refusal}). An emission row ({§emission-row}) rides it like any other; the operations
   it announces arrive as their own parts, so a client that renders operations omits it. Literal bodies
@@ -1067,6 +1084,7 @@ reconstruct one from `RUN_ERROR`.
 | `credential-revoked` | 401 | The credential this stream was admitted under has been revoked. |
 | `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
+| `body-not-found` | 404 | The row holds no body at this address ({§agui-body-reference}). |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
 | `thread-not-found` | 404 | The thread has no conversation. |

@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
 import { aliveChildren, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { aguiRouteTemplate, observed } from "./observe.ts";
+import { BODY_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
@@ -118,7 +118,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #activated = false;
     #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this) });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req) });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -290,6 +290,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }
             if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res, false, principal, family);
             if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, principal, family);
+            const body = req.method === "GET" && req.url !== undefined ? BODY_ROUTE.exec(req.url) : null;
+            if (body !== null) return await this.#body(res, body);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -322,6 +324,30 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }
             res.end();
         }
+    }
+
+    // {§agui-body-reference} A row's body: the content its receipt holds, typed as the receipt types it. The perimeter has
+    // admitted the request; the daemon refuses a worker outside the workspace.
+    async #body(res: ServerResponse, [, workspace, worker, loop, turn, sequence, op]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId, loopSeq, turnSeq, position] = [workspace, worker, loop, turn, sequence].map(Number);
+        const rows = await this.#seam.readLog({ workspaceId, workerId, loopSeq, turnSeq, sequence: position });
+        const row = rows.find((entry) => entry.op === decodeURIComponent(op ?? ""));
+        const receipt = row === undefined ? null : Module.#receipt(row.rx);
+        if (!isRecord(receipt) || typeof receipt.content !== "string" || receipt.content.length === 0) {
+            writeHttpProblem(res, httpProblem("body-not-found", 404, "The row holds no body at this address.", {
+                workspaceId, workerId, address: `log:///${loop}/${turn}/${sequence}/${op}`, stage: "routing", retryable: false,
+            }));
+            return;
+        }
+        const mimetype = typeof receipt.mimetype === "string" ? receipt.mimetype : "text/plain";
+        res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
+        res.end(receipt.content);
+    }
+
+    // A row's result as stored: its JSON parsed, or nothing for a result that is not a receipt.
+    static #receipt(rx: unknown): unknown {
+        if (typeof rx !== "string") return rx;
+        try { return JSON.parse(rx) as unknown; } catch { return null; }
     }
 
     // {§agui-thread-binding} Opaque references, qualified IDs, and explicit workspace selection.

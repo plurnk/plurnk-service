@@ -14,7 +14,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         const workspaceId = await insertWorkspace(db, "streaming-reasoning");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Report the finding.");
-        const translator = new Translator({ threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
+        const translator = new Translator({ origin: "http://agui.test", workspaceId, threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
         const events: ReturnType<Translator["reasoning"]> = [];
         const ready = Promise.withResolvers<void>();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), reasoningEventNotify(_workspace, payload) {
