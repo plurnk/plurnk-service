@@ -369,8 +369,8 @@ export default class Translator {
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
-                // {§loop-lifecycle-vocabulary} — a loop that concluded with any result below 400 completed.
-                { op: "replace", path: "/plurnk/status/lifecycle", value: result.status < 400 ? "completed" : "failed" },
+                // {§loop-lifecycle-vocabulary}
+                { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(result.status) },
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
                 { op: "replace", path: "/plurnk/status/terminatedAt", value: n.terminatedAt },
                 { op: "replace", path: "/plurnk/status/waitUntil", value: null },

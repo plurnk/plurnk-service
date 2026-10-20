@@ -80,7 +80,7 @@ test("{§methods-worker-inbox} {§message-loop-containment} a loop cancelled bef
         release();
         await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops.some(({ id, terminatedAt }) => id === first.loopId && terminatedAt !== null));
         assert.deepEqual(await daemon.readInbox({ workspaceId, workerId }),
-            [{ path: address("B"), source: address("B"), body: "B", loopId: first.loopId, lifecycle: "failed" }],
+            [{ path: address("B"), source: address("B"), body: "B", loopId: first.loopId, lifecycle: "cancelled" }],
             "the loop concluded without observing it: still unobserved, and its lifecycle says nothing will");
         assert.ok((await daemon.readMessages({ workspaceId, workerId })).some(({ body }) => body === "B"), "{§message-arrival} acceptance is durable");
         assert.equal(await daemon.messageAdmission({ workspaceId, address: address("B"), body: "B" }), "accepted", "{§message-idempotency} and its address stays taken");

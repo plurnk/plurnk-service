@@ -34,15 +34,16 @@ test("{§application-loop-observation} {§application-worker-observation} mainte
     try {
         const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, "maintenance-status");
-        for (const [status, lifecycle] of [[null, "idle"], [100, "queued"], [102, "running"], [202, "parked"], [200, "completed"], [500, "failed"]] as const) {
+        for (const [status, lifecycle] of [[null, "idle"], [100, "queued"], [102, "running"], [202, "parked"], [200, "completed"], [499, "cancelled"], [500, "failed"]] as const) {
             const workerId = await insertWorker(db, workspaceId, null, `worker-${lifecycle}`, "model");
             const loopId = status === null ? null : await insertLoop(db, workerId, 1, "do the work");
             if (loopId !== null) {
                 await db.test_set_loop_status.run({
                     id: loopId,
                     status,
-                    terminal_result: status === 500 ? JSON.stringify(Results.attachInstance(
-                        Results.failure("engine:fixture", "failed", 500, "Work failed."), `worker://worker-${lifecycle}`,
+                    terminal_result: status === 500 || status === 499 ? JSON.stringify(Results.attachInstance(
+                        status === 500 ? Results.failure("engine:fixture", "failed", 500, "Work failed.") : Results.failure("engine:fixture", "cancelled", 499, "Work cancelled."),
+                        `worker://worker-${lifecycle}`,
                     ))
                         : status === 200 ? JSON.stringify({ status: 200 }) : null,
                 });

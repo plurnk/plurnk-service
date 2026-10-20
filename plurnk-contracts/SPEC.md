@@ -1830,9 +1830,10 @@ Core validates the resolution, retains the arrival, then resumes the operation.
 
 §loop-lifecycle-vocabulary One projection maps a loop's durable status onto the
 lifecycle words every client renders, shared by the status gauge and the worker
-directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; 200
-`completed`; any status of 400 or more `failed` (413 budget, 429 turn ceiling,
-499 cancel, 500 fail, 504 execution timeout, 508 runaway). `lifecycleOfLoopStatus`
+directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; any other status is a
+concluded loop's: below 400 `completed`; 499 `cancelled`, a loop stopped without failing
+({§agui-run-outcome}); any other of 400 or more `failed` (413 budget, 429 turn ceiling, 500 fail,
+504 execution timeout, 508 runaway). `lifecycleOfLoopStatus`
 in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §application-loop-observation Loop observation exposes the durable scheduler

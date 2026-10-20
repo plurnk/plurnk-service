@@ -221,9 +221,9 @@ test("{§agui-message-acceptance} a worker cancelled before observing an accepte
     await later.runAgent({ forwardedProps: { plurnk: { workspace: "acceptance-cancel" } } }, laterInbox.subscriber);
     const listed = (laterInbox.entries() ?? []).find(({ id }) => id === "B");
     assert.ok(listed !== undefined, "still accepted and unobserved: listed");
-    assert.equal(listed.lifecycle, "failed", "{§message-loop-containment} with the lifecycle of the loop that ended without observing it");
+    assert.equal(listed.lifecycle, "cancelled", "{§message-loop-containment} with the lifecycle of the loop that ended without observing it");
     const held = users(later.messages).filter(({ id }) => id === "B");
     assert.equal(held.length, 1, "and the snapshot carries it once");
     assert.equal(held[0].plurnk?.published, false);
-    assert.equal(held[0].plurnk?.lifecycle, "failed");
+    assert.equal(held[0].plurnk?.lifecycle, "cancelled");
 });

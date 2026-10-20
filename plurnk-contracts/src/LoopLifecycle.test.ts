@@ -8,8 +8,9 @@ test("{§loop-lifecycle-vocabulary} one projection from loop status to the share
     assert.equal(lifecycleOfLoopStatus(100), "queued");
     assert.equal(lifecycleOfLoopStatus(102), "running");
     assert.equal(lifecycleOfLoopStatus(202), "parked");
-    assert.equal(lifecycleOfLoopStatus(200), "completed");
-    for (const terminal of [413, 429, 499, 500, 504, 508]) assert.equal(lifecycleOfLoopStatus(terminal), "failed", String(terminal));
+    for (const concluded of [200, 204]) assert.equal(lifecycleOfLoopStatus(concluded), "completed", `a loop that concluded ${concluded}`);
+    assert.equal(lifecycleOfLoopStatus(499), "cancelled", "a loop stopped without failing");
+    for (const terminal of [413, 429, 500, 504, 508]) assert.equal(lifecycleOfLoopStatus(terminal), "failed", String(terminal));
 });
 
 test("{§application-worker-observation}: live work outranks newer terminal history", () => {
