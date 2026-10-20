@@ -54,7 +54,7 @@ import {
     runInputRequiredRequest,
     type ClientInteractionHandler,
 } from "./inputRequired.ts";
-import InteractiveOAuthProvider from "./oauth.ts";
+import InteractiveOAuthProvider, { OAuthGrant } from "./oauth.ts";
 import ExtensionChannel from "./extensionChannel.ts";
 import { assertHeaderDeclarations, mcpRoutingHeaderValue } from "./protocolHeaders.ts";
 import {
@@ -118,8 +118,10 @@ interface ResolvedHttpDefinition {
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
-    // {§oauth-continuation} Callback supplied by the client, never persisted configuration.
+    // {§oauth-continuation} Callback supplied by the client, never persisted configuration; it begins a new grant.
     readonly oauthRedirectUrl?: string;
+    // {§oauth-grant} The alias's accepted sign-in, which a connection without a client's callback carries.
+    readonly oauthGrant?: OAuthGrant;
     readonly plugin?: PluginContext;
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
@@ -175,9 +177,7 @@ const clientOwnedHeader = (name: string): boolean =>
 const resolveDefinition = (
     source: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
-    defaultCwd: string | undefined,
-    plugin?: PluginContext,
-    oauthRedirectUrl?: string,
+    { cwd: defaultCwd, plugin, oauthRedirectUrl, oauthGrant }: ServerConnectionOptions,
 ): ResolvedDefinition => {
     const definition = readDefinition(source);
     const field = `MCP server '${definition.name}'`;
@@ -199,8 +199,14 @@ const resolveDefinition = (
     const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, plugin === undefined ? expandReferences(value, environ, `${field}.headers.${name}`) : value]));
     const url = definition.url;
     const authorization = definition.authorization;
-    const redirectUrl = (authorization?.type === "oauth" ? authorization.redirectUrl : undefined) ?? oauthRedirectUrl;
-    if ((authorization === undefined || authorization.type === "oauth") && redirectUrl === undefined) {
+    const configuredRedirect = authorization?.type === "oauth" ? authorization.redirectUrl : undefined;
+    const redirectUrl = configuredRedirect ?? oauthRedirectUrl;
+    // {§oauth-grant} A client's callback begins a new grant; any other connection carries the alias's accepted one, or
+    // begins one at the redirect the definition configures.
+    const grant = oauthRedirectUrl === undefined && oauthGrant !== undefined
+        ? oauthGrant
+        : redirectUrl === undefined ? undefined : new OAuthGrant(redirectUrl);
+    if ((authorization === undefined || authorization.type === "oauth") && grant === undefined) {
         return {
             type: "streamable-http",
             url,
@@ -241,10 +247,11 @@ const resolveDefinition = (
             cachePartition: `client:${authorization.clientId}`,
         };
     }
-    // {§oauth-lifetime} — registration data, tokens, PKCE verifier, and
-    // callback state remain process-memory in this provider.
+    // {§oauth-lifetime} — the registration and tokens are the grant's, which outlives this connection; the PKCE
+    // verifier and callback state are this provider's. All of it is process memory.
     const oauthProvider = new InteractiveOAuthProvider({
-        redirectUrl: redirectUrl!,
+        grant: grant!,
+        redirectConfigured: configuredRedirect !== undefined,
         ...(authorization?.scope === undefined ? {} : { scope: authorization.scope }),
         ...(authorization?.issuer === undefined ? {} : { issuer: authorization.issuer }),
         ...(authorization?.authorizationParams === undefined ? {} : { authorizationParams: authorization.authorizationParams }),
@@ -521,8 +528,8 @@ const openClient = async (
     } catch (failure) {
         const refused = transport instanceof StreamableHTTPClientTransport ? refusedRedirects.get(transport) : undefined;
         const cause = refused ?? failure;
-        const authorizationUrl = definition.type === "streamable-http"
-            ? definition.oauthProvider?.takeAuthorizationUrl()
+        const authorization = definition.type === "streamable-http"
+            ? definition.oauthProvider?.takeAuthorization()
             : undefined;
         let closeFailure: unknown;
         try {
@@ -530,9 +537,9 @@ const openClient = async (
         } catch (error) {
             closeFailure = error;
         }
-        if (authorizationUrl !== undefined) {
+        if (authorization !== undefined) {
             throw new AuthorizationRequiredError(
-                authorizationUrl.href,
+                authorization.url?.href,
                 closeFailure === undefined ? cause : new AggregateError([cause, closeFailure]),
             );
         }
@@ -610,7 +617,7 @@ export default class ServerConnection {
         options: ServerConnectionOptions = {},
     ) {
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd, options.plugin, options.oauthRedirectUrl);
+        this.#resolved = resolveDefinition(this.#definition, environ, options);
         this.#environ = environ;
         this.#options = options;
         const symbolic = JSON.stringify(definition);
@@ -632,6 +639,11 @@ export default class ServerConnection {
 
     get authorizationUrl(): string | null {
         return this.#pendingAuthorization?.authorizationUrl ?? null;
+    }
+
+    // {§oauth-grant} The grant this connection presents, or begins.
+    get oauthGrant(): OAuthGrant | undefined {
+        return this.#resolved.type === "streamable-http" ? this.#resolved.oauthProvider?.grant : undefined;
     }
 
     preparationDiagnostic(cause: unknown): PreparationDiagnostic {
@@ -702,7 +714,7 @@ export default class ServerConnection {
             fetchFn: authorizationFetches.get(opened.transport),
         });
         if (result === "AUTHORIZED") return undefined;
-        const authorizationUrl = resolved.oauthProvider.takeAuthorizationUrl();
+        const authorizationUrl = resolved.oauthProvider.takeAuthorization()?.url;
         if (authorizationUrl === undefined) throw new Error("OAuth authorization redirected without an authorization URL.");
         this.#pendingAuthorization = {
             transport: opened.transport,
@@ -780,8 +792,11 @@ export default class ServerConnection {
         ) {
             return null;
         }
-        const authorizationUrl = this.#resolved.oauthProvider.takeAuthorizationUrl();
-        if (authorizationUrl === undefined) return null;
+        const authorization = this.#resolved.oauthProvider.takeAuthorization();
+        if (authorization === undefined) return null;
+        // {§oauth-grant} The grant no longer answers, and no client waits at its redirect.
+        const authorizationUrl = authorization.url;
+        if (authorizationUrl === undefined) return new AuthorizationRequiredError(undefined, cause);
         this.#pendingAuthorization = {
             transport: opened.transport,
             provider: this.#resolved.oauthProvider,

@@ -225,6 +225,16 @@ const interactiveOAuthFixture = (
     t: TestContext,
 ): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
 
+const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
+    ...httpServer("oauth", served.url),
+    authorization: {
+        type: "oauth",
+        redirectUrl: `${new URL(served.url).origin}/callback`,
+        clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+        scope: "mcp:read",
+    },
+});
+
 // {§mcp-request-unauthorized} A server that answers its catalog to anyone and refuses one request kind with HTTP 401 and a
 // JSON-RPC result body, as Google's hosted Workspace servers refuse tools/call.
 const REQUEST_KINDS = ["tools/call", "resources/read", "prompts/get", "completion/complete"] as const;
@@ -267,8 +277,10 @@ const callArgs = (runtime: string, target: string, body: string) => ({
 });
 
 // One request of a kind through the alias's published runtime, as the status and Problem type it settles with.
-const requestThrough = async (h: ReturnType<typeof harness>, alias: string, kind: RequestKind): Promise<{ status: number; type?: string | undefined }> => {
-    const runtime = h.snapshots.get(1)?.prepared?.runtimes.find(({ decl }) => decl.name === alias);
+const requestThrough = async (
+    h: ReturnType<typeof harness>, alias: string, kind: RequestKind, workspaceId = 1,
+): Promise<{ status: number; type?: string | undefined }> => {
+    const runtime = h.snapshots.get(workspaceId)?.prepared?.runtimes.find(({ decl }) => decl.name === alias);
     assert.ok(runtime?.availability.available, `${alias} is in service`);
     switch (kind) {
         case "tools/call": {
@@ -283,7 +295,7 @@ const requestThrough = async (h: ReturnType<typeof harness>, alias: string, kind
         }
         case "completion/complete":
             try {
-                await h.action(1, "workspace.mcp.complete", { server: alias, ref: { type: "ref/prompt", name: "note" }, argument: { name: "topic", value: "a" } });
+                await h.action(workspaceId, "workspace.mcp.complete", { server: alias, ref: { type: "ref/prompt", name: "note" }, argument: { name: "topic", value: "a" } });
                 return { status: 200 };
             } catch (error) {
                 const problem = (error as { problem?: ProblemDetails }).problem;
@@ -391,6 +403,24 @@ test("{§mcp-request-unauthorized} a signed-in grant that lapses mid-run keeps i
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
+// {§oauth-begin-unchallenged} The client's sign-in to an alias awaiting one at an authorization server that consents at
+// once: begin at the client's callback, the browser's consent, and the callback it returns.
+const signInAtIssuer = async (h: ReturnType<typeof harness>, alias: string): Promise<URL> => {
+    const started = await h.action(1, "workspace.mcp.oauth.begin", {
+        alias, redirectUrl: "http://127.0.0.1:54321/callback",
+    }) as { status: number; authorization?: { url: string } };
+    assert.equal(started.status, 202);
+    assert.ok(started.authorization !== undefined, "the sign-in starts though the connection was never challenged");
+    // The browser: the authorization server answers the consent with a redirect to the client's callback.
+    const consent = await fetch(started.authorization.url, { redirect: "manual" });
+    const callbackUrl = consent.headers.get("location");
+    assert.equal(consent.status, 302);
+    assert.ok(callbackUrl !== null);
+    await h.action(1, "workspace.mcp.oauth.complete", { alias, callbackUrl });
+    await h.settleRefreshes();
+    return new URL(started.authorization.url);
+};
+
 // {§oauth-issuer} {§oauth-begin-unchallenged} A pre-registered client signing in to a server that never challenges its
 // catalog and publishes no OAuth metadata, at the issuer its definition names.
 const issuerSignIn = async (t: TestContext, authorizationParams?: Readonly<Record<string, string>>) => {
@@ -409,21 +439,10 @@ const issuerSignIn = async (t: TestContext, authorizationParams?: Readonly<Recor
     assert.equal(first.outcomes.get("calendar")?.state, "active", "its catalog answers without credentials");
     assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 401);
     assert.equal((await republished(h, first))?.outcomes.get("calendar")?.state, "authorization-required");
-    const started = await h.action(1, "workspace.mcp.oauth.begin", {
-        alias: "calendar", redirectUrl: "http://127.0.0.1:54321/callback",
-    }) as { status: number; authorization?: { url: string } };
-    assert.equal(started.status, 202);
-    assert.ok(started.authorization !== undefined, "the sign-in starts though the connection was never challenged");
-    // The browser: the authorization server answers the consent with a redirect to the client's callback.
-    const consent = await fetch(started.authorization.url, { redirect: "manual" });
-    const callbackUrl = consent.headers.get("location");
-    assert.equal(consent.status, 302);
-    assert.ok(callbackUrl !== null);
-    await h.action(1, "workspace.mcp.oauth.complete", { alias: "calendar", callbackUrl });
-    await h.settleRefreshes();
+    const url = await signInAtIssuer(h, "calendar");
     assert.deepEqual(h.inService(1), ["calendar"]);
     assert.equal((await requestThrough(h, "calendar", "tools/call")).status, 200, "the grant answers the call");
-    return { ...servers, h, url: new URL(started.authorization.url) };
+    return { ...servers, h, definition, url };
 };
 
 test("{§oauth-issuer} a sign-in starts at the configured issuer and carries the definition's parameters; its refresh token outlives the access token", async (t) => {
@@ -475,6 +494,169 @@ test("{§oauth-begin-unchallenged} a server that publishes no OAuth metadata, wi
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
+// {§oauth-grant} An alias signed in once, with what the test does to its grant next.
+interface SignedIn {
+    readonly h: ReturnType<typeof harness>;
+    readonly alias: string;
+    readonly definition: McpServerDefinition;
+    // The access token lapses, where the server issued a refresh token that still answers.
+    readonly lapse?: () => void;
+    // The server refuses the grant from now on, and refuses to refresh it.
+    readonly revoke: () => void;
+}
+
+// The callback a consenting authorization server returns to the redirect for this authorization request.
+const fixtureCallback = (redirectUrl: string, authorizationUrl: string, issuer: string): string => {
+    const callback = new URL(redirectUrl);
+    callback.searchParams.set("code", "fixture-code");
+    callback.searchParams.set("state", new URL(authorizationUrl).searchParams.get("state")!);
+    callback.searchParams.set("iss", issuer);
+    return callback.href;
+};
+
+// {§oauth-grant} The ways a sign-in reaches a server: one that challenges its catalog, at the callback a client binds or at
+// the redirect its definition configures, and one that answers its catalog to anyone and refuses calls, at the issuer its
+// definition names with offline access.
+const SIGNED_IN: Readonly<Record<string, (t: TestContext) => Promise<SignedIn>>> = {
+    "a challenging server at a client's callback": async (t) => {
+        const { origin, served, revoke } = await interactiveOAuthFixture(t);
+        const definition = httpServer("oauth", served.url);
+        const h = harness();
+        await h.setup();
+        await h.lane(1, new Map([["oauth", definition]]));
+        const redirectUrl = "http://127.0.0.1:54321/callback";
+        const started = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { authorization: { url: string } };
+        await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: fixtureCallback(redirectUrl, started.authorization.url, origin) });
+        await h.settleRefreshes();
+        assert.deepEqual(h.inService(1), ["oauth"]);
+        return { h, alias: "oauth", definition, revoke };
+    },
+    "a challenging server at its configured redirect": async (t) => {
+        const { origin, served, revoke } = await interactiveOAuthFixture(t);
+        const definition = oauthDefinition(served);
+        const h = harness();
+        await h.setup();
+        const first = await h.lane(1, new Map([["oauth", definition]]));
+        const { url } = (first.outcomes.get("oauth") as { authorization: { url: string } }).authorization;
+        await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: fixtureCallback(`${origin}/callback`, url, origin) });
+        await h.settleRefreshes();
+        assert.deepEqual(h.inService(1), ["oauth"]);
+        return { h, alias: "oauth", definition, revoke };
+    },
+    "a server refusing calls at its named issuer": async (t) => {
+        const { h, definition, expire, revoke } = await issuerSignIn(t, { access_type: "offline" });
+        return { h, alias: "calendar", definition, lapse: expire, revoke };
+    },
+};
+
+// {§oauth-grant} The events that open a fresh connection for an alias once it is signed in, and whether that connection
+// presents the grant; each returns the workspace the connection serves.
+const FRESH_CONNECTIONS: Readonly<Record<string, { readonly presents: boolean; readonly open: (signedIn: SignedIn) => Promise<number> }>> = {
+    "cooling and return": { presents: true, open: async ({ h, alias, definition }) => {
+        await h.teardown(1);
+        await h.lane(1, new Map([[alias, definition]]));
+        return 1;
+    } },
+    "an explicit enable": { presents: true, open: async ({ h, alias, definition }) => {
+        await h.lane(1, new Map([[alias, definition]]), { force: alias });
+        return 1;
+    } },
+    "disable and return": { presents: true, open: async ({ h, alias, definition }) => {
+        await h.lane(1, new Map());
+        await h.lane(1, new Map([[alias, definition]]));
+        return 1;
+    } },
+    "a changed definition": { presents: false, open: async ({ h, alias, definition }) => {
+        await h.lane(1, new Map([[alias, { ...definition, headers: { "X-Fixture": "changed" } }]]));
+        return 1;
+    } },
+    "another workspace": { presents: false, open: async ({ h, alias, definition }) => {
+        await h.lane(2, new Map([[alias, definition]]));
+        return 2;
+    } },
+};
+
+// Whether the alias serves a tool call in the workspace: in service, and its call answered.
+const answersCall = async (h: ReturnType<typeof harness>, alias: string, workspaceId: number): Promise<boolean> =>
+    h.inService(workspaceId).includes(alias) && (await requestThrough(h, alias, "tools/call", workspaceId)).status === 200;
+
+const settle = async (h: ReturnType<typeof harness>): Promise<void> => {
+    for (const workspaceId of [1, 2]) await h.teardown(workspaceId).catch(() => undefined);
+    await h.module.stop();
+};
+
+test("{§oauth-grant} an accepted sign-in outlives its connection: each later connection with its definition presents it, and no other", async (t) => {
+    for (const [server, signIn] of Object.entries(SIGNED_IN)) {
+        for (const [event, { presents, open }] of Object.entries(FRESH_CONNECTIONS)) {
+            await t.test(`${server}: ${event}`, async (t) => {
+                const signedIn = await signIn(t);
+                try {
+                    const workspaceId = await open(signedIn);
+                    // A presented grant refreshes its lapsed access token, where the server issued a refresh token.
+                    signedIn.lapse?.();
+                    assert.equal(await answersCall(signedIn.h, signedIn.alias, workspaceId), presents);
+                } finally { await settle(signedIn.h); }
+            });
+        }
+    }
+});
+
+test("{§oauth-grant} a carried grant its server refuses starts a sign-in only at a redirect its definition configures", async (t) => {
+    for (const [server, signIn] of Object.entries(SIGNED_IN)) {
+        await t.test(server, async (t) => {
+            const { h, alias, definition, revoke } = await signIn(t);
+            try {
+                await h.teardown(1);
+                revoke();
+                let prepared = await h.lane(1, new Map([[alias, definition]]));
+                if (prepared.outcomes.get(alias)?.state === "active") {
+                    assert.equal((await requestThrough(h, alias, "tools/call")).status, 401);
+                    prepared = (await republished(h, prepared))!;
+                    await h.settleRefreshes();
+                }
+                const outcome = prepared.outcomes.get(alias) as { state: string; authorization: { url?: string } };
+                assert.equal(outcome.state, "authorization-required");
+                const configured = definition.type === "streamable-http" && definition.authorization?.type === "oauth"
+                    ? definition.authorization.redirectUrl : undefined;
+                if (configured === undefined) {
+                    assert.deepEqual(outcome.authorization, {}, "no client waits at the redirect the grant was accepted at");
+                    assert.equal(h.leases(), 0);
+                } else {
+                    assert.equal(new URL(outcome.authorization.url!).searchParams.get("redirect_uri"), configured);
+                    assert.equal(h.leases(), 1, "the sign-in it starts holds the workspace");
+                }
+            } finally { await settle(h); }
+        });
+    }
+});
+
+test("{§oauth-grant} a grant ends when its authorization server rejects it, and the next accepted sign-in replaces it", async (t) => {
+    const { h, definition, revoke, tokenRequests, authorizations } = await issuerSignIn(t, { access_type: "offline" });
+    const call = async (): Promise<number> => (await requestThrough(h, "calendar", "tools/call")).status;
+    const coolAndReturn = async (): Promise<Prepared> => {
+        await h.teardown(1);
+        return h.lane(1, new Map([["calendar", definition]]));
+    };
+    try {
+        const returned = await coolAndReturn();
+        revoke();
+        assert.equal(await call(), 401, "the refused refresh answers no call");
+        await republished(h, returned);
+        await h.settleRefreshes();
+        assert.deepEqual(tokenRequests.map((request) => request.get("grant_type")), ["authorization_code", "refresh_token"]);
+        const ended = await coolAndReturn();
+        assert.equal(await call(), 401);
+        assert.equal(tokenRequests.length, 2, "the ended grant is neither presented nor refreshed");
+        await republished(h, ended);
+        await h.settleRefreshes();
+        await signInAtIssuer(h, "calendar");
+        assert.equal(await call(), 200);
+        await coolAndReturn();
+        assert.equal(await call(), 200, "the new grant is carried");
+        assert.equal(authorizations.length, 2);
+    } finally { await settle(h); }
+});
+
 test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants instead of rewarding sign-in bypass", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const token = (body: string) => fetch(`${origin}/token`, {
@@ -497,16 +679,6 @@ test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants in
     const replay = await token(grant);
     assert.equal(replay.status, 400);
     assert.equal((await replay.json()).error, "invalid_grant");
-});
-
-const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
-    ...httpServer("oauth", served.url),
-    authorization: {
-        type: "oauth",
-        redirectUrl: `${new URL(served.url).origin}/callback`,
-        clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
-        scope: "mcp:read",
-    },
 });
 
 test("{§mcp-connection-shutdown} environment resolution cannot open a connection after producer stop", async (t) => {

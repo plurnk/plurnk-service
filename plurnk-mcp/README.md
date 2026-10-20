@@ -132,7 +132,8 @@ PLURNK_MCP_forge_ENABLED=0
 
 HTTP authorization belongs in the complete definition. Bearer tokens and
 OAuth client secrets are symbolic `${NAME}` environment references, resolved
-only when preparing a connection; interactive grants remain in memory.
+only when preparing a connection; an interactive sign-in stays in memory until
+the daemon stops.
 See [`.env.defaults`](./.env.defaults) for all controls and
 [`SPEC.md`](./SPEC.md#mcp-configuration-configuration) for the contract.
 
@@ -201,8 +202,12 @@ and `authorization.authorizationParams` adds provider request parameters such as
 remote/headless use. The client submits the complete URL through
 `workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in; tools activate
 at the next safe workspace boundary, without another callback submission. `list`
-shows their current readiness. PKCE, issuer and resource validation, refresh,
-scope escalation, and credentials remain inside the host connection. Callback
+shows their current readiness. A sign-in outlives its connection: the alias's
+later connections with the same definition present it, refreshing it as it
+lapses — when an idle workspace returns, on `enable`, or on `disable` then
+`enable` — until its authorization server rejects it, another sign-in replaces
+it, or the daemon stops ({§oauth-grant}). PKCE, issuer and resource validation,
+refresh, scope escalation, and credentials remain inside the host. Callback
 addresses and credentials never replace the saved definition. `enable` retries a
 connection; it does not replace user sign-in. Rejected configured credentials
 are reported as authentication failures rather than retryable server downtime.

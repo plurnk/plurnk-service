@@ -21,27 +21,47 @@ export class OAuthSetupError extends Error {
     }
 }
 
+// {§oauth-grant} What a sign-in leaves for its alias's later connections: the client registered and the tokens issued,
+// per authorization server, with the redirect the registration names. Each connection's provider reads and writes the one
+// grant, so a refreshed or rotated token serves every connection after it.
+export class OAuthGrant {
+    readonly redirectUrl: string;
+    readonly clientInformation = new Map<string, StoredOAuthClientInformation>();
+    readonly tokens = new Map<string, StoredOAuthTokens>();
+    configuredIssuer: string | undefined;
+    activeIssuer: string | undefined;
+    currentTokens: StoredOAuthTokens | undefined;
+    // Latched by the first tokens issued; the redirect of an accepted grant has no client waiting at it.
+    accepted = false;
+
+    constructor(redirectUrl: string) {
+        this.redirectUrl = redirectUrl;
+    }
+
+    get signedIn(): boolean {
+        return this.currentTokens !== undefined;
+    }
+}
+
 export default class InteractiveOAuthProvider implements OAuthClientProvider {
     readonly redirectUrl: string;
     readonly clientMetadataUrl: string | undefined;
+    readonly grant: OAuthGrant;
+    readonly #redirectConfigured: boolean;
     readonly #scope: string | undefined;
     readonly #issuer: string | undefined;
     readonly #authorizationParams: Readonly<Record<string, string>>;
     readonly #configuredClientInformation: StoredOAuthClientInformation | undefined;
-    readonly #clientInformation = new Map<string, StoredOAuthClientInformation>();
-    readonly #tokens = new Map<string, StoredOAuthTokens>();
-    #configuredIssuer: string | undefined;
-    #activeIssuer: string | undefined;
-    #currentTokens: StoredOAuthTokens | undefined;
     #presentedToken = false;
     #awaitingAuthorizationCallback = false;
     #state: string | undefined;
-    #authorizationUrl: URL | undefined;
+    #authorization: { readonly url?: URL } | undefined;
     #codeVerifier: string | undefined;
     #discoveryState: OAuthDiscoveryState | undefined;
 
     constructor({
-        redirectUrl,
+        grant,
+        redirectConfigured,
         clientMetadataUrl,
         clientId,
         clientSecret,
@@ -49,7 +69,9 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         issuer,
         authorizationParams = {},
     }: {
-        redirectUrl: string;
+        grant: OAuthGrant;
+        // Whether the definition configures the grant's redirect, where a client always waits.
+        redirectConfigured: boolean;
         clientMetadataUrl?: string;
         clientId?: string;
         clientSecret?: string;
@@ -57,7 +79,9 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         issuer?: string;
         authorizationParams?: Readonly<Record<string, string>>;
     }) {
-        this.redirectUrl = redirectUrl;
+        this.grant = grant;
+        this.redirectUrl = grant.redirectUrl;
+        this.#redirectConfigured = redirectConfigured;
         this.clientMetadataUrl = clientMetadataUrl;
         this.#scope = scope;
         this.#issuer = issuer;
@@ -86,14 +110,15 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     clientInformation(
         context?: OAuthClientInformationContext,
     ): StoredOAuthClientInformation | undefined {
-        const issuer = context?.issuer ?? this.#activeIssuer;
+        const grant = this.grant;
+        const issuer = context?.issuer ?? grant.activeIssuer;
         if (issuer === undefined) return undefined;
-        this.#activeIssuer = issuer;
-        const stored = this.#clientInformation.get(issuer);
+        grant.activeIssuer = issuer;
+        const stored = grant.clientInformation.get(issuer);
         if (stored !== undefined) return stored;
         if (
             this.#configuredClientInformation === undefined
-            || (this.#configuredIssuer !== undefined && this.#configuredIssuer !== issuer)
+            || (grant.configuredIssuer !== undefined && grant.configuredIssuer !== issuer)
         ) {
             const metadata = this.#discoveryState?.authorizationServerMetadata;
             const cimdAvailable = this.clientMetadataUrl !== undefined
@@ -107,9 +132,9 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             }
             return undefined;
         }
-        this.#configuredIssuer = issuer;
+        grant.configuredIssuer = issuer;
         const configured = { ...this.#configuredClientInformation, issuer };
-        this.#clientInformation.set(issuer, configured);
+        grant.clientInformation.set(issuer, configured);
         return configured;
     }
 
@@ -121,17 +146,17 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         if (issuer === undefined) {
             throw new Error("MCP OAuth client information is missing its authorization-server issuer.");
         }
-        this.#activeIssuer = issuer;
-        this.#clientInformation.set(issuer, { ...clientInformation, issuer });
+        this.grant.activeIssuer = issuer;
+        this.grant.clientInformation.set(issuer, { ...clientInformation, issuer });
     }
 
     tokens(context?: OAuthClientInformationContext): StoredOAuthTokens | undefined {
         if (context === undefined) {
-            this.#presentedToken = this.#currentTokens !== undefined;
-            return this.#currentTokens;
+            this.#presentedToken = this.grant.currentTokens !== undefined;
+            return this.grant.currentTokens;
         }
-        this.#activeIssuer = context.issuer;
-        return this.#tokens.get(context.issuer);
+        this.grant.activeIssuer = context.issuer;
+        return this.grant.tokens.get(context.issuer);
     }
 
     saveTokens(tokens: StoredOAuthTokens, context?: OAuthClientInformationContext): void {
@@ -140,24 +165,33 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             throw new Error("MCP OAuth tokens are missing their authorization-server issuer.");
         }
         const stored = { ...tokens, issuer };
-        this.#activeIssuer = issuer;
-        this.#currentTokens = stored;
+        const grant = this.grant;
+        grant.activeIssuer = issuer;
+        grant.currentTokens = stored;
+        grant.accepted = true;
         this.#presentedToken = false;
         this.#awaitingAuthorizationCallback = false;
-        this.#tokens.set(issuer, stored);
+        grant.tokens.set(issuer, stored);
     }
 
     redirectToAuthorization(authorizationUrl: URL): void {
+        // {§oauth-grant} A sign-in starts only where a client waits at the redirect: one the definition configures, or the
+        // callback a client bound to begin this grant. Elsewhere the grant no longer answers, and the alias awaits a sign-in.
+        if (!this.#redirectConfigured && this.grant.accepted) {
+            this.#authorization = {};
+            return;
+        }
         // {§mcp-oauth} The definition's parameters join the request; the schema keeps the flow's own out of reach.
         for (const [name, value] of Object.entries(this.#authorizationParams)) authorizationUrl.searchParams.set(name, value);
         this.#awaitingAuthorizationCallback = true;
-        this.#authorizationUrl = authorizationUrl;
+        this.#authorization = { url: authorizationUrl };
     }
 
-    takeAuthorizationUrl(): URL | undefined {
-        const authorizationUrl = this.#authorizationUrl;
-        this.#authorizationUrl = undefined;
-        return authorizationUrl;
+    // The sign-in the SDK last asked for, with its URL where this connection starts one.
+    takeAuthorization(): { readonly url?: URL } | undefined {
+        const authorization = this.#authorization;
+        this.#authorization = undefined;
+        return authorization;
     }
 
     assertCallbackState(callback: URL): void {
@@ -198,12 +232,13 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     }
 
     invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): void {
-        if ((scope === "all" || scope === "client") && this.#activeIssuer !== undefined) {
-            this.#clientInformation.delete(this.#activeIssuer);
+        const grant = this.grant;
+        if ((scope === "all" || scope === "client") && grant.activeIssuer !== undefined) {
+            grant.clientInformation.delete(grant.activeIssuer);
         }
         if (scope === "all" || scope === "tokens") {
-            if (this.#activeIssuer !== undefined) this.#tokens.delete(this.#activeIssuer);
-            this.#currentTokens = undefined;
+            if (grant.activeIssuer !== undefined) grant.tokens.delete(grant.activeIssuer);
+            grant.currentTokens = undefined;
             this.#presentedToken = false;
         }
         if (scope === "all" || scope === "verifier") {

@@ -590,17 +590,18 @@ its catalog to anyone and refuse only requests ({§mcp-request-unauthorized}), s
 
 ## §oauth-lifetime Interactive OAuth lifetime and reauthorization
 
-Interactive OAuth state is deliberately ephemeral and process-memory: client
-registration data, access and refresh tokens, the PKCE verifier, and pending
-state live only in the owning connection or pending candidate. Nothing
-OAuth-secret is written to SQLite; the durable workspace state holds only the
-unexpanded definition ({§mcp-configuration}). There is no daemon callback HTTP
-listener, authority-root resource, or daemon-side browser side channel: an
-interactive client may receive its configured loopback redirect, or accept a
-pasted callback for remote/headless use. It returns the complete URL through `workspace.mcp.oauth.complete`
-so `state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
-daemon restart is the intended journey, documented here rather than presented
-as an accidental failure.
+Interactive OAuth state is process memory: an accepted sign-in's client
+registration and access and refresh tokens are its alias's grant
+({§oauth-grant}), and the PKCE verifier and pending state live only in the
+pending candidate. Nothing OAuth-secret is written to SQLite; the durable
+workspace state holds only the unexpanded definition ({§mcp-configuration}).
+There is no daemon callback HTTP listener, authority-root resource, or
+daemon-side browser side channel: an interactive client may receive its
+configured loopback redirect, or accept a pasted callback for remote/headless
+use. It returns the complete URL through `workspace.mcp.oauth.complete` so
+`state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
+daemon restart is the intended journey, documented here rather than presented as
+an accidental failure.
 
 | Journey point | Behaviour |
 |---|---|
@@ -609,10 +610,23 @@ as an accidental failure.
 | Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
 | Daemon restart after authorization | The durable definition rehydrates but tokens are gone; a challenged attachment publishes `authorization-required` and enable returns `202`. A URL is present only when a callback is already configured. The operator reauthorizes. |
 | Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued; otherwise the request fails and the alias awaits a sign-in ({§mcp-request-unauthorized}). |
-| Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
-| Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
+| Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the grant's, for every later connection ({§oauth-grant}). |
+| Workspace cooling | Closes the alias's connection; the grant outlives it, and the alias's next connection presents it ({§oauth-grant}). |
+| Workspace disable/remove | Closes the attachment and clears its pending candidate; the grant stays for the alias's return with the definition it was accepted for ({§oauth-grant}). No durable secret deletion is needed because nothing secret is durable. |
 | Server replacement | Publication discards any superseded pending connection and releases its residency, including replacement by a definition without OAuth. Completion of an unpublished configuration drift fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
-| Cross-authorization protection | Candidates are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
+| Cross-authorization protection | Candidates and grants are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
+
+§oauth-grant **A grant outlives its connection.** An accepted sign-in is its alias's grant, held per
+`(workspace, alias)` with the definition it was accepted for. Only a redirect the definition
+configures still has a client waiting at it once the sign-in is accepted.
+
+| When | The grant |
+| --- | --- |
+| A connection the module opens for the alias with that definition, after cooling, an explicit enable, or disable and enable | is presented, and refreshed as it lapses |
+| A connection serves another definition, or another workspace | is never presented |
+| Its server refuses it, at connection or on a request ({§mcp-request-unauthorized}) | starts a sign-in only at a redirect the definition configures; otherwise the alias awaits the sign-in a client begins ({§oauth-continuation}) |
+| A sign-in for the alias is accepted | is replaced by the new one |
+| Its authorization server rejects it, or the daemon stops | ends |
 
 ## §oauth-client-credentials Client-credentials grant adoption
 
@@ -688,19 +702,20 @@ boundaries; neither closes or replaces the committed connection.
 | Aborted publication | Does not acknowledge the unpublished catalog. |
 | Disable/remove, workspace cooling, or shutdown | Retires obsolete refresh timers and invalidations. |
 
-MCP participates in core Functionality residency ({§module-workspace-residency}).
-Preparation reports the current server alias through the coordinator's activity
-contract ({§functionality-preparation-visibility}); inspection never starts a
-connection ({§functionality-inspection}).
-Every tool call and Task retains the workspace from executor entry through its
-terminal result; an interactive OAuth candidate retains it until completion,
-replacement, cancellation, or module shutdown. Catalog refresh timers are
-infrastructure, not residency owners: cooling serializes behind a refresh
-already running and cancels any timer not yet begun. At a lease-free quiescent
-boundary, deactivation removes the workspace snapshot and closes all of its
-connections. Core separately withdraws the executor/scheme publication while
-preserving durable MCP state and generated reference entries for transparent
-reactivation.
+MCP participates in core Functionality residency
+({§module-workspace-residency}). Preparation reports the current server alias
+through the coordinator's activity contract
+({§functionality-preparation-visibility}); inspection never starts a connection
+({§functionality-inspection}). Every tool call and Task retains the workspace
+from executor entry through its terminal result; an interactive OAuth candidate
+retains it until completion, replacement, cancellation, or module shutdown.
+Catalog refresh timers are infrastructure, not residency owners: cooling
+serializes behind a refresh already running and cancels any timer not yet begun.
+At a lease-free quiescent boundary, deactivation removes the workspace snapshot
+and closes all of its connections; an accepted sign-in outlives them
+({§oauth-grant}). Core separately withdraws the executor/scheme publication
+while preserving durable MCP state and generated reference entries for
+transparent reactivation.
 
 Add and enable prepare the candidate while the old snapshot remains
 authoritative, then publish only at {§module-workspace-quiescence}. Disable and
@@ -802,7 +817,7 @@ the operator's consent (an interactive grant it cannot refresh). The refusal dep
 
 Only a fresh connection answers the awaited sign-in — an accepted sign-in, an explicit enable, a changed
 definition, or the alias's return after disable, removal, cooling or a restart — and it publishes what
-its preparation observes.
+its preparation observes, presenting the alias's grant where its definition has one ({§oauth-grant}).
 
 §mcp-trailing-aside A tool call's body is one JSON object. HTML comments after
 that object are the writer's aside, not arguments: when the body does not parse

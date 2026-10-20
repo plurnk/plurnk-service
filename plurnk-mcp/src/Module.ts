@@ -53,7 +53,7 @@ import {
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
 import McpExecutor, { UnavailableServerExecutor, runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
-import { OAuthSetupError } from "./oauth.ts";
+import { type OAuthGrant, OAuthSetupError } from "./oauth.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
 const FAMILY = "mcp";
@@ -349,6 +349,9 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #dirty = new Map<string, symbol>();
     // {§mcp-request-unauthorized} The aliases whose server refused a call for want of a sign-in, by pending key.
     readonly #challenged = new Set<string>();
+    // {§oauth-grant} Each alias's accepted sign-in, by pending key, with the definition it was accepted for; cooling
+    // keeps it.
+    readonly #grants = new Map<string, McpBinding & { readonly grant: OAuthGrant }>();
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
@@ -556,8 +559,10 @@ export default class Module implements DaemonModule<SetupSeam> {
                 ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
+            const grant = oauthRedirectUrl === undefined ? this.#grantFor(workspaceId, binding) : undefined;
             candidate ??= new ServerConnection(definition, environment(this.#env), {
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
+                ...(grant === undefined ? {} : { oauthGrant: grant }),
                 ...(cwd === undefined ? {} : { cwd }),
                 ...(context === undefined ? {} : { plugin: context }),
                 environment: environment(this.#operatorEnvironment()),
@@ -1023,6 +1028,11 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { workspaceId: identity.workspaceId, alias, retryable: false },
             );
             pending.authorized = true;
+            // {§oauth-grant} The accepted sign-in is the alias's grant, replacing any before it.
+            const grant = pending.connection.oauthGrant;
+            if (grant !== undefined) {
+                this.#grants.set(key, { definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
+            }
             this.#dirty.set(key, Symbol());
             this.#refreshCatalog(identity.workspaceId, alias);
             return { status: 202, alias };
@@ -1062,6 +1072,12 @@ export default class Module implements DaemonModule<SetupSeam> {
             }
             throw cause;
         }
+    }
+
+    // {§oauth-grant} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
+    #grantFor(workspaceId: number, binding: McpBinding): OAuthGrant | undefined {
+        const held = this.#grants.get(this.#pendingKey(workspaceId, binding.definition.name));
+        return held !== undefined && held.grant.signedIn && sameBinding(held, binding) ? held.grant : undefined;
     }
 
     // A live catalog change republishes the unchanged state; the dirty alias
@@ -1114,6 +1130,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#refreshTimers.clear();
         this.#dirty.clear();
         this.#challenged.clear();
+        this.#grants.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();

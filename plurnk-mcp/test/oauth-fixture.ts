@@ -77,6 +77,7 @@ export const serveIssuerOAuth = async (
     authorizations: URLSearchParams[];
     tokenRequests: URLSearchParams[];
     expire: () => void;
+    revoke: () => void;
 }> => {
     const authorizations: URLSearchParams[] = [];
     const tokenRequests: URLSearchParams[] = [];
@@ -173,5 +174,7 @@ export const serveIssuerOAuth = async (
         tokenRequests,
         // The access token lapses; a refresh token, where one was issued, still answers.
         expire: () => { accessToken = crypto.randomUUID(); },
+        // The grant is revoked: its access token lapses and its refresh tokens are refused as invalid grants.
+        revoke: () => { accessToken = crypto.randomUUID(); refreshTokens.clear(); },
     };
 };
