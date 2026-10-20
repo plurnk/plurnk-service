@@ -1330,7 +1330,7 @@ test("{§oauth-lifetime} an accepted OAuth callback holds residency until ordina
 });
 
 for (const change of ["none", "withdraw", "replace"] as const) {
-test(`{§oauth-continuation} accepted callbacks are coalesced and publication respects ${change}`, { timeout: 10000 }, async (t) => {
+test(`{§oauth-continuation} accepted callbacks are coalesced, the held workspace keeps the alias as published, and publication respects ${change}`, { timeout: 10000 }, async (t) => {
     const { origin, served, tokenRequests } = await interactiveOAuthFixture(t);
     const release = Promise.withResolvers<void>();
     const h = harness({}, () => release.promise);
@@ -1346,6 +1346,8 @@ test(`{§oauth-continuation} accepted callbacks are coalesced and publication re
         assert.deepEqual(await Promise.all([complete(), complete()]), [accepted, accepted]);
         assert.equal(tokenRequests.length, 1, "one grant exchange for concurrent callbacks");
         assert.deepEqual(h.inService(1), [], "the callback does not bypass publication");
+        assert.deepEqual(h.unavailable(1), [{ name: "oauth", detail: "it awaits the operator's sign-in" }], "a call is refused as published");
+        assert.equal(h.snapshots.get(1)?.prepared, initial, "list reports the published snapshot");
         assert.equal(h.refreshes(), 1, "duplicate callbacks do not schedule duplicate publication");
         assert.deepEqual(await h.action(1, "workspace.mcp.oauth.begin", {
             alias: "oauth", redirectUrl: `${origin}/callback`,
@@ -1355,6 +1357,7 @@ test(`{§oauth-continuation} accepted callbacks are coalesced and publication re
         release.resolve();
         await h.settleRefreshes();
         assert.deepEqual(h.inService(1), change === "none" ? ["oauth"] : []);
+        if (change === "none") assert.deepEqual(listedGrant(h, "oauth", 1), { issuer: origin, scope: "mcp:read", refreshable: false }, "the publication lists the grant");
         assert.equal(h.leases(), change === "replace" ? 1 : 0);
         assert.equal(tokenRequests.length, 1, "publication never replays the grant");
         if (change !== "none") {

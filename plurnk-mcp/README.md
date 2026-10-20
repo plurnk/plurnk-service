@@ -201,18 +201,20 @@ and `authorization.authorizationParams` adds provider request parameters such as
 ({§oauth-issuer}). Supplying the callback URL explicitly also works for
 remote/headless use. The client submits the complete URL through
 `workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in; tools activate
-at the next safe workspace boundary, without another callback submission. `list`
-shows their current readiness. A sign-in outlives its connection: the alias's
-later connections with the same definition present it, refreshing it as it
-lapses — when an idle workspace returns, on `enable`, or on `disable` then
-`enable` — until its authorization server rejects it, another sign-in replaces
-it, or the daemon stops ({§oauth-grant}). `list` shows an active alias's grant
-as its `detail.grant`: its issuer, the scope its authorization server stated,
-and whether it refreshes, never a token. PKCE, issuer and resource validation,
-refresh, scope escalation, and credentials remain inside the host. Callback
-addresses and credentials never replace the saved definition. `enable` retries a
-connection; it does not replace user sign-in. Rejected configured credentials
-are reported as authentication failures rather than retryable server downtime.
+at the next safe workspace boundary, between turns, without another callback
+submission. Until then `list` and a call to the alias report the published
+state, so a turn in flight still sees the alias awaiting sign-in. A sign-in
+outlives its connection: the alias's later connections with the same definition
+present it, refreshing it as it lapses — when an idle workspace returns, on
+`enable`, or on `disable` then `enable` — until its authorization server rejects
+it, another sign-in replaces it, or the daemon stops ({§oauth-grant}). `list`
+shows an active alias's grant as its `detail.grant`: its issuer, the scope its
+authorization server stated, and whether it refreshes, never a token. PKCE,
+issuer and resource validation, refresh, scope escalation, and credentials
+remain inside the host. Callback addresses and credentials never replace the
+saved definition. `enable` retries a connection; it does not replace user
+sign-in. Rejected configured credentials are reported as authentication failures
+rather than retryable server downtime.
 
 ## Verification
 
