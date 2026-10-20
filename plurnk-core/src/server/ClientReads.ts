@@ -3,17 +3,35 @@ import type { Db } from "../core/Db.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
-import { Validator, type ClientEntryChannel, type EntryReadResult, type LogEntryWire } from "@plurnk/plurnk-contracts";
+import { Validator, type ApplicationStream, type ApplicationStreamChannel, type ClientEntryChannel, type EntryReadResult, type LogEntryWire } from "@plurnk/plurnk-contracts";
 import LogEntry, { type LogEntryRow } from "./logEntry.ts";
 import ClientInput from "./client-input.ts";
 import Results from "../core/results.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
 import type WorkspaceResidency from "./WorkspaceResidency.ts";
 import { daemonFailure } from "./daemon-results.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import type { ChannelRow } from "./Daemon.ts";
 
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result);
+
+// {§methods-worker-streams} One channel of one open subscription, as `worker_open_streams` selects it: a row whose entry
+// has no channel carries none, and a channel's state is one its column's constraint admits.
+interface OpenStreamRow {
+    readonly id: number;
+    readonly entry_id: number;
+    readonly worker_id: number;
+    readonly scheme: string;
+    readonly authority: string;
+    readonly pathname: string;
+    readonly turn_scoped: number;
+    readonly detached: number;
+    readonly source: string | null;
+    readonly channel: string | null;
+    readonly state: ApplicationStreamChannel["state"] | null;
+    readonly mimetype: string | null;
+}
 
 export default class ClientReads {
     readonly #db: Db;
@@ -292,6 +310,37 @@ export default class ClientReads {
         const turnSeq = ClientInput.assertId("reasoning.read", "turnSeq", args.turnSeq);
         const row = await this.#db.log_turn_reasoning.get<{ content: string }>({ worker_id: workerId, loop_seq: loopSeq, turn_seq: turnSeq });
         return row === undefined || row.content.length === 0 ? null : row.content;
+    }
+
+    // {§methods-worker-streams} The streams the worker holds open, in opening order, each with every channel of its entry.
+    async readStreams(args: { workspaceId: number; workerId: number }): Promise<ApplicationStream[]> {
+        const workerId = await this.#ownedWorker("streams.read", args);
+        const rows = await this.#db.worker_open_streams.all<OpenStreamRow>({ worker_id: workerId });
+        const opened = new Map<number, { readonly row: OpenStreamRow; readonly channels: ApplicationStreamChannel[] }>();
+        for (const row of rows) {
+            const stream = opened.get(row.id) ?? { row, channels: [] };
+            opened.set(row.id, stream);
+            if (row.channel !== null && row.state !== null && row.mimetype !== null) {
+                stream.channels.push({ channel: row.channel, state: row.state, mimetype: row.mimetype });
+            }
+        }
+        return [...opened.values()].map(({ row, channels }) => ({
+            entryId: row.entry_id,
+            workerId: row.worker_id,
+            target: renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname }),
+            lifetime: row.detached === 1 ? "detached" : row.turn_scoped === 1 ? "turn" : "loop",
+            ...ClientReads.#openedAt(row.source),
+            channels,
+        }));
+    }
+
+    // The operation a stream began at, from the `log:///<loop>/<turn>/<item>/<op>` source its spawn recorded when it
+    // began in a turn ({§subscriptions-causal-resource}); none otherwise.
+    static #openedAt(source: string | null): Pick<ApplicationStream, "loop_seq" | "turn_seq" | "sequence"> {
+        const match = source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(source);
+        if (match === null) return {};
+        const [loopSeq, turnSeq, sequence] = match.slice(1).map(Number);
+        return { loop_seq: loopSeq, turn_seq: turnSeq, sequence };
     }
 
     // A read names a worker of the workspace it reads (a workspace reads only its own workers — the model worker

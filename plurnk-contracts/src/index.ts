@@ -40,6 +40,7 @@ export {
 export { default as Problems } from "./Problems.ts";
 export { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 export type { MessageResource, MessageResourceReceipt, MessageEvidence, ApplicationMessage, ApplicationInboxMessage } from "./MessageResource.ts";
+export type { ApplicationStream, ApplicationStreamChannel } from "./ApplicationStream.ts";
 export { lifecycleOfLoopStatus, selectWorkerLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";

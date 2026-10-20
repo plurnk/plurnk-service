@@ -64,6 +64,7 @@ export type AguiPort = Pick<
     | "listWorkspaces"
     | "readInbox"
     | "readReasoning"
+    | "readStreams"
     | "readWorker"
     | "readWorkerReference"
     | "ensureWorkerReference"
@@ -541,19 +542,20 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     }
 
     async #workerGauge(workspaceId: number, workerId: number, threadId: string): Promise<AguiWorkerGauge> {
-        const [{ model }, loops, workers, proposals, interactions, inbox, budget] = await Promise.all([
+        const [{ model }, loops, workers, proposals, interactions, inbox, streams, budget] = await Promise.all([
             this.#seam.readWorkerModel({ workspaceId, workerId }),
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
             this.#seam.listWorkers(workspaceId),
             this.#seam.pendingProposals(workspaceId),
             this.#seam.pendingClientInteractions(workspaceId),
             this.#seam.readInbox({ workspaceId, workerId }),
+            this.#seam.readStreams({ workspaceId, workerId }),
             this.#seam.workerGauge({ workspaceId, workerId }),
         ]);
         const loop = selectWorkerLoop(loops);
         const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
         const descendants = descendantsState(workerId, workers, [...proposals, ...interactions]);
-        return { status: statusState(model, loop, spendState(spend), descendants, inboxState(inbox, threadId)), budget };
+        return { status: statusState(model, loop, spendState(spend), descendants, inboxState(inbox, threadId), streams), budget };
     }
 
     // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on

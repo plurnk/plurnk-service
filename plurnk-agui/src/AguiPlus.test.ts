@@ -220,6 +220,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         terminatedAt: null,
         descendants: [],
         inbox: [],
+        streams: [],
         spend: NOTHING_SPENT,
     });
     assert.deepEqual(statusState(null, null, NOTHING_SPENT), {
@@ -232,6 +233,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
         terminatedAt: null,
         descendants: [],
         inbox: [],
+        streams: [],
         spend: NOTHING_SPENT,
     });
     // {§agui-status-descendants} — the whole tree beneath the bound Worker, each worker with the gates it waits on.

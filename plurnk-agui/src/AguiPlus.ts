@@ -9,7 +9,7 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import MessageAddress from "./MessageAddress.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
-import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ApplicationStream, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
@@ -154,6 +154,8 @@ export interface AguiStatusState {
     readonly spend: AguiSpendState;
     // {§agui-message-acceptance} — the accepted messages the bound Worker has not yet observed.
     readonly inbox: ReadonlyArray<AguiInboxEntry>;
+    // {§agui-status-streams} — the streams the bound Worker holds open, each with its channels' states.
+    readonly streams: ReadonlyArray<ApplicationStream>;
     // {§agui-status-timing} — when the latest Loop first ran and when it concluded, Unix milliseconds.
     readonly claimedAt: number | null;
     readonly terminatedAt: number | null;
@@ -232,6 +234,7 @@ export const statusState = (
     spend: AguiSpendState,
     descendants: readonly AguiDescendant[] = [],
     inbox: readonly AguiInboxEntry[] = [],
+    streams: readonly ApplicationStream[] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -243,6 +246,7 @@ export const statusState = (
     descendants,
     spend,
     inbox,
+    streams,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

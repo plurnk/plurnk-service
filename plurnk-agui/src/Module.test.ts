@@ -151,6 +151,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         readReasoning: async () => null,
         readMessages: async () => [],
         readInbox: async () => [],
+        readStreams: async () => [],
         messageAdmission: async () => "new" as const,
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
@@ -335,7 +336,7 @@ for (const status of [200, 502]) {
                     kind: "derivation", phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } }, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, inbox: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
+                    packetCount: 2, inbox: [], streams: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
                     descendants: [{ id: 88, name: "child", parentWorkerId: 77, kind: "work", lifecycle: "running", gates: 0 }],
                     spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
                 } },
@@ -797,6 +798,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
             terminatedAt: null,
             descendants: [],
             inbox: [],
+            streams: [],
             spend: { requests: 0, usage: null, knownUsage: null, costUsd: null, knownCostUsd: null },
         });
         assert.deepEqual(event.snapshot.plurnk.workspace, {

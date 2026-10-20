@@ -77,6 +77,18 @@ SELECT id, scheme
 FROM subscriptions
 WHERE worker_id = $worker_id AND closed_at IS NULL;
 
+-- PREP: worker_open_streams
+-- {§methods-worker-streams} The worker's open subscriptions in opening order, one row per channel of each one's entry,
+-- written or not (none for an entry without channels): its address, the lifetime its spawn declared, and its source.
+-- An outer join cannot flatten the entry_channels view, so this one reads its table ({§content-store}).
+SELECT s.id, s.entry_id, s.worker_id, e.scheme, e.authority, e.pathname, s.turn_scoped, s.detached, s.source,
+       ec.name AS channel, ec.state, ec.mimetype
+FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+LEFT JOIN entry_channel_rows ec ON ec.entry_id = s.entry_id
+WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
+ORDER BY s.id, ec.name;
+
 -- PREP: find_open_subscriptions_announced_in_loop
 -- {§connection-lifecycle} A client operation's executions that still run: the runtime worker's open, attached
 -- subscriptions beside each stream address its loop's rows announced. The caller keeps the pairs whose entry

@@ -140,6 +140,7 @@ export class SqlRiteSync {
 	subscription_published_channel_meta: SqlRiteSyncPreparedStatements;
 	find_active_subscription: SqlRiteSyncPreparedStatements;
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
+	worker_open_streams: SqlRiteSyncPreparedStatements;
 	find_open_subscriptions_announced_in_loop: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
@@ -759,6 +760,7 @@ export default class SqlRite {
 	subscription_published_channel_meta: SqlRitePreparedStatements;
 	find_active_subscription: SqlRitePreparedStatements;
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
+	worker_open_streams: SqlRitePreparedStatements;
 	find_open_subscriptions_announced_in_loop: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;

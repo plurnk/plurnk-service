@@ -8,6 +8,7 @@ import Portal, { type ThreadHandle } from "./Portal.ts";
 import { spendState, stateSnapshot, statusState } from "./AguiPlus.ts";
 import type {
     ApplicationLoopProjection,
+    ApplicationStream,
     ApplicationWorkerProjection,
     ClientInteractionProjection,
     ProposalProjection,
@@ -127,6 +128,7 @@ const mockSeam = (
     const seam = {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         readInbox: async () => [],
+        readStreams: async () => [],
         pendingProposals: async () => pending,
         pendingClientInteractions: async () => pendingInteractions,
         listWorkers: async () => topology.workers ?? [worker(10)],
@@ -150,7 +152,7 @@ const mockSeam = (
         readLog: async ({ workerId, loopSeq, turnSeq, sequence }) => loopSeq === undefined ? [] : [wireRow({ id: sequence, worker_id: workerId,
             loop_seq: loopSeq, turn_seq: turnSeq, sequence, op: "EDIT", status_rx: 202, rx: { status: 202 }, state: "proposed" })],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "readInbox" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
+    } satisfies Pick<ApplicationPort, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "listWorkers" | "listWorkerLoops" | "workerAccounting" | "readInbox" | "readStreams" | "runLoop" | "cancelDrain" | "cancelLoop" | "dispatchClientAction" | "readLog" | "listProviders">;
     return {
         seam,
         fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
@@ -284,6 +286,56 @@ test("{§agui-status-descendants}: each moment that may change the tree reads it
         ["another worker's row, a descendant waiting", "log/entry", row("READ", 36, 21)],
         ["a stream's conclusion, a descendant waiting", "stream/concluded", conclusion],
     ], true);
+    portal.stop();
+});
+
+// {§agui-status-streams} The census of the bound Worker's open streams follows the snapshot and is read again at each
+// moment it may change: a row announcing a stream, a channel state the client does not hold, the stream's conclusion.
+test("{§agui-status-streams}: the open streams follow the snapshot; only an opening, a new channel state or a conclusion reads them again", async () => {
+    const m = mockSeam();
+    let reads = 0;
+    let open: ApplicationStream[] = [];
+    const portal = new Portal({ ...m.seam, readStreams: async () => { reads += 1; return open; } });
+    portal.start();
+    const events: AguiEvent[] = [];
+    const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "worker", emit: (batch) => events.push(...batch) });
+    const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
+    const censuses = () => events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : [])
+        .filter((op) => op.path === "/plurnk/status/streams").map((op) => ("value" in op ? op.value : null));
+    const stream = (stdout: "active" | "closed"): ApplicationStream => ({
+        entryId: 40, workerId: 10, target: "sh:///aaaa0001", lifetime: "loop", loop_seq: 1, turn_seq: 1, sequence: 2,
+        channels: [{ channel: "stderr", state: "active", mimetype: "text/stream" }, { channel: "stdout", state: stdout, mimetype: "text/stream" }],
+    });
+    const opening = { entry: wireRow({ id: 2, worker_id: 10, op: "sh", attrs: { stream: "sh:///aaaa0001" } }) };
+    const check = async (rows: ReadonlyArray<readonly [string, string, unknown]>, rereads: boolean): Promise<void> => {
+        for (const [event, method, params] of rows) {
+            const before = reads;
+            m.fire(3, method, params);
+            await drain();
+            assert.equal(reads, before + (rereads ? 1 : 0), rereads ? `${event} reads the streams again` : `${event} does not`);
+        }
+    };
+
+    open = [stream("active")];
+    m.fire(3, "log/entry", opening);
+    await drain();
+    assert.deepEqual(censuses(), [], "nothing patches a census the client does not hold yet");
+    const status = statusState(null, null, spendState({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }));
+    events.push(...portal.runStarted(thread, stateSnapshot({}, { status, budget: NO_GAUGE }), status));
+    await drain();
+    assert.deepEqual(censuses(), [[stream("active")]], "a stream that opened while the snapshot was read follows it");
+
+    await check([
+        ["an append to a channel in the state the client holds", "stream/event", streamEvent({ entryId: 40, workerId: 10, target: "sh:///aaaa0001", channel: "stdout", state: "active", contentLength: 12 })],
+        ["another worker's stream", "stream/event", streamEvent({ entryId: 41, workerId: 20, target: "sh:///aaaa0002", channel: "stdout", state: "active" })],
+        ["another worker's conclusion", "stream/concluded", streamConclusion({ entryId: 41, workerId: 20, target: "sh:///aaaa0002" })],
+        ["the bound Worker's row announcing no stream", "log/entry", { entry: wireRow({ id: 3, worker_id: 10, op: "READ" }) }],
+    ], false);
+    open = [stream("closed")];
+    await check([["a channel state the client does not hold", "stream/event", streamEvent({ entryId: 40, workerId: 10, target: "sh:///aaaa0001", channel: "stdout", state: "closed", contentLength: 12 })]], true);
+    open = [];
+    await check([["the stream's conclusion", "stream/concluded", streamConclusion({ entryId: 40, workerId: 10, target: "sh:///aaaa0001" })]], true);
+    assert.deepEqual(censuses(), [[stream("active")], [stream("closed")], []], "each change patched once, the last an explicit empty census");
     portal.stop();
 });
 

@@ -1394,4 +1394,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     async readReasoning(...args: Parameters<ClientReads["readReasoning"]>): ReturnType<ClientReads["readReasoning"]> {
         return this.#reads.readReasoning(...args);
     }
+
+    async readStreams(...args: Parameters<ClientReads["readStreams"]>): ReturnType<ClientReads["readStreams"]> {
+        return this.#reads.readStreams(...args);
+    }
 }

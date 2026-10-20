@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FunctionalityPreparationActivity, ProviderAccounting, RollbackReport } from "./types.generated.ts";
 import type { ApplicationInboxMessage, ApplicationMessage, MessageResource } from "./MessageResource.ts";
+import type { ApplicationStream } from "./ApplicationStream.ts";
 import type {
     CapabilityPolicy,
     CapabilityProjection,
@@ -79,6 +80,8 @@ export interface ApplicationPort extends HttpHost {
     readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
     /** {§methods-worker-inbox} The accepted messages the worker has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
     readInbox(args: { readonly workspaceId: number; readonly workerId: number }): Promise<ApplicationInboxMessage[]>;
+    /** {§methods-worker-streams} The streams the worker holds open, in opening order, each with its channels' states. */
+    readStreams(args: { readonly workspaceId: number; readonly workerId: number }): Promise<ApplicationStream[]>;
     /** {§message-idempotency} A client message's address is its idempotency key: `new` when nothing is accepted there,
      *  `accepted` when the same body is; another body under an accepted address is refused, 422 `message-address-reused`. */
     messageAdmission(args: { readonly workspaceId: number; readonly address: string; readonly body: string }): Promise<"new" | "accepted">;

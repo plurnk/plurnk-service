@@ -203,6 +203,7 @@ reasoning the same way: its message holds no text and names the reasoning's addr
 | {§agui-plurnk-metadata} | plurnk facts ride standard metadata. |
 | {§agui-status-descendants} | The tree is the daemon's, never inferred. |
 | {§agui-status-spend} | The spend is the daemon's, from the Worker's beginning, republished, never promoted. |
+| {§agui-status-streams} | The streams still open are the daemon's, never inferred. |
 | {§agui-status-timing} | A Loop's timing is the daemon's, and it travels with the Loop's identity. |
 | {§agui-numbers-passthrough} | Gauge numbers pass through verbatim. |
 | {§agui-state-patches} | Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s. |
@@ -344,6 +345,15 @@ reasoning ({§agui-lifecycle-projection}), and a response row still precedes its
 | Not promoted | descendant notices, packets and terminals themselves ({§agui-delegation-observation}); one loop's own `turn_generated` and terminal-record accounting keep their meaning |
 | The lifecycle beat ({§loop-status-notice}) | a parked parent's clock and its descendants' cost both move |
 
+§agui-status-streams **The streams still open are the daemon's, never inferred.** `status.streams` is what the bound Worker holds open ({§methods-worker-streams}), in opening order: each stream `{ entryId, workerId, target, lifetime, loop_seq?, turn_seq?, sequence?, channels }`, its identity and causal coordinates named as its `plurnk.stream` events name them, and every channel of its entry as `{ channel, state, mimetype }`, written or not. A fresh observer therefore finds an execution that is silent or has never written. Its content is read by its address (`entry.read`), never carried here; its progress and its conclusion arrive as `plurnk.stream` events ({§agui-projection}).
+
+| Fact | Rule |
+| --- | --- |
+| Computed | from `ApplicationPort.readStreams` for every snapshot and whole-gauge replacement |
+| Read again | when the bound Worker's row announcing a stream (`attrs.stream`) lands, when one of its streams reports a channel state the Run's client does not hold, and when one of them concludes; an append in a state the client holds reads nothing |
+| Republished | as `STATE_DELTA /plurnk/status/streams`, replaced whole, only when it differs from the one the Run's client holds, and never before the snapshot ({§agui-status-descendants}); a concluded stream is gone, and no stream open is an empty array |
+| Not in it | a descendant's streams, which are that Worker's own census, read by attaching to it; a concluded stream, whose result its `plurnk.stream` conclusion and the log carry |
+
 §agui-status-timing **A Loop's timing is the daemon's, and it travels with the Loop's identity.**
 `status.claimedAt` is when the latest Loop first ran ({§loop-claim-latency}) and `status.terminatedAt`
 when it concluded, both Unix milliseconds like `waitUntil` and null until they happen. A snapshot
@@ -375,6 +385,7 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 | §agui-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |
 | `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park, queued on wake) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
 | `snapshot.plurnk.status.descendants` | `ApplicationPort.listWorkers`, `pendingProposals`, `pendingClientInteractions` | The bound Worker's whole tree beneath it, each worker with its lifecycle and the gates it waits on ({§agui-status-descendants}). Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/descendants` only when it differs from what the Run's client holds, never before its snapshot. |
+| `snapshot.plurnk.status.streams` | `ApplicationPort.readStreams` | The streams the bound Worker holds open, each with its channels' states ({§agui-status-streams}). Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/streams` only when it differs from what the Run's client holds, never before its snapshot. |
 | §agui-workspace-state `snapshot.plurnk.workspace` | the Run's client envelope | `{ id, name, projectRoot, projectLabel, preparation, activity }`: the bound workspace, its folder and the folder's label as the daemon spells it ({§workspace-label}), both null without a folder, and the activity that belongs to the workspace rather than to a Worker. Every Run bound to a workspace carries it, whether or not it binds a Worker. Clients display the label and never derive one. |
 | `snapshot.plurnk.workspace.preparation` | `ApplicationPort.workspacePreparationStatus(workspaceId)` | Current workspace capability preparation ({§functionality-preparation-visibility}), also sent as `STATE_DELTA /plurnk/workspace/preparation`. Initial and reattachment snapshots carry the same state. An empty array clears it; no polling or model inference is required. |
 | `snapshot.plurnk.workspace.activity` | `ApplicationPort.workspaceDerivationStatus(workspaceId)` | Current workspace derivation: phase, counts, percent and message while preparing, indexing or failed, and `null` when none is under way or the last pass completed. Live `search_progress` Notices replace it as `STATE_DELTA /plurnk/workspace/activity`; a Loop's terminal leaves it as derivation last reported it. Reattachment snapshots carry the current derivation through the same projection, without polling or duplicate routine Notices. |
