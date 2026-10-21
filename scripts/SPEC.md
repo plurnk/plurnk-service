@@ -30,6 +30,14 @@ shared `.oxlintrc.json`. The gate fails on errors.
 
 §drill-scope **The drill scopes integration to what changed.** `scripts/drill.mjs`, the pre-push gate, runs root-owned lint and unit coverage before every workspace's lint and unit tiers, then integration for exactly the workspaces whose files changed: a change under a framework package or at the root level, or a root change beside a workspace change, runs integration in full, and an empty diff runs none, lint and unit having already run in full. Each tier reports its applicable and inapplicable workspaces and names every failing package in its summary. A push whose every file is Markdown documentation — a README, a CHANGELOG, a SPEC — runs the root lint alone; `plurnk.md` is model-facing teaching that tests parse, so it never counts as documentation, nor does any non-Markdown file or an empty push.
 
+§drill-parallelism **The drill's parallelism is the host's.** Its budget is the host's available cores, bounded by the
+test processes its available memory holds at a test process's measured footprint; no number is fixed for one machine.
+Each phase runs its packages through a pool that wide, largest first, and hands each package its share as
+`PLURNK_TEST_CONCURRENCY`: the package whose tier names the most test files has the whole budget, and every other
+package a share scaled by its test files against that one's, at least one, so the smaller packages, done sooner, overlap
+the largest only briefly. Every `node --test` tier passes its share on as `--test-concurrency`; a tier run outside the
+drill takes Node's own default.
+
 ## Policies the root lint enforces
 
 <!-- map -->

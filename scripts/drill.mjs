@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { availableParallelism } from "node:os";
 import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
@@ -14,13 +15,37 @@ Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope in
 Writes: the phase summary to stdout; exit 1 on any red phase.
 `);
 
-const LIMIT = 8;
+// {§drill-parallelism} A test process's footprint, measured: a core integration file's process peaks near 420 MB.
+const TEST_PROCESS_BYTES = 512 * 2 ** 20;
+
+// {§drill-parallelism} The host's parallelism: its available cores, and no more test processes than its available
+// memory holds at that footprint.
+export const hostBudget = (cores = availableParallelism(), memory = process.availableMemory()) =>
+    Math.max(1, Math.min(cores, Math.floor(memory / TEST_PROCESS_BYTES)));
+
+// The test files a tier hands `node --test`: every `*.test.*` pattern its script names, expanded in its workspace.
+export const tierFiles = async (dir, command) => {
+    const files = new Set();
+    for (const [, pattern] of command.matchAll(/["']?([^\s"']+\.test\.[\w*]+)["']?/gu)) {
+        for await (const file of fs.glob(pattern, { cwd: dir })) files.add(file);
+    }
+    return files.size;
+};
+
+// {§drill-parallelism} Each lane's share of the budget: the largest lane's is all of it, and each other lane's is scaled
+// by its test files against the largest's, at least one; the smaller lanes, done sooner, overlap the largest briefly.
+export const shares = (budget, counts) => {
+    const largest = Math.max(0, ...counts);
+    return counts.map((count) => largest === 0 ? budget : Math.max(1, Math.round(budget * count / largest)));
+};
+
+const BUDGET = hostBudget();
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
-const rootTarget = { dir: ".", name: root.name, scripts: Object.keys(root.scripts ?? {}) };
+const rootTarget = { dir: ".", name: root.name, scripts: Object.keys(root.scripts ?? {}), commands: root.scripts ?? {} };
 const workspaces = [];
 for (const dir of root.workspaces) {
     const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
-    workspaces.push({ dir, name: pkg.name, scripts: Object.keys(pkg.scripts ?? {}) });
+    workspaces.push({ dir, name: pkg.name, scripts: Object.keys(pkg.scripts ?? {}), commands: pkg.scripts ?? {} });
 }
 
 // The framework packages every other workspace composes. Their intg tiers cannot see
@@ -75,8 +100,9 @@ const intgTargets = (files) => {
     return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));
 };
 
-const run = (dir, script) => new Promise((resolve) => {
-    const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env: process.env });
+// {§drill-parallelism} A lane runs with its share as its test runner's concurrency.
+const run = (dir, script, share = BUDGET) => new Promise((resolve) => {
+    const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env: { ...process.env, PLURNK_TEST_CONCURRENCY: String(share) } });
     let out = "";
     child.stdout.on("data", (c) => { out += c; });
     child.stderr.on("data", (c) => { out += c; });
@@ -86,7 +112,7 @@ const run = (dir, script) => new Promise((resolve) => {
 const pool = async (jobs) => {
     const results = [];
     let i = 0;
-    const workers = Array.from({ length: Math.min(LIMIT, jobs.length) }, async () => {
+    const workers = Array.from({ length: Math.min(BUDGET, jobs.length) }, async () => {
         while (i < jobs.length) results.push(await jobs[i++]());
     });
     await Promise.all(workers);
@@ -111,8 +137,13 @@ export const formatPhaseSummary = ({ title, results, reds, excluded, elapsedSeco
 const phase = async (title, script, subset) => {
     const started = Date.now();
     const { included, excluded } = partitionByScript(subset, script);
+    // {§drill-parallelism} The largest lanes start first, each with its share of the host.
+    const counts = await Promise.all(included.map((w) => tierFiles(w.dir, w.commands[script])));
+    const share = shares(BUDGET, counts);
     const jobs = included
-        .map((w) => () => run(w.dir, script));
+        .map((w, index) => ({ w, files: counts[index], share: share[index] }))
+        .toSorted((left, right) => right.files - left.files)
+        .map(({ w, share: lane }) => () => run(w.dir, script, lane));
     const results = await pool(jobs);
     const reds = results.filter((r) => r.code !== 0);
     console.log(formatPhaseSummary({
@@ -131,6 +162,7 @@ const phase = async (title, script, subset) => {
 
 if (import.meta.main) {
     const t0 = Date.now();
+    console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
     if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);
     if (!(await phase("root unit", "root:unit", [rootTarget]))) process.exit(1);
     if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);

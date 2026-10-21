@@ -50,7 +50,7 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --test 'src/**/*.test.ts'",
+        "test:unit": "node --conditions=plurnk-dev --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} 'src/**/*.test.ts'",
         "test": "npm run test:lint && npm run test:unit",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

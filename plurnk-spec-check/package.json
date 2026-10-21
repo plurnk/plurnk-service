@@ -9,7 +9,7 @@
     "exports": { "./package.json": "./package.json" },
     "files": ["check.mjs", "README.md", "SPEC.md", "LICENSE"],
     "scripts": {
-        "test:unit": "node --test check.test.mjs installation.test.mjs",
+        "test:unit": "node --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} check.test.mjs installation.test.mjs",
         "test": "npm run test:unit"
     },
     "publishConfig": { "access": "public" },

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { docsOnly, formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
+import { docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, tierFiles } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
 
@@ -96,5 +96,38 @@ describe("drill docsOnly — a Markdown-only push runs the root lint alone", () 
     it("{§drill-scope} any non-Markdown file, or no file at all, is not a documentation-only push", () => {
         assert.equal(docsOnly(["README.md", "scripts/drill.mjs"]), false);
         assert.equal(docsOnly([]), false);
+    });
+});
+
+describe("drill parallelism — the host's, shared by work", () => {
+    const GiB = 2 ** 30;
+    it("{§drill-parallelism} the budget is the host's cores, bounded by the test processes its available memory holds", () => {
+        assert.equal(hostBudget(24, 64 * GiB), 24, "cores bound a host with memory to spare");
+        assert.equal(hostBudget(24, 4 * GiB), 8, "memory bounds a host with cores to spare");
+        assert.equal(hostBudget(2, 64 * GiB), 2);
+        assert.equal(hostBudget(8, 0), 1, "a host always runs one");
+    });
+
+    it("{§drill-parallelism} the largest lane has the whole budget, and each other lane a share scaled by its test files, at least one", () => {
+        assert.deepEqual(shares(24, [439, 21, 41, 25, 2, 3, 2, 1]), [24, 1, 2, 1, 1, 1, 1, 1]);
+        assert.deepEqual(shares(23, [106, 48, 36, 1]), [23, 10, 8, 1]);
+        assert.deepEqual(shares(4, [439, 21, 41]), [4, 1, 1], "a small host runs every lane");
+        assert.deepEqual(shares(8, [0, 0]), [8, 8], "lanes whose files are unknown each have the budget");
+    });
+
+    it("{§drill-parallelism} every node --test tier takes its share, and no tier fixes its own", async () => {
+        const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+        const dirs = [".", ...manifest.workspaces];
+        for (const dir of dirs) {
+            const { scripts = {} } = JSON.parse(await readFile(new URL(`../${dir}/package.json`, import.meta.url), "utf8"));
+            for (const [name, command] of Object.entries(scripts)) {
+                if (!/ --test( |$)/u.test(command)) continue;
+                assert.match(command, / --test \$\{PLURNK_TEST_CONCURRENCY:\+--test-concurrency=\$PLURNK_TEST_CONCURRENCY\}/u, `${dir} ${name} takes the drill's share`);
+                assert.doesNotMatch(command, /--test-concurrency=\d/u, `${dir} ${name} fixes no concurrency of its own`);
+                if (name === "test:unit" || name === "test:intg") {
+                    assert.ok(await tierFiles(new URL(`../${dir}/`, import.meta.url).pathname, command) > 0, `${dir} ${name} names the test files it runs`);
+                }
+            }
+        }
     });
 });
