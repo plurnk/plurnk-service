@@ -135,7 +135,7 @@ Tasks refuse further messages and subscriptions. Cancellation reports `CANCELED`
 after Core has settled that Task; completion winning the race remains completion.
 The module's stop phase refuses new HTTP requests. Its close phase ends and joins
 its observations and admitted application calls before releasing application
-resources ({§module-lifecycle}); it does not cancel Tasks to end an observation.
+resources ({§module-lifecycle}, {§module-route-settlement}); it does not cancel Tasks to end an observation.
 
 | Durable Plurnk state | A2A projection |
 |---|---|

@@ -4982,7 +4982,7 @@ The export is one DaemonModule ({§module-contract}) object or no-argument facto
 | --- | --- |
 | Failures | do not skip later phases and join one shutdown aggregate; expected preparation cancellation is not a shutdown failure, genuine preparation and cleanup failures are |
 | Supervisor tasks | the supervisor owns each asynchronous cancellation and wake task from acceptance through settlement, including immediately acknowledged and explicitly awaited cancellation, and a task failure participates in the shutdown aggregate; after asynchronous selection it rechecks shutdown before creating a drain or installing a timer, and parked-loop wake mutations also recheck worker cancellation under {§worker-lifecycle-durable-disposition} |
-| The database | remains available through observer closure and final maintenance |
+| The database | remains available through observer closure, which joins the work module routes admitted ({§module-route-settlement}), and final maintenance |
 | Residency transitions | are retained from stop admission through settlement, including failed transitions; one failure does not stop the join of other workspaces |
 | The deadline | the shared deadline bounds every phase, including observer delivery; forced shutdown may therefore lose notifications and reports the unfinished phase |
 

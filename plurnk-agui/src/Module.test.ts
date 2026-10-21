@@ -621,7 +621,7 @@ const HELD_ACROSS_CLOSE = {
         },
     },
 };
-for (const [work, row] of Object.entries(HELD_ACROSS_CLOSE)) test(`{§agui-shutdown} close joins ${work} before it settles`, async () => {
+for (const [work, row] of Object.entries(HELD_ACROSS_CLOSE)) test(`{§module-route-settlement} {§agui-shutdown} close joins ${work} before it settles`, async () => {
     const { seam, loopRuns, emit } = mockSeam();
     existingWorkspace(seam, "w");
     const entered = Promise.withResolvers<void>();

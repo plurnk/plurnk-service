@@ -14,6 +14,7 @@ seam slice.
 | --- | --- |
 | {§module-http-mounts} | A module declares the HTTP prefixes it serves. |
 | {§module-phases} | Every module's `setup` completes before any module's `start`. |
+| {§module-route-settlement} | A module's `close` returns once the work its routes admitted has settled. |
 | {§module-self-activation} | A module configures itself. |
 | {§module-contained-configuration} | A module contains a setting it cannot use. |
 | {§module-failure} | A `setup` or `start` failure fails boot, and stopping releases exactly what was acquired. |
@@ -27,7 +28,7 @@ type names only what the module uses.
 | `setup` | Its setup seam | Establishes every capability the host may demand during recovery. |
 | `start` | A slice of {§application-port} | Opens exterior ingress only after durable recovery; may return a distinct lifetime object. |
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
-| `close` | Nothing | Releases observers and remaining resources after producers settle. |
+| `close` | Nothing | Releases observers and remaining resources after producers settle, and returns once the work its routes admitted has settled ({§module-route-settlement}). |
 | `mounts` | Declared, not called | The HTTP route prefixes the module mounts at `start` ({§module-http-mounts}). |
 | `contained` | Declared, not called | Settings the module contained: each withheld the part it configures ({§module-contained-configuration}). |
 
@@ -48,6 +49,12 @@ actions. The host then readies schemes, publishes capabilities and recovers dura
 and only then does any `start` bring up a face. Stopping runs every `stop` before any `close`.
 These phases are the only order a module may rely on: registration order is not part of the
 contract, and none is inferred from discovery.
+
+§module-route-settlement **A module's `close` returns once the work its routes admitted has
+settled.** A request a mounted route admitted, and the work the module started for it, may call
+the host until it settles, and the host releases what those calls reach once every `close` has
+returned ({§module-shutdown-order}). `close` therefore joins that work rather than abandoning it:
+nothing a module admitted reaches the host after its `close`.
 
 §module-self-activation **A module configures itself.** A discovered module's export is an object
 or a factory taking no arguments ({§module-discovery}), so it reads its own knobs from the

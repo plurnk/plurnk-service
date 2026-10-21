@@ -114,7 +114,7 @@ test("{§a2a-task-observation}: module close releases waiting and suspended obse
     assert.throws(() => f.observation.follow(async () => "task", new ServerCallContext()), /closed/u);
 });
 
-test("{§a2a-task-observation}: module close joins a projection already reading application state", async (t) => {
+test("{§a2a-task-observation} {§module-route-settlement}: module close joins a projection already reading application state", async (t) => {
     const f = fixture();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

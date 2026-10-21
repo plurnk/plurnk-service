@@ -165,8 +165,8 @@ requests while admitted Runs retain terminal-event delivery. In `close`, after c
 settlement ({§module-shutdown-order}), each still-open Run receives `service-stopping`
 as a `RUN_ERROR` carrying that Problem ({§agui-plurnk-metadata}), then its response and heartbeat end. This
 ends the transport Run, not a worker obligation. `close` returns once every request the
-module admitted, and the work it and the module's Runs started, has settled: nothing the
-module started reaches core after the module closes. A preparation finishing after closure
+module admitted, and the work it and the module's Runs started, has settled
+({§module-route-settlement}): nothing the module started reaches core after the module closes. A preparation finishing after closure
 answers `service-stopping` and opens no stream. Already-ended Runs receive nothing
 further; repeated closure is inert. Clients need not disconnect for the daemon to stop.
 
