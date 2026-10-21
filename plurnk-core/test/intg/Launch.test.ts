@@ -233,7 +233,16 @@ test("{§daemon-launch}: a shared start that exits before readiness is owned to 
                 return true;
             },
         );
-        await assert.rejects(Launch.start({ command: COMMAND, env: daemonEnv(home), lifetime: "shared", readyTimeoutMs: 1, stopGraceMs: 1 }), /needs a logFile/u);
+        // Without a log file of the caller's, a shared daemon writes to the service's own state directory.
+        const root = join(home, "root");
+        await assert.rejects(
+            Launch.start({
+                command: [process.execPath, "-e", "process.stderr.write('admission refused\\n'); process.exit(17)"],
+                env: daemonEnv(home), stateRoot: root, lifetime: "shared", readyTimeoutMs: 10_000, stopGraceMs: 1_000,
+            }),
+            (error: unknown) => error instanceof LaunchError && /admission refused/u.test(error.stdout),
+        );
+        assert.match(await readFile(join(root, "state", "plurnk", "service.log"), "utf8"), /admission refused/u, "the default log is the service's <state dir>/service.log");
     } finally {
         await rm(home, { recursive: true, force: true });
     }

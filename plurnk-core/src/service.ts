@@ -6,10 +6,12 @@ import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { isIPv6 } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
+import { errnoCode } from "@plurnk/plurnk-contracts";
 import type { Db } from "./core/Db.ts";
 import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
@@ -34,6 +36,9 @@ import Paths from "./Paths.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
+
+// How often `stop` looks for the signalled process to be gone.
+const STOP_POLL_MS = 100;
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -292,6 +297,21 @@ export default class Service {
         }
     }
 
+    // {§service-stop} SIGTERM to the process that holds the configured database, then wait for it to
+    // exit: its own shutdown is bounded by PLURNK_SERVICE_STOP_TIMEOUT_MS ({§crash-only-stop}).
+    static async #stop(): Promise<void> {
+        const dbPath = Service.#hostPaths.configuredDatabasePath();
+        const pid = await DaemonLock.owner(dbPath);
+        if (pid === null) {
+            process.stderr.write(`plurnk-service: not running (${dbPath})\n`);
+            return;
+        }
+        try { process.kill(pid, "SIGTERM"); }
+        catch (cause) { if (errnoCode(cause) !== "ESRCH") throw cause; }
+        while (DaemonLock.alive(pid)) await sleep(STOP_POLL_MS);
+        process.stderr.write(`plurnk-service: stopped pid ${pid} (${dbPath})\n`);
+    }
+
     static async #configStatus(): Promise<void> {
         const diagnostics = Service.#configuration;
         const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
@@ -435,6 +455,9 @@ export default class Service {
             if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
             await Service.#ensureOperatorConfig();
             handler = command === "start" ? Service.#start : Service.#migrate;
+        } else if (command === "stop") {
+            if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
+            handler = Service.#stop;
         } else if (command === "config") {
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = action === null ? "config" : `config ${action}`;

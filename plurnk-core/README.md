@@ -39,6 +39,7 @@ reports the choices shared by a worker's selected model and spawn override.
 npm install -g @plurnk/plurnk-service
 plurnk-service migrate    # apply pending database upgrades, preserving existing data
 plurnk-service start      # daemon
+plurnk-service stop       # stop the running daemon and wait for it to exit
 ```
 
 Configuration follows XDG at `$XDG_CONFIG_HOME/plurnk` (normally

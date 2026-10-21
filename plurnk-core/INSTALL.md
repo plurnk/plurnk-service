@@ -12,12 +12,16 @@ environment values or creates another configuration file.
 npm install -g @plurnk/plurnk-service
 plurnk-service migrate
 plurnk-service start
+plurnk-service stop     # from another terminal: stop the running service and wait for it to exit
 ```
+
+The `plurnk` client starts this same service the first time it finds none listening, and
+leaves it running for every later session; `plurnk-service stop` ends it.
 
 First start seeds the user's configuration once. No model ships active;
 [choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
 
-For an explicitly shared Linux daemon, the npm package includes an example
+To start the service at login on Linux, the npm package includes an example
 [systemd user unit](./plurnk.service). Its comments cover manual installation,
 executable paths, environment, and logs. Installing the package never installs
 or enables the unit.
@@ -33,6 +37,7 @@ and says which two settings the daemon needs behind it.
 | User configuration | `$XDG_CONFIG_HOME/plurnk/.env` (`~/.config/plurnk/.env`) |
 | Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` |
 | Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
+| Log of a service a client started | `$XDG_STATE_HOME/plurnk/service.log` (`~/.local/state/plurnk/service.log`) |
 | Project / global Agent Skills | `.agents/skills/` / `~/.agents/skills/` |
 | Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
 | Project / global MCP servers | `.agents/mcp.json` / `~/.agents/mcp.json` |
@@ -80,7 +85,7 @@ database snapshot does not copy them. `plurnk-service share` produces diagnostic
 artifacts from a temporary snapshot and then removes that snapshot; it is not
 a substitute for this backup.
 
-To restore, stop the daemon and retain its old database and any `-wal`/`-shm`
+To restore, stop the daemon (`plurnk-service stop`) and retain its old database and any `-wal`/`-shm`
 sidecars together. Copy the backup to a fresh working path, select that path with
 `PLURNK_SERVICE_DB_PATH`, and start the same or a newer compatible service version.
 Do not overwrite a live database or pair a restored file with old sidecars.

@@ -11,6 +11,7 @@
     "plurnk-core/src/core/attachments.ts:PDF_TOKENS_PER_PAGE": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/file-materialization.ts:STORAGE_MAXIMUM_BYTES": "the schema's CHECK on a channel body; the bound on what PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES may say",
     "plurnk-core/src/launch/Launch.ts:LOG_POLL_MS": "how often a shared daemon's log is re-read for the readiness line; how long readiness may take is the caller's readyTimeoutMs",
+    "plurnk-core/src/service.ts:STOP_POLL_MS": "how often `stop` looks for the signalled process to be gone; how long that may take is the service's own PLURNK_SERVICE_STOP_TIMEOUT_MS",
     "plurnk-core/src/server/WorkspaceCapabilities.ts:COOLING_RETRY_MS": "internal retry cadence of a deferred cool-down; residency itself is PLURNK_SERVICE_WORKSPACE_WARM_MS",
     "plurnk-mcp/src/inputRequired.ts:INPUT_REQUIRED_MAX_ROUNDS": "the adapter's statement of the MCP SDK's multi-round bound; protocol resilience, not a deployment choice",
     "plurnk-mcp/src/inputRequired.ts:REQUEST_STATE_ONLY_PACING_MS": "protocol pacing between state-only rounds",

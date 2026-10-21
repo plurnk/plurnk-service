@@ -1,11 +1,13 @@
 // {§daemon-launch} — the service's own launcher: spawn the daemon executable, await its readiness
 // line ({§startup-readiness-line}), hand back the address it published and a stop that is
-// SIGTERM-and-wait. It touches no filesystem state of its own beyond the caller's log file: what a
-// launcher keeps or removes after stop is that launcher's policy, never this helper's.
+// SIGTERM-and-wait. It touches no filesystem state of its own beyond a shared daemon's log file: what
+// a launcher keeps or removes after stop is that launcher's policy, never this helper's.
 import { errnoCode } from "@plurnk/plurnk-contracts";
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, openSync, statSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
+import { join } from "node:path";
+import HostPaths from "../core/HostPaths.ts";
 
 export interface LaunchOptions {
     // The daemon's argv, executable first — the installed `plurnk-service start`, a pinned
@@ -18,8 +20,9 @@ export interface LaunchOptions {
     readonly host?: string;
     readonly port?: number;
     // private (the default): the launcher's child, both streams piped to it. shared: its own
-    // process group, both streams appended to `logFile`, released after readiness so the launcher
-    // may exit while the daemon survives; until readiness the launcher owns it either way.
+    // process group, both streams appended to `logFile` (else the service's `<state dir>/service.log`),
+    // released after readiness so the launcher may exit while the daemon survives; until readiness
+    // the launcher owns it either way.
     readonly lifetime?: "private" | "shared";
     readonly logFile?: string;
     // How long readiness may take; the caller states it, the helper holds no number of its own.
@@ -56,6 +59,8 @@ export interface LaunchedDaemon {
     readonly dbPath: string;
     readonly route: string;
     readonly child: ChildProcess;
+    // A shared daemon's log, where it writes for the rest of its life; null for a private one.
+    readonly logFile: string | null;
     // What the daemon wrote up to readiness (a shared daemon's log is not read further).
     stdout(): string;
     stderr(): string;
@@ -83,18 +88,18 @@ export default class Launch {
         const [executable, ...args] = options.command;
         if (executable === undefined) throw new TypeError("Launch.start: command needs an executable");
         const shared = options.lifetime === "shared";
-        if (shared && options.logFile === undefined) throw new TypeError("Launch.start: a shared daemon needs a logFile for its output");
         const env: NodeJS.ProcessEnv = { ...options.env };
         if (options.stateRoot !== undefined) env.PLURNK_SERVICE_STATE_ROOT = options.stateRoot;
         if (options.host !== undefined) env.PLURNK_HOST = options.host;
         if (options.port !== undefined) env.PLURNK_PORT = String(options.port);
+        const logFile = shared ? options.logFile ?? Launch.#serviceLog(env) : null;
 
         let stdout = "";
         let stderr = "";
         // A shared daemon's output goes to its log from the first byte; the launcher reads that
         // file only until readiness, from where it stood at spawn, and retains nothing after.
-        const logStart = shared ? Launch.#sizeOf(options.logFile!) : 0;
-        const logFd = shared ? openSync(options.logFile!, "a") : undefined;
+        const logStart = shared ? Launch.#sizeOf(logFile!) : 0;
+        const logFd = shared ? openSync(logFile!, "a") : undefined;
         const child = spawn(executable, args, {
             cwd: options.cwd,
             env,
@@ -146,7 +151,7 @@ export default class Launch {
             const poll = shared ? setInterval(() => {
                 if (reading) return;
                 reading = true;
-                void Launch.#readFrom(options.logFile!, logStart + Buffer.byteLength(stdout)).then((chunk) => {
+                void Launch.#readFrom(logFile!, logStart + Buffer.byteLength(stdout)).then((chunk) => {
                     reading = false;
                     if (chunk.length === 0) return;
                     stdout += chunk;
@@ -160,7 +165,7 @@ export default class Launch {
                 // The log may still hold the exit's last words; one final read before judging.
                 const finish = (): void => settle(() => reject(new LaunchError("exited", `the daemon exited before readiness (code ${code}, signal ${signal})`, { code, signal, stdout, stderr })));
                 if (!shared) { finish(); return; }
-                void Launch.#readFrom(options.logFile!, logStart + Buffer.byteLength(stdout)).then((chunk) => { stdout += chunk; finish(); }, finish);
+                void Launch.#readFrom(logFile!, logStart + Buffer.byteLength(stdout)).then((chunk) => { stdout += chunk; finish(); }, finish);
             });
             check();
         }).catch(async (error: unknown) => {
@@ -182,10 +187,18 @@ export default class Launch {
             dbPath: quoted(ready[2]),
             route: quoted(ready[3]),
             child,
+            logFile,
             stdout: () => stdout,
             stderr: () => stderr,
             stop,
         };
+    }
+
+    // {§daemon-launch} The service's own log, beside the rest of its state, created on first use.
+    static #serviceLog(env: NodeJS.ProcessEnv): string {
+        const { stateDir } = new HostPaths({ env });
+        mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+        return join(stateDir, "service.log");
     }
 
     static #sizeOf(path: string): number {

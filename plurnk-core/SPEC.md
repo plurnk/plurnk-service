@@ -146,6 +146,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | {§startup-admission-order} | After listener ownership, database admission completes before capability initialization can perform external… |
 | {§startup-readiness-line} | Readiness is one stdout line. |
 | {§daemon-launch} | The service ships its own launcher; launchers own policy. |
+| {§service-stop} | `plurnk-service stop` ends the service that holds the configured database. |
 <!-- /map -->
 
 Daemon composition and startup. Worker attention and workspace state follow
@@ -314,14 +315,16 @@ plurnk-service may be starting there, and only `discover` says which.
 
 §daemon-launch **The service ships its own launcher; launchers own policy.** `@plurnk/plurnk-service/launch` spawns a daemon argv with the caller's environment, an optional {§state-root}, host and port, and resolves on the readiness line with the published address, database path, route and a `stop()` that is SIGTERM, a stated grace, then SIGKILL, resolving when the process has ended. Shell and container launchers consume the same contract by reading the line themselves.
 
-- The helper holds no timing of its own: the caller states the readiness timeout and the stop grace. It never creates, keeps or removes state.
+- The helper holds no timing of its own: the caller states the readiness timeout and the stop grace. It creates no state but a shared daemon's log, and never keeps or removes state.
 - A start that fails — spawn error, exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind and both output streams.
 - Until readiness the launcher owns the daemon either way, and `stop()` ends it while the launcher lives.
 
 | `lifetime` | The daemon |
 | --- | --- |
 | `"private"` (the default) | is its launcher's child and ends with it under managed shutdown; both streams pipe to the launcher |
-| `"shared"` | survives the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it): its own process group, both streams appended to the caller's `logFile`, readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
+| `"shared"` | survives the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it): its own process group, both streams appended to the caller's `logFile`, else to the service's `<state dir>/service.log`, which the result names as `logFile`; readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
+
+§service-stop **`plurnk-service stop` ends the service that holds the configured database.** It reads the owning process from the database's lock, sends it SIGTERM, and returns once that process has exited; the service bounds its own shutdown (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, {§crash-only-stop}). A database that no live process holds is reported as not running, and that is success. A clean stop exits 0, so the systemd unit's `Restart=on-failure` leaves it stopped.
 
 ## §actor-boundary Workers and workspace boundaries
 
