@@ -184,7 +184,7 @@ reasoning the same way: its message holds no text and names the reasoning's addr
 | --- | --- |
 | A result's body | The row's log address `log:///L/T/S/OP` ({§methods-log-coordinate}), read from the row's worker's perspective: the row's canonical body, the one its receipt holds |
 | A turn's reasoning | `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
-| A message's words | Its row's log address, an arrival's or a reply's, whose canonical body is its words ({§agui-words-by-reference}) |
+| A message's words | Its row's log address, an arrival's or a reply's, whose canonical body is its words; for an accepted message not yet observed, the address that minted it ({§agui-words-by-reference}) |
 
 §agui-entry-route **An address at this daemon has one HTTP form:** `<origin>/agui/<workspaceId>/<workerId>/entry?target=<address>`,
 at the configured public origin, else the one the request reached ({§http-request-origin}). `target` is the plurnk
@@ -495,7 +495,7 @@ the complete projection ({§agui-snapshot}), and a client fetches what lies befo
 | --- | --- |
 | The loops | The bound worker's newest `PLURNK_AGUI_HISTORY_LOOPS` loops, with every subagent message among them in log order; a conversation of fewer loops travels whole |
 | The cut | Between whole turns: a turn's reasoning, its calls and their results travel together, a result a later row delivered with its call. Only a turn larger than the ceiling is cut between its parts: an arrival, a reasoning message, speech, or a call with its results |
-| The ceiling | The snapshot, its envelope included, serializes to at most `PLURNK_AGUI_HISTORY_PAGE_CHARS`, and nothing overrides it: a part that alone passes it falls into history whole, a page of its own |
+| The ceiling | The snapshot, its envelope included, serializes to at most `PLURNK_AGUI_HISTORY_PAGE_CHARS`. A part that alone would pass it carries its senders' words by reference ({§agui-words-by-reference}); a part that passes it still, which only model output or a receipt can, never travels in a snapshot: it falls into history whole, a page of its own, the one page that passes the ceiling |
 | Accepted messages | The accepted messages the Worker has not yet observed travel last, always ({§agui-message-acceptance}) |
 | The link | `metadata.plurnk.history` is `{ older }`: the URL of the page before the window, or `null` when the window holds the whole conversation |
 | What the Run holds | The rows whose messages the window holds ({§agui-sync}); a later delivery of a row the window left in history is a row the client does not hold, and arrives whole |
@@ -511,7 +511,7 @@ of the conversation 404 `history-cursor-not-found`, and a worker outside the wor
 | Fact | Rule |
 | --- | --- |
 | The view | The link reproduces its Run's: the thread whose messages are its client's own, whether it observes its delegation ({§agui-delegation-observation}), and whether it negotiated reasoning by link ({§agui-reasoning-link}) |
-| The page | The messages before the cursor (before the accepted messages when the link names none): the loop of the bound worker's newest message there, cut under the window's rules and ceiling, with the identities and metadata a complete snapshot gives them |
+| The page | The messages before the cursor (before the accepted messages when the link names none): the loop of the bound worker's newest message there, cut under the window's rules and ceiling, its parts' words by reference where the window's are, with the identities and metadata a complete snapshot gives them |
 | `final` | `true` when the page's loop has concluded and every call in it holds its result: such a page never changes. A page that is not final can gain a result after one of its calls; an attached client receives it live, as a row it does not hold, and a fetch of the same link holds it after its call |
 | `older` | The URL of the page before, or `null` at the conversation's beginning |
 
@@ -522,12 +522,20 @@ most one loop of its worker. Within a Run, once a turn ends with what its client
 snapshot past the ceiling, the daemon sends a fresh `MESSAGES_SNAPSHOT` of the window, read again from the log; what
 reaches the Run meanwhile follows it, less the parts of rows it holds.
 
-§agui-words-by-reference **Words past the ceiling travel by reference.** Model output is bounded by its request's
-output limit; an arrival's words, and a reply's, are bounded only by their sender. Words whose message would pass
-`PLURNK_AGUI_HISTORY_PAGE_CHARS` stream live as consecutive `TEXT_MESSAGE_CONTENT` deltas, each event within the
-ceiling and none ending inside a surrogate pair; on replay, and in a reply's live `TOOL_CALL_RESULT`, they are one
-`document` part whose `url` is the row's log address, `mimeType: "text/plain"` ({§agui-body-reference}). No message is
-shortened, omitted or invented. A client-authored statement rides `plurnk.ambient` whole ({§agui-ambient}).
+§agui-words-by-reference **Words past the ceiling travel by reference.** The words a sender writes are bounded only by
+their sender: an arrival's, a reply's, an accepted message's not yet observed. Model output is bounded by its request's
+output limit, in tokens rather than characters, and AG-UI gives it no reference form: a call's arguments, speech and
+reasoning text are strings, so it travels whole ({§agui-history-window}).
+
+| Where | Past `PLURNK_AGUI_HISTORY_PAGE_CHARS` |
+| --- | --- |
+| A live delta | Every `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_ARGS` and `REASONING_MESSAGE_CONTENT`, and each `plurnk.reasoning` preview, is one of consecutive events, each within the ceiling and none ending inside a surrogate pair |
+| A reply's live `TOOL_CALL_RESULT` | Its words by reference when the event would pass the ceiling |
+| A snapshot or page | A part that alone, its envelope included, would pass the ceiling carries its senders' words by reference, measured as they serialize |
+
+Words by reference are one `document` part at the address that serves them ({§agui-body-reference}): the row's log
+address, `mimeType: "text/plain"`, or for an accepted message the address that minted it, `mimeType: "text/markdown"`.
+No message is shortened, omitted or invented. A client-authored statement rides `plurnk.ambient` whole ({§agui-ambient}).
 
 ## §agui-first-party-client-conformance First-party client conformance
 
@@ -1072,7 +1080,7 @@ address is the daemon's.
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
 | `PLURNK_AGUI_HISTORY_LOOPS`        | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The bound worker's newest loops a snapshot holds ({§agui-history-window}). |
-| `PLURNK_AGUI_HISTORY_PAGE_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live text delta serializes to ({§agui-history-window}); keep it below what a client takes in one event. |
+| `PLURNK_AGUI_HISTORY_PAGE_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live delta serializes to, but for a page holding one part of model output past it ({§agui-history-window}); keep it below what a client takes in one event. |
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 

@@ -1078,7 +1078,7 @@ test("{§agui-plurnk-metadata} a row's attributes travel without the bodies they
     assert.ok(![...live, snapshot, ambient].some((event) => JSON.stringify(event).includes("before")), "no part holds the file's text");
 });
 
-test("{§agui-words-by-reference} words past the ceiling stream live in deltas within it, and replay as a document at their row's log address", () => {
+test("{§agui-words-by-reference} words past the ceiling stream live in deltas within it, and the projection holds their reference form at their row's log address", () => {
     const ceiling = 400;
     const translator = () => new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10, historyPageChars: ceiling });
     // Surrogate pairs and characters JSON escapes, so a delta's size is not its length.
@@ -1092,11 +1092,11 @@ test("{§agui-words-by-reference} words past the ceiling stream live in deltas w
     assert.ok(deltas.every(({ delta }) => !/[\ud800-\udbff]$/u.test(delta)), "no delta ends inside a surrogate pair");
     assert.equal(deltas.map(({ delta }) => delta).join(""), words, "joined, they are the words");
     const document = (turn: number, sequence: number) => [{ type: "document", source: { type: "url", value: at(10, `log:///1/${turn}/${sequence}/SEND`), mimeType: "text/plain" } }];
-    const [snapshot] = translator().replay([arrival]);
-    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
-    assert.deepEqual(snapshot.messages.map(({ role, content }) => [role, content]), [["user", document(1, 1)]], "an arrival's words, by reference");
+    const { messages, references } = Translator.conversation([{ translator: translator(), entries: [arrival] }]);
+    assert.deepEqual(messages.map(({ role, content }) => [role, content]), [["user", words]], "the projection holds an arrival's words");
+    assert.deepEqual(references.get(messages[0]?.id ?? ""), document(1, 1), "and beside them their reference form, which the window applies");
     const delivered = translator().logEntry({ entry: reply }).find(({ type }) => type === EventType.TOOL_CALL_RESULT) as { content?: unknown } | undefined;
-    assert.deepEqual(delivered?.content, document(2, 1), "a reply's words, by reference, live and on replay alike");
+    assert.deepEqual(delivered?.content, document(2, 1), "a reply's words whose live result would pass the ceiling, by reference");
     const short = translator().logEntry({ entry: { ...arrival, tx: { body: { raw: "Short." } } } });
     assert.deepEqual(short.filter(({ type }) => type === EventType.TEXT_MESSAGE_CONTENT).map((event) => (event as { delta: string }).delta), ["Short."], "words within the ceiling travel as they are");
 });
@@ -1132,4 +1132,50 @@ test("{§agui-parse-refusal} a parse refusal is the call the worker attempted, a
 test("{§methods-log-coordinate} a row's message identity is its L/T/S coordinate, and a row without its ordinals is refused", () => {
     assert.equal(Translator.idOf(wireRow({ loop_seq: 3, turn_seq: 4, sequence: 5 })), "3/4/5");
     assert.throws(() => Translator.idOf({ id: 9 } as never), /loop, turn and sequence ordinals/);
+});
+
+test("{§agui-history-window} every live delta serializes within the ceiling: words, a call's arguments and reasoning, each reassembling exactly", () => {
+    const ceiling = 300;
+    const translator = (): Translator => new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10, historyPageChars: ceiling });
+    const body = `${"a line the model wrote\n".repeat(20)}${"\u{1F600}\"".repeat(30)}`;
+    const within = (events: readonly AguiEvent[], type: EventType): string => {
+        const deltas = events.filter((event) => event.type === type) as Array<{ delta: string }>;
+        assert.ok(deltas.length > 1, `${type} arrives in several deltas`);
+        assert.ok(deltas.every((event) => JSON.stringify(event).length <= ceiling), `each ${type} serializes within the ceiling`);
+        assert.ok(deltas.every(({ delta }) => !/[\ud800-\udbff]$/u.test(delta)), `no ${type} ends inside a surrogate pair`);
+        return deltas.map(({ delta }) => delta).join("");
+    };
+    // A call's arguments, the statement as authored, its body included.
+    const noted = translator().logEntry({ entry: wireRow({ id: 3, op: "NOTE", tx: { op: "NOTE", body, position: { line: 1, column: 1 } }, rx: { status: 200 } }) });
+    assert.deepEqual(JSON.parse(within(noted, EventType.TOOL_CALL_ARGS)), { body }, "the arguments, whole once joined");
+    // A turn's reasoning, as the provider streams it and as its row folds it onto a client that holds none.
+    const live = translator();
+    const call = { workerId: 10, loopId: 1, turnId: 4, loopSeq: 1, turnSeq: 4, modelCallId: 21, requestSequence: 1 };
+    live.reasoning({ ...call, phase: "start" });
+    assert.equal(within(live.reasoning({ ...call, phase: "content", delta: body }), EventType.REASONING_MESSAGE_CONTENT), body, "the streamed reasoning");
+    const folded = translator().logEntry({ entry: wireRow({ id: 4, op: "NOTE", turn_id: 5, turn_seq: 5, tx: { op: "NOTE", body: "Noted." }, rx: { status: 200 }, reasoning: body }) });
+    assert.equal(within(folded, EventType.REASONING_MESSAGE_CONTENT), body, "the reasoning a row folds on");
+});
+
+test("{§agui-words-by-reference} the projection holds the reference form of every sender's words: an arrival's, a progress reply's, a delivered reply's, an accepted message's", () => {
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10 });
+    const rows = [
+        wireRow({ id: 1, origin: "_plurnk", op: "SEND", attrs: { kind: "message" }, source: "worker://peer", tx: { body: { raw: "Arrived." } }, rx: { status: 200 } }),
+        wireRow({ id: 2, sequence: 2, op: "SEND", tx: authored("````SEND (worker://peer)\nWhat is it?\n````"), attrs: { message: "message://peer/cd34" }, rx: { status: 200 } }),
+        wireRow({ id: 3, turn_seq: 2, sequence: 1, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer", attrs: { kind: "reply" },
+            answering: "log:///1/1/2/SEND", tx: { target: null, body: { raw: "Still looking." } }, rx: { status: 200, answers: ["message://peer/cd34"] } }),
+        wireRow({ id: 4, turn_seq: 2, sequence: 2, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer", attrs: { kind: "reply" },
+            invocation: "log:///1/1/2/SEND", tx: { target: null, body: { raw: "Forty-two." } }, rx: { status: 200, answers: ["message://peer/cd34"], completion: 200 } }),
+    ];
+    const path = "agui://anonymous/threads/th-1/messages/m9";
+    const { messages, references } = Translator.conversation([{ translator: tr, entries: rows }],
+        [{ path, source: path, body: "Not yet read.", loopId: 1, lifecycle: "running" }]);
+    const document = (url: string, mimeType: string) => [{ type: "document", source: { type: "url", value: url, mimeType } }];
+    assert.deepEqual(messages.map(({ id, content }) => [id, content, references.get(id) ?? null]), [
+        ["1/1/1", "Arrived.", document(at(10, "log:///1/1/1/SEND"), "text/plain")],
+        ["1/1/2", undefined, null],
+        ["1/2/2", "Forty-two.", document(at(10, "log:///1/2/2/SEND"), "text/plain")],
+        ["1/2/1", "Still looking.", document(at(10, "log:///1/2/1/SEND"), "text/plain")],
+        ["m9", "Not yet read.", document(at(10, path), "text/markdown")],
+    ], "each sender's words inline, beside the address that serves them; a call carries no reference");
 });

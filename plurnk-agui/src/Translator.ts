@@ -234,7 +234,7 @@ export default class Translator {
                 return events;
             }
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: arrival.id, role: "user", ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata: Translator.#rowMetadata(e) });
-            events.push(...this.#deltas(arrival.id, arrival.content));
+            events.push(...this.#text(arrival.id, arrival.content));
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: arrival.id });
             return events;
         }
@@ -242,7 +242,9 @@ export default class Translator {
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
             if (answered !== null) {
-                events.push({ type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: this.#delivered(e), metadata: Translator.#rowMetadata(e) });
+                const result: AguiEvent = { type: EventType.TOOL_CALL_RESULT, toolCallId: answered, messageId: this.#id(e), content: this.#delivered(e), metadata: Translator.#rowMetadata(e) };
+                // {§agui-words-by-reference} A reply's words past the ceiling: the result whole, its words by reference.
+                events.push(e.op === "SEND" && JSON.stringify(result).length > this.#ceiling ? { ...result, content: this.#wordsAt(e) } : result);
                 return events;
             }
             // {§agui-progress-reply} Progress on a message this worker sent is a message from the one who reported it.
@@ -250,7 +252,7 @@ export default class Translator {
                 const id = this.#id(e);
                 const text = Translator.#txBody(e.tx);
                 events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "user", ...(typeof e.source === "string" ? { name: e.source } : {}), metadata: Translator.#rowMetadata(e) });
-                events.push(...this.#deltas(id, text));
+                events.push(...this.#text(id, text));
                 events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
                 return events;
             }
@@ -278,7 +280,7 @@ export default class Translator {
         const text = Translator.#txBody(e.tx);
         if (response || Translator.#waitSpeech(e, text)) {
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant", metadata: Translator.#speechMetadata(e) });
-            events.push(...this.#deltas(id, text));
+            events.push(...this.#text(id, text));
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
             return events;
         }
@@ -298,7 +300,7 @@ export default class Translator {
         }
         const metadata = Translator.#rowMetadata(e);
         events.push({ type: EventType.TOOL_CALL_START, toolCallId: id, toolCallName: call.name, metadata });
-        events.push({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta: call.args });
+        events.push(...this.#chunks(call.args, (delta) => ({ type: EventType.TOOL_CALL_ARGS, toolCallId: id, delta })));
         events.push({ type: EventType.TOOL_CALL_END, toolCallId: id });
         // {§agui-call-result} A call is answered by its receipt, unless something later answers it; the call holds the row's
         // facts, so its own result repeats none ({§agui-plurnk-metadata}).
@@ -342,9 +344,10 @@ export default class Translator {
         // {§agui-reasoning-link} The live text: the message's own content, or, for a Run that negotiated reasoning by link,
         // a preview no message holds.
         if (event.phase === "content") {
-            return [this.#reasoningByLink
-                ? { type: EventType.CUSTOM, name: "plurnk.reasoning", value: { messageId: active.messageId, delta: event.delta } }
-                : { type: EventType.REASONING_MESSAGE_CONTENT, messageId: active.messageId, delta: event.delta }];
+            const reasoningId = active.messageId;
+            return this.#chunks(event.delta, (delta) => this.#reasoningByLink
+                ? { type: EventType.CUSTOM, name: "plurnk.reasoning", value: { messageId: reasoningId, delta } }
+                : { type: EventType.REASONING_MESSAGE_CONTENT, messageId: reasoningId, delta });
         }
         this.#activeReasoning.delete(event.modelCallId);
         this.#turnReasoning(event.turnId).held.add(active.messageId);
@@ -427,10 +430,17 @@ export default class Translator {
         return Translator.replayAll([{ translator: this, entries }], inbox);
     }
 
-    // {§agui-snapshot} {§agui-subagents} One conversation from several logs: every row in the order the workspace
-    // committed it, each projected by its own worker's translator into one message list.
+    // {§agui-snapshot} {§agui-subagents} One conversation from several logs, its words inline.
     static replayAll(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: readonly LogEntryWire[] }>, inbox: readonly ApplicationInboxMessage[] = []): AguiEvent[] {
+        return [{ type: EventType.MESSAGES_SNAPSHOT, messages: Translator.conversation(parts, inbox).messages }];
+    }
+
+    // {§agui-snapshot} {§agui-subagents} {§agui-words-by-reference} One conversation from several logs: every row in the
+    // order the workspace committed it, each projected by its own worker's translator into one message list, and beside
+    // it, by message id, the reference form of each message's words that a sender wrote.
+    static conversation(parts: ReadonlyArray<{ readonly translator: Translator; readonly entries: readonly LogEntryWire[] }>, inbox: readonly ApplicationInboxMessage[] = []): { messages: ReplayMessage[]; references: ReadonlyMap<string, ContentPart[]> } {
         const messages: ReplayMessage[] = [];
+        const references = new Map<string, ContentPart[]>();
         const order = (e: LogEntryWire): number => e.id;
         const rows = parts.flatMap(({ translator, entries }) => entries.map((e) => ({ translator, e })))
             .toSorted((left, right) => order(left.e) - order(right.e));
@@ -439,7 +449,7 @@ export default class Translator {
         for (const { translator, e } of rows) {
             const turns = reasoned.get(translator) ?? new Set<number>();
             reasoned.set(translator, turns);
-            translator.#replayRow(e, messages, turns);
+            translator.#replayRow(e, messages, turns, references);
         }
         // {§agui-message-acceptance} The accepted messages the bound worker has not yet observed, after every row: each a
         // client on this thread sent, under that client's id; the client then holds its words, and its arrival folds.
@@ -450,9 +460,11 @@ export default class Translator {
                 if (pending === null || messages.some(({ id }) => id === pending.id)) continue;
                 messages.push(pending);
                 bound.#submitted.add(pending.id);
+                const at = bound.#pendingAt(message);
+                if (at !== null) references.set(pending.id, at);
             }
         }
-        return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
+        return { messages, references };
     }
 
     // {§agui-message-acceptance} An accepted message a client on this thread sent, as the snapshot carries it: its words
@@ -465,22 +477,27 @@ export default class Translator {
             metadata: { plurnk: { message: message.path, loop: message.loopId, lifecycle: message.lifecycle, source: message.source, published: false } } };
     }
 
-    #replayRow(e: LogEntryWire, messages: ReplayMessage[], reasoned: Set<number>): void {
+    #replayRow(e: LogEntryWire, messages: ReplayMessage[], reasoned: Set<number>, references: Map<string, ContentPart[]>): void {
         const attributed = <T extends ReplayMessage>(message: T): T => this.#subagent === null ? message : { ...message, subagentRunId: this.#subagent.runId };
         const id = this.#id(e);
         const metadata = Translator.#rowMetadata(e);
         const arrival = this.#arrival(e);
         if (arrival !== null) {
-            messages.push(attributed({ id: arrival.id, role: "user", content: this.#words(e, arrival.content), ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata }));
+            messages.push(attributed({ id: arrival.id, role: "user", content: arrival.content, ...(arrival.name === undefined ? {} : { name: arrival.name }), metadata }));
+            references.set(arrival.id, this.#wordsAt(e));
             return;
         }
         const response = Translator.isResponse(e, this.#replyThreads);
         if (e.origin !== "model" && !response) {
             const answered = this.#answered(e);
-            if (answered !== null) Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: this.#delivered(e), metadata }));
+            if (answered !== null) {
+                Translator.#placeResult(messages, attributed({ id, role: "tool", toolCallId: answered, content: this.#delivered(e), metadata }));
+                if (e.op === "SEND") references.set(id, this.#wordsAt(e));
+            }
             // {§agui-progress-reply}
             else if (typeof e.answering === "string") {
-                messages.push(attributed({ id, role: "user", content: this.#words(e, Translator.#txBody(e.tx)), ...(typeof e.source === "string" ? { name: e.source } : {}), metadata }));
+                messages.push(attributed({ id, role: "user", content: Translator.#txBody(e.tx), ...(typeof e.source === "string" ? { name: e.source } : {}), metadata }));
+                references.set(id, this.#wordsAt(e));
             }
             return;
         }
@@ -610,7 +627,7 @@ export default class Translator {
             return held ? [] : [
                 { type: EventType.REASONING_START, messageId },
                 { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning", metadata },
-                { type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta: e.reasoning },
+                ...this.#chunks(e.reasoning, (delta) => ({ type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta })),
                 { type: EventType.REASONING_MESSAGE_END, messageId },
                 { type: EventType.REASONING_END, messageId },
             ];
@@ -746,38 +763,47 @@ export default class Translator {
         return (typeof opened.stream === "string" || typeof opened.message === "string") && typeof e.status_rx === "number" && e.status_rx < 400;
     }
 
-    // {§agui-call-result} What the worker received for its call: a reply's words, as an arrival's ({§agui-snapshot}),
-    // or an observation's result.
-    // What another row delivered for a call: a reply's words, which are speech, or what was observed.
+    // {§agui-call-result} What another row delivered for a call: a reply's words, which are speech, or what was observed.
     #delivered(e: BodyRow): string | ContentPart[] {
-        return e.op === "SEND" ? this.#words(e, Translator.#txBody(e.tx)) : this.#result(e);
+        return e.op === "SEND" ? Translator.#txBody(e.tx) : this.#result(e);
     }
 
-    // {§agui-words-by-reference} A message's words: inline, or past the ceiling a document whose `url` is its row's log
-    // address, which serves them ({§agui-body-reference}).
-    #words(e: BodyRow, text: string): string | ContentPart[] {
-        return text.length <= this.#ceiling ? text : [{ type: "document", source: { type: "url", value: this.#bodyUrl(e), mimeType: "text/plain" } }];
+    // {§agui-words-by-reference} A message's words by reference: one document at its row's log address, whose canonical
+    // body they are ({§agui-body-reference}).
+    #wordsAt(e: BodyRow): ContentPart[] {
+        return [{ type: "document", source: { type: "url", value: this.#bodyUrl(e), mimeType: "text/plain" } }];
     }
 
-    // {§agui-words-by-reference} Words as they stream: consecutive deltas whose events each serialize within the ceiling,
-    // never splitting a surrogate pair; no delta for no words.
-    #deltas(messageId: string, text: string): AguiEvent[] {
-        const delta = (from: number, to: number): AguiEvent => ({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: text.slice(from, to) });
+    // {§agui-words-by-reference} An accepted message's words by reference: one document at the address that minted it,
+    // read from the bound worker's perspective; none while the Run binds no worker.
+    #pendingAt(message: ApplicationInboxMessage): ContentPart[] | null {
+        return this.#modelWorkerId === null ? null
+            : [{ type: "document", source: { type: "url", value: this.#entryUrl(this.#modelWorkerId, message.path), mimeType: "text/markdown" } }];
+    }
+
+    // {§agui-words-by-reference} Words as they stream: consecutive deltas, each event within the ceiling.
+    #text(messageId: string, text: string): AguiEvent[] {
+        return this.#chunks(text, (delta) => ({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta }));
+    }
+
+    // {§agui-history-window} A text as the consecutive events `build` makes of its slices, each serializing within the
+    // ceiling and none ending inside a surrogate pair; no event for no text.
+    #chunks(text: string, build: (slice: string) => AguiEvent): AguiEvent[] {
+        const event = (from: number, to: number): AguiEvent => build(text.slice(from, to));
+        const fits = (candidate: AguiEvent): boolean => JSON.stringify(candidate).length <= this.#ceiling;
         if (text.length === 0) return [];
-        // JSON escapes a character into at most six: words that short never need measuring.
-        if (text.length * 6 + messageId.length * 6 + 64 <= this.#ceiling || JSON.stringify(delta(0, text.length)).length <= this.#ceiling) {
-            return [delta(0, text.length)];
-        }
-        const deltas: AguiEvent[] = [];
+        // JSON escapes a character into at most six: a text that short never needs measuring.
+        if (JSON.stringify(build("")).length + text.length * 6 <= this.#ceiling || fits(event(0, text.length))) return [event(0, text.length)];
+        const events: AguiEvent[] = [];
         for (let from = 0; from < text.length;) {
             let to = Math.min(text.length, from + Math.max(1, this.#ceiling));
-            while (to - from > 1 && JSON.stringify(delta(from, to)).length > this.#ceiling) to = from + Math.ceil((to - from) / 2);
+            while (to - from > 1 && !fits(event(from, to))) to = from + Math.ceil((to - from) / 2);
             const code = text.charCodeAt(to - 1);
             if (to < text.length && to - from > 1 && code >= 0xd800 && code <= 0xdbff) to -= 1;
-            deltas.push(delta(from, to));
+            events.push(event(from, to));
             from = to;
         }
-        return deltas;
+        return events;
     }
 
     // {§agui-body-reference} A result as its client receives it: the receipt, and the receipt's body as a document the

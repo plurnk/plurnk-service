@@ -243,3 +243,82 @@ test("{§agui-history-page}: a result that lands after its call left the window 
     assert.equal(answer.id, late.messageId, "under the id the live result carried");
     assert.equal(after.final, true, "and is final once its loop has concluded");
 });
+
+test("{§agui-history-window} {§agui-history-page} {§agui-words-by-reference}: past the ceiling, a sender's words travel by reference and a model's call travels whole in a page of its own; every snapshot and other page stays within it", { timeout: 120_000 }, async (t) => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const ceiling = 4000;
+    // Model output JSON escapes twice over as a call's arguments; a person's newlines it doubles.
+    const noted = `${"a \"quoted\" observation\n".repeat(220)}End of note.`;
+    const pasted = `${"\n".repeat(2500)}End of paste.`;
+    const held = Promise.withResolvers<void>();
+    const { provider, called } = await scripted([
+        { dsl: `\`\`\`\`NOTE\n${noted}\n\`\`\`\`` },
+        { dsl: "````SEND [200]\nDone.\n````", hold: held.promise },
+    ]);
+    const previous = { loops: process.env.PLURNK_AGUI_HISTORY_LOOPS, chars: process.env.PLURNK_AGUI_HISTORY_PAGE_CHARS };
+    Object.assign(process.env, { PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: String(ceiling) });
+    const db = await openTestDatabase();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, http, provider: provider as never, nodeModulesPath: join(SERVICE, "node_modules") });
+    const agents: HttpAgent[] = [];
+    t.after(async () => {
+        held.resolve();
+        for (const agent of agents) agent.abortRun();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+        Object.assign(process.env, { PLURNK_AGUI_HISTORY_LOOPS: previous.loops, PLURNK_AGUI_HISTORY_PAGE_CHARS: previous.chars });
+    });
+    await daemon.start();
+    const { host, port } = http.httpAddress();
+    const url = `http://${host}:${port}/agui`;
+    const agent = (): HttpAgent => {
+        const created = new HttpAgent({ url, threadId: "main" });
+        agents.push(created);
+        return created;
+    };
+    const submitter = agent();
+    submitter.messages = [{ id: "prompt-1", role: "user", content: "Note what you see." }];
+    const submitted = submitter.runAgent({ forwardedProps: { plurnk: { workspace: "composed", control: true } } });
+    await called(1);
+    // While the loop holds, the person pastes more than the ceiling: accepted, and not yet observed.
+    const paster = agent();
+    paster.messages = [{ id: "prompt-2", role: "user", content: pasted }];
+    const pastedRun = paster.runAgent({ forwardedProps: { plurnk: { workspace: "composed" } } });
+    await new Promise((resolve) => { setTimeout(resolve, 500); });
+
+    const reader = agent();
+    const snapshot = Promise.withResolvers<{ chars: number; history: History; messages: Message[] }>();
+    const watched = reader.runAgent({ forwardedProps: { plurnk: { workspace: "composed" } } }, {
+        onMessagesSnapshotEvent: ({ event }) => { snapshot.resolve({ chars: JSON.stringify(event).length, history: historyOf(event.metadata), messages: event.messages }); },
+    });
+    const window = await snapshot.promise;
+    assert.ok(window.chars <= ceiling, `the snapshot serializes within the ceiling: ${window.chars}`);
+    const accepted = window.messages.at(-1);
+    assert.equal(accepted?.id, "prompt-2", "the accepted message travels last, under its sender's id");
+    const parts = accepted?.content;
+    const reference = Array.isArray(parts) ? parts[0] as { type: string; source?: { value?: string; mimeType?: string } } | undefined : undefined;
+    assert.equal(reference?.type, "document", "its words, by reference");
+    const fetched = await fetch(reference?.source?.value ?? "");
+    assert.equal(fetched.status, 200);
+    assert.equal(await fetched.text(), pasted, "one fetch returns them exactly");
+
+    const pages = await pagesBefore(window.history.older);
+    const isNote = (message: Message): boolean => message.role === "assistant" && message.toolCalls?.some(({ function: { name } }) => name === "NOTE") === true;
+    const oversized = pages.filter(({ messages }) => messages.some(isNote));
+    assert.equal(oversized.length, 1, "one page holds the model's call");
+    const [alone] = oversized;
+    assert.ok(alone !== undefined && alone.messages.every((message) => isNote(message) || message.role === "tool"), "the call and its result, alone");
+    assert.ok(JSON.stringify(alone).length > ceiling, "the one page past the ceiling: model output, which travels whole");
+    const call = alone.messages.find(isNote);
+    const args = call?.role === "assistant" ? call.toolCalls?.[0]?.function.arguments : undefined;
+    assert.equal((JSON.parse(args ?? "{}") as { body?: string }).body, noted, "whole: its arguments are the statement as written");
+    for (const page of pages.filter((other) => other !== alone)) assert.ok(JSON.stringify(page).length <= ceiling, `every other page within the ceiling: ${JSON.stringify(page).length}`);
+    const all = [...pages.flatMap(({ messages }) => messages), ...window.messages];
+    assert.equal(new Set(all.map(({ id }) => id)).size, all.length, "no message appears twice");
+    assert.ok(all.some(({ id }) => id === "prompt-1"), "the conversation's first message is in its first page");
+
+    held.resolve();
+    await Promise.all([submitted, pastedRun, watched]);
+});

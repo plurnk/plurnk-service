@@ -970,12 +970,13 @@ export default class Portal {
     // each presented; and the rows whose messages it holds.
     replay(thread: ThreadHandle, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): { events: AguiEvent[]; rows: ReadonlySet<unknown> } {
         const bound = this.#bound(thread);
-        const messages = Portal.#conversation(bound, entries, inbox, subagents);
-        const window = new HistoryWindow(messages, this.#history);
+        const { messages, references } = Portal.#conversation(bound, entries, inbox, subagents);
         const older = (start: number): string | null => start === 0 || bound.workerId === null ? null
             : Portal.#historyUrl(Portal.#view(bound), messages[start]?.id ?? null);
-        const start = window.window((from) => HistoryWindow.snapshotEnvelope(older(from)));
-        const held = messages.slice(start);
+        const envelope = (from: number): number => HistoryWindow.snapshotEnvelope(older(from));
+        const window = new HistoryWindow(messages, this.#history, references, envelope);
+        const start = window.window(envelope);
+        const held = window.messages.slice(start);
         const runs = new Set(held.flatMap((message) => (message as { subagentRunId?: string }).subagentRunId ?? []));
         return {
             events: [
@@ -986,11 +987,9 @@ export default class Portal {
         };
     }
 
-    // {§agui-snapshot} The complete projection a thread's snapshot is cut from.
-    static #conversation(thread: Thread, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[], subagents: SubagentHistory): Message[] {
-        const [snapshot] = thread.router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows })));
-        if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) throw new TypeError("A replay builds one MESSAGES_SNAPSHOT.");
-        return snapshot.messages;
+    // {§agui-snapshot} The complete projection a thread's snapshot is cut from, with its words' reference forms.
+    static #conversation(thread: Thread, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[], subagents: SubagentHistory) {
+        return thread.router.conversation(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows })));
     }
 
     // {§agui-sync} The rows whose messages `messages` holds, by the durable id each part's facts name.
@@ -1028,16 +1027,16 @@ export default class Portal {
             replyThreads: view.replyThreads, notificationScope: "worker", emit: () => {}, modelWorkerId: view.workerId,
             descendants: view.descendants, reasoningByLink: view.reasoningByLink });
         const inbox = await this.#seam.readInbox({ workspaceId: view.workspaceId, workerId: view.workerId });
-        const messages = Portal.#conversation(thread, entries, inbox, await this.#subagentParts(thread, history));
-        const window = new HistoryWindow(messages, this.#history);
+        const { messages, references } = Portal.#conversation(thread, entries, inbox, await this.#subagentParts(thread, history));
+        const older = (start: number): string | null => start === 0 ? null : Portal.#historyUrl(view, messages[start]?.id ?? null);
+        const window = new HistoryWindow(messages, this.#history, references, (from) => HistoryWindow.snapshotEnvelope(older(from)));
         const end = before === null ? window.pending : messages.findIndex(({ id }) => id === before);
         if (end === -1) return null;
-        const older = (start: number): string | null => start === 0 ? null : Portal.#historyUrl(view, messages[start]?.id ?? null);
         const cut = window.page(end, (from) => HistoryWindow.pageEnvelope(older(from)));
         const loop = window.loopOf(cut);
         const loops = loop === null ? [] : await this.#seam.listWorkerLoops({ workspaceId: view.workspaceId, workerId: view.workerId });
         const concluded = loop === null || loops.some(({ sequence, terminatedAt }) => sequence === loop && terminatedAt !== null);
-        return { final: concluded && window.settled(cut), messages: messages.slice(cut.start, cut.end), older: older(cut.start) };
+        return { final: concluded && window.settled(cut), messages: window.messages.slice(cut.start, cut.end), older: older(cut.start) };
     }
 
     #finishThread(thread: Thread, events: AguiEvent[], result: unknown): void {

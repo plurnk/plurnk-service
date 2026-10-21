@@ -24,9 +24,10 @@ export default class EventRouter {
     runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
     submitted(messageId: string): void { this.#t.submitted(messageId); }
     // {§agui-subagents} The bound Worker's rows and each observed subagent run's, as one conversation.
-    replay(entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [],
-        subagents: ReadonlyArray<{ translator: Translator; entries: readonly LogEntryWire[] }> = []): AguiEvent[] {
-        return Translator.replayAll([{ translator: this.#t, entries }, ...subagents], inbox);
+    // {§agui-snapshot} The complete projection a snapshot and its pages are cut from, with its words' reference forms.
+    conversation(entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [],
+        subagents: ReadonlyArray<{ translator: Translator; entries: readonly LogEntryWire[] }> = []): ReturnType<typeof Translator.conversation> {
+        return Translator.conversation([{ translator: this.#t, entries }, ...subagents], inbox);
     }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
     gateCall(entry: LogEntryNotification["entry"]): AguiEvent[] { return this.#t.gateCall(entry); }

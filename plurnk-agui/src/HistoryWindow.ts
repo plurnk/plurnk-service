@@ -1,7 +1,8 @@
 // {§agui-history} {§agui-history-window} {§agui-history-page} The window a snapshot holds and each page before it, cut from one complete
 // projection: between whole turns of the bound worker's newest loops, within a ceiling on what one snapshot or page
-// serializes to. A turn larger than the ceiling is cut between its parts; a call and its results are one part.
-import { EventType, type Message } from "@ag-ui/core";
+// serializes to. A turn larger than the ceiling is cut between its parts; a call and its results are one part. A part
+// that alone would pass the ceiling carries the words a sender wrote by reference ({§agui-words-by-reference}).
+import { EventType, type ContentPart, type Message } from "@ag-ui/core";
 import { isRecord } from "@plurnk/plurnk-contracts";
 
 /** {§agui-history-window} What a window and its pages may hold. */
@@ -38,6 +39,7 @@ const coordinateOf = (message: Message): string | null => {
 };
 
 export default class HistoryWindow {
+    // The complete projection, each part that alone would pass the ceiling carrying its words by reference.
     readonly #messages: readonly Message[];
     readonly #limits: HistoryLimits;
     readonly #places: readonly Place[];
@@ -49,12 +51,15 @@ export default class HistoryWindow {
     // Where the accepted messages the worker has not yet observed begin: no cut falls after it.
     readonly #pending: number;
 
-    constructor(messages: readonly Message[], limits: HistoryLimits) {
-        this.#messages = messages;
+    // `references` holds, by message id, the reference form of the words a sender wrote; `envelope` is what a snapshot
+    // adds around messages from a position.
+    constructor(messages: readonly Message[], limits: HistoryLimits,
+        references: ReadonlyMap<string, readonly ContentPart[]> = new Map(), envelope: (start: number) => number = () => 0) {
         this.#limits = limits;
         this.#places = HistoryWindow.#placesOf(messages);
+        this.#messages = HistoryWindow.#referenced(messages, this.#places, limits.chars, references, envelope);
         const sums = [0];
-        for (const message of messages) sums.push(sums[sums.length - 1] + JSON.stringify(message).length);
+        for (const message of this.#messages) sums.push(sums[sums.length - 1] + JSON.stringify(message).length);
         this.#sums = sums;
         const pending = this.#places.findIndex(({ pending: unobserved }) => unobserved);
         this.#pending = pending === -1 ? messages.length : pending;
@@ -84,6 +89,26 @@ export default class HistoryWindow {
         }
         this.#spanning = spanning;
         this.#spanningSmall = spanningSmall;
+    }
+
+    // {§agui-words-by-reference} The projection with each part that alone, in a snapshot of its own, would pass the ceiling
+    // carrying its senders' words by reference.
+    static #referenced(messages: readonly Message[], places: readonly Place[], chars: number,
+        references: ReadonlyMap<string, readonly ContentPart[]>, envelope: (start: number) => number): Message[] {
+        const parts = new Map<number, number[]>();
+        places.forEach(({ part }, index) => parts.set(part, [...parts.get(part) ?? [], index]));
+        const referenced = [...messages];
+        for (const members of parts.values()) {
+            if (!members.some((index) => references.has(messages[index].id))) continue;
+            const size = members.reduce((total, index) => total + JSON.stringify(messages[index]).length + 1, -1);
+            if (envelope(members[0]) + size <= chars) continue;
+            for (const index of members) {
+                const message = messages[index];
+                const reference = references.get(message.id);
+                if (reference !== undefined && (message.role === "user" || message.role === "tool")) referenced[index] = { ...message, content: [...reference] };
+            }
+        }
+        return referenced;
     }
 
     // Each message's place. A result is its call's part: the snapshot puts it after its call and the results beside it.
@@ -175,6 +200,9 @@ export default class HistoryWindow {
 
     // Where the accepted messages the worker has not yet observed begin.
     get pending(): number { return this.#pending; }
+
+    // The projection the window and its pages are cut from.
+    get messages(): readonly Message[] { return this.#messages; }
 
     // {§agui-history-window} A snapshot's serialized length beyond its messages, with `older` the link it carries.
     static snapshotEnvelope(older: string | null): number {

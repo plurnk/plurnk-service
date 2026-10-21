@@ -2,7 +2,7 @@
 // messages, and pages that walk back to reassemble the complete conversation.
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Message } from "@ag-ui/core";
+import type { ContentPart, Message } from "@ag-ui/core";
 import HistoryWindow from "./HistoryWindow.ts";
 
 const facts = (coordinate: string): { plurnk: { coordinate: string } } => ({ plurnk: { coordinate } });
@@ -105,4 +105,24 @@ test("{§agui-history-page} a page is settled when every call in it holds its re
     const loop2 = window.page(window.window(none), none);
     assert.equal(window.settled(loop2), false, "a call still awaiting its result");
     assert.equal(window.settled(window.page(loop2.start, none)), true);
+});
+
+test("{§agui-words-by-reference} a part carries its senders' words by reference exactly when it alone, envelope included, would pass the ceiling", () => {
+    const document = (id: string): ContentPart[] => [{ type: "document", source: { type: "url", value: `https://daemon.test/agui/1/2/entry?target=${id}`, mimeType: "text/plain" } }];
+    const envelope = (): number => 57;
+    // Text JSON keeps as it is, text it doubles, and text it writes six characters for: a part's size is its serialization.
+    for (const [kind, words] of [["plain", "w".repeat(300)], ["newlines", "\n".repeat(300)], ["controls", "\u0001".repeat(300)]] as const) {
+        for (const [label, part] of [
+            ["an arrival", [user("m2", "2/1/1", words)]],
+            ["a reply beside its call", [call("2/2/1"), result("2/2/1", undefined, words)]],
+        ] as const) {
+            const messages = [...loop(1), ...part];
+            const references = new Map(part.filter(({ role }) => role !== "assistant").map(({ id }) => [id, document(id)]));
+            const size = JSON.stringify(part).length - 2;
+            const held = (chars: number): Message[] => new HistoryWindow(messages, { loops: 2, chars }, references, envelope).messages.slice(-part.length);
+            assert.deepEqual(held(envelope() + size), part, `${kind}, ${label}: a part that fits travels as it is`);
+            assert.deepEqual(held(envelope() + size - 1), part.map((message) => references.has(message.id) ? { ...message, content: references.get(message.id) } : message),
+                `${kind}, ${label}: one character past the ceiling, its words travel by reference and nothing else changes`);
+        }
+    }
 });
