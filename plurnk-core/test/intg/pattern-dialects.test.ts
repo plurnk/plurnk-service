@@ -8,7 +8,7 @@ import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 const GUIDE = "# Project\n\nIntro line.\n\n## Build\n\nRun npm ci.\nThen npm test.\n\n## Testing\n\nUse node --test.\n\n## Style\n\nDouble quotes.";
@@ -128,7 +128,6 @@ searched
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "pattern-dialects" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
             const edits = rows.filter((r) => r.op === "EDIT" && r.origin === "model");
             assert.deepEqual(edits.map((r) => r.status_rx), [201, 201, 201, 201], "the corpus seeded");

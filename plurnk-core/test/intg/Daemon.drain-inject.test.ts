@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow } from "./_packet.ts";
 import { admitTogether, namedModelWorker } from "./_workers.ts";
@@ -138,7 +138,6 @@ test("{§executor-cancellation} loop.cancel terminates a backgrounded exec; the 
             const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job" });
-            await flush();
             // Wait for the backgrounded exec's subscription to ACTUALLY open before
             // cancelling — a fixed sleep races the spawn (the resource directory + materialized
             // docs delay it). The cancel must land on a live,
@@ -720,9 +719,9 @@ for (const silent of [false, true]) {
                 const prompts = rows.filter((r) => isArrivalRow(r));
                 assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
                 assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1].turn_id), "both follow-ups were published in the turn the model completed from");
-                await flush();
-                const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;
-                assert.deepEqual(ts.map((event) => event.loopId), [loopId], "the observed follow-ups belong to the completed loop, not an orphan recovery loop");
+                const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
+                const modelLoops = (await db.test_loop_queue_by_worker.all<{ id: number; prompt: string }>({ worker_id: workerId })).filter(({ prompt }) => prompt !== "");
+                assert.deepEqual(modelLoops.map(({ id }) => id), [loopId], "the observed follow-ups belong to the completed loop, not an orphan recovery loop");
             } finally { ws.close(); }
         });
     });

@@ -10,7 +10,7 @@ import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import Envelope from "../../src/server/envelope.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { insertWorker } from "./_db.ts";
-import { connect, flush, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 const declaredProviderEnv = new Map<string, string | undefined>();
@@ -133,7 +133,6 @@ test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a ba
             }, { timeoutMs: 20_000 });
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.finalStatus, 429, "the tree's ceiling ends the loop at 429 {§loop-terminals}");
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
             const bares = rows.filter((row) => row.op === "BARE" && row.origin === "model");
             assert.deepEqual(bares.map((row) => row.status_rx), [200, 200, 429],

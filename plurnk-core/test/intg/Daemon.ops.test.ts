@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Dsl from "./dsl.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 import SeamSocket from "./_seam.ts";
 
 test("{§methods-op-mirror} op.edit creates an entry via engine.dispatch (origin=client)", async () => {
@@ -109,7 +109,6 @@ test("{§notifications-log-entry-notify} op.* fires log/entry notification with 
             const notifications = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "workspace.create", { name: "notif-test" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "test" });
-            await flush();
 
             const captured = notifications();
             assert.equal(captured.length, 1);
@@ -131,11 +130,8 @@ test("{§notifications-envelope-carries-workspaceid} log/entry notification is s
 
             await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
             await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
-            await flush();
-            aNotifs(); bNotifs();
 
             await rpcCall(wsA, 2, "op.edit", { target: "worker:///x", content: "from A" });
-            await flush();
 
             assert.equal(aNotifs().length, 1);
             assert.equal(bNotifs().length, 0);

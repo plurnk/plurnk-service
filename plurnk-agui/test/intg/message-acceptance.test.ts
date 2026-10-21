@@ -120,7 +120,7 @@ test("{§agui-message-acceptance} {§agui-snapshot} {§agui-sync} an accepted fo
     submitter.messages = [A];
     const submitted = submitter.runAgent({ forwardedProps });
     await reasoned;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await until("A's held first turn to reach its client", () => submitter.messages.some((message) => message.role === "reasoning" && message.content.length > 0));
 
     // The follow-up, submitted while A's first turn is held: its Run learns the acceptance from the gauge.
     const follower = agent();

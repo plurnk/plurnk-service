@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { Validator } from "@plurnk/plurnk-contracts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -181,7 +181,6 @@ test("{§emission-row} loop.run streams log/entry notifications during execution
             // loop.run returns immediately; wait for the loop to terminate so all its
             // log/entry notifications have fired before we inspect them.
             const terminal = await runLoopToTerminal(ws, 2, { prompt: "test" });
-            await flush();
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
             const harness = captured
@@ -376,7 +375,6 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             // Headless workspace: the files needn't exist — what's asserted is that the daemon FOISTS a
             // turn-0 READ for each path (a missing path just surfaces its own 4xx in the log).
             const result = await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
-            await flush();
             // Bare file targets use scheme=NULL in log metadata even though the addressed
             // entry identity stores scheme='file'; origin plus the nullable target identifies the foists.
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)

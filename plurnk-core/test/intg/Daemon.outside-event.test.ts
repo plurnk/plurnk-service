@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 
 test("{§notifications-outside-event} notifyOutsideEvent broadcasts the exact payload to the loop's workspace only", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -16,7 +16,6 @@ test("{§notifications-outside-event} notifyOutsideEvent broadcasts the exact pa
             const bEvents = subscribeNotifications(wsB, "outside/event");
             const event = { workerId: 7, loopId: 42, turnId: 9, coordinate: "alice-1-3", text: "Thinking out loud.", tokens: 9 };
             daemon.notifyOutsideEvent(workspaceA, event);
-            await flush();
             // {§notifications-envelope-carries-workspaceid}: the envelope stamps the scope; the payload is otherwise exact.
             assert.deepEqual(aEvents(), [{ ...event, workspaceId: workspaceA }], "the payload arrives once, exactly as emitted");
             assert.deepEqual(bEvents(), [], "another workspace's client sees nothing");

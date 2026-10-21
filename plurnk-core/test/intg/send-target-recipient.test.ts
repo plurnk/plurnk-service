@@ -4,7 +4,7 @@ import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 test("{§problems-dispatch} a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
@@ -19,7 +19,6 @@ test("{§problems-dispatch} a SEND addressed to a turn source the model may not 
             await rpcCall(ws, 1, "workspace.create", { name: "send-target" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200, "the target-less reply concluded on the second turn");
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
@@ -48,7 +47,6 @@ test("{§problems-dispatch} a SEND addressed to a file path preserves the scheme
             await rpcCall(ws, 1, "workspace.create", { name: "send-target-file" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const first = rows.find((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(first?.status_rx, 501);

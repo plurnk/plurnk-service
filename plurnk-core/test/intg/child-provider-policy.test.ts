@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { connect, flush, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 const declaredProviderEnv = new Map<string, string | undefined>();
@@ -264,7 +264,6 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
                 childSelector: childSpec.alias,
             });
             assert.equal(result.finalStatus, 200, "the parent observes the failed child and can conclude normally");
-            await flush();
             const loops = await db.test_all_loops.all<LoopRow>({});
             let selectedChildLoop: LoopRow | undefined;
             for (const loop of loops) {
@@ -276,8 +275,11 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
             }
             assert.ok(selectedChildLoop, "FORK created a real child loop on the selected provider before admission");
             assert.equal(selectedChildLoop.status, 413, "the wall, not preflight spawn logic, rejects the inherited packet ({§context-wall})");
-            const event = (terminated() as Array<{ loopId: number; result: { status: number } }>).find(({ loopId }) => loopId === selectedChildLoop.id);
-            assert.equal(event?.result.status, 413, "the ordinary child terminal result carries the admission failure");
+            const [event] = await waitFor(
+                () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter(({ loopId }) => loopId === selectedChildLoop.id),
+                (events) => events.length > 0,
+            );
+            assert.equal(event.result.status, 413, "the ordinary child terminal result carries the admission failure");
         } finally {
             ws.close();
         }

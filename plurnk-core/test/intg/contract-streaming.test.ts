@@ -25,7 +25,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import { openMigrated, seedEnvelope, seedEntryWithChannel, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, killStmt, execStmt } from "./_dsl.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
@@ -242,7 +242,6 @@ test("{§stream-constraints} multi-chunk exec writes ONE lifecycle log row, not 
         engine.resolveProposal(logEntryId, { decision: "accept" });
         await dispatchPromise;
         await exec.idle();
-        await flush();
 
         // Many stdout chunk events fired (content grew per line)...
         const stdoutChunks = chunkEvents.filter((e) => e.channel === "stdout" && e.state === "active");
@@ -318,7 +317,6 @@ test("{§stream} daemon fires stream/event per chunk with growing contentLength"
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "aa", notify });
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "bbb", notify });
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "c", notify });
-            await flush();
 
             const events = captured() as Array<{ entryId: number; channel: string; state: string; contentLength: number }>;
             assert.equal(events.length, 3, "one stream/event per chunk (not just at close)");
@@ -383,7 +381,6 @@ test("{§stream} state transition fires metadata-only stream/event with new stat
                 daemon.notifyStreamEvent(sid, ev);
             const producerWorkerId = await RuntimeWorker.ensure(db, workspaceId);
             await ChannelWrite.setChannelState(db, { entryId, producerWorkerId, channel: "body", state: "closed", notify });
-            await flush();
 
             const events = captured() as Array<Record<string, unknown>>;
             assert.equal(events.length, 1, "state transition fires exactly one stream/event");

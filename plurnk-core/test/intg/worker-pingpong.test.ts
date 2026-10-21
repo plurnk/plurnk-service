@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor } from "./_rpc.ts";
 import { makeMockResponse, fixtureExecutors } from "./_mock.ts";
 import { modelOperation } from "./_workers.ts";
 
@@ -51,9 +51,11 @@ test("{§worker-scheme-spawn} ping/pong: WORK spawns a worker once, then WORK to
             const last = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
             assert.match(last!.packet, /pong 1/u, "the parent's final packet carries the first answer");
             assert.match(last!.packet, /pong 2/u, "and the second");
-            await flush();
-            const concluded = (terminated() as Array<{ result: { status: number } }>).filter((t) => t.result.status === 200);
-            assert.ok(concluded.length >= 3, `the parent and both of pong's loops concluded 200; saw ${JSON.stringify((terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status))}`);
+            const pongEnded = await waitFor(
+                () => (terminated() as Array<{ workerId: number; result: { status: number } }>).filter((event) => event.workerId === pong[0].id),
+                (events) => events.length >= 2,
+            );
+            assert.deepEqual(pongEnded.map(({ result }) => result.status), [200, 200], "both of pong's loops concluded 200");
         } finally { ws.close(); }
     });
 });

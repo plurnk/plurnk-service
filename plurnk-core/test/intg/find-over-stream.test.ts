@@ -4,7 +4,7 @@ import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import StreamMock from "./_stream-mock.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 test("{§exec-stream} FIND over an exec stream channel answers the match instead of throwing on the default channel", async (approvalContext) => {
@@ -19,7 +19,6 @@ test("{§exec-stream} FIND over an exec stream channel answers the match instead
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-over-stream" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const find = rows.find((r) => r.op === "FIND" && r.origin === "model");
             assert.ok(find, "the model's FIND was dispatched");

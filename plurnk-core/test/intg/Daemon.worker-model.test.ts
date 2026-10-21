@@ -898,8 +898,8 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
                 "effort cannot mutate under a parked loop either",
             );
 
-            daemon.cancelDrain(workerId, "test");
-            await new Promise((resolve) => setTimeout(resolve, 200));
+            // {§methods-loop-cancel} cancelWorker awaits the worker's cancellation and reap.
+            await daemon.cancelWorker({ workspaceId: workspace.id, workerId });
             const selected = await daemon.setWorkerModel({
                 workspaceId: workspace.id,
                 workerId,

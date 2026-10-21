@@ -285,8 +285,11 @@ test("{§agui-history-window} {§agui-history-page} {§agui-words-by-reference}:
     // While the loop holds, the person pastes more than the ceiling: accepted, and not yet observed.
     const paster = agent();
     paster.messages = [{ id: "prompt-2", role: "user", content: pasted }];
-    const pastedRun = paster.runAgent({ forwardedProps: { plurnk: { workspace: "composed" } } });
-    await new Promise((resolve) => { setTimeout(resolve, 500); });
+    // {§agui-message-acceptance} A message Run admits its message before it presents anything: once its snapshot
+    // arrives, the pasted message is accepted.
+    const admitted = Promise.withResolvers<void>();
+    const pastedRun = paster.runAgent({ forwardedProps: { plurnk: { workspace: "composed" } } }, { onMessagesSnapshotEvent: () => { admitted.resolve(); } });
+    await admitted.promise;
 
     const reader = agent();
     const snapshot = Promise.withResolvers<{ chars: number; history: History; messages: Message[] }>();

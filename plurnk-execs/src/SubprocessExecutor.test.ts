@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,17 @@ import SubprocessExecutor from "./SubprocessExecutor.ts";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
 import type { ExecArgs, ExecInputReceiver, ExecResult } from "./types.ts";
 import type { Notice } from "./Notice.ts";
+
+// A condition the test waits on, polled until it holds; the bound only keeps a hang from outliving the test.
+const until = async (what: string, predicate: () => boolean): Promise<void> => {
+    const deadline = Date.now() + 20_000;
+    while (!predicate()) {
+        if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+};
+// The processes whose command line names `marker`, a test's unique duration.
+const running = (marker: string): string => spawnSync("pgrep", ["-f", marker]).stdout.toString().trim();
 
 // Drive a real subprocess and collect the sink activity. Resolves once run()
 // settles.
@@ -263,13 +274,14 @@ test("{§executor-cancellation} abort terminates the whole process group — no 
     const dur = `9999.${process.hrtime.bigint().toString().slice(-9)}`;
     const controller = new AbortController();
     const promise = exec("sh", `sleep ${dur}`, { signal: controller.signal });
-    await new Promise((r) => setTimeout(r, 300));   // let the group establish
+    await until("the command's process to run", () => running(dur) !== "");
     controller.abort();
     const { result } = await promise;
     assert.equal(result.status, 499);
 
-    await new Promise((r) => setTimeout(r, 600));    // let SIGTERM land
-    const survivors = spawnSync("pgrep", ["-f", dur]).stdout.toString().trim();
+    // SIGTERM reaches the whole group: every member goes, within a bound that only stops a leak hanging the test.
+    let survivors = running(dur);
+    await until("the group to exit", () => (survivors = running(dur)) === "").catch(() => undefined);
     if (survivors) spawnSync("pkill", ["-f", dur]);  // don't leak into other tests
     assert.equal(survivors, "", `leaked process(es) after abort: ${survivors}`);
 });
@@ -278,23 +290,31 @@ test("{§executor-cancellation} KILL[code]: a signal on the abort reason deliver
     const controller = new AbortController();
     // Traps USR1 only — catching the echo proves SIGUSR1 was delivered; the
     // default SIGHUP would terminate it without firing the USR1 trap.
-    const promise = exec("sh", "trap 'echo CAUGHT_USR1; exit 0' USR1; sleep 5", { signal: controller.signal });
-    await new Promise((r) => setTimeout(r, 200));   // let the trap install
-    controller.abort(Object.assign(new Error("killed"), { signal: "SIGUSR1" }));
-    const { result, out } = await promise;
-    assert.equal(result.status, 499);
-    assert.match(out.stdout, /CAUGHT_USR1/, "the USR1 trap fired → the override code was delivered");
+    const dir = await mkdtemp(join(tmpdir(), "executor-usr1-"));
+    const trapped = join(dir, "trapped");
+    try {
+        const promise = exec("sh", `trap 'echo CAUGHT_USR1; exit 0' USR1; : > ${trapped}; sleep 5`, { signal: controller.signal });
+        await until("the trap to install", () => existsSync(trapped));
+        controller.abort(Object.assign(new Error("killed"), { signal: "SIGUSR1" }));
+        const { result, out } = await promise;
+        assert.equal(result.status, 499);
+        assert.match(out.stdout, /CAUGHT_USR1/, "the USR1 trap fired → the override code was delivered");
+    } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("{§executor-cancellation} loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
     const controller = new AbortController();
     // node swallows SIGHUP and stays alive — so the worker can only settle because
     // the grace-timed SIGKILL fired. A plain KILL (polite, no reap) would leave it.
-    const promise = exec("node", "process.on('SIGHUP', () => {}); setInterval(() => {}, 1e9)", { signal: controller.signal });
-    await new Promise((r) => setTimeout(r, 200));
-    controller.abort({ housekeeping: true, graceMs: 100 });
-    const { result } = await promise;
-    assert.equal(result.status, 499, "the housekeeping SIGKILL reaped the HUP-ignoring process");
+    const dir = await mkdtemp(join(tmpdir(), "executor-hup-"));
+    const ignoring = join(dir, "ignoring");
+    try {
+        const promise = exec("node", `process.on('SIGHUP', () => {}); process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(ignoring)}, ''); setInterval(() => {}, 1e9)`, { signal: controller.signal });
+        await until("the process to ignore SIGHUP", () => existsSync(ignoring));
+        controller.abort({ housekeeping: true, graceMs: 100 });
+        const { result } = await promise;
+        assert.equal(result.status, 499, "the housekeeping SIGKILL reaped the HUP-ignoring process");
+    } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("{§executor-exit-code} stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is the exit code", async () => {

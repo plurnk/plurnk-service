@@ -1209,6 +1209,9 @@ class GarbageProvider extends AttemptWitness {
 
 test("{§provider-generation-failed} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
+    // A recovery wait here would last a minute, past the runner's bound: a loop that ends in seconds took none.
+    const priorBackoff = process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
+    process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "60000";
     try {
         const provider = new GarbageProvider(1, [
             { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null } },
@@ -1221,10 +1224,14 @@ test("{§provider-generation-failed} {§engine-rails} a provider-declared genera
         });
         assert.equal(result.result.status, 200, "one generation error is one strike, never a loop death");
         assert.equal(result.reason, "external");
-        assert.ok(Date.now() - started < 4_000, "no provider recovery wait: the next turn asks again at once");
+        assert.ok(Date.now() - started < 20_000, "no provider recovery wait: the next turn asks again at once");
         const problems = await db.test_log_entries_by_worker_op_full.all<{ rx: string }>({ worker_id: workerId, op: "error" });
         assert.ok(problems.some(({ rx }) => rx.includes("generation-failed") && rx.includes("MALFORMED_FUNCTION_CALL")), "the failed attempt is durable with its raw finish reason");
-    } finally { await db.close(); }
+    } finally {
+        if (priorBackoff === undefined) delete process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
+        else process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = priorBackoff;
+        await db.close();
+    }
 });
 
 test("{§provider-generation-failed} {§engine-rails} three consecutive generation errors strike out through the rail", async () => {

@@ -1164,7 +1164,8 @@ for (const style of ["think-tags", "template-think", "template-channel"] as cons
         observed.push(delta);
         if (observed.join("") === "Thinking 🧠") ready.resolve();
     } });
-    const timer = setTimeout(() => ready.reject(new Error("reasoning was buffered until response completion")), 1500);
+    // A liveness bound: the response stays open until the reasoning is observed, so a buffering observer never settles.
+    const timer = setTimeout(() => ready.reject(new Error("reasoning was buffered until response completion")), 20_000);
     try {
         await ready.promise;
         assert.deepEqual(observed, ["Thinking 🧠"], "an incomplete closing delimiter is not reasoning text");
@@ -2268,11 +2269,15 @@ test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct f
 
 test("{§provider-connectivity} the whole-call deadline spans provider-directed retry waits", async () => {
     let calls = 0;
+    // The wait the endpoint directs, timed from its direction: its end is the event the call must settle before.
+    let waited: ReturnType<typeof setTimeout> | undefined;
+    let waitEnded = false;
     mock.method(globalThis, "fetch", async () => {
         calls++;
+        waited = setTimeout(() => { waitEnded = true; }, 250);
         return new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), {
             status: 503,
-            headers: { "content-type": "application/json", "retry-after": "60" },
+            headers: { "content-type": "application/json", "retry-after-ms": "250", "retry-after": "1" },
         });
     });
     const p = testProvider({
@@ -2286,7 +2291,6 @@ test("{§provider-connectivity} the whole-call deadline spans provider-directed 
         retryAttempts: 3,
         source: "provider:test",
     });
-    const started = Date.now();
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
@@ -2294,8 +2298,9 @@ test("{§provider-connectivity} the whole-call deadline spans provider-directed 
             && error.accounting.length === 1
             && error.accounting[0]?.outcome === "error",
     );
-    assert.ok(Date.now() - started < 500, "the configured total deadline ends retry scheduling");
-    assert.equal(calls, 1, "the total deadline expires before another request begins");
+    clearTimeout(waited);
+    assert.equal(waitEnded, false, "the deadline ends the directed wait");
+    assert.equal(calls, 1, "no request follows the deadline");
     mock.restoreAll();
 });
 

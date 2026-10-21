@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
-import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { insertLoop, insertTurn, insertWorker } from "./_db.ts";
 
@@ -77,7 +77,6 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
             const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job" });
-            await flush();
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
@@ -137,7 +136,6 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-parked" });
             const workspaceId = (created.result as { id: number }).id;
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job" });
-            await flush();
             // Parked: the loop row reaches 202 (the drain has exited by then).
             const parked = await waitForDb(
                 async () => (await db.test_list_loops_all.all<LoopRow>({})).find((l) => l.status === 202),
@@ -250,7 +248,9 @@ for (const mode of ["immediate", "awaited"] as const) {
             let stopped = false;
             const stopping = daemon.stop().then(() => { stopped = true; order.push("stopped"); });
             try {
-                await flush();
+                // A negative window: room for a stop that did not join the cancellation to finish. It can pass falsely on
+                // a slow host, never fail falsely.
+                await new Promise((resolve) => setTimeout(resolve, 50));
                 assert.equal(stopped, false, "stop cannot authorize database closure while cancellation still uses it");
             } finally {
                 release.resolve();

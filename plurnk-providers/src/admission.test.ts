@@ -172,13 +172,15 @@ test("{§provider-inference-admission} queued expiry preserves the operation dea
 
 test("{§provider-inference-admission} queueing and generation do not use the discovery deadline", { timeout: 10000 }, async (t) => {
     const wire = await endpoint(t);
+    const discoveryMs = 100;
     const p = await provider(wire.url, "openai/gpt-4.1-mini", {
-        PLURNK_PROVIDERS_FETCH_TIMEOUT: "100",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: String(discoveryMs),
     });
     const first = generate(p, "first");
     await wire.wait("first");
     const second = generate(p, "second");
-    await setTimeout(250);
+    // Past the discovery deadline: a generation or a queued request it bounded would have failed by now.
+    await setTimeout(discoveryMs * 2.5);
     wire.finish("first");
     await first;
     await wire.wait("second");

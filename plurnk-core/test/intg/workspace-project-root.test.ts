@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 
 test("{§methods-workspace-create} workspace.create with projectRoot round-trips and persists the column", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
@@ -61,7 +61,6 @@ test("{§notifications-workspace-created} workspace/created notification carries
             await rpcCall(ws, 1, "workspace.create", {
                 name: "with-notif", projectRoot: "/tmp/notif-test",
             });
-            await flush();
             const captured = notifications();
             assert.equal(captured.length, 1);
             const params = captured[0] as { id: number; name: string; projectRoot: string | null };

@@ -16,7 +16,7 @@ import Results from "../../src/core/results.ts";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { admitTogether, namedModelWorker } from "./_workers.ts";
 
@@ -41,13 +41,14 @@ test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent
             const terminated = subscribeNotifications(ws, "loop/terminated");
             // runLoopToTerminal awaits the PARENT's loop/terminated. If the child-wake doesn't fire,
             // the parent stays parked at 202 forever and this times out — so reaching 200 IS the proof.
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it" });
+            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it" });
             assert.equal(finalStatus, 200, "the parent resumed from 202 (woken by the child) and concluded");
             assert.equal(turnIds?.length, 3, "the terminal event includes initialization and both model turns across park/resume");
-            await flush();
-            // Both workers concluded 200 — the child's terminal and the parent's resumed terminal.
-            const concluded = (terminated() as Array<{ result: { status: number } }>).filter((t) => t.result.status === 200);
-            assert.ok(concluded.length >= 2, `parent + child both conclude 200; saw ${JSON.stringify((terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status))}`);
+            const [childEnded] = await waitFor(
+                () => (terminated() as Array<{ workerId: number; result: { status: number } }>).filter((event) => event.workerId !== modelWorkerId),
+                (events) => events.length > 0,
+            );
+            assert.equal(childEnded.result.status, 200, "the child concluded 200");
         } finally { ws.close(); }
     });
 });
@@ -192,14 +193,16 @@ test("{§worker-loop-lifecycle} an empty failed child stream is observed by the 
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "child-empty-failed-stream" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const { finalStatus } = await runLoopToTerminal(ws, 2, {
+            const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, {
                 prompt: "delegate a failing stream and wait for its result",
 
             });
             assert.equal(finalStatus, 200);
-            await flush();
-            const statuses = (terminated() as Array<{ result: { status: number } }>).map(({ result }) => result.status);
-            assert.ok(statuses.includes(499), `the child concluded with its observed stream failure; got ${JSON.stringify(statuses)}`);
+            const [childEnded] = await waitFor(
+                () => (terminated() as Array<{ workerId: number; result: { status: number } }>).filter((event) => event.workerId !== modelWorkerId),
+                (events) => events.length > 0,
+            );
+            assert.equal(childEnded.result.status, 499, "the child concluded with its observed stream failure");
             assert.equal(mock.remaining, 0, "all four causal turns ran: parent park, child exec, child terminal, parent terminal");
         } finally { ws.close(); }
     });

@@ -1910,7 +1910,8 @@ test("{§http-binary-source} KILL cancels a binary GET after headers, before pub
         await reading.promise;
         assert.equal((await http.kill(killStmt(target), ctx)).status, 200);
         const settled = await Promise.race([acquisition, new Promise<never>((_resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error("GET body was not cancelled")), 500);
+            // A liveness bound: the server holds the body open, so an uncancelled GET never settles.
+            const timer = setTimeout(() => reject(new Error("GET body was not cancelled")), 20_000);
             timer.unref();
         })]);
         assert.equal(settled.status, 499);

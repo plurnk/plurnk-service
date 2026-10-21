@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { withDaemon, waitForDb } from "./_rpc.ts";
+import { withDaemon, waitForDb, HARNESS_WAIT_MS } from "./_rpc.ts";
 import { insertWorker } from "./_db.ts";
 import { modelOperation } from "./_workers.ts";
 import type { WorkerOwner } from "@plurnk/plurnk-contracts";
@@ -131,7 +131,7 @@ test("{§worker-owner-resolution}: runtime-owned work cannot hang awaiting a rev
         try {
             const result = await Promise.race([
                 operation,
-                new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("runtime-owned proposal never settled")), 2000).unref()),
+                new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("runtime-owned proposal never settled")), HARNESS_WAIT_MS).unref()),
             ]);
             assert.equal(result.status, 400);
             assert.match((result.problem as { type: string }).type, /\/rejected$/);

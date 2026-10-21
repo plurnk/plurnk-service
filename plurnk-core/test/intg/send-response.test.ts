@@ -3,7 +3,7 @@ import { serverProposals } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { lastReply, logEntries } from "./_packet.ts";
 
@@ -35,7 +35,6 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
             assert.equal(finalStatus, 200);
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
@@ -58,7 +57,6 @@ test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves neste
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
             const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
             assert.equal(finalStatus, 200, "the second turn concludes");
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
             assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
@@ -88,7 +86,6 @@ test("{§send-body}: messages that start with operation names remain literal rep
             await rpcCall(ws, 1, "workspace.create", { name: "send-prose" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "explain" });
             assert.equal(finalStatus, 200);
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.origin === "model" && r.op === "SEND");
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "message content is never parsed as another operation");
@@ -108,7 +105,6 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             await rpcCall(ws, 1, "workspace.create", { name: "send-receipt" });
             const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200);
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
             assert.equal(send?.status_rx, 200);

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 // The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
@@ -43,7 +43,6 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-file", projectRoot: root });
                 const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
-                await flush();
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
                 const work = rows.find((r) => r.op === "WORK" && r.origin === "model");
                 assert.equal(work?.status_rx, 200, work?.rx ?? "no WORK row");
@@ -68,7 +67,6 @@ test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank li
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-combined", projectRoot: root });
                 const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
-                await flush();
                 const { prompts } = await childPrompts(db, modelWorkerId!);
                 assert.equal(prompts[0].content, "The brief.\n\nAlso report the total.");
             } finally { ws.close(); }
@@ -90,7 +88,6 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
                 await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-missing", projectRoot: root });
                 const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
-                await flush();
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
                 const works = rows.filter((r) => r.op === "WORK" && r.origin === "model");
                 assert.equal(works.length, 2);

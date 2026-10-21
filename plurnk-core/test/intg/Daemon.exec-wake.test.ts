@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { rpcCall, rpcProblem, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
@@ -51,6 +51,7 @@ test("{§worker-lifecycle-wake-liveness}: a person's operation can cancel a work
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         const entries = subscribeNotifications(ws, "log/entry");
+        const terminated = subscribeNotifications(ws, "loop/terminated");
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-stream-not-worker" });
         const workerId = await namedModelWorker(daemon, workspaceId, "main");
         const lifecycle = new LoopLifecycle(db);
@@ -68,9 +69,10 @@ test("{§worker-lifecycle-wake-liveness}: a person's operation can cancel a work
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
             const [killed] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
             assert.equal(killed.status, 200, JSON.stringify(killed));
-            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200, { timeoutMs: 1500 });
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200);
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled worker scope");
-            await flush();
+            // {§notifications-log-entry-notify} The loop's rows reach the log channel before its terminal is announced.
+            await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
             const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
                 .map(({ entry }) => entry)
                 .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "READ" && entry.scheme === "sh");
@@ -498,7 +500,6 @@ test("{§worker-lifecycle-wake-liveness} wake-on-completion: active loop → dae
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             await runLoopToTerminal(ws, 2, { prompt: "stay active during exec" });
-            await flush();
             // Event-driven: wait for the exec to conclude (it finishes while the loop is
             // still emitting in-progress inventories), not a fixed sleep racing the spawn.
             await waitFor(
@@ -598,7 +599,6 @@ test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel m
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream" });
-            await flush();
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn.
             await waitForDb(

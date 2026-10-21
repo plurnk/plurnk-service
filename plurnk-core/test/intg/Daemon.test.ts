@@ -1,7 +1,7 @@
 import { ownWorker, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, runLoopToTerminal, HARNESS_WAIT_MS } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
@@ -759,7 +759,6 @@ test("{§methods-workspace-create} workspace.create returns id+name, mints no wo
             const result = response.result as { id: number; name: string };
             assert.equal(result.name, "alpha");
             assert.ok(result.id > 0);
-            await flush();
             const captured = notifications();
             assert.equal(captured.length, 1);
             const params = captured[0] as { id: number; name: string };
@@ -1183,7 +1182,6 @@ test("{§notifications-workspace-created} workspace/created notification broadca
             const observerNotifs = subscribeNotifications(observer, "workspace/created");
 
             await rpcCall(creator, 1, "workspace.create", { name: "broadcast-test" });
-            await flush();
 
             const captured = observerNotifs();
             assert.equal(captured.length, 1);
@@ -1207,7 +1205,6 @@ test("{§methods-event-subscribe} the client-interface seam — subscribeToEvent
             unsubscribe();
             const countAfter = received.length;
             await rpcCall(ws, 2, "workspace.create", { name: "seam-2" });
-            await flush();
             assert.equal(received.length, countAfter, "unsubscribe stops delivery — the seam is a clean subscription");
         } finally { ws.close(); }
     });
@@ -2056,7 +2053,7 @@ test("{§crash-only-stop}: every shutdown owner shares the absolute stop deadlin
         const guarded = Promise.race([
             daemon.stop(),
             new Promise<never>((_resolve, reject) => {
-                setTimeout(() => reject(new Error("test guard: daemon stop remained unbounded")), 500);
+                setTimeout(() => reject(new Error("test guard: daemon stop remained unbounded")), HARNESS_WAIT_MS).unref();
             }),
         ]);
         await assert.rejects(

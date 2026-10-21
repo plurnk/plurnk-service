@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 test("{§notifications-notice-event} notifyNotice broadcasts to clients attached to the loop's workspace", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -24,7 +24,6 @@ test("{§notifications-notice-event} notifyNotice broadcasts to clients attached
                     position: { type: "content-offset", line: 3, column: 7 },
                 },
             });
-            await flush();
 
             const notices = (captured() as Array<{ workerId: number; loopId: number; notice: { source: string; kind: string; message: string } }>)
                 .filter((item) => item.loopId === 42);
@@ -54,7 +53,6 @@ test("{§operation-results} notice/event is workspace-scoped — other workspace
             daemon.notifyNotice(workspaceA, { workerId: 11, loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" } });
             daemon.notifyNotice(workspaceB, { workerId: 12, loopId: 2, notice: { source: "exec:sqlite", kind: "query_progress", level: "info", completed: 5, total: 10, percent: 50 } });
 
-            await flush();
 
             const aCaptured = (aEvents() as Array<{ notice: { kind: string } }>).filter((item) => item.notice.kind === "turn_awaiting_model");
             const bCaptured = (bEvents() as Array<{ notice: { kind: string } }>).filter((item) => item.notice.kind === "query_progress");

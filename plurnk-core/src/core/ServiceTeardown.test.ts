@@ -147,7 +147,8 @@ test(`{§crash-only-stop} ${phase} cannot outlive the enclosing shutdown budget`
     try {
         await assert.rejects(Promise.race([
             teardown.close(),
-            new Promise((_, reject) => { guard = setTimeout(() => reject(new Error("test guard: service cleanup remained unbounded")), 200); }),
+            // A liveness bound: the subject is the 20 ms stop budget; this only names a teardown that never settles.
+            new Promise((_, reject) => { guard = setTimeout(() => reject(new Error("test guard: service cleanup remained unbounded")), 20_000); }),
         ]), { message: `stop deadline exceeded waiting for ${phase}` });
         assert.equal(laterCleanup, true, "later cleanup is attempted even after the deadline");
     } finally {

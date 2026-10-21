@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { viableWindow } from "./_provider.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, flush, waitForDb } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitForDb, waitFor } from "./_rpc.ts";
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import type { Db } from "../../src/core/Db.ts";
 
@@ -100,9 +100,11 @@ for (const [name, completion, answer] of [["answered 200", 200, "the code is 481
                 assert.equal((await inferenceStatuses(db, kid))[0], 202, "kid's WAIT parked on its message to the parent, nothing else being live");
                 const completed = await db.test_message_completions_from.all<{ status: number; origin: string }>({ workspace_id: workspaceId, source: "worker://kid" });
                 assert.deepEqual(completed.map((row) => [row.status, row.origin]), [[completion, "model"]], "the parent's reply completed kid's message as authored");
-                await flush();
-                const concluded = (terminated() as Array<{ result: { status: number } }>).filter((t) => t.result.status === 200);
-                assert.ok(concluded.length >= 2, "parent and kid both concluded 200");
+                const [kidEnded] = await waitFor(
+                    () => (terminated() as Array<{ workerId: number; result: { status: number } }>).filter((event) => event.workerId === kid),
+                    (events) => events.length > 0,
+                );
+                assert.equal(kidEnded.result.status, 200, "kid concluded 200 after the parent's");
             } finally { ws.close(); }
         });
     });
@@ -148,9 +150,11 @@ test("{§message-abandonment} a parent that strikes out with the child's message
             assert.equal(provider.left("kid"), 0, "kid woke on the 499 and reported");
             assert.equal(await loopsOf(db, kid), 1, "the same parked loop woke; none was minted");
             assert.equal((await inferenceStatuses(db, kid))[0], 202, "kid's WAIT had parked on its message");
-            await flush();
-            const statuses = (terminated() as Array<{ result: { status: number } }>).map((t) => t.result.status).toSorted((a, b) => a - b);
-            assert.ok(statuses.includes(200), `kid concluded 200; saw ${JSON.stringify(statuses)}`);
+            const [kidEnded] = await waitFor(
+                () => (terminated() as Array<{ workerId: number; result: { status: number } }>).filter((event) => event.workerId === kid),
+                (events) => events.length > 0,
+            );
+            assert.equal(kidEnded.result.status, 200, "kid concluded 200");
         } finally { ws.close(); }
     });
 });

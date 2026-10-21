@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
+import { HARNESS_WAIT_MS } from "./_rpc.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
 class ProposingTest {
@@ -630,9 +631,10 @@ test("{§engine-rails} proposal: invalid explicit timeout fails hard without orp
             (result) => ({ kind: "fulfilled" as const, result }),
             (error: unknown) => ({ kind: "rejected" as const, error }),
         );
+        // Nothing resolves the proposal: a dispatch still unsettled at the harness bound is an indefinite wait.
         const outcome = await Promise.race([
             observed,
-            new Promise<{ kind: "pending" }>((resolve) => setTimeout(() => resolve({ kind: "pending" }), 50)),
+            new Promise<{ kind: "pending" }>((resolve) => setTimeout(() => resolve({ kind: "pending" }), HARNESS_WAIT_MS).unref()),
         ]);
         if (outcome.kind === "pending") {
             const [pendingId] = ctx.engine.pendingProposalIds();

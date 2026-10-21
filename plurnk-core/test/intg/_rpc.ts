@@ -61,11 +61,6 @@ export const subscribeNotifications = (ws: SeamSocket, method: string): (() => u
     return () => captured;
 };
 
-// Sleep enough for notifications to flush across the worker boundary.
-// 50ms is what we landed on after diagnosing race conditions in
-// stream/event tests. Don't use setImmediate — it isn't enough.
-export const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
-
 // Event-driven wait: poll a subscribeNotifications getter until `predicate`
 // holds, or throw on timeout. Race-free — the getter returns the full backlog
 // captured since subscription, so nothing is missed between subscribe and

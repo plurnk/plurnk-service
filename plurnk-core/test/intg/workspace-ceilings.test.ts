@@ -18,7 +18,7 @@ import type { Db } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
 import { openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
-import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
@@ -77,7 +77,6 @@ test("{§operator-config-workspace-max-commands-floor} maxCommands:0 admits WAIT
                 await rpcCall(ws, 1, "workspace.create", { name: "mc-zero", settings: { maxCommands: 0 } });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 1 });
                 assert.equal(result.finalStatus, 429, "the cap did not complete or answer the assignment");
-                await flush();
                 const modelOps = logEntries()
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)
                     .filter((e) => e.origin === "model")

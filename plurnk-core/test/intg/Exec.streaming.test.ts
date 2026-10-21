@@ -21,6 +21,7 @@ import type Exec from "../../src/schemes/Exec.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { waitForDb } from "./_rpc.ts";
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,17 +88,12 @@ test("{§chunk-accumulation-chunks-accumulate} streaming exec: chunks land in th
         const t0 = await sampleStdout();
         assert.equal(t0.state, "active", "channel starts in 'active' state during spawn");
 
-        // T+~1.1s: expect 2-3 lines have landed (5, 4 — fewer under scheduler
-        // jitter). We assert lower bound only — at least one line.
-        await new Promise((r) => setTimeout(r, 1100));
-        const t1 = await sampleStdout();
-        assert.ok(t1.content.length > 0, `at T+~1s, stdout should have some content; got ${JSON.stringify(t1.content)}`);
-        assert.ok(t1.content.length < 10, `at T+~1s, stdout should NOT yet have the full 10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${t1.content.length} bytes`);
-        assert.equal(t1.state, "active", "still streaming at T+~1s");
-
-        // T+~2.2s: more lines should have landed.
-        await new Promise((r) => setTimeout(r, 1100));
-        const t2 = await sampleStdout();
+        // The first output is visible while the process still runs, and more follows: streaming, never one write at
+        // its exit, however fast or slow the host.
+        const t1 = await waitForDb(sampleStdout, ({ content, state }) => content.length > 0 || state !== "active");
+        assert.equal(t1.state, "active", `stdout shows output while the process still runs; got ${JSON.stringify(t1)}`);
+        assert.ok(t1.content.length < 10, `the first output is partial, not the full 10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${t1.content.length} bytes`);
+        const t2 = await waitForDb(sampleStdout, ({ content }) => content.length > t1.content.length);
         assert.ok(t2.content.length > t1.content.length,
             `content grew monotonically: t1=${t1.content.length} bytes → t2=${t2.content.length} bytes`);
 
@@ -156,8 +152,10 @@ test("{§subscriptions-subscription-registry-routes-cancellation} streaming exec
             scheme: "sh", pathname,
         });
 
-        // Mid-stream: subscription is still open (closed_at IS NULL).
-        await new Promise((r) => setTimeout(r, 600));
+        // Mid-stream, once output shows while the process runs: the subscription is still open (closed_at IS NULL).
+        const streaming = await waitForDb(async () => db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryRow!.id, name: "stdout" }),
+            (row) => (row?.content.length ?? 0) > 0 || (row !== undefined && row.state !== "active"));
+        assert.equal(streaming?.state, "active", "the process still runs");
         const midSub = await db.test_get_subscription_by_entry.get<{
             closed_at: string | null; close_status: number | null;
         }>({ worker_id: workerId, entry_id: entryRow!.id });
@@ -216,9 +214,8 @@ test("{§exec-target-routing} streaming exec: the workspace catalog picks up par
                 .map((r) => ({ scheme: r.scheme, pathname: r.pathname, content: r.content }));
         };
 
-        // Mid-stream snapshot of the catalog.
-        await new Promise((r) => setTimeout(r, 700));
-        const mid = await execStdout();
+        // Mid-stream snapshot of the catalog, once its first output shows.
+        const mid = await waitForDb(execStdout, (rows) => rows.length === 1 && rows[0].content.length > 0);
         assert.equal(mid.length, 1, "exec stdout visible in the catalog mid-stream");
         assert.ok(mid[0].content.length > 0, `catalog reflects partial content; got "${mid[0].content}"`);
         assert.ok(mid[0].content.length < 8, "partial content < full 8 bytes (4\\n3\\n2\\n1\\n)");

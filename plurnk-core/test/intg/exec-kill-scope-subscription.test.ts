@@ -13,6 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { makeSchemeCtx } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { killStmt, urlPath } from "./_dsl.ts";
+import { waitForDb } from "./_rpc.ts";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
@@ -51,8 +52,11 @@ test("{§subscriptions-fold-keeps-subscription} scoped KILL on a streaming exec'
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
 
-        // Mid-stream: KILL the exec's log row body (log:///1/1/1 <1,-1>) — render-only curation.
-        await new Promise((r) => setTimeout(r, 500));
+        // Mid-stream, once output shows while the process runs: KILL the exec's log row body (log:///1/1/1 <1,-1>) —
+        // render-only curation.
+        const streaming = await waitForDb(async () => db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryRow!.id, name: "stdout" }),
+            (row) => (row?.content.length ?? 0) > 0 || (row !== undefined && row.state !== "active"));
+        assert.equal(streaming?.state, "active", "the process still runs");
         const scoped = await new Log().kill(killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(scoped.status, 200, "a scoped KILL of the exec log row succeeds");
 

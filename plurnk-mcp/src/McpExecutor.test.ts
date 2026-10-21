@@ -74,16 +74,18 @@ const harness = (
     };
 };
 
+// A file the fixture writes, waited on; the bound only keeps a hang from outliving the test.
 const waitForFile = async (pathname: string): Promise<void> => {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    const deadline = Date.now() + 20_000;
+    for (;;) {
         try {
             await access(pathname);
             return;
-        } catch {
+        } catch (error) {
+            if (Date.now() > deadline) throw error;
             await delay(10);
         }
     }
-    await access(pathname);
 };
 
 test("{§mcp-summary-derivation} runtime declaration derives the server summary from the chain", async () => {
@@ -471,9 +473,11 @@ test("{§mcp-host-composition} MCP progress and cancellation remain on the ownin
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "cancelled");
+    const waiting = join(root, "waiting");
     const connection = new ServerConnection(stdioServer("lifecycle", [fixture], { env: {
             PLURNK_MCP_TEST_EXTENDED: "1",
             PLURNK_MCP_TEST_CANCEL_MARKER: marker,
+            PLURNK_MCP_TEST_WAIT_MARKER: waiting,
         } }), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
         PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
@@ -514,7 +518,8 @@ test("{§mcp-host-composition} MCP progress and cancellation remain on the ownin
             signal: controller.signal,
         });
         const running = executor.run(cancelled.args);
-        await delay(50);
+        // In flight: the server is serving the call.
+        await waitForFile(waiting);
         assert.equal(residencyLeases, 1, "an in-flight MCP call retains worker Functionality");
         controller.abort(new Error("test cancellation"));
         const result = await running;

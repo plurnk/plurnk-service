@@ -11,6 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { matchLocations } from "./_find.ts";
 import { clientRead } from "./_client-read.ts";
+import { waitForDb } from "./_rpc.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -431,12 +432,8 @@ test("{§log-range-miss-names-stream} Log.read: #channel on an execution log ite
         });
         await dispatched;
         engine.resolveProposal(logEntryId, { decision: "accept" });
-        // Let the short command conclude so the stream carries its output.
-        for (let i = 0; i < 100; i++) {
-            const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
-            if (row?.state === "resolved") break;
-            await new Promise((r) => setTimeout(r, 50));
-        }
+        // The short command concludes, so the stream carries its output.
+        await waitForDb(() => db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId }), (row) => row?.state === "resolved");
 
         const address = await executionAddress(db, turnId);
         const miss = await readLog(
@@ -483,12 +480,8 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
         });
         await dispatched;
         engine.resolveProposal(logEntryId, { decision: "accept" });
-        // Let the short command conclude so the stream carries its output.
-        for (let i = 0; i < 100; i++) {
-            const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
-            if (row?.state === "resolved") break;
-            await new Promise((r) => setTimeout(r, 50));
-        }
+        // The short command concludes, so the stream carries its output.
+        await waitForDb(() => db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId }), (row) => row?.state === "resolved");
 
         // The bodiless sibling shares the real execution's stream link, the way a drained or
         // bodiless call receipt does while its output stays readable at the stream address.

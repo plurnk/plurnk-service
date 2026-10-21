@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 
@@ -55,7 +55,6 @@ reading
                 try {
                     await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
                     const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count" }, { timeoutMs: 20000 });
-                    await flush();
                     const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                     const edit = all.find((r) => r.op === "EDIT");
                     assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
@@ -103,7 +102,6 @@ test("{§packet-empty-sections} a child's packet names its parent worker; the ro
             const workspaceId = 1;
             const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
             assert.equal(finalStatus, 200);
-            await flush();
             const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
             assert.ok(childTurn, "the child ran a model turn");
             const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);

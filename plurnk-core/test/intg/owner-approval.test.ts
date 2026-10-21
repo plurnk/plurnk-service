@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { EditStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { viableWindow } from "./_provider.ts";
-import { rpcCall, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor, flush } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -41,6 +41,7 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
         const ws = await connect(addr);
         try {
             const proposals = subscribeNotifications(ws, "loop/proposal");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 1, "workspace.create", { name: "one-resource-proposal" });
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "batch" });
             const pending = await waitFor(
@@ -59,7 +60,7 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: next[1].logEntryId, decision: "accept" });
             const run = await loopPromise;
             const loopId = (run.result as { loopId: number }).loopId;
-            await flush();
+            await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some((event) => event.loopId === loopId));
             assert.deepEqual(scheme.batches, [1, 1]);
             assert.equal(proposals().length, 2);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });

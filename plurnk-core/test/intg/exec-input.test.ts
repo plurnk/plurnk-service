@@ -315,6 +315,7 @@ test("{§exec-input}: a declared receiver the run never opens closes input when 
         assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
         await executor.started.promise;
         const pending = f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nwaiting\n\`\`\`\``);
+        // Room for the delivery to reach its wait; a SEND that meets the settled run answers 410 as well.
         await new Promise((resolve) => setTimeout(resolve, 50));
         executor.finished.resolve();
         const result = await pending;

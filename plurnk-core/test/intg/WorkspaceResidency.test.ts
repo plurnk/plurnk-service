@@ -12,6 +12,7 @@ import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { HARNESS_WAIT_MS } from "./_rpc.ts";
 
 const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
     try { await run(); } catch (error) {
@@ -131,7 +132,7 @@ test("{§module-workspace-residency} activation failure unwinds while the reques
     try {
         await Promise.race([
             failed,
-            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("activation cleanup waited for its requesting turn")), 1000); }),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("activation cleanup waited for its requesting turn")), HARNESS_WAIT_MS); }),
         ]);
         assert.equal(deactivated, true);
         assert.equal(residency.isActive(workspaceId), false);

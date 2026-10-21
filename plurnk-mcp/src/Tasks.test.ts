@@ -107,11 +107,10 @@ test("{§mcp-tasks} current HTTP Tasks preserve MRTR, task input, polling, notif
     }
 });
 
+// A condition the test waits on; the bound only keeps a hang from outliving the test.
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
-        if (predicate()) return;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    const deadline = Date.now() + 20_000;
+    while (!predicate() && Date.now() < deadline) await delay(10);
     assert.ok(predicate(), "condition did not become true");
 };
 
@@ -362,7 +361,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
         tool,
     );
     const abandonment = abandoned.catch(() => undefined);
-    await delay(100);
+    await waitFor(() => paused.activeRequests > 0);
     await paused.close();
     await abandonment;
     await assert.rejects(() => abandoned, /connection|closed|failed/u);

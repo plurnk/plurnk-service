@@ -18,6 +18,15 @@ class Observer extends HttpAgent {
     override connect(input: RunAgentInput) { return super.run(input); }
 }
 
+// {§agui-sync} An observer whose connect Run has started: from then on it hears every event of its thread. A failure
+// after that is the caller's to keep.
+const connected = async (agent: HttpAgent, input: Parameters<HttpAgent["connectAgent"]>[0], failed: (error: unknown) => void = () => undefined): Promise<void> => {
+    const started = Promise.withResolvers<void>();
+    void agent.connectAgent(input, { onRunStartedEvent: () => { started.resolve(); } })
+        .catch((error: unknown) => { failed(error); started.reject(error); });
+    await started.promise;
+};
+
 // What a standard client shows of a message: who said what, which operation ran, and the metadata folded onto each
 // ({§agui-plurnk-metadata}).
 const view = (messages: readonly Message[]) => messages.map((message) => {
@@ -115,23 +124,23 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
     await daemon.createWorker({ workspaceId, name: "main" });
     const { host, port } = http.httpAddress();
     const forwardedProps = { plurnk: { workspace: "standard" } };
-    const observe = (): HttpAgent => {
+    const observe = async (): Promise<HttpAgent> => {
         const agent = new Observer({ url: `http://${host}:${port}/agui/connect`, threadId: "main" });
         agents.push(agent);
-        void agent.connectAgent({ forwardedProps }).catch(() => undefined);
+        await connected(agent, { forwardedProps });
         return agent;
     };
 
-    const before = observe();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const before = await observe();
     const submitter = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(submitter);
     submitter.messages = [{ id: "prompt-1", role: "user", content: "Note the plan." }];
     const submitted = submitter.runAgent({ forwardedProps: { plurnk: { ...forwardedProps.plurnk, maxTurns: 4 } } });
     await reasoningStreamed.promise;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const late = observe();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Mid-request: the held turn's reasoning has reached the clients, and its answer has not.
+    await until("the held turn's reasoning to reach the observer", () => before.messages.some((message) => message.role === "reasoning"
+        && message.content.length > 0));
+    const late = await observe();
     held.resolve();
 
     // {§agui-call-result} A command is one tool call whose result is its stream's observation, whenever that arrives.
@@ -139,7 +148,7 @@ test("{§agui-snapshot} {§message-arrival} {§agui-readable-reasoning} {§agui-
         .find(({ function: call }) => call.name === "sh")?.id;
     const answered = (agent: HttpAgent, callId: string) => agent.messages.some((message) => message.role === "tool" && message.toolCallId === callId);
     await until("the command to start", () => command(submitter) !== undefined);
-    const running = observe();
+    const running = await observe();
     await until("the running observer's snapshot", () => command(running) !== undefined);
     assert.equal(answered(running, command(running)!), false, "a running command has no result yet");
     await writeFile(release, "");
@@ -328,8 +337,7 @@ test("{§agui-snapshot} {§agui-call-result} {§worker-obligations} {§agui-prog
     const forwardedProps = { plurnk: { workspace: "delegation" } };
     const before = new Observer({ url: `http://${host}:${port}/agui/connect`, threadId: "main" });
     agents.push(before);
-    void before.connectAgent({ forwardedProps }).catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await connected(before, { forwardedProps });
     const submitter = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(submitter);
     submitter.messages = [{ id: "prompt-1", role: "user", content: "Ask the helper and the peer." }];
@@ -419,8 +427,7 @@ test("{§agui-subagents} {§agui-snapshot} a Run that observes its delegation se
     const watcher = new Observer({ url: `http://${host}:${port}/agui/connect`, threadId: "main" });
     agents.push(watcher);
     const lifecycle = lifecycleOf(watcher);
-    void watcher.connectAgent({ forwardedProps: delegation }).catch((error: unknown) => { failures.push(error); });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await connected(watcher, { forwardedProps: delegation }, (error: unknown) => { failures.push(error); });
     const submitter = new HttpAgent({ url: `http://${host}:${port}/agui`, threadId: "main" });
     agents.push(submitter);
     submitter.messages = [{ id: "prompt-1", role: "user", content: "Ask the helper." }];

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import { seedEntryWithChannel } from "./_db.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 test("{§live-updates} notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -19,7 +19,6 @@ test("{§live-updates} notifyStreamEvent broadcasts to a workspace's clients, en
             daemon.notifyStreamEvent(workspaceId, {
                 entryId, workerId, target: "worker:///x", channel: "body", state: "active", contentLength: 5, mimetype: "text/markdown",
             });
-            await flush();
 
             assert.equal(captured().length, 1);
             const evt = captured()[0] as { workspaceId: number; entryId: number; workerId: number; channel: string; state: string; contentLength: number };
@@ -46,7 +45,6 @@ test("{§live-updates} appendToChannel via the daemon's notify callback fires st
                 daemon.notifyStreamEvent(sid, ev);
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "!", notify });
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "?", notify });
-            await flush();
 
             const events = captured() as Array<{ contentLength: number; target: string }>;
             assert.equal(events.length, 2);
@@ -67,7 +65,6 @@ test("{§live-updates} setChannelState end-to-end fires stream/event with state 
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "done", state: "active" });
 
             await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
-            await flush();
 
             const events = captured() as Array<{ state: string }>;
             assert.equal(events.length, 1);
@@ -101,7 +98,6 @@ test("{§live-updates} stream/event is workspace-scoped — other workspaces don
                 entryId: entryIdB, workerId: workerIdB, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
             });
 
-            await flush();
 
             const aCaptured = aEvents() as Array<{ entryId: number }>;
             assert.equal(aCaptured.length, 1);
@@ -128,7 +124,6 @@ test("{§live-updates} appendToChannel + setChannelState forward the entry coord
             const coordinate = { loop_seq: 1, turn_seq: 2, sequence: 3 };
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "!", notify, coordinate });
             await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", state: "closed", notify, coordinate });
-            await flush();
 
             const events = captured() as Array<{ loop_seq?: number; turn_seq?: number; sequence?: number }>;
             assert.equal(events.length, 2);
@@ -157,7 +152,6 @@ test("{§live-updates} appendToChannel with a mimetype retypes the channel + sur
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "{", notify, mimetype: "application/json" });
             // A later chunk omits it — the retype must persist (stored, not per-event).
             await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "}", notify });
-            await flush();
 
             const events = captured() as Array<{ mimetype?: string }>;
             assert.equal(events.length, 2);

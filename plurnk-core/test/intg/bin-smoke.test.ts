@@ -19,6 +19,7 @@ import { dirname, join, resolve } from "node:path";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
 import ServiceHelp from "../../src/core/ServiceHelp.ts";
+import { HARNESS_WAIT_MS } from "./_rpc.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -188,7 +189,8 @@ const markerLines = async (path: string): Promise<string[]> => {
 };
 
 const waitForMarkerLines = async (path: string): Promise<string[]> => {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    const deadline = Date.now() + HARNESS_WAIT_MS;
+    while (Date.now() < deadline) {
         const lines = await markerLines(path);
         if (lines.length > 0) return lines;
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
@@ -197,7 +199,8 @@ const waitForMarkerLines = async (path: string): Promise<string[]> => {
 };
 
 const waitForExit = async (pids: readonly number[]): Promise<void> => {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    const deadline = Date.now() + HARNESS_WAIT_MS;
+    while (Date.now() < deadline) {
         const alive = pids.filter((pid) => {
             try {
                 process.kill(pid, 0);
@@ -357,7 +360,7 @@ test("{§agui-daemon-client} bin: SIGTERM interrupts capability-demand activatio
         await Promise.race([
             demand,
             new Promise<never>((_resolvePromise, rejectPromise) =>
-                setTimeout(() => rejectPromise(new Error("capability demand did not settle after daemon shutdown")), 2_000)),
+                setTimeout(() => rejectPromise(new Error("capability demand did not settle after daemon shutdown")), HARNESS_WAIT_MS).unref()),
         ]);
         await waitForExit(pids);
     } finally {
@@ -377,7 +380,7 @@ test("{§service-posix-artifacts} bin: --help prints usage without booting daemo
         child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
         child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
         child.once("error", rejectPromise);
-        setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("--help timeout")); }, 5_000);
+        setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("--help timeout")); }, HARNESS_WAIT_MS).unref();
     });
     assert.equal(result.code, 0, `--help exits 0; got ${result.code}, stderr=${result.stderr}`);
     assert.match(result.stdout, /usage: plurnk-service/);
@@ -404,7 +407,7 @@ test("{§operator-config-precedence} a working directory's .env configures nothi
             child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
             child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
             child.once("error", rejectPromise);
-            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("config timeout")); }, 30_000);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("config timeout")); }, HARNESS_WAIT_MS).unref();
         });
         assert.equal(result.code, 0, `config exits 0; got ${result.code}, stderr=${result.stderr}`);
         assert.match(result.stdout, /^declared aliases: none$/mu, "the project's alias is not declared");
@@ -443,7 +446,7 @@ test("{§startup-admission-order} bin: a failed DB open names the path and any s
             child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
             child.once("exit", (code) => resolvePromise({ code, stderr }));
             child.once("error", rejectPromise);
-            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error(`sidecar-boot timeout; stderr=${stderr}`)); }, 10_000);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error(`sidecar-boot timeout; stderr=${stderr}`)); }, HARNESS_WAIT_MS).unref();
         });
         assert.equal(result.code, 1, "a poisoned DB home fails the boot hard");
         assert.match(result.stderr, /open .*plurnk\.db failed/, "the error names the DB path");

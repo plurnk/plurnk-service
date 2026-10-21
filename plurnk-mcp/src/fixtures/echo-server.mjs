@@ -159,6 +159,9 @@ const factory = () => {
                 inputSchema: z.object({}),
             },
             async (_args, ctx) => {
+                // The request is being served: a test that cancels it waits for this.
+                const waiting = process.env.PLURNK_MCP_TEST_WAIT_MARKER;
+                if (waiting !== undefined) writeFileSync(waiting, "waiting\n");
                 await new Promise((resolve, reject) => {
                     if (ctx.mcpReq.signal.aborted) {
                         reject(ctx.mcpReq.signal.reason);

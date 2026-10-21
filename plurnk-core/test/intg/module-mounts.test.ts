@@ -16,10 +16,10 @@ const reply = (label: string): HttpRouteHandler => (_req, res) => {
 };
 
 // A module that claims `mounts` and mounts each with a handler answering its own prefix.
-const serving = (mounts: readonly string[], mounted: readonly string[] = mounts, before?: Promise<void>) => ({
+const serving = (mounts: readonly string[], mounted: readonly string[] = mounts, before?: () => Promise<void>) => ({
     mounts,
     start: async (port: ApplicationPort) => {
-        await before;
+        await before?.();
         for (const prefix of mounted) port.registerHttpRoute(prefix, reply(prefix));
     },
 });
@@ -139,9 +139,11 @@ test("{§module-http-mounts} the listener is admitted after every module started
     const gate = new Promise<void>((resolve) => { release = resolve; });
     // The root owner registers first and mounts first; the later module's start is still running.
     daemon.registerModule(serving(["/"]), "@acme/root");
-    daemon.registerModule(serving(["/late"], ["/late"], gate), "@acme/late");
+    const entered = Promise.withResolvers<void>();
+    daemon.registerModule(serving(["/late"], ["/late"], () => { entered.resolve(); return gate; }), "@acme/late");
     const started = daemon.start();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The later module's start has begun, so the root's has mounted it.
+    await entered.promise;
     assert.equal((await get("/late/x")).status, 503, "a mounted root does not admit traffic early");
     assert.equal((await get("/")).status, 503);
     release();

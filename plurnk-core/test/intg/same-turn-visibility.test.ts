@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
@@ -59,7 +59,6 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
             await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
-            await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: loopId });
             const modelFind = (rows ?? []).filter((r) => r.op === "FIND" && r.origin === "model");
             assert.ok(modelFind.length >= 1, "the model's FIND dispatched");

@@ -12,6 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
+import { waitForDb } from "./_rpc.ts";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,8 +45,9 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => { logEntryId = id; },
         });
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
+        // The execution's row exists once its dispatch reports it; a proposal holds it there.
+        const row = await waitForDb(async () => logEntryId === -1 ? undefined : await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId }),
+            (found) => found !== undefined);
         assert.equal(row?.state, "proposed", "the overridden pure execution proposes instead of auto-running");
         engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatched;
