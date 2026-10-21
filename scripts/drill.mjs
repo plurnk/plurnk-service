@@ -10,7 +10,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)
-The deterministic gate: root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. A phase's output is printed only when that phase goes red.
+The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. A phase's output is printed only when that phase goes red.
 Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change); the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
 Writes: the phase summary to stdout; exit 1 on any red phase.
 `);
@@ -163,6 +163,10 @@ const phase = async (title, script, subset) => {
 if (import.meta.main) {
     const t0 = Date.now();
     console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
+    // {§drill-scope} Built output is not tracked: one build of these sources comes first, since every later phase reads
+    // it (the root lint type-checks against the generated grammar and model catalogs; root unit and conformance boot
+    // the platform from dist), so no phase reads a build older than its sources, or none.
+    if (!(await phase("build", "build", [rootTarget]))) process.exit(1);
     if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);
     if (!(await phase("root unit", "root:unit", [rootTarget]))) process.exit(1);
     if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);

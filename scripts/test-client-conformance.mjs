@@ -26,7 +26,7 @@ import { usage } from "./lib/usage.mjs";
 usage(import.meta, `
 usage: npm run test:client-conformance
 Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§agui-first-party-client-conformance}).
-Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's packed packages.
+Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's built packages, packed as they stand: run npm run build first (the drill builds once, before its phases).
 Writes: a sandbox under the test artifact home; exit 1 on a failed journey.
 `);
 
@@ -190,7 +190,6 @@ const closeFailure = Promise.withResolvers();
 const closeFailureMessage = "installed-journey durable close unavailable";
 
 try {
-    await run("npm", ["run", "build"], { cwd: root, maxBuffer: 128 * 1024 * 1024 });
     await Promise.all([
         mkdir(install, { recursive: true }),
         mkdir(terminalStage, { recursive: true }),

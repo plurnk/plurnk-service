@@ -56,6 +56,10 @@ describe("drill tier inventory", () => {
         const workspaceUnit = source.indexOf('phase("unit", "test:unit"');
         assert.ok(rootLint >= 0 && rootLint < workspaceLint, "npm test must gate root policy before workspace lint");
         assert.ok(rootUnit >= 0 && rootUnit < workspaceUnit, "npm test must gate root unit coverage before workspace unit");
+        const build = source.indexOf('phase("build", "build"');
+        assert.ok(build >= 0 && build < rootLint && build < rootUnit, "the one build precedes every phase that reads its output");
+        const hook = await readFile(new URL("../.githooks/pre-push", import.meta.url), "utf8");
+        assert.doesNotMatch(hook, /npm run build/u, "the hook leaves the build to the drill");
     });
 
     it("{§drill-scope} reports applicable and inapplicable workspaces explicitly", () => {

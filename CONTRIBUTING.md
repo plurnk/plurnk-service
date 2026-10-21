@@ -26,7 +26,7 @@ npm test
 |---|---|
 | `npm start` | Run the daemon from TypeScript source. |
 | `npm run build` | Build every publishable workspace from a clean `dist`. |
-| `npm test` | Deterministic lint, unit, and integration gate, then client conformance — needs an installed terminal client checkout (`npm ci` there). Defaults to `../plurnk`; `PLURNK_CLIENT_CHECKOUT` selects another location. |
+| `npm test` | One build of the platform, then the deterministic lint, unit and integration gate, then client conformance — needs an installed terminal client checkout (`npm ci` there). Defaults to `../plurnk`; `PLURNK_CLIENT_CHECKOUT` selects another location. |
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
 | `npm run test:live` | Long-running real-model wire assertions. |
 | `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
