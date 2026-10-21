@@ -25,6 +25,7 @@ const { default: Credentials } = await import("../../plurnk-core/src/server/Cred
 const FLOOR = {
     PLURNK_AUTH: "0", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
+    PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000",
 };
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures

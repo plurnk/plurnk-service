@@ -178,10 +178,8 @@ export default class RunHandler {
         const replyThreads = [input.threadId];
         let address = MessageAddress.owner(principal, input.threadId);
         if (workerId !== undefined) {
-            const worker = await this.#seam().readWorker({ workspaceId, identity: { id: workerId } });
-            if (worker === null) throw new Error("The bound worker is absent.");
-            replyThreads.push(worker.name, `${workspaceId}#${worker.name}`,
-                ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" }));
+            const { worker, threads } = await this.#replyThreads(workspaceId, workerId, input.threadId);
+            replyThreads.splice(0, replyThreads.length, ...threads);
             // {§agui-worker-owner} An address alias for this worker is not a different owner.
             if (replyThreads.some((threadId) => MessageAddress.owner(principal, threadId) === worker.owner)) address = worker.owner;
         }
@@ -241,10 +239,27 @@ export default class RunHandler {
         const held: Array<{ events: AguiEvent[]; interrupts: Interrupt[] }> = [];
         // {§agui-sync} The rows the Run's snapshot holds, by version: a later delivery of one is not built a second time.
         const replayed = new Map<unknown, string>();
+        // {§agui-history-advance} What the Run's client holds of messages since its latest snapshot, and the refresh that
+        // sends a fresh window once a turn ends with that past the ceiling.
+        let windowChars = 0;
+        let advance: (() => void) | null = null;
+        let refreshing = false;
+        const deliver = (events: AguiEvent[], interrupts: Interrupt[]): void => {
+            const delivered = RunHandler.#unreplayed(events, replayed);
+            emit(delivered, interrupts);
+            windowChars += RunHandler.#messageChars(delivered);
+            if (windowChars > this.#opts().historyPageChars && delivered.some(({ type }) => type === EventType.STEP_FINISHED)) advance?.();
+        };
         const routed = (events: AguiEvent[], interrupts: Interrupt[] = []): void => {
-            if (presented) return emit(RunHandler.#unreplayed(events, replayed), interrupts);
+            if (presented) return deliver(events, interrupts);
             const terminal = events.filter(({ type }) => type === EventType.RUN_ERROR || type === EventType.RUN_FINISHED);
             if (terminal.length === 0) return void held.push({ events, interrupts });
+            // {§agui-history-advance} A Run that ends while its window is read again ends with what reached it, in order.
+            if (refreshing) {
+                presented = true;
+                for (const batch of held.splice(0)) deliver(batch.events, batch.interrupts);
+                return deliver(events, interrupts);
+            }
             held.length = 0;
             emit(terminal);
         };
@@ -275,6 +290,36 @@ export default class RunHandler {
             inputRunId: input.runId,
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
+        // {§agui-history-window} A window's snapshot, and the rows whose messages it holds: a later delivery of one at the
+        // same version is not built a second time.
+        const present = (window: { events: AguiEvent[]; rows: ReadonlySet<unknown> }, rows: readonly LogEntryWire[]): void => {
+            emit(window.events);
+            replayed.clear();
+            for (const row of rows) if (window.rows.has(row.id)) replayed.set(row.id, RunHandler.#version(row));
+            windowChars = RunHandler.#messageChars(window.events);
+        };
+        // {§agui-history-advance} The bound worker's window again, from its log; what reaches the Run meanwhile follows it.
+        if (workerId !== undefined && notificationScope === "worker") {
+            advance = () => {
+                if (refreshing || finished) return;
+                refreshing = true;
+                presented = false;
+                void (async () => {
+                    const [history, inbox] = await Promise.all([this.#history(workspaceId, workerId), this.#seam().readInbox({ workspaceId, workerId })]);
+                    const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
+                    // A terminal that arrived meanwhile abandoned the refresh.
+                    if (finished || presented) return;
+                    present(this.#portal().replay(boundRun, history, inbox, subagents), [...history, ...subagents.flatMap(({ entries }) => entries)]);
+                    presented = true;
+                    for (const batch of held.splice(0)) deliver(batch.events, batch.interrupts);
+                })().catch((cause: unknown) => {
+                    const exactProblem = Problems.fromError(cause);
+                    if (exactProblem === null) console.error("AG-UI history refresh failed:", cause);
+                    this.#portal().failThread(boundRun, runErrorEvents(exactProblem ?? httpProblem("run-failed", 500, "The AG-UI Run failed unexpectedly.",
+                        { stage: "history", retryable: false })));
+                }).finally(() => { refreshing = false; });
+            };
+        }
         // {§agui-shutdown} Acquire the Run before committing headers or a heartbeat:
         // preparation may have crossed module closure.
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
@@ -336,10 +381,9 @@ export default class RunHandler {
             // {§agui-subagents} A Run that observes its delegation replays it too.
             const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
             if (finished) return;
-            emit(this.#portal().replay(boundRun, history, inbox, subagents));
             // {§agui-sync} What reached the Run while its log was read follows its snapshot, and a row the snapshot
             // already holds as it arrived is not built a second time.
-            for (const row of [...history, ...subagents.flatMap(({ entries }) => entries)]) replayed.set(row.id, RunHandler.#version(row));
+            present(this.#portal().replay(boundRun, history, inbox, subagents), [...history, ...subagents.flatMap(({ entries }) => entries)]);
             presented = true;
             for (const batch of held.splice(0)) emit(RunHandler.#unreplayed(batch.events, replayed), batch.interrupts);
             if (finished) return;
@@ -418,8 +462,7 @@ export default class RunHandler {
                 const inbox = await this.#seam().readInbox({ workspaceId, workerId });
                 const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
                 if (finished) return;
-                emit(this.#portal().replay(boundRun, history, inbox, subagents));
-                for (const row of [...history, ...subagents.flatMap(({ entries }) => entries)]) replayed.set(row.id, RunHandler.#version(row));
+                present(this.#portal().replay(boundRun, history, inbox, subagents), [...history, ...subagents.flatMap(({ entries }) => entries)]);
             }
             // {§agui-sync} What reached the Run meanwhile follows its snapshot, less the rows the snapshot already holds.
             presented = true;
@@ -471,7 +514,23 @@ export default class RunHandler {
         return admission === "new" ? last : null;
     }
 
-    // {§agui-snapshot} A snapshot is every message the live projection built, so it reads the whole log, page by page.
+    // {§agui-thread-address} The threads whose replies are speech in a worker's conversation: the thread itself, the
+    // worker's name and qualified address, and every reference to it.
+    async replyThreads(workspaceId: number, workerId: number, threadId: string): Promise<string[]> {
+        return (await this.#replyThreads(workspaceId, workerId, threadId)).threads;
+    }
+
+    async #replyThreads(workspaceId: number, workerId: number, threadId: string) {
+        const worker = await this.#seam().readWorker({ workspaceId, identity: { id: workerId } });
+        if (worker === null) throw new Error("The bound worker is absent.");
+        return { worker, threads: [threadId, worker.name, `${workspaceId}#${worker.name}`,
+            ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" })] };
+    }
+
+    // {§agui-history-page} A worker's whole log, which every snapshot and history page is cut from.
+    history(workspaceId: number, workerId: number): Promise<LogEntryWire[]> { return this.#history(workspaceId, workerId); }
+
+    // {§agui-snapshot} A snapshot is cut from every message the live projection built, so it reads the whole log, page by page.
     async #history(workspaceId: number, workerId: number): Promise<LogEntryWire[]> {
         const rows: LogEntryWire[] = [];
         for (let beforeId: number | undefined; ;) {
@@ -515,6 +574,17 @@ export default class RunHandler {
 
     static #version(row: { status_rx?: unknown; signal?: unknown; attrs?: unknown }): string {
         return JSON.stringify([row.status_rx ?? null, row.signal ?? null, row.attrs ?? null]);
+    }
+
+    // {§agui-history-advance} What events add to the messages a client holds: the serialized length of those that build
+    // messages, a snapshot's included.
+    static #messageChars(events: readonly AguiEvent[]): number {
+        let chars = 0;
+        for (const event of events) {
+            if (event.type === EventType.MESSAGES_SNAPSHOT || event.type.startsWith("TEXT_MESSAGE_") || event.type.startsWith("TOOL_CALL_")
+                || event.type.startsWith("REASONING_MESSAGE_")) chars += JSON.stringify(event).length;
+        }
+        return chars;
     }
 
     // {§agui-sync} One notification's events, without the parts of a row the snapshot already holds: none of them when it

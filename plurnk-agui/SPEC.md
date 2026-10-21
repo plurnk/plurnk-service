@@ -183,7 +183,7 @@ reasoning the same way: its message holds no text and names the reasoning's addr
 | Fact | Rule |
 | --- | --- |
 | The address | `<origin>/agui/<workspaceId>/<workerId>/log/L/T/S/OP`: the HTTP form of the row's log address ({§methods-log-coordinate}), at the configured public origin, else the one the Run's request reached ({§http-request-origin}); a turn's reasoning is `<origin>/agui/<workspaceId>/<workerId>/reasoning/L/T`, the HTTP form of `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
-| The fetch | `GET` at either address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers with `cache-control: no-store`: the body as `content-type: <mimetype>; charset=utf-8`, or the turn's reasoning, `ApplicationPort.readReasoning` ({§methods-reasoning-read}), as `text/plain; charset=utf-8`; a row that holds no body is `404 body-not-found`, a turn that reasoned none `404 reasoning-not-found`, and a worker outside the workspace is the daemon's own refusal |
+| The fetch | `GET` at either address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers with `cache-control: no-store`: the body as `content-type: <mimetype>; charset=utf-8`, or the turn's reasoning, `ApplicationPort.readReasoning` ({§methods-reasoning-read}), as `text/plain; charset=utf-8`; a message's row, an arrival's or a reply's, whose receipt holds no body answers its words as `text/plain; charset=utf-8` ({§agui-words-by-reference}); a row that holds no body is `404 body-not-found`, a turn that reasoned none `404 reasoning-not-found`, and a worker outside the workspace is the daemon's own refusal |
 
 ## §agui-projection The projection
 
@@ -258,7 +258,7 @@ or ACP plan is inferred from prose.
 | WAIT | Ordinary tool-call operation and durable row, its receipt the result; a WAIT that carries a body speaks it instead ({§agui-projection}) and never becomes a response |
 | SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
 | Completion | Standard run lifecycle without an invented message |
-| Replay | The live projection's messages, in log order {§agui-snapshot} |
+| Replay | The window of the live projection's messages, in log order {§agui-snapshot}, and the history before it page by page {§agui-history-window} |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
@@ -323,6 +323,7 @@ reasoning ({§agui-lifecycle-projection}), and a response row still precedes its
   | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§agui-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
   | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
   | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), a result it delivers for another row's call (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts, once: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). Its attributes travel without the bodies they hold: a file write's text before and after (`original`, `patched`, `patchedBytes`), its diff and edit receipt (`patch`, `editReceipt`), which its result holds, and a statement's body (`body`, `inputBody`), which its call's arguments hold. A call's own result carries none: the call it answers holds them. A gated call's settlement folds its settled facts onto the call ({§agui-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
+  | `MESSAGES_SNAPSHOT` | `history`: `{ older }`, the link to the page before its window ({§agui-history-window}) |
   | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews, its `attrs` without the bodies they hold, as a row's: the review body is its `body` |
   | A client interaction's `Interrupt` ({§agui-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
@@ -428,7 +429,7 @@ every other daemon surface.
 - §agui-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
   frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
   through its durable reference or explicit address and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
-  carries the bound worker's messages ({§agui-snapshot}) and then the Run's new message ({§agui-run-input})
+  carries the window of the bound worker's messages ({§agui-snapshot}, {§agui-history-window}) and then the Run's new message ({§agui-run-input})
   under a Run-owned identity. Client-claimed earlier history is not imported. A client already
   carrying any durable assistant identity receives no repeated snapshot. Pending proposals and client interactions remain durable while
   their operation owners are live and are presented as interrupts when the owning thread is
@@ -440,16 +441,16 @@ every other daemon surface.
   | --- | --- |
   | A passive observation (`forwardedProps.plurnk.control` absent or false) | resolves an existing worker under {§agui-thread-binding}, creates nothing and claims nothing |
   | An owner's control observation | the owner's session attaching: it binds, creates and claims as a message Run does ({§agui-action-binding}) |
-  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then an authoritative `MESSAGES_SNAPSHOT` of the daemon-owned log and the accepted messages the Worker has not yet observed ({§agui-snapshot}, {§agui-message-acceptance}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
+  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then the window's `MESSAGES_SNAPSHOT` of the daemon-owned log and the accepted messages the Worker has not yet observed ({§agui-snapshot}, {§agui-history-window}, {§agui-message-acceptance}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
   | A durable pending gate addressed to the Run's thread ({§agui-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not, unless the Run's client holds it ({§agui-held-interrupts}) |
   | An active Loop | remains observed through its terminal; an idle worker emits `RUN_FINISHED` |
 
 §agui-snapshot **A snapshot is the messages the live projection built**, in log order, under
 the live identities and with the same metadata ({§agui-plurnk-metadata}), each tool result after its call where the official reducer puts one that arrives
 live, so a client that applies it keeps every message it built live and a reloaded
-client rebuilds them. It is built from the bound worker's whole log, read page by page
-({§methods-log-read}), and each subagent run's under {§agui-subagents}, because AG-UI defines a snapshot as the
-complete set:
+client rebuilds them. It is cut from the bound worker's whole log, read page by page
+({§methods-log-read}), and each subagent run's under {§agui-subagents}: a client holds its window
+({§agui-history-window}) and fetches the history before it page by page ({§agui-history-page}):
 
 | Durable row | Snapshot messages |
 |---|---|
@@ -465,6 +466,59 @@ complete set:
 Interrupts are not snapshot messages: a pending gate is re-presented as an interrupt naming the call
 the snapshot holds, and a settled one's evidence is its operation's call and result. Transient reasoning of failed or rejected
 requests is not retained ({§agui-readable-reasoning}).
+
+## §agui-history The history window
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-history-window} | A snapshot holds the bound worker's newest loops. |
+| {§agui-history-page} | History before the window travels one page at a time. |
+| {§agui-history-advance} | A Run's window advances. |
+| {§agui-words-by-reference} | Words past the ceiling travel by reference. |
+<!-- /map -->
+
+§agui-history-window **A snapshot holds the bound worker's newest loops.** `MESSAGES_SNAPSHOT` carries the window of
+the complete projection ({§agui-snapshot}), and a client fetches what lies before it one page at a time
+({§agui-history-page}). No number fits every workload: both limits are the operator's settings.
+
+| Fact | Rule |
+| --- | --- |
+| The loops | The bound worker's newest `PLURNK_AGUI_HISTORY_LOOPS` loops, with every subagent message among them in log order; a conversation of fewer loops travels whole |
+| The cut | Between whole turns: a turn's reasoning, its calls and their results travel together, a result a later row delivered with its call. Only a turn larger than the ceiling is cut between its parts: an arrival, a reasoning message, speech, or a call with its results |
+| The ceiling | The snapshot, its envelope included, serializes to at most `PLURNK_AGUI_HISTORY_PAGE_CHARS`, and nothing overrides it: a part that alone passes it falls into history whole, a page of its own |
+| Accepted messages | The accepted messages the Worker has not yet observed travel last, always ({§agui-message-acceptance}) |
+| The link | `metadata.plurnk.history` is `{ older }`: the URL of the page before the window, or `null` when the window holds the whole conversation |
+| What the Run holds | The rows whose messages the window holds ({§agui-sync}); a later delivery of a row the window left in history is a row the client does not hold, and arrives whole |
+| AG-UI's reasoning rule | A snapshot that carries no reasoning message leaves the reasoning messages a client holds in place, as AG-UI defines `MESSAGES_SNAPSHOT`: a window without reasoning keeps what the client held, and the next window that carries reasoning replaces it |
+
+§agui-history-page **History before the window travels one page at a time.** `GET` at an `older` link,
+`<origin>/agui/<workspaceId>/<workerId>/messages?thread=<threadId>`, with `descendants=true` and
+`reasoning=link` when the Run's view has them and `before=<message id>` the page's cursor, is admitted by the same
+perimeter as a Run ({§agui-http-authorization}) and answers `{ final, messages, older }` as `application/json` with
+`cache-control: no-store`. A link without `thread` is 400 `history-thread-required`, a cursor that names no message
+of the conversation 404 `history-cursor-not-found`, and a worker outside the workspace the daemon's own refusal.
+
+| Fact | Rule |
+| --- | --- |
+| The view | The link reproduces its Run's: the thread whose messages are its client's own, whether it observes its delegation ({§agui-delegation-observation}), and whether it negotiated reasoning by link ({§agui-reasoning-link}) |
+| The page | The messages before the cursor (before the accepted messages when the link names none): the loop of the bound worker's newest message there, cut under the window's rules and ceiling, with the identities and metadata a complete snapshot gives them |
+| `final` | `true` when the page's loop has concluded and every call in it holds its result: such a page never changes. A page that is not final can gain a result after one of its calls; an attached client receives it live, as a row it does not hold, and a fetch of the same link holds it after its call |
+| `older` | The URL of the page before, or `null` at the conversation's beginning |
+
+A snapshot and its pages, followed back, reassemble the complete projection exactly: each message once, in order.
+
+§agui-history-advance **A Run's window advances.** Each Run begins with the current window, and a Run spans at
+most one loop of its worker. Within a Run, once a turn ends with what its client holds of messages since its latest
+snapshot past the ceiling, the daemon sends a fresh `MESSAGES_SNAPSHOT` of the window, read again from the log; what
+reaches the Run meanwhile follows it, less the parts of rows it holds.
+
+§agui-words-by-reference **Words past the ceiling travel by reference.** Model output is bounded by its request's
+output limit; an arrival's words, and a reply's, are bounded only by their sender. Words whose message would pass
+`PLURNK_AGUI_HISTORY_PAGE_CHARS` stream live as consecutive `TEXT_MESSAGE_CONTENT` deltas, each event within the
+ceiling and none ending inside a surrogate pair; on replay, and in a reply's live `TOOL_CALL_RESULT`, they are one
+`document` part whose `url` is the row's log address, `mimeType: "text/plain"` ({§agui-body-reference}). No message is
+shortened, omitted or invented. A client-authored statement rides `plurnk.ambient` whole ({§agui-ambient}).
 
 ## §agui-first-party-client-conformance First-party client conformance
 
@@ -1008,6 +1062,8 @@ address is the daemon's.
 | `PLURNK_AGUI_ALLOW_ORIGIN`         | AG-UI   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§agui-cors}). |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
+| `PLURNK_AGUI_HISTORY_LOOPS`        | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The bound worker's newest loops a snapshot holds ({§agui-history-window}). |
+| `PLURNK_AGUI_HISTORY_PAGE_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live text delta serializes to ({§agui-history-window}); keep it below what a client takes in one event. |
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 

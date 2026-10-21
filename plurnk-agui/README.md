@@ -48,9 +48,10 @@ READ of `reasoning://<worker>/…` is an operation receipt, not another reasonin
 
 A Run's `messages` are the client's copy of the conversation. A Run submits only a
 user message the conversation doesn't hold, and a Run with nothing new reattaches:
-the durable `MESSAGES_SNAPSHOT` restores the whole conversation without a prompt or
-model inference ({§agui-run-input}, {§agui-sync}). A stock `HttpAgent` therefore
-reattaches by running again with its history.
+the durable `MESSAGES_SNAPSHOT` restores the conversation's newest loops without a
+prompt or model inference, and `metadata.plurnk.history.older` links the history
+before them, one `GET` per page ({§agui-run-input}, {§agui-sync}, {§agui-history-window}).
+A stock `HttpAgent` therefore reattaches by running again with its history.
 
 Pending proposals and user interactions use standard AG-UI interrupts and
 resume Runs. Core decides their owner and disposition, including delegated

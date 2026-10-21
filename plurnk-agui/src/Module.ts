@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
 import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { BODY_ROUTE, REASONING_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
+import { BODY_ROUTE, HISTORY_ROUTE, REASONING_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
@@ -214,7 +214,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#seam = seam;
         this.#listener = () => seam.httpAddress();
         this.#registerActions();
-        this.#portal = new Portal(seam);
+        this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars });
         this.#portal.start();
         if (this.#opts.authenticates) {
             // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
@@ -296,6 +296,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             if (body !== null) return await this.#body(res, body);
             const reasoning = req.method === "GET" && req.url !== undefined ? REASONING_ROUTE.exec(req.url) : null;
             if (reasoning !== null) return await this.#reasoning(res, reasoning);
+            const history = req.method === "GET" && req.url !== undefined ? HISTORY_ROUTE.exec(req.url) : null;
+            if (history !== null) return await this.#historyPage(req, res, history);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
                 method: req.method ?? null,
                 path: req.url ?? null,
@@ -337,6 +339,13 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         const rows = await this.#seam.readLog({ workspaceId, workerId, loopSeq, turnSeq, sequence: position });
         const row = rows.find((entry) => entry.op === decodeURIComponent(op ?? ""));
         const receipt = row === undefined ? null : Module.#receipt(row.rx);
+        // {§agui-words-by-reference} A message's row holds its words: an arrival's, or a reply's.
+        const words = row?.op === "SEND" && !(isRecord(receipt) && typeof receipt.content === "string" && receipt.content.length > 0) ? Module.#words(row.tx) : "";
+        if (words.length > 0) {
+            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+            res.end(words);
+            return;
+        }
         if (!isRecord(receipt) || typeof receipt.content !== "string" || receipt.content.length === 0) {
             writeHttpProblem(res, httpProblem("body-not-found", 404, "The row holds no body at this address.", {
                 workspaceId, workerId, address: `log:///${loop}/${turn}/${sequence}/${op}`, stage: "routing", retryable: false,
@@ -361,6 +370,45 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
         res.end(reasoning);
+    }
+
+    // {§agui-history-page} A page of a worker's history, as the view its link names holds it: the loop before the cursor,
+    // or the newest when it names none. The perimeter has admitted the request; the daemon refuses a worker outside the
+    // workspace.
+    async #historyPage(req: IncomingMessage, res: ServerResponse, [, workspace, worker, rawQuery]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId] = [workspace, worker].map(Number);
+        const query = new URLSearchParams(rawQuery ?? "");
+        const threadId = query.get("thread");
+        if (threadId === null || threadId.length === 0) {
+            writeHttpProblem(res, httpProblem("history-thread-required", 400, "A history page names the thread whose view it holds.", {
+                workspaceId, workerId, stage: "request-validation", recovery: "Follow the `older` link a snapshot or page carries.", retryable: false,
+            }));
+            return;
+        }
+        // The daemon refuses a worker outside the workspace as it reads the worker's log.
+        const entries = await this.#runs.history(workspaceId, workerId);
+        const view = {
+            workspaceId, workerId, threadId, origin: this.#issuer(req), replyThreads: await this.#runs.replyThreads(workspaceId, workerId, threadId),
+            descendants: query.get("descendants") === "true", reasoningByLink: query.get("reasoning") === "link",
+        };
+        const page = await this.#portal.page(view, query.get("before"), entries, (descendant) => this.#runs.history(workspaceId, descendant));
+        if (page === null) {
+            writeHttpProblem(res, httpProblem("history-cursor-not-found", 404, "No message of this conversation holds the page's cursor.", {
+                workspaceId, workerId, before: query.get("before"), stage: "routing", recovery: "Follow the `older` link a snapshot or page carries.", retryable: false,
+            }));
+            return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(JSON.stringify(page));
+    }
+
+    // A SEND statement's words as stored: its body, the raw text when it is parsed.
+    static #words(tx: unknown): string {
+        const statement = typeof tx === "string" ? Module.#receipt(tx) : tx;
+        if (!isRecord(statement)) return "";
+        const { body } = statement;
+        if (typeof body === "string") return body;
+        return isRecord(body) && typeof body.raw === "string" ? body.raw : "";
     }
 
     // A row's result as stored: its JSON parsed, or nothing for a result that is not a receipt.

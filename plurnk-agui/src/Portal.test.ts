@@ -1495,7 +1495,7 @@ test("{§agui-subagents} {§agui-snapshot}: a snapshot replays each subagent's c
     const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", descendants: true, emit: (events) => seen.push(...events) });
     const logs = new Map([[20, [delegated(2, 20, 100).entry]], [30, [delegated(3, 30, 110).entry]]]);
     const subagents = await portal.subagentHistory(thread, async (workerId) => logs.get(workerId) ?? []);
-    const [snapshot, ...presented] = portal.replay(thread, [wireRow({ id: 1, sequence: 2, op: "WORK", attrs: { message: "message://worker-20/ab12" } })], undefined, subagents);
+    const { events: [snapshot, ...presented] } = portal.replay(thread, [wireRow({ id: 1, sequence: 2, op: "WORK", attrs: { message: "message://worker-20/ab12" } })], undefined, subagents);
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("the snapshot leads");
     assert.deepEqual(snapshot.messages.map((message) => [message.id, message.role, (message as { subagentRunId?: string }).subagentRunId]), [
         ["1/1/2", "assistant", undefined],

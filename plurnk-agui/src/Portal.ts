@@ -11,6 +11,7 @@ import { Problems, Validator, isRecord, selectWorkerLoop } from "@plurnk/plurnk-
 import { HttpProblemError } from "./action-results.ts";
 import { runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
+import HistoryWindow, { type HistoryLimits } from "./HistoryWindow.ts";
 import ProposalHitl, { type HitlDelivery, type HitlGate } from "./ProposalHitl.ts";
 import type {
     ApplicationInboxMessage,
@@ -21,7 +22,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { EventType, isLogEntryNotification, type AguiEvent } from "./types.ts";
-import type { Interrupt, ResumeEntry } from "@ag-ui/core";
+import type { Interrupt, Message, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
     workspaceId: number;
@@ -36,6 +37,10 @@ interface Thread {
     // {§agui-action-binding} The model worker this Run binds and reports the gauge of; null when it binds none.
     modelWorkerId: number | null;
     router: EventRouter;
+    // {§agui-history-page} What a page link reproduces of this Run's view: the origin its client reached, and whether it
+    // negotiated reasoning by link.
+    readonly origin: string;
+    readonly reasoningByLink: boolean;
     // A Run receives its events, and the interrupts that end it after them.
     emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void;
     threadId: string;
@@ -72,6 +77,24 @@ interface Thread {
 }
 
 export type NotificationScope = "worker" | "operation" | "result";
+
+// What a Run opens its thread with.
+interface ThreadArgs {
+    workspaceId: number;
+    workerId: number | null;
+    threadId: string;
+    origin: string;
+    replyThreads?: readonly string[];
+    owner?: string;
+    family?: string | null;
+    notificationScope: NotificationScope;
+    emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void;
+    modelWorkerId?: number | null;
+    inputRunId?: string;
+    resume?: ResumeEntry[];
+    descendants?: boolean;
+    reasoningByLink?: boolean;
+}
 
 interface WorkerBinding {
     readonly workerId: number;
@@ -158,8 +181,28 @@ export class ThreadHandle {
     }
 }
 
+/** {§agui-history-page} A view of a worker's conversation, as a Run with these properties holds it. */
+export interface HistoryView {
+    readonly workspaceId: number;
+    readonly workerId: number;
+    readonly threadId: string;
+    readonly replyThreads: readonly string[];
+    readonly origin: string;
+    readonly descendants: boolean;
+    readonly reasoningByLink: boolean;
+}
+
+/** {§agui-history-page} One page of history, as `GET` at a link answers it. */
+export interface HistoryPage {
+    readonly final: boolean;
+    readonly messages: readonly Message[];
+    readonly older: string | null;
+}
+
 export default class Portal {
     #seam: PortalPort;
+    // {§agui-history-window} What a snapshot and each page may hold.
+    readonly #history: HistoryLimits;
     // The thread behind each handle this Portal issued; a handle it did not issue binds nothing.
     readonly #issued = new WeakMap<ThreadHandle, Thread>();
     // A workspace may have several simultaneous AG-UI Runs. The worker/loop carried by
@@ -173,8 +216,10 @@ export default class Portal {
     #off: (() => void) | null = null;
     #stopped = false;
 
-    constructor(seam: PortalPort) {
+    // {§agui-history-window} Without limits, a snapshot holds the whole conversation: the module passes the panel's.
+    constructor(seam: PortalPort, history: HistoryLimits = { loops: Number.POSITIVE_INFINITY, chars: Number.POSITIVE_INFINITY }) {
         this.#seam = seam;
+        this.#history = history;
         this.#hitl = new ProposalHitl(
             seam,
             (workspaceId, delivery) => this.#enqueueDelivery(workspaceId, async () => this.#routeHitl(workspaceId, await delivery)),
@@ -554,7 +599,10 @@ export default class Portal {
     // {§agui-snapshot} {§agui-subagents} The subagent runs a snapshot replays: each descendant loop a call in view opened,
     // with the rows `history` reads from its worker's log.
     async subagentHistory(thread: ThreadHandle, history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<SubagentHistory> {
-        const bound = this.#bound(thread);
+        return this.#subagentParts(this.#bound(thread), history);
+    }
+
+    async #subagentParts(bound: Thread, history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<SubagentHistory> {
         if (!bound.descendants || bound.workerId === null) return [];
         bound.tree = await this.#descendantTree(bound.workspaceId, bound.workerId);
         const parts: Array<SubagentHistory[number]> = [];
@@ -820,7 +868,7 @@ export default class Portal {
     // owns notification routing; the edge owns the socket lifecycle. `workerId` is the Worker the Run observes,
     // null for one that observes none or, for an operation Run, until bindOperation; `modelWorkerId` is the model
     // worker the Run binds and renders, null when it binds none ({§agui-action-binding}).
-    openThread(args: { workspaceId: number; workerId: number | null; threadId: string; origin: string; replyThreads?: readonly string[]; owner?: string; family?: string | null; notificationScope: NotificationScope; emit: (events: AguiEvent[], interrupts?: Interrupt[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean; reasoningByLink?: boolean }): ThreadHandle {
+    openThread(args: ThreadArgs): ThreadHandle {
         if (this.#stopped) throw new HttpProblemError(serviceStoppingProblem());
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)?.continuation) ?? [];
@@ -828,6 +876,17 @@ export default class Portal {
         const restored = first !== undefined && candidates.every((candidate) => candidate === first)
             && first.workspaceId === args.workspaceId && first.owner === args.owner && first.threadId === args.threadId
             ? first : undefined;
+        const t = this.#compose(args, restored);
+        let set = this.#threads.get(args.workspaceId);
+        if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
+        set.add(t);
+        const handle = new ThreadHandle(args.threadId);
+        this.#issued.set(handle, t);
+        return handle;
+    }
+
+    // A thread as a Run with these properties holds it; nothing routes to it until a Run registers it.
+    #compose(args: ThreadArgs, restored?: InterruptContinuation): Thread {
         const continuation = restored?.state;
         const router = new EventRouter({
             threadId: args.threadId,
@@ -837,9 +896,10 @@ export default class Portal {
             modelWorkerId: args.modelWorkerId ?? null,
             workspaceId: args.workspaceId,
             reasoningByLink: args.reasoningByLink === true,
+            historyPageChars: this.#history.chars,
             ...(continuation === undefined ? {} : { continuation }),
         });
-        const t: Thread = {
+        return {
             workspaceId: args.workspaceId,
             owner: args.owner ?? null,
             family: args.family ?? null,
@@ -848,6 +908,8 @@ export default class Portal {
             notificationScope: args.notificationScope,
             modelWorkerId: args.modelWorkerId ?? null,
             router,
+            origin: args.origin,
+            reasoningByLink: args.reasoningByLink === true,
             emit: args.emit,
             threadId: args.threadId,
             inputRunId: args.inputRunId ?? String(args.workerId),
@@ -869,12 +931,6 @@ export default class Portal {
             gaugeRefresh: 0,
             held: new Map(),
         };
-        let set = this.#threads.get(args.workspaceId);
-        if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
-        set.add(t);
-        const handle = new ThreadHandle(args.threadId);
-        this.#issued.set(handle, t);
-        return handle;
     }
 
     closeRun(workspaceId: number, handle: ThreadHandle): void { this.#threads.get(workspaceId)?.delete(this.#bound(handle)); }
@@ -910,12 +966,78 @@ export default class Portal {
         ])];
     }
 
-    // {§agui-snapshot} {§agui-subagents} The conversation, then the subagent runs it holds, each presented.
-    replay(thread: ThreadHandle, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): AguiEvent[] {
-        return [
-            ...this.#bound(thread).router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows }))),
-            ...subagents.flatMap(({ subagent }) => Portal.#present(subagent)),
-        ];
+    // {§agui-snapshot} {§agui-subagents} {§agui-history-window} The conversation's window, then the subagent runs it holds,
+    // each presented; and the rows whose messages it holds.
+    replay(thread: ThreadHandle, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[] = [], subagents: SubagentHistory = []): { events: AguiEvent[]; rows: ReadonlySet<unknown> } {
+        const bound = this.#bound(thread);
+        const messages = Portal.#conversation(bound, entries, inbox, subagents);
+        const window = new HistoryWindow(messages, this.#history);
+        const older = (start: number): string | null => start === 0 || bound.workerId === null ? null
+            : Portal.#historyUrl(Portal.#view(bound), messages[start]?.id ?? null);
+        const start = window.window((from) => HistoryWindow.snapshotEnvelope(older(from)));
+        const held = messages.slice(start);
+        const runs = new Set(held.flatMap((message) => (message as { subagentRunId?: string }).subagentRunId ?? []));
+        return {
+            events: [
+                { type: EventType.MESSAGES_SNAPSHOT, messages: held, metadata: { plurnk: { history: { older: older(start) } } } },
+                ...subagents.filter(({ subagent }) => runs.has(subagent.runId)).flatMap(({ subagent }) => Portal.#present(subagent)),
+            ],
+            rows: Portal.#rowsOf(held),
+        };
+    }
+
+    // {§agui-snapshot} The complete projection a thread's snapshot is cut from.
+    static #conversation(thread: Thread, entries: readonly LogEntryWire[], inbox: readonly ApplicationInboxMessage[], subagents: SubagentHistory): Message[] {
+        const [snapshot] = thread.router.replay(entries, inbox, subagents.map(({ subagent, entries: rows }) => ({ translator: subagent.translator, entries: rows })));
+        if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) throw new TypeError("A replay builds one MESSAGES_SNAPSHOT.");
+        return snapshot.messages;
+    }
+
+    // {§agui-sync} The rows whose messages `messages` holds, by the durable id each part's facts name.
+    static #rowsOf(messages: readonly Message[]): ReadonlySet<unknown> {
+        const rows = new Set<unknown>();
+        const facts = (metadata: unknown): void => {
+            if (isRecord(metadata) && isRecord(metadata.plurnk) && metadata.plurnk.id !== undefined) rows.add(metadata.plurnk.id);
+        };
+        for (const message of messages) {
+            facts((message as { metadata?: unknown }).metadata);
+            if (message.role === "assistant") for (const call of message.toolCalls ?? []) facts(call.metadata);
+        }
+        return rows;
+    }
+
+    static #view(thread: Thread): HistoryView {
+        if (thread.workerId === null) throw new TypeError("A thread with history binds its worker.");
+        return { workspaceId: thread.workspaceId, workerId: thread.workerId, threadId: thread.threadId, replyThreads: [],
+            origin: thread.origin, descendants: thread.descendants, reasoningByLink: thread.reasoningByLink };
+    }
+
+    // {§agui-history-page} A page's address: the worker's messages before `before`, or its newest page, as this view holds them.
+    static #historyUrl(view: HistoryView, before: string | null): string {
+        const query = new URLSearchParams({ thread: view.threadId });
+        if (view.descendants) query.set("descendants", "true");
+        if (view.reasoningByLink) query.set("reasoning", "link");
+        if (before !== null) query.set("before", before);
+        return `${view.origin}/agui/${view.workspaceId}/${view.workerId}/messages?${query}`;
+    }
+
+    // {§agui-history-page} The page before `before` of the conversation `view` holds, or its newest when `before` is
+    // null; null when `before` names no message of it.
+    async page(view: HistoryView, before: string | null, entries: readonly LogEntryWire[], history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<HistoryPage | null> {
+        const thread = this.#compose({ workspaceId: view.workspaceId, workerId: view.workerId, threadId: view.threadId, origin: view.origin,
+            replyThreads: view.replyThreads, notificationScope: "worker", emit: () => {}, modelWorkerId: view.workerId,
+            descendants: view.descendants, reasoningByLink: view.reasoningByLink });
+        const inbox = await this.#seam.readInbox({ workspaceId: view.workspaceId, workerId: view.workerId });
+        const messages = Portal.#conversation(thread, entries, inbox, await this.#subagentParts(thread, history));
+        const window = new HistoryWindow(messages, this.#history);
+        const end = before === null ? window.pending : messages.findIndex(({ id }) => id === before);
+        if (end === -1) return null;
+        const older = (start: number): string | null => start === 0 ? null : Portal.#historyUrl(view, messages[start]?.id ?? null);
+        const cut = window.page(end, (from) => HistoryWindow.pageEnvelope(older(from)));
+        const loop = window.loopOf(cut);
+        const loops = loop === null ? [] : await this.#seam.listWorkerLoops({ workspaceId: view.workspaceId, workerId: view.workerId });
+        const concluded = loop === null || loops.some(({ sequence, terminatedAt }) => sequence === loop && terminatedAt !== null);
+        return { final: concluded && window.settled(cut), messages: messages.slice(cut.start, cut.end), older: older(cut.start) };
     }
 
     #finishThread(thread: Thread, events: AguiEvent[], result: unknown): void {

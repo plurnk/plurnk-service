@@ -1076,6 +1076,29 @@ test("{§agui-plurnk-metadata} a row's attributes travel without the bodies they
     assert.ok(![...live, snapshot, ambient].some((event) => JSON.stringify(event).includes("before")), "no part holds the file's text");
 });
 
+test("{§agui-words-by-reference} words past the ceiling stream live in deltas within it, and replay as a document at their row's log address", () => {
+    const ceiling = 400;
+    const translator = () => new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10, historyPageChars: ceiling });
+    // Surrogate pairs and characters JSON escapes, so a delta's size is not its length.
+    const words = `${"w".repeat(700)}${"\u{1F600}".repeat(60)}${"\"\n".repeat(120)}`;
+    const arrival = wireRow({ id: 1, origin: "_plurnk", op: "SEND", attrs: { kind: "message" }, source: "worker://helper", tx: { body: { raw: words } }, rx: { status: 200 } });
+    const reply = wireRow({ id: 2, turn_seq: 2, sequence: 1, origin: "_plurnk", op: "SEND", invocation: "log:///1/1/1/WORK", tx: { body: { raw: words } }, rx: { status: 200 } });
+    const live = translator().logEntry({ entry: arrival });
+    const deltas = live.filter((event): event is Extract<AguiEvent, { type: EventType.TEXT_MESSAGE_CONTENT }> => event.type === EventType.TEXT_MESSAGE_CONTENT);
+    assert.ok(deltas.length > 1, "the words arrive in several deltas");
+    assert.ok(deltas.every((event) => JSON.stringify(event).length <= ceiling), "each delta's event serializes within the ceiling");
+    assert.ok(deltas.every(({ delta }) => !/[\ud800-\udbff]$/u.test(delta)), "no delta ends inside a surrogate pair");
+    assert.equal(deltas.map(({ delta }) => delta).join(""), words, "joined, they are the words");
+    const document = (turn: number, sequence: number) => [{ type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/${turn}/${sequence}/SEND`, mimeType: "text/plain" } }];
+    const [snapshot] = translator().replay([arrival]);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.map(({ role, content }) => [role, content]), [["user", document(1, 1)]], "an arrival's words, by reference");
+    const delivered = translator().logEntry({ entry: reply }).find(({ type }) => type === EventType.TOOL_CALL_RESULT) as { content?: unknown } | undefined;
+    assert.deepEqual(delivered?.content, document(2, 1), "a reply's words, by reference, live and on replay alike");
+    const short = translator().logEntry({ entry: { ...arrival, tx: { body: { raw: "Short." } } } });
+    assert.deepEqual(short.filter(({ type }) => type === EventType.TEXT_MESSAGE_CONTENT).map((event) => (event as { delta: string }).delta), ["Short."], "words within the ceiling travel as they are");
+});
+
 test("{§agui-plurnk-metadata} a row's address is what it recorded: scheme, host, port, path, query and channel, or the bare path of a file", () => {
     assert.equal(Translator.addressOf(wireRow({ scheme: "https", hostname: "example.com", port: 8443, pathname: "/a", query: "b=1", fragment: "top" })), "https://example.com:8443/a?b=1#top");
     assert.equal(Translator.addressOf(wireRow({ scheme: "worker", hostname: null, pathname: "/plan.md" })), "worker:///plan.md", "an empty authority stays empty");

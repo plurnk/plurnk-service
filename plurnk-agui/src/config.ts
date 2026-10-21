@@ -21,6 +21,8 @@ export interface ModuleOptions {
     readonly allowOrigin?: string;
     readonly maxTurns?: number;
     readonly heartbeatMs?: number;
+    readonly historyLoops?: number;
+    readonly historyPageChars?: number;
     readonly env?: NodeJS.ProcessEnv;
 }
 
@@ -35,6 +37,10 @@ export interface ResolvedModuleOptions {
     readonly allowOrigin: string;
     readonly maxTurns?: number;
     readonly heartbeatMs: number;
+    /** {§agui-history-window} The bound worker's newest loops a snapshot holds. */
+    readonly historyLoops: number;
+    /** {§agui-history-window} The most characters one snapshot, page or live delta serializes to. */
+    readonly historyPageChars: number;
 }
 
 const CLIENT_KEY = /^PLURNK_AGUI_CLIENT_([A-Za-z0-9._-]+)$/u;
@@ -96,7 +102,7 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
 
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "accessTtlSec" | "refreshTtlSec", key: string, minimum: number): number =>
+    const number = (option: "accessTtlSec" | "refreshTtlSec" | "historyLoops" | "historyPageChars", key: string, minimum: number): number =>
         safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
     const clients = options.clients === undefined ? environmentClients(env) : options.clients;
     for (const [id, client] of Object.entries(clients)) {
@@ -123,5 +129,7 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
             0,
             MAX_TIMER_MS,
         ),
+        historyLoops: number("historyLoops", "PLURNK_AGUI_HISTORY_LOOPS", 1),
+        historyPageChars: number("historyPageChars", "PLURNK_AGUI_HISTORY_PAGE_CHARS", 1),
     };
 };
