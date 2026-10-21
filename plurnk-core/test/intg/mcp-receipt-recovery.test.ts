@@ -62,7 +62,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         const invocation = observed.find((row) => row.logPath.endsWith("/fixture"));
         assert.ok(invocation);
         assert.equal(invocation.lines, undefined);
-        assert.equal(invocation.path, undefined, "the invoked tool is already named by its paired operation");
+        assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
         assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === frame("fixture (inspect)", body)),
             "the complete invocation remains distinct from its output");
         const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/READ"));

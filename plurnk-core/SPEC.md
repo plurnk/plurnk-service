@@ -5916,7 +5916,7 @@ FORK is 404 `fork-unaddressed`.
 | --- | --- |
 | {§packet-wire-envelope} | The wire envelope |
 | {§emission-history} | Emission history: a turn's operations, then its results |
-| {§paired-receipt} | A paired receipt reports execution information, not a second copy of its request. |
+| {§paired-receipt} | A paired receipt names its operand and reports execution information, not a second copy of its request. |
 | {§packet-cache-monotone} | Default order and cache locality |
 | {§packet-extension-transform} | Trusted whole-list extension seam |
 | {§tokenomics} | Tokenomics: one room, one gauge, one rule |
@@ -6004,13 +6004,13 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 | Capacity | At the hard context wall, omit the selected history whole before suppressing result bodies or native parts ({§context-own-rows-fit}). Unpaired receipts regain their ordinary request facts and authored bodies. Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet changes. |
 | Accounting | The first paired receipt's displayed curation weight includes its assistant operation once. Packet accounting measures each actual message once. The emission row charges only its own record. |
 
-§paired-receipt A paired receipt reports execution information, not a second copy of its request.
+§paired-receipt A paired receipt names its operand and reports execution information, not a second copy of its request.
 
 | Information | Paired receipt | Unpaired receipt / explicit log READ |
 |---|---|---|
 | Authored body | Lives in the complete assistant operation only | Ordinary body projection |
-| Authored aside, scope, metadata, pattern and addressed path | Supplied by the operation | Self-describing request facts |
-| Resolved targets that differ from the request, including fan-out and COPY/MOVE glob operands | Retained on each concrete receipt | Retained |
+| Authored aside, scope, metadata and pattern | Supplied by the operation | Self-describing request facts |
+| Operand: the concrete addressed path, each COPY/MOVE operand and each fan-out target | On its H3 (`→ path`) | On its H3, with the pattern |
 | Retrieval and tool output, landed edit windows, errors, result extents, stream/resource identities and statuses | Retained | Retained |
 
 Suppression is packet-local. Durable requests, results, exact source and recorded historical packets remain complete.

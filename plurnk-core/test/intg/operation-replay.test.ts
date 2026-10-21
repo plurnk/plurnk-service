@@ -34,7 +34,8 @@ test("{§emission-history} {§paired-receipt}: a turn's content operations prece
     assert.deepEqual(records.map((record) => /\/(EDIT|READ|NOTE) /u.exec(record)![1]), ["EDIT", "READ", "NOTE"], "the turn's receipts follow it, in order");
     for (const record of records) {
         const op = /\/(EDIT|READ|NOTE) /u.exec(record)![1] as keyof typeof operations;
-        assert.doesNotMatch(record, /"aside"|→ worker:\/\/\/memo.txt/u);
+        assert.doesNotMatch(record, /"aside"/u, "the aside stays with the replayed operation");
+        if (op !== "NOTE") assert.match(record.split("\n")[0], / → worker:\/\/\/memo\.txt · \d+$/u, "the receipt names its operand");
         if (op === "NOTE") assert.doesNotMatch(record, /An authored memory/u);
         else assert.match(record, /Unique replacement\./u, "landed edit windows and READ output are returned evidence, not suppressed request bodies");
         const head = record.split("\n\n")[0];

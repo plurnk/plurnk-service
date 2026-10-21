@@ -75,7 +75,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const observed = await observe();
             const invocation = observed.rows.find((row) => row.logPath.endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");
-            assert.equal(invocation.path, undefined, "the paired operation names the invoked tool");
+            assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
             assert.ok(observed.replay.includes(frame("receiptfixture (inspect)", body)));
             assert.match(String(invocation.stream), /^receiptfixture:\/\/\/[a-f0-9]{8}$/u);
             assert.equal(invocation.lines, undefined, "argument bodies appear only in the complete operation, never as output");

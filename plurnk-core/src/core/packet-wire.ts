@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
-import { Problems, Validator, isRecord, isSafeInteger, type Notice, type ParsedPath, type PlurnkStatement, type RangeExtent, isExecutionOp } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, isRecord, isSafeInteger, type Notice, type ParsedPath, type RangeExtent, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import BodyPreview from "../content/body-preview.ts";
 import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
@@ -95,7 +95,6 @@ interface Packet { sections?: SectionView[] }
 interface MessageSections { role: PacketSectionDraft["slot"]; sections: SectionView[] }
 type WeighContent = (text: string) => number;
 export interface ReplayedOperation {
-    readonly statement: PlurnkStatement;
     readonly tokens: number;
 }
 interface RenderLogOptions {
@@ -747,16 +746,10 @@ export default class PacketWire {
                     : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
             ];
         });
-        const request = replay?.statement;
-        const requestedSelections = request === undefined ? [] : request.op === "COPY" || request.op === "MOVE"
-            ? [request.source, request.destination] : [request];
-        const resolved = paired && paths.some((candidate, index) => {
-            const selection = requestedSelections[index];
-            const requested = selection !== undefined && "target" in selection ? selection.target : null;
-            return candidate !== PacketWire.#operandPath(requested, options.projectRoot ?? null, requested);
-        });
+        // {§paired-receipt}: every receipt names its operand; a paired one leaves its pattern to the replayed operation.
+        const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ");
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
-            : !paired ? parts.join(" ") : resolved ? paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ") : null;
+            : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && typeof attrs.worker === "string") {
             meta.worker = attrs.worker;

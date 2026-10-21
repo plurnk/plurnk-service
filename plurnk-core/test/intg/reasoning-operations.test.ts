@@ -312,7 +312,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         const reads = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
         assert.equal(reads.length, 3, "authored occurrences are never deduplicated across reasoning and content");
-        assert.equal(reads.filter((row) => row.path === "sh:///fact").length, 2, "reasoning receipts retain the source; the content operation supplies its own");
+        assert.equal(reads.filter((row) => row.path === "sh:///fact").length, 3, "every receipt names its source, the paired content READ included");
         assert.equal(packetSection(packet, "emission-history"), read);
         for (const receipt of reads) {
             assert.equal(receipt.terminal, false, "a receipt retains the liveness at observation");

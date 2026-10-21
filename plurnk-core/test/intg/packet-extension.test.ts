@@ -73,7 +73,7 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
             if (section.slot !== "assistant") continue;
             const receipt: PacketSectionDraft = chronological[index + 1];
             assert.equal(receipt.slot, "user");
-            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ) · \d+/u, "every turn is followed by its receipts");
+            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ) → \S+ · \d+/u, "every turn is followed by its receipts, each naming its operand");
         }
         assert.equal(provider.received.length, 3);
         const last = provider.received[2];

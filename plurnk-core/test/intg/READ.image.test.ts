@@ -301,7 +301,7 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     ]);
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
-    assert.match(content, /### log:\/\/\/1\/2\/3\/READ · \d+\n/);
+    assert.match(content, /### log:\/\/\/1\/2\/3\/READ → logo\.png#bytes · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
     assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "```READ (logo.png#bytes) <1,16>\n```\n\n```NOTE\nInspect bytes.\n```"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
