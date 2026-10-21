@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import test from "node:test";
 import { Problems } from "@plurnk/plurnk-contracts";
 import HttpListener from "./HttpListener.ts";
@@ -122,3 +123,101 @@ test("{§http-host} close is idempotent and a closed listener reports no address
     await listener.close();
     assert.throws(() => listener.httpAddress(), /not bound/u);
 });
+
+// A request line a client wrote by hand: the target exactly as sent, which fetch would normalize or refuse.
+const raw = (port: number, target: string): Promise<{ status: string; body: string }> => new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => socket.write(`GET ${target} HTTP/1.1\r\nHost: listener\r\nConnection: close\r\n\r\n`));
+    let data = "";
+    socket.on("data", (chunk) => { data += chunk; });
+    socket.on("error", reject);
+    socket.on("close", () => {
+        const split = data.indexOf("\r\n\r\n");
+        const head = data.slice(0, split);
+        let body = data.slice(split + 4);
+        if (/^transfer-encoding: chunked$/imu.test(head)) {
+            let whole = "";
+            for (let size = Number.parseInt(body, 16); size > 0; size = Number.parseInt(body, 16)) {
+                const start = body.indexOf("\r\n") + 2;
+                whole += body.slice(start, start + size);
+                body = body.slice(start + size + 2);
+            }
+            body = whole;
+        }
+        resolve({ status: head.split("\r\n")[0] ?? "", body });
+    });
+});
+
+for (const target of ["http://[::1", "//[", "//listener:99999/"]) {
+    test(`{§http-host} a request target the listener cannot parse (${target}) answers 400 request-target-invalid, and the listener serves on`, async () => {
+        const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+        try {
+            const { port } = listener.httpAddress();
+            listener.registerHttpRoute("/", reply("root"));
+            listener.admit();
+            const answered = await raw(port, target);
+            assert.match(answered.status, /^HTTP\/1\.1 400 /u);
+            assert.deepEqual(JSON.parse(answered.body), Problems.create(
+                "http", "request-target-invalid", 400, "The request target is not a URL the listener can route.",
+                { stage: "routing", retryable: false },
+            ));
+            assert.equal((await get(port, "/")).body, "root");
+        } finally { await listener.close(); }
+    });
+}
+
+// {§http-host} How a mounted route can fail, and what its request receives: the daemon serves on in every case.
+const FAILING_ROUTES = {
+    "rejects before answering": {
+        handler: async () => { throw new Error("route failure"); },
+        answered: "problem",
+    },
+    "throws synchronously before answering": {
+        handler: () => { throw new Error("route failure"); },
+        answered: "problem",
+    },
+    "rejects after its response began": {
+        handler: async (_req: unknown, res: { writeHead(status: number): void; write(chunk: string): void }) => {
+            res.writeHead(200);
+            res.write("partial");
+            await new Promise((resolve) => setImmediate(resolve));
+            throw new Error("route failure");
+        },
+        answered: "cut",
+    },
+    "rejects after answering": {
+        handler: async (_req: unknown, res: { writeHead(status: number): void; end(body: string): void }) => {
+            res.writeHead(200);
+            res.end("whole");
+            throw new Error("route failure");
+        },
+        answered: "whole",
+    },
+} as const;
+for (const [failure, row] of Object.entries(FAILING_ROUTES)) {
+    test(`{§http-host} a route that ${failure} ends its own request, is reported, and the listener serves on`, async (t) => {
+        const reported = t.mock.method(console, "error", () => undefined);
+        const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+        try {
+            const { port } = listener.httpAddress();
+            listener.registerHttpRoute("/failing", row.handler);
+            listener.registerHttpRoute("/", reply("root"));
+            listener.admit();
+            const response = await fetch(`http://127.0.0.1:${port}/failing`);
+            if (row.answered === "problem") {
+                assert.equal(response.status, 500);
+                assert.deepEqual(await response.json(), Problems.create(
+                    "http", "route-failed", 500, "The mounted route failed while answering the request.",
+                    { stage: "route", retryable: false },
+                ));
+            } else if (row.answered === "cut") {
+                assert.equal(response.status, 200);
+                await assert.rejects(response.text(), "a response the route began is cut, never passed off as whole");
+            } else {
+                assert.equal(await response.text(), "whole", "an answer the route completed stands");
+            }
+            assert.ok(reported.mock.calls.some(({ arguments: [message] }) => String(message).startsWith("HTTP route failed: GET /failing")),
+                "the failure is reported with its request");
+            assert.equal((await get(port, "/")).body, "root");
+        } finally { await listener.close(); }
+    });
+}

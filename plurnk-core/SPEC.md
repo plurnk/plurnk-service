@@ -247,6 +247,8 @@ early ownership introduces neither traffic nor a close/rebind race.
 | A prefix | an absolute pathname; it claims itself and the subtree beneath it, never a longer sibling name; `/` is the root and receives whatever nothing more specific claimed when a module mounts it |
 | A request | goes to the longest mounted prefix |
 | No mounted handler | an admitted listener returns an HTTP `404 route-not-found` Problem; a root mount is not required |
+| A target it cannot parse | the listener answers `400 request-target-invalid` and routes nothing |
+| A failed handler | its request answers `500 route-failed`, or is cut where its response had begun; one already answered stands. The failure is reported with its request, and the listener serves on: a route's failure ends its own request, never the daemon |
 | Before activation | until daemon activation admits it the listener answers `503 service-starting` to every request: the service has not admitted its client interface |
 | Mounting | adapters claim their prefixes before setup and mount them at `start()`, after durable lifecycle recovery ({§module-http-mounts}) |
 
@@ -7358,6 +7360,8 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 |---|---:|---|
 | `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
+| `request-target-invalid` | 400 | The request target is not a URL the listener can route. |
+| `route-failed` | 500 | The mounted route failed while answering the request. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
 | `name-reserved` | 400 | '*alias*' is reserved in env entries and invocation overrides. Recovery: READ worker:///_plurnk/plurnk/env.md for supported configuration paths. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
