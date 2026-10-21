@@ -1767,7 +1767,7 @@ First path segment = provider name; rest = provider-native model id.
 | {§scheme-address} | Address resolution (RFC 3986 / WHATWG URL) |
 | {§scheme-address-namespace-fold} | A **namespace scheme** mechanically folds its authored authority into the canonical storage pathname and… |
 | {§scheme-address-network} | A **network resource** uses the shared schemes-layer normalization contract {§network-address}:… |
-| {§client-entry-address} | A client entry read resolves through the registered scheme's {§entry-address-resolution} and queries the… |
+| {§client-entry-address} | A client entry read acquires an address as exact READ does |
 | {§scheme-entry-matrix} | The scheme entry matrix: |
 | {§fs-namespace} | Filesystem coordinates are ordinary paths; internal addresses are project-relative. |
 | {§fs-namei} | Filesystem name resolution: resolve, then relativize, through one pathname resolver. |
@@ -1856,7 +1856,16 @@ meaning of an authored URI authority before any entry capability is exposed:
   folder/glob expansion belongs to entry namespaces, never an HTTP origin.
 - The **`file` class is the workspace filesystem** — a mount namespace with its own resolution and naming law, specified below.
 
-§client-entry-address A client entry read resolves through the registered scheme's {§entry-address-resolution} and queries the complete `(workspace, scheme, authority, pathname)` identity. Its observing Worker does not change the address or grant. Unknown Workers and absent resources return 404. The result is the contracts-owned {§entry-read-result}; storage columns do not cross the seam.
+§client-entry-address **A client entry read acquires an address as exact READ does** ({§universal-read-composition}), from its observing Worker's perspective, without READ's model-facing composition (line anchors, previews, the producer result) and without action evidence. Its observing Worker does not change the address or grant. Unknown Workers and absent resources return 404, a scheme's own refusal stands, and the result is the contracts-owned {§entry-read-result}; storage columns do not cross the seam.
+
+| Address | What the read returns |
+| --- | --- |
+| A representation core computes: `log:///`, `reasoning://`, `ops://`, `note://` | Its channels, with deliberate trimming applied ({§log-readable-projection}), each weighed as a stored channel is; no stored entry, so `entryId` is `null` |
+| A data entry of a core scheme | The stored entry, after the scheme's preparation ({§read-preparation}) |
+| A data entry of any other scheme | The stored entry; the scheme's preparation never runs, so a client read never fetches |
+| A message core retains, at the address that minted it | The stored entry, materialized from core's message store ({§message-source-scheme}) whichever module named it |
+
+The read resolves through the registered scheme's {§entry-address-resolution} and queries the complete `(workspace, scheme, authority, pathname)` identity.
 
 §scheme-entry-matrix **The scheme entry matrix:** resource addressability, intrinsic mutability and fork copying follow the resource's meaning, not an ownership ACL.
 
@@ -5565,7 +5574,7 @@ Core's behavior behind them.
 | §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextWorkerId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
 | §methods-reasoning-read Reads                     | `readReasoning({ workspaceId, workerId, loopSeq, turnSeq })` | Ownership-checks the worker, then returns the turn's readable reasoning source, `reasoning://<worker>/<loop>/<turn>` ({§turn-source-resources}): the text its first model operation row projects ({§methods-readable-reasoning}), or `null` when the turn reasoned none. |
-| §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
+| §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Acquires the selector from that worker's perspective ({§client-entry-address}) and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |

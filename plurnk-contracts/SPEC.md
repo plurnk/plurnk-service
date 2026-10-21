@@ -1624,9 +1624,9 @@ scope, or other persistence columns.
 
 | `ClientEntry` field | Contract                                                                                     |
 |---------------------|----------------------------------------------------------------------------------------------|
-| `entryId`           | Positive durable entry identifier                                                            |
+| `entryId`           | Positive durable entry identifier, or `null` for a representation core computes rather than stores |
 | `target`            | Client selector for the resolved entry, with any channel fragment removed                    |
-| `channels`          | Every channel for a full read, or exactly the selected channel for a sliced read             |
+| `channels`          | Every channel for a full read, or exactly the selected channel for a sliced read, by name; the empty name is the unnamed default channel of a scheme whose default is unnamed, a log row's |
 
 | Channel field   | Contract                                                                                                      |
 |-----------------|---------------------------------------------------------------------------------------------------------------|

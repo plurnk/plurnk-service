@@ -12,6 +12,7 @@ import type WorkspaceResidency from "./WorkspaceResidency.ts";
 import { daemonFailure } from "./daemon-results.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import type { ChannelRow } from "./Daemon.ts";
+import type { ComputedClientChannel } from "../core/Dispatcher.ts";
 
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result);
@@ -166,11 +167,11 @@ export default class ClientReads {
                         retryable: false },
                 ));
             }
-            const location = await this.#engine.resolveEntryAddress({
+            const acquired = await this.#engine.readClientEntry({
                 workspaceId,
                 workerId,
                 target: parsed });
-            if (location === null) {
+            if (acquired === null) {
                 return entryReadResult(Results.failure(
                     "daemon:entry",
                     "entry-not-found",
@@ -180,6 +181,11 @@ export default class ClientReads {
                     { target: args.target },
                 ));
             }
+            if (acquired.kind === "refused") {
+                return entryReadResult({ status: acquired.result.status, problem: acquired.result.problem, entry: null });
+            }
+            if (acquired.kind === "computed") return ClientReads.#computedRead(acquired.target, acquired.channels, channel, args.offset);
+            const location = acquired.address;
             const row = await this.#db.entry_read_lookup.get<{ id: number }>({
                 workspace_id: workspaceId,
                 scheme: location.scheme,
@@ -241,6 +247,49 @@ export default class ClientReads {
             releaseWorkspace?.();
             releaseCapabilities();
         }
+    }
+
+    // {§client-entry-address} {§entry-read-result} A representation core computes, read as a stored entry is: every
+    // channel, or the selected one from its offset in Unicode code points. It is no stored entry, so it names none.
+    static #computedRead(
+        target: string,
+        computed: Readonly<Record<string, ComputedClientChannel>>,
+        channel: string | undefined,
+        offset: number | undefined,
+    ): EntryReadResult {
+        if (channel !== undefined && !Object.hasOwn(computed, channel)) {
+            // The unnamed default channel is the one an address without a fragment reads; it has no name to offer.
+            const availableChannels = Object.keys(computed).filter((name) => name.length > 0);
+            return entryReadResult(Results.failure(
+                "daemon:entry",
+                "channel-not-found",
+                404,
+                `Channel #${channel} does not exist at ${target}.`,
+                { entry: null },
+                {
+                    target,
+                    requestedChannel: channel,
+                    availableChannels,
+                    ...(availableChannels.length === 0
+                        ? {}
+                        : { recovery: `Use one of the available channels: ${availableChannels.map((available) => `#${available}`).join(", ")}.` }),
+                    retryable: false },
+            ));
+        }
+        const selected = Object.entries(computed).filter(([name]) => channel === undefined || name === channel);
+        const channels: Record<string, ClientEntryChannel> = {};
+        for (const [name, { content, mimetype, state, weight }] of selected) {
+            const points = Array.from(content);
+            const from = Math.min(offset ?? 0, points.length);
+            channels[name] = {
+                content: from === 0 ? content : points.slice(from).join(""),
+                contentOffset: from,
+                contentLength: points.length,
+                mimetype,
+                weight,
+                state };
+        }
+        return entryReadResult({ status: 200, entry: { entryId: null, target, channels } });
     }
 
 

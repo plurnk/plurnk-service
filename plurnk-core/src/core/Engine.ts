@@ -26,7 +26,7 @@ import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import Dispatcher from "./Dispatcher.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
-import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
+import type { ClientEntryAcquisition, DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import TurnRunner from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "./provider-accounting.ts";
@@ -556,12 +556,13 @@ export default class Engine {
         return this.#dispatcher.capabilityProjection(workspaceId);
     }
 
-    async resolveEntryAddress(context: {
+    // {§client-entry-address}
+    readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
         workerId: number;
-    }): Promise<ResolvedClientEntryAddress | null> {
-        return this.#dispatcher.resolveEntryAddress(context);
+    }): Promise<ClientEntryAcquisition | null> {
+        return this.#dispatcher.readClientEntry(context);
     }
 
     // {§connection-lifecycle} A client operation's loop carries its own cancellation scope, as a model loop's does;

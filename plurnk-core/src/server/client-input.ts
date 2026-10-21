@@ -191,14 +191,15 @@ export default class ClientInput {
         return ClientInput.assertSelector(context, "childSelector", value);
     }
 
+    // {§entry-read-result} The empty name selects an unnamed default channel, a log row's.
     static assertOptionalChannel(context: string, channel: unknown): string | undefined {
         if (channel === undefined) return undefined;
-        if (typeof channel !== "string" || channel.length === 0) {
+        if (typeof channel !== "string") {
             ClientInput.#invalid(
                 context,
                 "channel-invalid",
-                "channel is not a non-empty string.",
-                { field: "channel", recovery: "Provide a non-empty channel name." },
+                "channel is not a string.",
+                { field: "channel", recovery: "Provide a channel name." },
             );
         }
         return channel;

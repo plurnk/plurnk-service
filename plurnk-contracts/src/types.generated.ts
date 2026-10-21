@@ -711,8 +711,14 @@ entry: null
 })
 
 export interface ClientEntry {
-entryId: number
+/**
+ * The stored entry's durable identifier, or null for a representation core computes.
+ */
+entryId: (number | null)
 target: string
+/**
+ * Each channel by name; the empty name is the unnamed default channel of a scheme whose default is unnamed.
+ */
 channels: {
 [k: string]: ClientEntryChannel
 }

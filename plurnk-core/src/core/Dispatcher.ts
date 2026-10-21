@@ -21,18 +21,20 @@ import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-t
 import CapabilityResolver from "./CapabilityResolver.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
+import DbMessageCaps from "./caps/DbMessageCaps.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type LoopLifecycle from "./LoopLifecycle.ts";
 import Results, { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
-import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { CoreSchemeAdapterBase, coreRepresentationProvider, type ExecSource } from "./CoreSchemeServices.ts";
+import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import BodyPreview from "../content/body-preview.ts";
+import LineSelection from "../content/line-selection.ts";
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
@@ -105,6 +107,21 @@ export interface ResolvedClientEntryAddress {
     readonly pathname: string;
     readonly target: string;
 }
+
+// {§client-entry-address} One channel of a representation core computes, as a client reads it.
+export interface ComputedClientChannel {
+    readonly content: string;
+    readonly mimetype: string;
+    readonly state: StoredEntryData["channels"][string]["state"];
+    readonly weight: number;
+}
+
+// {§client-entry-address} What a client read acquires: a stored entry's address, the channels of a representation core
+// computes, or the scheme's refusal.
+export type ClientEntryAcquisition =
+    | { readonly kind: "stored"; readonly address: ResolvedClientEntryAddress }
+    | { readonly kind: "computed"; readonly target: string; readonly channels: Readonly<Record<string, ComputedClientChannel>> }
+    | { readonly kind: "refused"; readonly result: DispatchResult };
 
 export type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
@@ -950,35 +967,68 @@ export default class Dispatcher {
         return this.#capabilities.projection(workspaceId);
     }
 
-    // Resolve the client selector through the owning scheme before persistence
-    // is consulted. Public schemes choose a semantic owner; core-owned authority
-    // schemes may return the already-authorized principal key.
-    async resolveEntryAddress(context: {
+    // {§client-entry-address} A client read acquires `target` as exact READ does, from the worker's perspective: the
+    // representation a core scheme computes, or a data entry. Only core's own acquisition runs for it: a core scheme's
+    // preparation, and the materialization of a message core retains, whichever module minted its address
+    // ({§message-source-scheme}); never an extension's. Null for a target no data or computing scheme claims.
+    async readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
         workerId: number;
-    }): Promise<ResolvedClientEntryAddress | null> {
+    }): Promise<ClientEntryAcquisition | null> {
         const { target, workspaceId, workerId } = context;
-        const coreCtx = this.#buildSchemeCtx({
-            workspaceId,
-            workerId,
-            loopId: 0,
-            turnId: 0,
-            origin: "client",
+        const routedScheme = schemeNameOf(target);
+        if (routedScheme === null) return null;
+        const coreCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId: 0, turnId: 0, origin: "client" });
+        return ResourceBindings.using(this.#schemes, coreCtx, async (ctx) => {
+            try {
+                const binding = await ResourceBindings.resolve(target, ctx);
+                if (binding === undefined) return null;
+                const neutral = target.kind === "url"
+                    ? { ...target, raw: renderTarget({ ...target, fragment: null }) ?? target.raw, fragment: null }
+                    : target;
+                const computing = coreRepresentationProvider(binding.handler);
+                if (computing !== null) {
+                    const resolved = await computing.resolveCoreRepresentation(neutral, ctx);
+                    if ("result" in resolved) return resolved.result.status >= 400 ? { kind: "refused", result: resolved.result } : null;
+                    return { kind: "computed", target: resolved.identity ?? renderAuthoredTarget(neutral), channels: this.#computedChannels(resolved) };
+                }
+                if (binding.manifest.category !== "data") return null;
+                const handler = binding.handler;
+                const coreScheme = this.#schemes.coreOwns(routedScheme);
+                const resolved = coreScheme
+                    ? await this.#prepareDataRepresentation({ target, metadata: null, routedScheme, handler, manifest: binding.manifest, ctx, publishedChannel: null })
+                    : await this.#resolveDataEntryAddress({ target, routedScheme, handler, manifest: binding.manifest, ctx });
+                if (resolved.result !== null && resolved.result.status >= 400) return { kind: "refused", result: resolved.result };
+                if (resolved.address === null) return null;
+                if (!coreScheme) {
+                    const retained = await new DbMessageCaps(ctx, routedScheme).prepare(neutral.raw);
+                    if (retained.status >= 400 && retained.status !== 404) return { kind: "refused", result: retained };
+                }
+                const rendered = resolved.address.scheme === "file"
+                    ? entryAddress("file", "", resolved.address.pathname, await this.#workspaceRoot(workspaceId))
+                    : renderAuthoredTarget(neutral);
+                return { kind: "stored", address: {
+                    scheme: resolved.address.scheme,
+                    authority: resolved.address.authority,
+                    pathname: resolved.address.pathname,
+                    target: rendered,
+                } };
+            } catch (error) {
+                if (error instanceof OperationFailureError) return { kind: "refused", result: error.result };
+                throw error;
+            }
         });
-        const resolved = await this.bindEntryAddress(target, coreCtx);
-        if (resolved === null) return null;
-        if (resolved.address === null) return null;
+    }
 
-        const rendered = resolved.address.scheme === "file"
-            ? entryAddress("file", "", resolved.address.pathname, await this.#workspaceRoot(workspaceId))
-            : renderAuthoredTarget({ ...target, fragment: null });
-        return {
-            scheme: resolved.address.scheme,
-            authority: resolved.address.authority,
-            pathname: resolved.address.pathname,
-            target: rendered,
-        };
+    // {§client-entry-address} {§log-readable-projection} A computed representation's channels as a client reads them:
+    // deliberate trimming applied, each weighed as a stored channel is.
+    #computedChannels(resolved: { readonly representation: StoredEntryData; readonly visibleLines?: Readonly<Record<string, readonly number[]>> }): Record<string, ComputedClientChannel> {
+        return Object.fromEntries(Object.entries(resolved.representation.channels).map(([name, { content, mimetype, state }]) => {
+            const retained = resolved.visibleLines?.[name];
+            const visible = retained === undefined ? content : LineSelection.retain(content, retained).content;
+            return [name, { content: visible, mimetype, state, weight: visible.length === 0 ? 0 : this.#weighContent(visible) }];
+        }));
     }
 
     async bindEntryAddress(

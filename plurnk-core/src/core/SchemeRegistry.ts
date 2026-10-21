@@ -108,13 +108,14 @@ export default class SchemeRegistry {
         this.#registerClaimed(name, handler, claim);
     }
 
+    static readonly #CORE_CLAIM: NamespaceClaim = {
+        key: "core:@plurnk/plurnk-service",
+        label: "core package '@plurnk/plurnk-service'",
+        reserved: true,
+    };
+
     #registerBuiltIn(name: string, handler: RegisteredScheme): void {
-        const claim: NamespaceClaim = {
-            key: "core:@plurnk/plurnk-service",
-            label: "core package '@plurnk/plurnk-service'",
-            reserved: true,
-        };
-        this.#registerClaimed(name, handler, claim);
+        this.#registerClaimed(name, handler, SchemeRegistry.#CORE_CLAIM);
     }
 
     #registerClaimed(name: string, handler: RegisteredScheme, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
@@ -393,6 +394,11 @@ export default class SchemeRegistry {
     // address targets. Drives the manifest's address-keyed channels (note 4).
     defaultChannelFor(scheme: string, workspaceId?: number): string {
         return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
+    }
+
+    // {§client-entry-address} Whether core itself registered `name`: a core scheme, whose acquisition is core's own.
+    coreOwns(name: string): boolean {
+        return this.#claims.get(name)?.key === SchemeRegistry.#CORE_CLAIM.key;
     }
 
     async #requiredDocs(): Promise<readonly { name: string; scheme: string | null; content: string }[]> {

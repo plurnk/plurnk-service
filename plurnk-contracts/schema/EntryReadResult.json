@@ -36,7 +36,8 @@
             "additionalProperties": false,
             "properties": {
                 "entryId": {
-                    "type": "integer",
+                    "description": "The stored entry's durable identifier, or null for a representation core computes.",
+                    "type": ["integer", "null"],
                     "minimum": 1,
                     "maximum": 9007199254740991
                 },
@@ -45,8 +46,8 @@
                     "minLength": 1
                 },
                 "channels": {
+                    "description": "Each channel by name; the empty name is the unnamed default channel of a scheme whose default is unnamed.",
                     "type": "object",
-                    "propertyNames": { "minLength": 1 },
                     "additionalProperties": { "$ref": "#/$defs/channel" }
                 }
             }
