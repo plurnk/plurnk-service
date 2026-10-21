@@ -13,13 +13,13 @@ import ContentUse from "../core/ContentUse.ts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import MessageResources from "../core/MessageResources.ts";
-import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
+import type { SchemeResult } from "../core/results.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import ClientInput from "./client-input.ts";
 import type { DrainInjectionArgs, DrainInjectionResult, TurnCeilingSelection } from "./DrainSupervisor.ts";
 import type Functionality from "./Functionality.ts";
 import { routeForSpec } from "./model-route.ts";
-import type WorkerModels from "./WorkerModels.ts";
+import { type default as WorkerModels, providerNotConfigured } from "./WorkerModels.ts";
 
 type EngineCallbacks = ConstructorParameters<typeof Engine>[0];
 type InjectWorker = NonNullable<EngineCallbacks["injectWorker"]>;
@@ -71,19 +71,7 @@ export default class MessageDelivery {
         // A continuation's omitted selector must still keep the loop's durable provider.
         const selectorExplicit = selector !== undefined;
         const generationPolicy = await this.#workerModels.resolveWorkerModel(workerId, selector);
-        if (generationPolicy === null) {
-            throw new OperationFailureError(Results.failure(
-                "daemon:provider",
-                "not-configured",
-                501,
-                "No provider is configured for this worker.",
-                {},
-                {
-                    stage: "provider-selection",
-                    recovery: "Select a configured model provider.",
-                    retryable: false },
-            ));
-        }
+        if (generationPolicy === null) throw providerNotConfigured();
         const { providerSpec: selection, effort } = generationPolicy;
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#workerModels.resolveWorkerSpawnModel(workerId, childSelector);

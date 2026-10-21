@@ -58,7 +58,7 @@ export default class OperatorConfig {
             "# PLURNK_MCP_brave={\"name\":\"brave\",\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"-y\",\"@brave/brave-search-mcp-server@2.1.0\"]}",
             "# PLURNK_MCP_brave_TOOLS=[\"brave_web_search\",\"brave_news_search\"]",
             "# PLURNK_MCP_brave_ENABLED=0",
-            "# File membership definitions ride the same shape ({§members-configuration}):",
+            "# File membership definitions take the same form:",
             "# PLURNK_MEMBERS_docs=docs/**",
             "# PLURNK_MEMBERS_no_locks=!**/*.lock",
             "# PLURNK_MEMBERS_no_locks_ENABLED=0",

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// oxlint-disable-next-line import/no-unassigned-import -- {§service-runtime-floor}: it must evaluate before every later import
+import "./core/runtime-guard.ts";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";

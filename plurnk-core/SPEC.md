@@ -136,6 +136,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | {§service-worker-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover AG-UI, A2A, MCP,… |
 | {§service-package-exports} | Package export surface |
 | {§startup-admission} | Startup admission |
+| {§service-runtime-floor} | Before any other module of the `plurnk-service` executable evaluates, it compares the running Node.js with… |
 | {§startup-listener-admission} | The production service binds its one listener ({§http-host}) before creating, opening, replacing, rotating,… |
 | {§http-host} | The HTTP host is the daemon's one transport. |
 | {§http-request-origin} | A request's origin is the address the caller used, and what the daemon advertises follows it. |
@@ -224,6 +225,11 @@ flowchart LR
     PROVIDER -. failure .-> REPAIR["Return selection failure<br/>client remains available"]
     DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
 ```
+
+§service-runtime-floor Before any other module of the `plurnk-service` executable evaluates,
+it compares the running Node.js with the floor its package declares in `engines.node`. Below it,
+one stderr line names both versions and the process exits 1, before a listener is bound or
+anything durable is touched.
 
 §startup-listener-admission The production service binds its one listener
 ({§http-host}) before creating, opening, replacing, rotating, migrating, or
@@ -7351,7 +7357,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `workspace-not-found` | 404 | Workspace *id* does not exist. |
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
-| `not-configured` | 503 | No provider is configured for this worker. |
+| `not-configured` | 501 | No provider is configured for this worker. Recovery: Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as the service default; that provider's API key must be in the service's environment. |
 | `model-worker-required` | 404 | No model worker exists for prompt injection (or to fork). |
 | `name-conflict` | 409 | The worker name is taken. Recovery: Choose another worker name. |
 | `offset-channel-required` | 400 | Recovery: Select the channel to read from the offset. |

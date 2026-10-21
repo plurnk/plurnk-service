@@ -32,6 +32,20 @@ type LoopGenerationPolicy = {
 // What an injection asks of a loop, by the supervisor's own declaration.
 type InjectionCompatibilityArgs = Parameters<ConstructorParameters<typeof DrainSupervisor>[0]["assertInjectionCompatibility"]>[0];
 
+// {§problems-functionality} A worker with no model to run, whether a selection or a loop found none.
+export const providerNotConfigured = (): OperationFailureError => new OperationFailureError(Results.failure(
+    "daemon:provider",
+    "not-configured",
+    501,
+    "No provider is configured for this worker.",
+    {},
+    {
+        stage: "provider-selection",
+        recovery: "Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as the service default; that provider's API key must be in the service's environment.",
+        retryable: false,
+    },
+));
+
 export default class WorkerModels {
     readonly #db: Db;
     // The boot provider, whose input capacity the active alias reports ({§agui-provider-routes}).
@@ -468,16 +482,7 @@ export default class WorkerModels {
             }
         }
         const policy = await this.resolveWorkerModel(workerId, selector, chosen);
-        if (policy === null) {
-            throw new OperationFailureError(Results.failure(
-                "daemon:provider",
-                "not-configured",
-                501,
-                "No provider is configured for this worker.",
-                {},
-                { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
-            ));
-        }
+        if (policy === null) throw providerNotConfigured();
         return projectModelRoute(policy.providerSpec, policy.effort, policy.effortSource);
     }
 
