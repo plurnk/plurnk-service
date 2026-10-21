@@ -1050,6 +1050,32 @@ test("{§agui-plurnk-metadata} a row's facts ride once, on what it builds: its c
         "the snapshot holds the same metadata on the same parts");
 });
 
+test("{§agui-plurnk-metadata} a row's attributes travel without the bodies they hold, on every part it builds and riding whole, live and on replay", () => {
+    // A file write's text before and after, its diff and edit receipt; a statement's body; an execution's input.
+    const bodies = { original: "before\n", patched: "after\n", patchedBytes: { 0: 97 }, patch: "@@ -1 +1 @@\n-before\n+after\n",
+        editReceipt: { effects: [] }, body: "Say hello.", inputBody: "y\n" };
+    const kept = { path: "notes.md", mimetype: "text/markdown", worker: "worker://helper", message: "message://helper/ab12" };
+    const rows = [
+        wireRow({ id: 1, sequence: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"), attrs: { ...kept, ...bodies }, rx: { status: 200, body: "helper" } }),
+        wireRow({ id: 2, turn_id: 2, turn_seq: 2, sequence: 1, origin: "_plurnk", op: "READ", source: "worker://helper", tx: null,
+            attrs: { kind: "loop_termination", ...bodies }, invocation: "log:///1/1/1/WORK", rx: { status: 200, resource: "ops://helper/1", content: "hello" } }),
+    ];
+    const attrsOf = (metadata: unknown) => (metadata as { plurnk?: { attrs?: unknown } } | undefined)?.plurnk?.attrs;
+    const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10 });
+    const live = rows.flatMap((row) => tr.logEntry({ entry: row }));
+    const carried = (type: string) => live.filter((event) => event.type === type).map((event) => attrsOf((event as { metadata?: unknown }).metadata));
+    assert.deepEqual(carried(EventType.TOOL_CALL_START), [kept], "a call's attributes keep their facts and drop each body");
+    assert.deepEqual(carried(EventType.TOOL_CALL_RESULT), [{ kind: "loop_termination" }], "so do those of a result another row delivers");
+    const [snapshot] = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1", modelWorkerId: 10 }).replay(rows);
+    if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.flatMap((message) => "toolCalls" in message && message.toolCalls !== undefined
+        ? message.toolCalls.map(({ metadata }) => attrsOf(metadata)) : message.role === "tool" && message.metadata !== undefined ? [attrsOf(message.metadata)] : []),
+        [kept, { kind: "loop_termination" }], "the snapshot holds the same attributes on the same parts");
+    const [ambient] = tr.logEntry({ entry: { ...rows[0], id: 9, worker_id: 5 } });
+    assert.deepEqual(ambient?.type === EventType.CUSTOM && (ambient.value as { attrs?: unknown }).attrs, kept, "a row riding whole drops them too");
+    assert.ok(![...live, snapshot, ambient].some((event) => JSON.stringify(event).includes("before")), "no part holds the file's text");
+});
+
 test("{§agui-plurnk-metadata} a row's address is what it recorded: scheme, host, port, path, query and channel, or the bare path of a file", () => {
     assert.equal(Translator.addressOf(wireRow({ scheme: "https", hostname: "example.com", port: 8443, pathname: "/a", query: "b=1", fragment: "top" })), "https://example.com:8443/a?b=1#top");
     assert.equal(Translator.addressOf(wireRow({ scheme: "worker", hostname: null, pathname: "/plan.md" })), "worker:///plan.md", "an empty authority stays empty");

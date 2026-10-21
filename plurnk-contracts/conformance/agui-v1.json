@@ -270,7 +270,7 @@
                             "address": null,
                             "signal": null,
                             "status": 202,
-                            "attrs": { "runtime": "sh", "body": "printf ok" },
+                            "attrs": { "runtime": "sh" },
                             "state": "proposed"
                         }
                     }

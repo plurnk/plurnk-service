@@ -39,6 +39,9 @@ import { Validator, isRecord, isSafeInteger, lifecycleOfLoopStatus, type Applica
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 // {§agui-body-reference} A receipt's facts only the model uses: the line anchors it edits by.
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
+// {§agui-plurnk-metadata} A row's attributes that hold a body: a file write's text before and after, its diff and its edit
+// receipt, which its result holds, and a statement's body, which its call's arguments hold.
+const BODY_ATTRS: ReadonlySet<string> = new Set(["original", "patched", "patchedBytes", "patch", "editReceipt", "body", "inputBody"]);
 // A row whose result may hold a body ({§agui-body-reference}).
 type BodyRow = { op?: unknown; tx?: unknown; rx?: unknown; worker_id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown };
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
@@ -768,6 +771,7 @@ export default class Translator {
             : {};
         return {
             ...row,
+            ...("attrs" in row ? { attrs: Translator.#leanAttrs(row.attrs) } : {}),
             ...(lean === null ? {} : { rx: lean.receipt, ...(lean.body === null ? {} : { body: { url: lean.body.url, ...lean.body.mimeType } }) }),
             ...carried,
         };
@@ -806,7 +810,13 @@ export default class Translator {
     // and on snapshot.
     static #rowMetadata(e: RowFacts): { plurnk: Record<string, unknown> } {
         return { plurnk: { id: e.id, coordinate: Translator.idOf(e), worker: e.worker_id, origin: e.origin, op: e.op, source: e.source,
-            address: Translator.addressOf(e), signal: e.signal, status: e.status_rx, attrs: e.attrs, state: e.state } };
+            address: Translator.addressOf(e), signal: e.signal, status: e.status_rx, attrs: Translator.#leanAttrs(e.attrs), state: e.state } };
+    }
+
+    // {§agui-plurnk-metadata} A row's attributes without the bodies they hold.
+    static #leanAttrs(attrs: unknown): unknown {
+        const parsed = Translator.#parsed(attrs);
+        return isRecord(parsed) ? Object.fromEntries(Object.entries(parsed).filter(([key]) => !BODY_ATTRS.has(key))) : attrs;
     }
 
     // {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a
