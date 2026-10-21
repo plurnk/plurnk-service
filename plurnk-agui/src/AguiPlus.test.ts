@@ -75,7 +75,11 @@ const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInt
 test("{§agui-proposal-resolve} a gate's interrupt is a tool approval of no call of its own, carrying Core's projection and its deadline when it has one", () => {
     const untimed = proposalInterrupt(proposal());
     assert.equal(untimed.reason, "tool_call");
-    assert.deepEqual(untimed.metadata, { plurnk: { proposal: proposal() } }, "what the reviewer reviews, as Core projects it");
+    assert.deepEqual(untimed.metadata, { plurnk: { proposal: { ...proposal(), attrs: {} } } }, "what the reviewer reviews, as Core projects it");
+    const facts = { runtime: "sh", target: "printf", resourceSource: "exec://sh/1" };
+    const bodies = { original: "before\n", patched: "after\n", patch: "@@", editReceipt: {}, body: "printf ok", inputBody: "y\n" };
+    assert.deepEqual((proposalInterrupt(proposal({ attrs: { ...facts, ...bodies } })).metadata as { plurnk: { proposal: { attrs: unknown } } }).plurnk.proposal.attrs,
+        facts, "its attributes keep their facts and drop each body: the review body is the diff");
     assert.deepEqual([untimed.toolCallId, untimed.expiresAt], [undefined, undefined], "the Portal names, per Run, the call it concerns");
     assert.deepEqual((untimed.responseSchema as { required: string[] }).required, ["decision"]);
     assert.equal(proposalInterrupt(proposal({ expiresAt: "2026-10-16T12:00:00.000Z" })).expiresAt, "2026-10-16T12:00:00.000Z",

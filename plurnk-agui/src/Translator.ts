@@ -33,15 +33,13 @@ import {
 } from "./types.ts";
 import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type ContentPart, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
+import { withoutBodies } from "./row-attrs.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { Validator, isRecord, isSafeInteger, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket, type LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 // {§agui-body-reference} A receipt's facts only the model uses: the line anchors it edits by.
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
-// {§agui-plurnk-metadata} A row's attributes that hold a body: a file write's text before and after, its diff and its edit
-// receipt, which its result holds, and a statement's body, which its call's arguments hold.
-const BODY_ATTRS: ReadonlySet<string> = new Set(["original", "patched", "patchedBytes", "patch", "editReceipt", "body", "inputBody"]);
 // A row whose result may hold a body ({§agui-body-reference}).
 type BodyRow = { op?: unknown; tx?: unknown; rx?: unknown; worker_id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown };
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
@@ -816,7 +814,7 @@ export default class Translator {
     // {§agui-plurnk-metadata} A row's attributes without the bodies they hold.
     static #leanAttrs(attrs: unknown): unknown {
         const parsed = Translator.#parsed(attrs);
-        return isRecord(parsed) ? Object.fromEntries(Object.entries(parsed).filter(([key]) => !BODY_ATTRS.has(key))) : attrs;
+        return isRecord(parsed) ? withoutBodies(parsed) : attrs;
     }
 
     // {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a

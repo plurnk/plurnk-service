@@ -314,7 +314,7 @@
                                             "op": "sh",
                                             "target": { "scheme": "sh", "authority": null, "pathname": "" },
                                             "body": "printf ok",
-                                            "attrs": { "runtime": "sh", "body": "printf ok" },
+                                            "attrs": { "runtime": "sh" },
                                             "owner": "agui://anonymous/threads/fixture",
                                             "disposition": { "decision": "review" }
                                         }

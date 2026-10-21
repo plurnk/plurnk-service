@@ -8,13 +8,14 @@
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import MessageAddress from "./MessageAddress.ts";
+import { withoutBodies } from "./row-attrs.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
 import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ApplicationStream, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the
-// interrupt names it there. The interrupt carries Core's projection, what the reviewer reviews; the resume names the
-// proposal by this key, which no client sees.
+// interrupt names it there. The interrupt carries Core's projection, what the reviewer reviews, its attributes without the
+// bodies they hold ({§agui-plurnk-metadata}); the resume names the proposal by this key, which no client sees.
 export const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
 const logEntryIdFromKey = (key: string): number | null => {
     const m = /^proposal:(\d+)$/.exec(key);
@@ -34,7 +35,7 @@ export const proposalInterrupt = (proposal: ProposalNotification): Omit<Interrup
         required: ["decision"],
     },
     ...(proposal.expiresAt === undefined ? {} : { expiresAt: proposal.expiresAt }),
-    metadata: { plurnk: { proposal } },
+    metadata: { plurnk: { proposal: { ...proposal, attrs: withoutBodies(proposal.attrs) } } },
 });
 
 // The inverse — a standard resume entry resolves the durable PLURNK proposal.
