@@ -5,20 +5,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { trace, metrics } from "@opentelemetry/api";
+import { MeterProvider } from "@opentelemetry/sdk-metrics";
 import Module from "./Module.ts";
 
 const tracer = () => trace.getTracer("plurnk.service");
 
-// The implementation modules a child process loads for one configuration, from construction through stop.
+// The implementation modules a child process loads for one configuration, from construction through stop: every module
+// it resolves, imported or required.
 const implementationModules = (env: Record<string, string>): string[] => {
     const source = `
-        import { createRequire } from "node:module";
-        const require = createRequire(import.meta.url);
+        import { registerHooks } from "node:module";
+        const resolved = [];
+        registerHooks({ resolve(specifier, context, nextResolve) {
+            const result = nextResolve(specifier, context);
+            resolved.push(result.url);
+            return result;
+        } });
         const { default: Module } = await import(${JSON.stringify(new URL("./Module.ts", import.meta.url).href)});
         const module = Module.init(${JSON.stringify(env)});
         await module.setup();
-        const loaded = Object.keys(require.cache).filter((path) =>
-            /node_modules\\/@opentelemetry\\/(?:context-async-hooks|exporter-|resources|sdk-)/.test(path)
+        const loaded = [...new Set(resolved)].filter((url) =>
+            /node_modules\\/@opentelemetry\\/(?:context-async-hooks|exporter-|resources|sdk-)/.test(url)
         );
         process.stdout.write(JSON.stringify(loaded));
         await module.stop();
@@ -155,7 +162,7 @@ test("{§otel-module} a metrics-only selection registers no tracer provider", as
     await module.setup();
     try {
         assert.equal(tracer().startSpan("probe").isRecording(), false);
-        assert.equal(metrics.getMeterProvider().constructor.name, "MeterProvider");
+        assert.ok(metrics.getMeterProvider() instanceof MeterProvider, "the SDK replaced the no-op meter provider");
     } finally {
         await module.stop();
     }

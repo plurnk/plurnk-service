@@ -8,7 +8,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { context, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import type { ExportResult } from "@opentelemetry/core";
-import { BasicTracerProvider, SimpleSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace-base";
+import { TracerProvider, SimpleSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
 import { withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 
 class ExplodingExporter implements SpanExporter {
@@ -29,8 +29,8 @@ const explosionProofLoop = async (): Promise<boolean> => {
     const contextManager = new AsyncLocalStorageContextManager();
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
-    const provider = new BasicTracerProvider({
-        spanProcessors: [new SimpleSpanProcessor(new ExplodingExporter())],
+    const provider = new TracerProvider({
+        spanProcessors: [new SimpleSpanProcessor({ exporter: new ExplodingExporter() })],
     });
     trace.setGlobalTracerProvider(provider);
     let finalStatus: number | undefined;

@@ -4,7 +4,7 @@
 
 import { context, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { TracerProvider, InMemorySpanExporter, SimpleSpanProcessor, type ReadableSpan, type SpanProcessor } from "@opentelemetry/sdk-trace";
 
 export interface MemoryTracing {
     spans(): ReadableSpan[];
@@ -18,9 +18,9 @@ export const mountMemoryTracing = async (onStart?: SpanProcessor["onStart"]): Pr
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
     const exporter = new InMemorySpanExporter();
-    const processor = new SimpleSpanProcessor(exporter);
+    const processor = new SimpleSpanProcessor({ exporter });
     if (onStart !== undefined) processor.onStart = onStart;
-    const provider = new BasicTracerProvider({ spanProcessors: [processor] });
+    const provider = new TracerProvider({ spanProcessors: [processor] });
     trace.setGlobalTracerProvider(provider);
     return {
         spans: (): ReadableSpan[] => exporter.getFinishedSpans(),

@@ -5,7 +5,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "../intg/_db.ts";
 import { mountMemoryTracing } from "../intg/_observe-memory.ts";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan } from "@opentelemetry/sdk-trace";
 
 export interface GenAiSpanRecording {
     readonly providerId: string | undefined;

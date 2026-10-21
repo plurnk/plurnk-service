@@ -106,17 +106,17 @@ const register = async (selection: Selection): Promise<Registration> => {
     try {
         if (selection.traces.length > 0) {
             const [traceSdk, { AsyncLocalStorageContextManager }] = await Promise.all([
-                import("@opentelemetry/sdk-trace-base"),
+                import("@opentelemetry/sdk-trace"),
                 import("@opentelemetry/context-async-hooks"),
             ]);
             const processors = await Promise.all(selection.traces.map(async (name) => {
                 if (name === "console") {
-                    return new traceSdk.SimpleSpanProcessor(new traceSdk.ConsoleSpanExporter());
+                    return new traceSdk.SimpleSpanProcessor({ exporter: new traceSdk.ConsoleSpanExporter() });
                 }
                 const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-http");
-                return new traceSdk.BatchSpanProcessor(new OTLPTraceExporter());
+                return new traceSdk.BatchSpanProcessor({ exporter: new OTLPTraceExporter() });
             }));
-            traceProvider = new traceSdk.BasicTracerProvider({ resource, spanProcessors: processors });
+            traceProvider = new traceSdk.TracerProvider({ resource, spanProcessors: processors });
             const contextManager = new AsyncLocalStorageContextManager().enable();
             if (!context.setGlobalContextManager(contextManager)) {
                 contextManager.disable();

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { mountMemoryTracing } from "./_observe-memory.ts";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan } from "@opentelemetry/sdk-trace";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 

@@ -12,7 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { mountMemoryTracing } from "./_observe-memory.ts";
 import { SpanKind } from "@opentelemetry/api";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan } from "@opentelemetry/sdk-trace";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
