@@ -119,8 +119,11 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #actions = new Map<string, RegisteredAction>();
     #activated = false;
     #stopped = false;
+    // {§agui-shutdown} The requests this module admitted and the work they and its Runs started: each may reach core
+    // until it settles.
+    readonly #work = new Set<Promise<unknown>>();
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req) });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req), track: this.#track.bind(this) });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -214,7 +217,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#seam = seam;
         this.#listener = () => seam.httpAddress();
         this.#registerActions();
-        this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars });
+        this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars }, this.#track.bind(this));
         this.#portal.start();
         if (this.#opts.authenticates) {
             // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
@@ -233,12 +236,22 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#stopped = true;
     }
 
-    close(): void {
+    // {§agui-shutdown} Every remaining Run ends, then what the module admitted settles: after close the host releases the
+    // database, so nothing the module started reaches core afterward.
+    async close(): Promise<void> {
         this.stop();
         if (!this.#activated) return;
         this.#activated = false;
         this.#offRevoked?.();
         this.#portal.stop();
+        while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
+    }
+
+    #track<T>(work: Promise<T>): Promise<T> {
+        this.#work.add(work);
+        const settled = (): void => { this.#work.delete(work); };
+        void work.then(settled, settled);
+        return work;
     }
 
     async #oauthRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -246,6 +259,10 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
         }
+        return this.#track(this.#oauthRouteAdmitted(req, res));
+    }
+
+    async #oauthRouteAdmitted(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.#opts.allowOrigin.length > 0) {
             res.setHeader("access-control-allow-origin", this.#opts.allowOrigin);
             res.setHeader("access-control-allow-headers", "content-type, authorization");
@@ -263,11 +280,11 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             writeHttpProblem(res, serviceStoppingProblem());
             return;
         }
-        return observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.
+        return this.#track(observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.
             "agui.http",
             { route: aguiRouteTemplate(req.method, req.url) },
             (): Promise<void> => this.#routeSettled(req, res),
-        );
+        ));
     }
 
     async #routeSettled(req: IncomingMessage, res: ServerResponse): Promise<void> {

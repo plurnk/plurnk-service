@@ -215,11 +215,18 @@ export default class Portal {
     #terminalsDue = new Set<number>();
     #off: (() => void) | null = null;
     #stopped = false;
+    readonly #track: <T>(work: Promise<T>) => Promise<T>;
 
     // {§agui-history-window} Without limits, a snapshot holds the whole conversation: the module passes the panel's.
-    constructor(seam: PortalPort, history: HistoryLimits = { loops: Number.POSITIVE_INFINITY, chars: Number.POSITIVE_INFINITY }) {
+    // {§agui-shutdown} `track` holds the work the Portal starts until it settles, so its module's closure can join it.
+    constructor(
+        seam: PortalPort,
+        history: HistoryLimits = { loops: Number.POSITIVE_INFINITY, chars: Number.POSITIVE_INFINITY },
+        track: <T>(work: Promise<T>) => Promise<T> = (work) => work,
+    ) {
         this.#seam = seam;
         this.#history = history;
+        this.#track = track;
         this.#hitl = new ProposalHitl(
             seam,
             (workspaceId, delivery) => this.#enqueueDelivery(workspaceId, async () => this.#routeHitl(workspaceId, await delivery)),
@@ -449,7 +456,11 @@ export default class Portal {
         thread.gauge = { model: status.model, descendants: status.descendants, spend: status.spend, inbox: status.inbox, streams: status.streams };
         thread.staleGauge = false;
         thread.gaugeRefresh += 1;
-        if (stale) void this.#refreshStatus(thread);
+        if (stale) {
+            void this.#track(this.#refreshStatus(thread)).catch((cause: unknown) => {
+                console.error("AG-UI status refresh failed:", cause);
+            });
+        }
     }
 
     // {§agui-delegation-observation} — the actor of a row or stream event that is neither the bound
@@ -798,9 +809,9 @@ export default class Portal {
 
     #enqueueDelivery(workspaceId: number, task: () => Promise<void>): void {
         const prior = this.#deliveryTails.get(workspaceId) ?? Promise.resolve();
-        const delivery = prior.then(task).catch((cause: unknown) => {
+        const delivery = this.#track(prior.then(task).catch((cause: unknown) => {
             console.error("AG-UI stopped-world routing failed:", cause);
-        });
+        }));
         this.#deliveryTails.set(workspaceId, delivery);
         void delivery.finally(() => {
             if (this.#deliveryTails.get(workspaceId) === delivery) {

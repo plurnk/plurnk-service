@@ -33,6 +33,7 @@ export default class RunHandler {
     readonly #opts: () => ResolvedModuleOptions;
     readonly #portal: () => Portal;
     readonly #stopping: () => boolean;
+    readonly #track: <T>(work: Promise<T>) => Promise<T>;
     readonly #requiresWorkspace: (action: ActionRequest) => boolean;
     readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
@@ -43,11 +44,13 @@ export default class RunHandler {
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     readonly #origin: (req: IncomingMessage) => string;
 
-    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action, origin }: {
+    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action, origin, track }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
         stopping: () => boolean;
+        // {§agui-shutdown} Holds the work a Run starts until it settles, so the module's closure joins it.
+        track: <T>(work: Promise<T>) => Promise<T>;
         requiresWorkspace: (action: ActionRequest) => boolean;
         controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
@@ -63,6 +66,7 @@ export default class RunHandler {
         this.#opts = opts;
         this.#portal = portal;
         this.#stopping = stopping;
+        this.#track = track;
         this.#requiresWorkspace = requiresWorkspace;
         this.#controlRun = controlRun;
         this.#envelope = envelope;
@@ -304,7 +308,7 @@ export default class RunHandler {
                 if (refreshing || finished) return;
                 refreshing = true;
                 presented = false;
-                void (async () => {
+                void this.#track((async () => {
                     const [history, inbox] = await Promise.all([this.#history(workspaceId, workerId), this.#seam().readInbox({ workspaceId, workerId })]);
                     const subagents = await this.#portal().subagentHistory(boundRun, (descendant) => this.#history(workspaceId, descendant));
                     // A terminal that arrived meanwhile abandoned the refresh.
@@ -312,7 +316,7 @@ export default class RunHandler {
                     present(this.#portal().replay(boundRun, history, inbox, subagents), [...history, ...subagents.flatMap(({ entries }) => entries)]);
                     presented = true;
                     for (const batch of held.splice(0)) deliver(batch.events, batch.interrupts);
-                })().catch((cause: unknown) => {
+                })()).catch((cause: unknown) => {
                     const exactProblem = Problems.fromError(cause);
                     if (exactProblem === null) console.error("AG-UI history refresh failed:", cause);
                     this.#portal().failThread(boundRun, runErrorEvents(exactProblem ?? httpProblem("run-failed", 500, "The AG-UI Run failed unexpectedly.",
@@ -401,7 +405,7 @@ export default class RunHandler {
             const onLoop: OperationLoopListener | undefined = notificationScope === "operation"
                 ? (loop) => { this.#portal().bindOperation(boundRun, loop); }
                 : undefined;
-            void this.#action(action, input, env, workerId, principal, onLoop)
+            void this.#track(this.#action(action, input, env, workerId, principal, onLoop)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
@@ -413,7 +417,7 @@ export default class RunHandler {
                     finishAction(problem === null
                         ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
                         : { ok: false, problem });
-                });
+                }));
             return;
         }
 

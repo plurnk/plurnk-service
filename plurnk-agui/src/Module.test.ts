@@ -540,34 +540,121 @@ test("{§agui-shutdown} close ends every idle connection without cancelling work
     }
 });
 
-test("{§agui-shutdown} preparation finishing after close cannot open a stream", async () => {
-    const { seam, loopRuns } = mockSeam();
+// {§agui-shutdown} Each kind of work the module admits or starts holds one core call across close: close settles only once
+// that call has returned and its work has settled, so nothing the module started reaches core after the host releases the
+// database.
+const readUntil = async (response: Response, type: string): Promise<{ events: AguiEvent[]; rest: Promise<AguiEvent[]> }> => {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    const parse = (): AguiEvent[] => text.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+    while (!parse().some((event) => event.type === type)) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+    }
+    const rest = (async () => {
+        for (;;) {
+            const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true as const }));
+            if (done) return parse();
+            text += decoder.decode(value, { stream: true });
+        }
+    })();
+    return { events: parse(), rest };
+};
+
+const serviceStopping = "https://problems.plurnk.xyz/agui/http/service-stopping";
+interface Begin { port: number; hold: () => void; emit: (workspaceId: number | null, method: string, params: unknown) => void }
+const HELD_ACROSS_CLOSE = {
+    // A request still preparing: it opens no stream, and answers that the service is stopping.
+    "a request's preparation": {
+        held: "readWorker" as const,
+        begin: async ({ port, hold }: Begin) => {
+            hold();
+            return { response: fetch(`http://127.0.0.1:${port}/agui/connect`, {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: "late", messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
+            }) };
+        },
+        ended: async ({ response }: { response: Promise<Response> }) => {
+            const res = await response;
+            assert.equal(res.status, 503);
+            assert.equal((await res.json()).type, serviceStopping);
+        },
+    },
+    // A Run's workspace action, dispatched after its Run started: the Run ends, the action still settles.
+    "a Run's action": {
+        held: "invokeModuleAction" as const,
+        setup: (seam: ApplicationPort) => {
+            seam.listModuleActions = () => [{ name: "example.inspect", scope: "workspace", inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA }];
+            seam.invokeModuleAction = async () => ({ inspected: true });
+        },
+        begin: async ({ port, hold }: Begin) => {
+            hold();
+            return { response: fetch(`http://127.0.0.1:${port}/agui`, {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: "inspector", forwardedProps: { plurnk: { workspace: "w", action: { kind: "example.inspect" } } } })),
+            }) };
+        },
+        ended: async ({ response }: { response: Promise<Response> }) => {
+            const events = (await (await response).text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+                .map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+            assert.equal(runProblem(events)?.type, serviceStopping, "the Run ends with the service; its action's result never reaches it");
+        },
+    },
+    // An open Run's status refresh, which an event started: the Run ends, the refresh still settles.
+    "a Run's status refresh": {
+        held: "workerAccounting" as const,
+        begin: async ({ port, hold, emit }: Begin) => {
+            const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify(standardInput({ threadId: "watcher", messages: [], forwardedProps: { plurnk: { workspace: "w" } } })),
+            });
+            // Held only once the Run has presented its snapshot.
+            const { rest } = await readUntil(response, "STATE_SNAPSHOT");
+            hold();
+            emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
+            return { rest };
+        },
+        ended: async ({ rest }: { rest: Promise<AguiEvent[]> }) => {
+            assert.equal(runProblem(await rest)?.type, serviceStopping, "the Run ends with the service; the refresh publishes nothing after");
+        },
+    },
+};
+for (const [work, row] of Object.entries(HELD_ACROSS_CLOSE)) test(`{§agui-shutdown} close joins ${work} before it settles`, async () => {
+    const { seam, loopRuns, emit } = mockSeam();
     existingWorkspace(seam, "w");
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    seam.readWorker = async ({ identity }) => {
+    const order: string[] = [];
+    let holding = false;
+    if ("setup" in row) row.setup(seam);
+    const original = seam[row.held] as (...args: unknown[]) => Promise<unknown>;
+    (seam as unknown as Record<string, unknown>)[row.held] = async (...args: unknown[]) => {
+        if (!holding) return await original(...args);
+        holding = false;
         entered.resolve();
         await release.promise;
-        return workerRow(77, identity.name ?? "late", "model");
+        const result = await original(...args);
+        order.push("held call returned");
+        return result;
     };
     const mod = await host(seam);
-    const controller = new AbortController();
     try {
-        const response = fetch(`http://127.0.0.1:${mod.address().port}/agui/connect`, {
-            method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal,
-            body: JSON.stringify(standardInput({ threadId: "late", messages: [],
-                forwardedProps: { plurnk: { workspace: "w" } } })),
-        });
-        await entered.promise;
-        mod.module.close();
+        const started = await row.begin({ port: mod.address().port, hold: () => { holding = true; }, emit });
+        // A liveness bound: a row whose work never reaches its held call fails here rather than hanging the tier.
+        let unreached: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([entered.promise, new Promise<never>((_resolve, reject) => {
+            unreached = setTimeout(() => reject(new Error(`${work} never reached ${row.held}`)), 20_000);
+        })]).finally(() => clearTimeout(unreached));
+        const closed = mod.module.close().then(() => { order.push("closed"); });
         release.resolve();
-        const res = await response;
-        assert.equal(res.status, 503);
-        assert.equal((await res.json()).type, "https://problems.plurnk.xyz/agui/http/service-stopping");
-        assert.deepEqual(loopRuns, []);
+        await closed;
+        assert.deepEqual(order, ["held call returned", "closed"], `close settles after ${work}`);
+        await row.ended(started as never);
+        assert.deepEqual(loopRuns, [], "nothing it admitted ran a loop");
     } finally {
         release.resolve();
-        controller.abort();
         await mod.close();
     }
 });
