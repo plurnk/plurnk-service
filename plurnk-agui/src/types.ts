@@ -32,6 +32,8 @@ export type ReasoningEventNotification = {
     workerId: number;
     loopId: number;
     turnId: number;
+    loopSeq: number;
+    turnSeq: number;
     modelCallId: number;
     requestSequence: number;
 } & (

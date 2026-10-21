@@ -285,6 +285,10 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
             [abandonedReasoning, acceptedReasoning],
         );
         assert.ok(events.every(({ modelCallId }) => modelCallId === events[0]?.modelCallId));
+        const turn = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: events[0]?.turnSeq });
+        const loop = await db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
+        assert.ok(events.every((event) => event.turnId === turn?.id && event.loopSeq === loop?.sequence && event.turnSeq === events[0]?.turnSeq),
+            "every event names its turn's ordinals in the worker's log, the same across a retry");
         const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
         const notes = sources.filter(({ kind }) => kind === "note");
         assert.equal(notes.filter(({ content }) => content === "Accepted retry note.").length, 1);

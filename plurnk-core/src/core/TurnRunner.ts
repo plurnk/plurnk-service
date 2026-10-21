@@ -1356,7 +1356,7 @@ export default class TurnRunner {
         }
         attempts.attemptId = attemptRow.id;
         attempts.callInFlight = true;
-        const reasoning = this.#reasoningObserver(args, request.turnId, modelCall);
+        const reasoning = this.#reasoningObserver(args, request, modelCall);
         let completedResponse: ProviderResponse;
         try {
             completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning);
@@ -1396,7 +1396,7 @@ export default class TurnRunner {
     // {§notifications-reasoning-event} — only the parent emission is observed;
     // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
     // request they stream in; a new request or the call's end closes the open span.
-    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, turnId: number, modelCall: ModelCall): ReasoningObserver {
+    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, { turnId, loopSeq, seq: turnSeq }: TurnRequest, modelCall: ModelCall): ReasoningObserver {
         let reasoningStarted = false;
         let reasoningRequestSequence = 0;
         const end = (): void => {
@@ -1405,6 +1405,8 @@ export default class TurnRunner {
                 workerId,
                 loopId,
                 turnId,
+                loopSeq,
+                turnSeq,
                 modelCallId: modelCall.id,
                 requestSequence: reasoningRequestSequence,
                 phase: "end",
@@ -1429,6 +1431,8 @@ export default class TurnRunner {
                         workerId,
                         loopId,
                         turnId,
+                        loopSeq,
+                        turnSeq,
                         modelCallId: modelCall.id,
                         requestSequence: reasoningRequestSequence,
                         phase: "start",
@@ -1438,6 +1442,8 @@ export default class TurnRunner {
                     workerId,
                     loopId,
                     turnId,
+                    loopSeq,
+                    turnSeq,
                     modelCallId: modelCall.id,
                     requestSequence: reasoningRequestSequence,
                     phase: "content",

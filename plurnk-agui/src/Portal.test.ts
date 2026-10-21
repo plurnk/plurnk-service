@@ -467,9 +467,9 @@ test("{§agui-proposal-resolve} a worker without pending interrupts drives the l
     assert.equal(ack.loopId, 77, "loop driven via runLoop");
     assert.deepEqual(m.workers[0], { workspaceId: 3, prompt: "go" });
 
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
     assert.ok(seen.some((e) => e.type === "REASONING_MESSAGE_CONTENT"), "live reasoning reaches the bound thread before a log row exists");
 
     // A live model SEND fans to the thread as assistant speech.
@@ -673,7 +673,7 @@ test("{§agui-gate-deferral}: a descendant gate arriving during the bound worker
         emit: (events, interrupts = []) => { batches.push({ events, interrupts }); } });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
-    const call = { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1 };
+    const call = { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1 };
     m.fire(3, "reasoning/event", { ...call, phase: "start" });
     m.fire(3, "reasoning/event", { ...call, phase: "content", delta: "weighing the child's request" });
     m.fire(3, "loop/proposal", proposal({ logEntryId: 42, workerId: 20, loopId: 88 }));
@@ -706,7 +706,7 @@ test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and 
     const thread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: view.emit });
     await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
     m.fire(3, "loop/proposal", gate);
     await nextTask();
     m.fire(3, "loop/terminated", termination({
@@ -1124,9 +1124,9 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
         emit: view.emit,
     });
     await portal.run(first, { workspaceId: 3, workerId: 10, prompt: "go" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
-    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "content", delta: "working" });
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, loopSeq: 77, turnSeq: 1, modelCallId: 8, requestSequence: 1, phase: "end" });
     m.fire(3, "loop/proposal", pending);
     await nextTask();
     portal.closeRun(3, first);

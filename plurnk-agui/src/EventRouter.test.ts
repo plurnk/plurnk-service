@@ -41,27 +41,27 @@ test("{§agui-projection} log/entry (model SEND) → assistant TEXT_MESSAGE trip
 test("{§agui-gate-deferral} reasoning/event validates and projects the standard live lifecycle", () => {
     const r = router();
     assert.deepEqual(
-        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "start" }).map(({ type }) => type),
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "start" }).map(({ type }) => type),
         ["STEP_STARTED", "REASONING_START", "REASONING_MESSAGE_START"],
     );
     assert.deepEqual(
-        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }).map(({ type }) => type),
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }).map(({ type }) => type),
         ["REASONING_MESSAGE_CONTENT"],
     );
     assert.throws(
-        () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "" }),
+        () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "" }),
         /reasoning\/event notification/,
     );
     assert.equal(r.reasoningOpen, true, "{§agui-gate-deferral}: the lifecycle stays open until its end");
     assert.deepEqual(
-        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "end" }).map(({ type }) => type),
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "end" }).map(({ type }) => type),
         ["REASONING_MESSAGE_END", "REASONING_END"],
     );
     assert.equal(r.reasoningOpen, false, "{§agui-gate-deferral}: the end phase closes the lifecycle");
     // {§agui-reasoning-link} A Run that negotiated reasoning by link receives each delta as a preview no message holds.
     const linked = router({ reasoningByLink: true });
-    linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "start" });
-    assert.deepEqual(linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }),
+    linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "start" });
+    assert.deepEqual(linked.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, loopSeq: 2, turnSeq: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "live" }),
         [{ type: "CUSTOM", name: "plurnk.reasoning", value: { messageId: "model-call-4/request-1/reasoning", delta: "live" } }]);
 });
 

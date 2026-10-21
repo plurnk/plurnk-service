@@ -432,30 +432,31 @@
             "events": [
                 {
                     "type": "REASONING_START",
-                    "messageId": "model-call-11/reasoning"
+                    "messageId": "model-call-11/request-1/reasoning"
                 },
                 {
                     "type": "REASONING_MESSAGE_START",
-                    "messageId": "model-call-11/reasoning",
-                    "role": "reasoning"
+                    "messageId": "model-call-11/request-1/reasoning",
+                    "role": "reasoning",
+                    "metadata": { "plurnk": { "coordinate": "1/2" } }
                 },
                 {
                     "type": "REASONING_MESSAGE_CONTENT",
-                    "messageId": "model-call-11/reasoning",
+                    "messageId": "model-call-11/request-1/reasoning",
                     "delta": "checked "
                 },
                 {
                     "type": "REASONING_MESSAGE_CONTENT",
-                    "messageId": "model-call-11/reasoning",
+                    "messageId": "model-call-11/request-1/reasoning",
                     "delta": "the evidence"
                 },
                 {
                     "type": "REASONING_MESSAGE_END",
-                    "messageId": "model-call-11/reasoning"
+                    "messageId": "model-call-11/request-1/reasoning"
                 },
                 {
                     "type": "REASONING_END",
-                    "messageId": "model-call-11/reasoning"
+                    "messageId": "model-call-11/request-1/reasoning"
                 },
                 {
                     "type": "RUN_FINISHED",

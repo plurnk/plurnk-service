@@ -190,6 +190,8 @@ const reasoningIdentity = {
     workerId: POSITIVE,
     loopId: POSITIVE,
     turnId: POSITIVE,
+    loopSeq: POSITIVE,
+    turnSeq: POSITIVE,
     modelCallId: POSITIVE,
     requestSequence: POSITIVE,
 };
@@ -249,12 +251,12 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["start", "end"] },
-            }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase"]),
+            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase"]),
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["content"] },
                 delta: NONEMPTY,
-            }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase", "delta"]),
+            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase", "delta"]),
         ],
     }),
     "outside/event": notification<OutsideEventNotification>(object({

@@ -347,7 +347,7 @@ test("{§agui-plurnk-metadata} readable provider reasoning precedes SEND speech 
     const reasoning = events.slice(1, 6);
     assert.deepEqual(reasoning, [
         { type: "REASONING_START", messageId: "1/1/8/reasoning" },
-        { type: "REASONING_MESSAGE_START", messageId: "1/1/8/reasoning", role: "reasoning" },
+        { type: "REASONING_MESSAGE_START", messageId: "1/1/8/reasoning", role: "reasoning", metadata: { plurnk: { coordinate: "1/1" } } },
         { type: "REASONING_MESSAGE_CONTENT", messageId: "1/1/8/reasoning", delta: "checked the evidence" },
         { type: "REASONING_MESSAGE_END", messageId: "1/1/8/reasoning" },
         { type: "REASONING_END", messageId: "1/1/8/reasoning" },
@@ -361,15 +361,17 @@ test("{§agui-plurnk-metadata} readable provider reasoning precedes SEND speech 
 
 test("{§agui-projection} live provider reasoning projects ordered deltas before SEND without duplicating the durable value", () => {
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
-    const start = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
-    const first = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked " });
-    const second = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "the evidence" });
-    const end = tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" });
+    // The database's loop and turn ids are not the turn's ordinals in its worker's log.
+    const call = { workerId: 2, loopId: 4, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1 };
+    const start = tr.reasoning({ ...call, phase: "start" });
+    const first = tr.reasoning({ ...call, phase: "content", delta: "checked " });
+    const second = tr.reasoning({ ...call, phase: "content", delta: "the evidence" });
+    const end = tr.reasoning({ ...call, phase: "end" });
     assert.deepEqual(start, [
         { type: "STEP_STARTED", stepName: "turn-7" },
         { type: "REASONING_START", messageId: "model-call-11/request-1/reasoning" },
-        { type: "REASONING_MESSAGE_START", messageId: "model-call-11/request-1/reasoning", role: "reasoning" },
-    ]);
+        { type: "REASONING_MESSAGE_START", messageId: "model-call-11/request-1/reasoning", role: "reasoning", metadata: { plurnk: { coordinate: "1/7" } } },
+    ], "the first live fragment's message names its turn, as its row will");
     assert.deepEqual(first, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/request-1/reasoning", delta: "checked " }]);
     assert.deepEqual(second, [{ type: "REASONING_MESSAGE_CONTENT", messageId: "model-call-11/request-1/reasoning", delta: "the evidence" }]);
     assert.deepEqual(end, [
@@ -393,13 +395,13 @@ for (const origin of ["model", "_plurnk"] as const) {
         let tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 10 });
         const prior = entry({ id: 6, turn_id: 6, loop_seq: 1, turn_seq: 6, sequence: 1, origin, status_rx: 102 });
         tr.logEntry(prior);
-        tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
-        const events = tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" });
+        tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
+        const events = tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" });
         const settled = entry({ ...prior.entry, status_rx: 200, rx: { status: 200, content: "late result" } });
         const late = tr.logEntry(settled);
         assert.ok(late.some((event) => event.type === "TOOL_CALL_RESULT" || (event.type === "CUSTOM" && event.name === "plurnk.ambient")), "the old receipt still reaches clients");
         assert.ok(!late.some(({ type }) => type.startsWith("STEP_")), "late completion does not change the current execution step");
-        events.push(...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }));
+        events.push(...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "end" }));
         const interrupted = tr.interrupt();
         assert.equal(interrupted.continuation.currentTurn, 7);
         tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "resumed", continuation: interrupted.continuation });
@@ -425,9 +427,9 @@ for (const streamed of [false, true]) {
             entry({ id: 13, op: "SEND", status_rx: 200, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, tx: { body: "done" }, reasoning: "checked the evidence", reasoning_model_call_id: 12, reasoning_request_sequence: 1 }),
         ];
         const events = streamed ? [
-            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
-            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" }),
-            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "checked the evidence" }),
+            ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "end" }),
         ] : [];
         events.push(...tr.logEntry(rows[0]));
         tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "resumed", continuation: tr.interrupt().continuation });
@@ -449,6 +451,8 @@ test("{§agui-plurnk-metadata} a retried physical request receives a separate re
         workerId: 2,
         loopId: 4,
         turnId: 7,
+        loopSeq: 1,
+        turnSeq: 7,
         modelCallId: 11,
         requestSequence,
         ...(phase === "content" ? { phase, delta: delta ?? "" } : { phase }),
@@ -471,6 +475,9 @@ test("{§agui-plurnk-metadata} a retried physical request receives a separate re
         && event.messageId === "model-call-11/request-2/reasoning"));
     assert.ok(!accepted.some((event) => event.type === "REASONING_MESSAGE_CONTENT"
         && event.delta.includes("abandoned")), "the retry never appends to the failed request's reasoning message");
+    const turnOf = (events: AguiEvent[]) => events.filter(({ type }) => type === "REASONING_MESSAGE_START").map((event) => (event as { metadata?: unknown }).metadata);
+    assert.deepEqual([...turnOf(failed), ...turnOf(accepted)], [{ plurnk: { coordinate: "1/7" } }, { plurnk: { coordinate: "1/7" } }],
+        "each request's message names the one turn both belong to");
 
     const send = tr.logEntry(entry({
         op: "SEND",
@@ -484,11 +491,11 @@ test("{§agui-plurnk-metadata} a retried physical request receives a separate re
 
 test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different durable reasoning, and foreign worker streams stay out", () => {
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 2 });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 10, requestSequence: 1, phase: "end" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 10, requestSequence: 1, phase: "start" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 10, requestSequence: 1, phase: "content", delta: "rejected reasoning" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 10, requestSequence: 1, phase: "end" });
     assert.deepEqual(
-        tr.reasoning({ workerId: 9, loopId: 12, turnId: 13, modelCallId: 14, requestSequence: 1, phase: "start" }),
+        tr.reasoning({ workerId: 9, loopId: 12, turnId: 13, loopSeq: 12, turnSeq: 13, modelCallId: 14, requestSequence: 1, phase: "start" }),
         [],
     );
     const send = tr.logEntry(entry({
@@ -504,8 +511,8 @@ test("{§agui-plurnk-metadata} a prior rejected stream cannot suppress different
 
 test("{§agui-readable-reasoning} a Run that joins mid-request presents none of it and receives the durable reasoning once, with its row", () => {
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", modelWorkerId: 2 });
-    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), []);
-    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "end" }), []);
+    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), []);
+    assert.deepEqual(tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "end" }), []);
     const send = tr.logEntry(entry({
         op: "SEND",
         turn_id: 7,
@@ -522,17 +529,17 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
 // {§agui-reasoning-link} A Run that negotiated reasoning by link: the text never rides a message, only its link does.
 const linked = (args: { modelWorkerId?: number; continuation?: ReturnType<Translator["interrupt"]>["continuation"] } = {}) =>
     new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", reasoningByLink: true, modelWorkerId: 2, ...args });
-const link = (worker: number, turn: string) => ({ plurnk: { body: { url: `${ORIGIN}/agui/3/${worker}/reasoning/${turn}`, mimeType: "text/plain" } } });
+const link = (worker: number, turn: string) => ({ plurnk: { coordinate: turn, body: { url: `${ORIGIN}/agui/3/${worker}/reasoning/${turn}`, mimeType: "text/plain" } } });
 
 test("{§agui-reasoning-link} live reasoning opens an empty message, its text an ephemeral preview, and its row folds the link on", () => {
     const tr = linked();
-    const live = (phase: "start" | "end" | "content", delta = "") => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1,
+    const live = (phase: "start" | "end" | "content", delta = "") => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 1, turnSeq: 7, modelCallId: 11, requestSequence: 1,
         ...(phase === "content" ? { phase, delta } : { phase }) });
     const messageId = "model-call-11/request-1/reasoning";
     assert.deepEqual(live("start").filter(({ type }) => type.startsWith("REASONING_")), [
         { type: "REASONING_START", messageId },
-        { type: "REASONING_MESSAGE_START", messageId, role: "reasoning" },
-    ]);
+        { type: "REASONING_MESSAGE_START", messageId, role: "reasoning", metadata: { plurnk: { coordinate: "1/7" } } },
+    ], "the empty message names its turn from its first event");
     assert.deepEqual([...live("content", "checked "), ...live("content", "the evidence")], [
         { type: "CUSTOM", name: "plurnk.reasoning", value: { messageId, delta: "checked " } },
         { type: "CUSTOM", name: "plurnk.reasoning", value: { messageId, delta: "the evidence" } },
@@ -550,7 +557,7 @@ test("{§agui-reasoning-link} live reasoning opens an empty message, its text an
 test("{§agui-reasoning-link} reasoning the client did not stream arrives whole and empty, carrying its link: a late join, a FORK's history, a subagent's", () => {
     const whole = (events: AguiEvent[]) => events.filter(({ type }) => type.startsWith("REASONING_")).map((event) => [event.type, (event as { metadata?: unknown }).metadata]);
     const late = linked();
-    assert.deepEqual(late.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), [], "no preview of a request joined midway");
+    assert.deepEqual(late.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "content", delta: "tail" }), [], "no preview of a request joined midway");
     assert.deepEqual(whole(late.logEntry(entry({ op: "SEND", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 3, reasoning: "whole reasoning",
         reasoning_model_call_id: 11, reasoning_request_sequence: 1, ...({ worker_id: 2 } as object) }))),
         [["REASONING_START", undefined], ["REASONING_MESSAGE_START", link(2, "1/7")], ["REASONING_MESSAGE_END", undefined], ["REASONING_END", undefined]]);
@@ -581,7 +588,7 @@ test("{§agui-reasoning-link} a snapshot holds each turn's reasoning once, empty
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snapshot));
 
     const before = linked();
-    for (const phase of ["start", "end"] as const) before.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase });
+    for (const phase of ["start", "end"] as const) before.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase });
     const after = linked({ continuation: before.interrupt().continuation });
     assert.deepEqual(after.logEntry(entry({ op: "WAIT", turn_id: 7, loop_seq: 1, turn_seq: 7, sequence: 2, tx: { body: "recorded" }, reasoning: "held",
         reasoning_model_call_id: 11, reasoning_request_sequence: 1, ...({ worker_id: 2 } as object) })).filter(({ type }) => type.startsWith("REASONING_")).map(({ type }) => type),
@@ -605,9 +612,9 @@ test("{§agui-reasoning-link} {§agui-ambient} another worker's row carries its 
 
 test("{§agui-plurnk-metadata} reasoning lifecycle violations fail at the projection boundary", () => {
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "run", modelWorkerId: 2 });
-    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
+    tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "start" });
     assert.throws(
-        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
+        () => tr.reasoning({ workerId: 2, loopId: 4, turnId: 7, loopSeq: 4, turnSeq: 7, modelCallId: 11, requestSequence: 1, phase: "start" }),
         /already started/,
     );
 });
@@ -661,7 +668,7 @@ test("{§agui-plurnk-metadata} reasoning READs remain operation receipts without
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
     assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning"), [
-        { id: "1/1/4/reasoning", role: "reasoning", content: "Original provider text." },
+        { id: "1/1/4/reasoning", role: "reasoning", content: "Original provider text.", metadata: { plurnk: { coordinate: "1/1" } } },
     ]);
     assert.equal(snapshot.messages.filter(({ role }) => role === "assistant").length, 1);
 });
@@ -999,9 +1006,9 @@ test("{§agui-snapshot} {§message-arrival} an arrival is the same user message 
 test("{§agui-readable-reasoning} {§agui-snapshot} reasoning keeps the identity of the request that streamed it on replay; reasoning a FORK inherited keeps its row's", () => {
     const tr = t();
     const streamed = [
-        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "start" }),
-        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "content", delta: "Weighing it." }),
-        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, modelCallId: 41, requestSequence: 2, phase: "end" }),
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, loopSeq: 1, turnSeq: 1, modelCallId: 41, requestSequence: 2, phase: "start" }),
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, loopSeq: 1, turnSeq: 1, modelCallId: 41, requestSequence: 2, phase: "content", delta: "Weighing it." }),
+        ...tr.reasoning({ workerId: 10, loopId: 1, turnId: 1, loopSeq: 1, turnSeq: 1, modelCallId: 41, requestSequence: 2, phase: "end" }),
     ];
     const live = (streamed.find((event) => event.type === EventType.REASONING_START) as { messageId: string }).messageId;
     const accepted = wireRow({ id: 5, op: "READ", reasoning: "Weighing it.", reasoning_model_call_id: 41, reasoning_request_sequence: 2 });

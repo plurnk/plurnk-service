@@ -319,7 +319,8 @@ export default class Translator {
             });
             events.push(
                 { type: EventType.REASONING_START, messageId },
-                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
+                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning",
+                    metadata: { plurnk: { coordinate: `${event.loopSeq}/${event.turnSeq}` } } },
             );
             return events;
         }
@@ -488,9 +489,7 @@ export default class Translator {
         if (typeof e.reasoning === "string" && e.reasoning.length > 0 && !reasoned.has(Translator.#reasoningTurn(e))) {
             reasoned.add(Translator.#reasoningTurn(e));
             const reasoningId = Translator.#reasoningId(e, id);
-            messages.push(attributed(this.#reasoningByLink
-                ? { id: reasoningId, role: "reasoning", content: "", metadata: { plurnk: { body: this.#reasoningBody(e) } } }
-                : { id: reasoningId, role: "reasoning", content: e.reasoning }));
+            messages.push(attributed({ id: reasoningId, role: "reasoning", content: this.#reasoningByLink ? "" : e.reasoning, metadata: this.#reasoningMetadata(e) }));
         }
         const text = Translator.#txBody(e.tx);
         if (response || Translator.#waitSpeech(e, text)) {
@@ -600,17 +599,18 @@ export default class Translator {
         turn.delivered = true;
         const messageId = Translator.#reasoningId(e, id);
         const held = turn.held.has(messageId);
+        const metadata = this.#reasoningMetadata(e);
         if (!this.#reasoningByLink) {
             return held ? [] : [
                 { type: EventType.REASONING_START, messageId },
-                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning" },
+                { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning", metadata },
                 { type: EventType.REASONING_MESSAGE_CONTENT, messageId, delta: e.reasoning },
                 { type: EventType.REASONING_MESSAGE_END, messageId },
                 { type: EventType.REASONING_END, messageId },
             ];
         }
         const message: AguiEvent[] = [
-            { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning", metadata: { plurnk: { body: this.#reasoningBody(e) } } },
+            { type: EventType.REASONING_MESSAGE_START, messageId, role: "reasoning", metadata },
             { type: EventType.REASONING_MESSAGE_END, messageId },
         ];
         return held ? message : [{ type: EventType.REASONING_START, messageId }, ...message, { type: EventType.REASONING_END, messageId }];
@@ -620,6 +620,13 @@ export default class Translator {
     static #reasoningTurn(e: { turn_id?: unknown }): number {
         if (!isSafeInteger(e.turn_id)) throw new TypeError("A row that carries reasoning names its turn.");
         return e.turn_id;
+    }
+
+    // {§agui-plurnk-metadata} A reasoning message's facts: its turn's `L/T` in its worker's log, and its link for a Run
+    // that negotiated reasoning by link ({§agui-reasoning-link}).
+    #reasoningMetadata(e: BodyRow): { plurnk: { coordinate: string; body?: { url: string; mimeType: string } } } {
+        const body = this.#reasoningBody(e);
+        return { plurnk: { coordinate: `${String(e.loop_seq)}/${String(e.turn_seq)}`, ...(this.#reasoningByLink ? { body } : {}) } };
     }
 
     // {§agui-body-reference} The HTTP form of a turn's reasoning source, `reasoning://<worker>/L/T`, at this daemon.

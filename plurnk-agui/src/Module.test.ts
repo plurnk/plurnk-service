@@ -4559,7 +4559,7 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
     const controllers = Array.from({ length: 3 }, () => new AbortController());
     const messageId = "model-call-21/request-1/reasoning";
     const reasoning = (phase: "start" | "content" | "end", delta?: string): void => emit(3, "reasoning/event", {
-        workerId: 77, loopId: 9, turnId: 4, modelCallId: 21, requestSequence: 1, phase, ...(delta === undefined ? {} : { delta }),
+        workerId: 77, loopId: 9, turnId: 4, loopSeq: 9, turnSeq: 4, modelCallId: 21, requestSequence: 1, phase, ...(delta === undefined ? {} : { delta }),
     });
     const frames = (body: string): AguiEvent[] => body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
     const endsBalanced = (events: AguiEvent[], problemType: string): void => {

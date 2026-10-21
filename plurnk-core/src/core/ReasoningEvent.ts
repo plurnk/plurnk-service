@@ -7,6 +7,9 @@ export type ReasoningEventPayload = {
     workerId: number;
     loopId: number;
     turnId: number;
+    // The turn's ordinals in its worker's log, its `L/T` ({§turn-source-resources}).
+    loopSeq: number;
+    turnSeq: number;
     modelCallId: number;
     requestSequence: number;
 } & (

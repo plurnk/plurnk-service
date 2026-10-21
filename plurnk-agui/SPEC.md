@@ -326,7 +326,7 @@ reasoning ({§agui-lifecycle-projection}), and a response row still precedes its
   | A proposal's `Interrupt` ({§agui-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews |
   | A client interaction's `Interrupt` ({§agui-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
   | `SUBAGENT_STARTED` of a subagent run ({§agui-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§agui-delegation-observation}) |
-  | A reasoning message of a Run that negotiated reasoning by link (`REASONING_MESSAGE_START`, folded onto the message, and its snapshot message) | `body`: `{ url, mimeType }`, the address of its turn's reasoning ({§agui-reasoning-link}) |
+  | A reasoning message (`REASONING_MESSAGE_START`, live and as its turn's row folds onto it, and its snapshot message) | `coordinate`: its turn's `L/T` in its worker's log ({§turn-source-resources}), from the message's first event; for a Run that negotiated reasoning by link, also `body`: `{ url, mimeType }`, the address of that turn's reasoning ({§agui-reasoning-link}) |
 
   An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
 
