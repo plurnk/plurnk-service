@@ -6,6 +6,7 @@ import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 export const wireRow = (over: Partial<LogEntryWire> = {}): LogEntryWire => ({
     id: over.id ?? 1,
     worker_id: 10,
+    worker_name: "main",
     loop_id: 1,
     loop_seq: 1,
     turn_id: 1,

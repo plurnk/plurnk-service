@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
 import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { BODY_ROUTE, HISTORY_ROUTE, REASONING_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
+import { ENTRY_ROUTE, HISTORY_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
@@ -62,8 +62,8 @@ export type AguiPort = Pick<
     | "listWorkerLoops"
     | "listWorkers"
     | "listWorkspaces"
+    | "readEntryChannel"
     | "readInbox"
-    | "readReasoning"
     | "readStreams"
     | "readWorker"
     | "readWorkerReference"
@@ -292,10 +292,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }
             if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res, false, principal, family);
             if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, principal, family);
-            const body = req.method === "GET" && req.url !== undefined ? BODY_ROUTE.exec(req.url) : null;
-            if (body !== null) return await this.#body(res, body);
-            const reasoning = req.method === "GET" && req.url !== undefined ? REASONING_ROUTE.exec(req.url) : null;
-            if (reasoning !== null) return await this.#reasoning(res, reasoning);
+            const entry = req.method === "GET" && req.url !== undefined ? ENTRY_ROUTE.exec(req.url) : null;
+            if (entry !== null) return await this.#entry(res, entry);
             const history = req.method === "GET" && req.url !== undefined ? HISTORY_ROUTE.exec(req.url) : null;
             if (history !== null) return await this.#historyPage(req, res, history);
             writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
@@ -332,44 +330,27 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
     }
 
-    // {§agui-body-reference} A row's body: the content its receipt holds, typed as the receipt types it. The perimeter has
-    // admitted the request; the daemon refuses a worker outside the workspace.
-    async #body(res: ServerResponse, [, workspace, worker, loop, turn, sequence, op]: RegExpExecArray): Promise<void> {
-        const [workspaceId, workerId, loopSeq, turnSeq, position] = [workspace, worker, loop, turn, sequence].map(Number);
-        const rows = await this.#seam.readLog({ workspaceId, workerId, loopSeq, turnSeq, sequence: position });
-        const row = rows.find((entry) => entry.op === decodeURIComponent(op ?? ""));
-        const receipt = row === undefined ? null : Module.#receipt(row.rx);
-        // {§agui-words-by-reference} A message's row holds its words: an arrival's, or a reply's.
-        const words = row?.op === "SEND" && !(isRecord(receipt) && typeof receipt.content === "string" && receipt.content.length > 0) ? Module.#words(row.tx) : "";
-        if (words.length > 0) {
-            res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
-            res.end(words);
-            return;
-        }
-        if (!isRecord(receipt) || typeof receipt.content !== "string" || receipt.content.length === 0) {
-            writeHttpProblem(res, httpProblem("body-not-found", 404, "The row holds no body at this address.", {
-                workspaceId, workerId, address: `log:///${loop}/${turn}/${sequence}/${op}`, stage: "routing", retryable: false,
-            }));
-            return;
-        }
-        const mimetype = typeof receipt.mimetype === "string" ? receipt.mimetype : "text/plain";
-        res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
-        res.end(receipt.content);
-    }
-
-    // {§agui-body-reference} A turn's reasoning: its readable reasoning source, as text. The perimeter has admitted the
+    // {§agui-entry-route} An address at this daemon: the channel it selects, read from the worker's perspective as a client
+    // entry read reads it ({§methods-entry-channel-read}), answered as its media type. The perimeter has admitted the
     // request; the daemon refuses a worker outside the workspace.
-    async #reasoning(res: ServerResponse, [, workspace, worker, loop, turn]: RegExpExecArray): Promise<void> {
-        const [workspaceId, workerId, loopSeq, turnSeq] = [workspace, worker, loop, turn].map(Number);
-        const reasoning = await this.#seam.readReasoning({ workspaceId, workerId, loopSeq, turnSeq });
-        if (reasoning === null) {
-            writeHttpProblem(res, httpProblem("reasoning-not-found", 404, "The turn holds no reasoning at this address.", {
-                workspaceId, workerId, loop: loopSeq, turn: turnSeq, stage: "routing", retryable: false,
+    async #entry(res: ServerResponse, [, workspace, worker, rawQuery]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId] = [workspace, worker].map(Number);
+        const target = new URLSearchParams(rawQuery ?? "").get("target");
+        if (target === null || target.length === 0) {
+            writeHttpProblem(res, httpProblem("entry-target-required", 400, "The request names no address in `target`.", {
+                workspaceId, workerId, stage: "request-validation", recovery: "Request `?target=<address>`, the address percent-encoded.", retryable: false,
             }));
             return;
         }
-        res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
-        res.end(reasoning);
+        const read = await this.#seam.readEntryChannel({ workspaceId, workerId, target });
+        if (read.entry === null) {
+            writeHttpProblem(res, read.problem);
+            return;
+        }
+        for (const { content, mimetype } of Object.values(read.entry.channels)) {
+            res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
+            res.end(content);
+        }
     }
 
     // {§agui-history-page} A page of a worker's history, as the view its link names holds it: the loop before the cursor,
@@ -400,21 +381,6 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
         res.end(JSON.stringify(page));
-    }
-
-    // A SEND statement's words as stored: its body, the raw text when it is parsed.
-    static #words(tx: unknown): string {
-        const statement = typeof tx === "string" ? Module.#receipt(tx) : tx;
-        if (!isRecord(statement)) return "";
-        const { body } = statement;
-        if (typeof body === "string") return body;
-        return isRecord(body) && typeof body.raw === "string" ? body.raw : "";
-    }
-
-    // A row's result as stored: its JSON parsed, or nothing for a result that is not a receipt.
-    static #receipt(rx: unknown): unknown {
-        if (typeof rx !== "string") return rx;
-        try { return JSON.parse(rx) as unknown; } catch { return null; }
     }
 
     // {§agui-thread-binding} Opaque references, qualified IDs, and explicit workspace selection.

@@ -41,7 +41,7 @@ type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMes
 // {§agui-body-reference} A receipt's facts only the model uses: the line anchors it edits by.
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
 // A row whose result may hold a body ({§agui-body-reference}).
-type BodyRow = { op?: unknown; tx?: unknown; rx?: unknown; worker_id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown };
+type BodyRow = { op?: unknown; tx?: unknown; rx?: unknown; worker_id?: unknown; worker_name?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown };
 type RowFacts = { id?: unknown; loop_seq?: unknown; turn_seq?: unknown; sequence?: unknown; worker_id?: unknown; origin?: unknown; op?: unknown;
     source?: unknown; signal?: unknown; status_rx?: unknown; attrs?: unknown; state?: unknown;
     scheme?: unknown; hostname?: unknown; port?: unknown; pathname?: unknown; query?: unknown; fragment?: unknown };
@@ -637,10 +637,10 @@ export default class Translator {
 
     // {§agui-body-reference} The HTTP form of a turn's reasoning source, `reasoning://<worker>/L/T`, at this daemon.
     #reasoningBody(e: BodyRow): { url: string; mimeType: string } {
-        if (!isSafeInteger(e.worker_id) || !isSafeInteger(e.loop_seq) || !isSafeInteger(e.turn_seq)) {
+        if (!isSafeInteger(e.worker_id) || typeof e.worker_name !== "string" || !isSafeInteger(e.loop_seq) || !isSafeInteger(e.turn_seq)) {
             throw new TypeError("A row that carries reasoning names its worker, loop and turn.");
         }
-        return { url: `${this.#origin}/agui/${this.#workspaceId}/${e.worker_id}/reasoning/${e.loop_seq}/${e.turn_seq}`, mimeType: "text/plain" };
+        return { url: this.#entryUrl(e.worker_id, `reasoning://${e.worker_name}/${e.loop_seq}/${e.turn_seq}`), mimeType: "text/plain" };
     }
 
     static #modelArtifactKind(attrs: unknown): "emissionAttempt" | null {
@@ -819,12 +819,17 @@ export default class Translator {
         return { receipt: Object.fromEntries(kept), body };
     }
 
-    // {§agui-body-reference} The HTTP form of a row's log address in its worker's log: `log:///L/T/S/OP` at this daemon.
+    // {§agui-body-reference} The HTTP form of a row's log address, `log:///L/T/S/OP`, in its worker's log.
     #bodyUrl(e: BodyRow): string {
         if (!isSafeInteger(e.worker_id) || typeof e.op !== "string") {
             throw new TypeError("A row with a body names its worker and operation.");
         }
-        return `${this.#origin}/agui/${this.#workspaceId}/${e.worker_id}/log/${Translator.idOf(e)}/${encodeURIComponent(e.op)}`;
+        return this.#entryUrl(e.worker_id, `log:///${Translator.idOf(e)}/${e.op}`);
+    }
+
+    // {§agui-entry-route} The HTTP form of `address` at this daemon, read from `workerId`'s perspective.
+    #entryUrl(workerId: number, address: string): string {
+        return `${this.#origin}/agui/${this.#workspaceId}/${workerId}/entry?${new URLSearchParams({ target: address })}`;
     }
 
     // {§agui-call-result} The call a discharging row answers: the operation it names ({§methods-invocation}), in the

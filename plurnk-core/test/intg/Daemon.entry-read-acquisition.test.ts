@@ -86,10 +86,13 @@ test("{§client-entry-address} a client read acquires every kind of address as e
         const unknownChannel = await read(`log:///${coordinate}/NOTE`, { channel: "patch" });
         assert.deepEqual([unknownChannel.status, typeOf(unknownChannel)], [404, "channel-not-found"]);
 
-        // A turn's sources are computed by the worker they name.
+        // A turn's sources are computed by the worker they name; its reasoning is the text its first operation row projects.
+        assert.equal(note.reasoning, thought);
         const reasoning = await read(`reasoning://main/${note.loop_seq}/${note.turn_seq}`);
         assert.equal(reasoning.entry?.entryId, null);
         assert.deepEqual(reasoning.entry?.channels.body && [reasoning.entry.channels.body.content, reasoning.entry.channels.body.mimetype], [thought, "text/plain"]);
+        const answer = rows.find(({ origin, turn_seq }) => origin === "model" && turn_seq !== note.turn_seq);
+        assert.equal((await read(`reasoning://main/${note.loop_seq}/${answer?.turn_seq}`)).entry?.channels.body?.content, "", "a turn that reasoned none reads empty");
         const program = await read(`ops://main/${note.loop_seq}/${note.turn_seq}`);
         assert.deepEqual([program.entry?.entryId, program.entry?.channels.body?.mimetype], [null, "text/vnd.plurnk"], "the turn's program");
 
@@ -103,6 +106,25 @@ test("{§client-entry-address} a client read acquires every kind of address as e
         // An extension's acquisition never runs for a client: what it never stored is not there.
         const unfetched = await read("remote://example.test/page");
         assert.deepEqual([unfetched.status, typeOf(unfetched), remote.prepared], [404, "entry-not-found", 0]);
+
+        // {§methods-entry-channel-read} The channel an address selects, complete: its fragment's, else its scheme's default.
+        const selected = async (target: string): Promise<EntryReadResult> =>
+            Validator.assertEntryReadResult(await daemon.readEntryChannel({ workspaceId, workerId, target }));
+        for (const [target, channel, content] of [
+            [`log:///${coordinate}/NOTE`, "", kept],
+            [`reasoning://main/${note.loop_seq}/${note.turn_seq}`, "body", thought],
+            [`${minted}#body`, "body", "Think, then answer."],
+        ] as const) {
+            const one = await selected(target);
+            assert.deepEqual([Object.keys(one.entry?.channels ?? {}), one.entry?.channels[channel]?.content], [[channel], content], target);
+        }
+        const absent = await selected(`log:///${coordinate}/NOTE#patch`);
+        assert.deepEqual([absent.status, typeOf(absent)], [404, "channel-not-found"]);
+
+        // Another workspace reads none of this worker's addresses.
+        const { workspaceId: elsewhere } = await daemon.createWorkspace({ name: "entry-acquisition-elsewhere" });
+        await assert.rejects(daemon.readEntry({ workspaceId: elsewhere, workerId, target: `reasoning://main/${note.loop_seq}/${note.turn_seq}` }),
+            (error: unknown) => (error as { result?: { status?: number } }).result?.status === 409);
 
         // The scheme's own refusals stand.
         for (const [target, status, code] of [

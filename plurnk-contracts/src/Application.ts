@@ -120,6 +120,8 @@ export interface ApplicationGauge {
 export type LogEntryWire = {
     id: number;
     worker_id: number;
+    // {§methods-log-entry-wire} The worker whose log holds the row, by its immutable name.
+    worker_name: string;
     loop_id: number;
     loop_seq: number;
     turn_id: number;

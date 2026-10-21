@@ -249,6 +249,21 @@ export default class ClientReads {
         }
     }
 
+    // {§methods-entry-channel-read} The channel `target` selects, its fragment's or else its scheme's default, read as
+    // `readEntry` reads it, complete: the HTTP form of an address answers with it.
+    async readEntryChannel(args: { workspaceId: number; workerId: number; target: string }): Promise<EntryReadResult> {
+        let parsed;
+        try {
+            parsed = typeof args.target === "string" ? parsePath(args.target) : null;
+        } catch {
+            parsed = null;
+        }
+        const channel = parsed?.kind === "url"
+            ? parsed.fragment ?? this.#engine.defaultChannelAt(parsed, args.workspaceId)
+            : undefined;
+        return this.readEntry({ ...args, ...(channel === undefined ? {} : { channel }) });
+    }
+
     // {§client-entry-address} {§entry-read-result} A representation core computes, read as a stored entry is: every
     // channel, or the selected one from its offset in Unicode code points. It is no stored entry, so it names none.
     static #computedRead(
@@ -349,16 +364,6 @@ export default class ClientReads {
             // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
             limit: Math.min(args.limit ?? Knob.integer("PLURNK_SERVICE_LOG_READ_PAGE", 1), Knob.integer("PLURNK_SERVICE_LOG_READ_MAX", 1)) });
         return rows.map((row) => LogEntry.wire(row));
-    }
-
-    // {§methods-reasoning-read} — a turn's readable reasoning source, the text its first model operation row projects
-    // ({§methods-readable-reasoning}), by the worker's display coordinate; null when the turn reasoned none.
-    async readReasoning(args: { workspaceId: number; workerId: number; loopSeq: number; turnSeq: number }): Promise<string | null> {
-        const workerId = await this.#ownedWorker("reasoning.read", args);
-        const loopSeq = ClientInput.assertId("reasoning.read", "loopSeq", args.loopSeq);
-        const turnSeq = ClientInput.assertId("reasoning.read", "turnSeq", args.turnSeq);
-        const row = await this.#db.log_turn_reasoning.get<{ content: string }>({ worker_id: workerId, loop_seq: loopSeq, turn_seq: turnSeq });
-        return row === undefined || row.content.length === 0 ? null : row.content;
     }
 
     // {§methods-worker-streams} The streams the worker holds open, in opening order, each with every channel of its entry.

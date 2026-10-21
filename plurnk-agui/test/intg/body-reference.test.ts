@@ -84,9 +84,13 @@ test("{§agui-body-reference}: a deep conversation with large bodies reaches the
     let large = 0;
     for (const { part } of documents) {
         assert.equal(part.source.type, "url");
-        const address = /\/agui\/(\d+)\/(\d+)\/log\/(\d+)\/(\d+)\/(\d+)\/READ$/u.exec(part.source.type === "url" ? part.source.value : "");
-        assert.ok(address, `the body's address is its row's log address at this daemon: ${JSON.stringify(part.source)}`);
-        const [, space, worker, loopSeq, turnSeq, sequence] = address.map(Number);
+        // {§agui-entry-route} The HTTP form of the row's log address, read from its worker's perspective.
+        const reference = new URL(part.source.type === "url" ? part.source.value : "");
+        const perspective = /^\/agui\/(\d+)\/(\d+)\/entry$/u.exec(reference.pathname);
+        const address = /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/READ$/u.exec(reference.searchParams.get("target") ?? "");
+        assert.ok(perspective && address, `the body's address is its row's log address at this daemon: ${JSON.stringify(part.source)}`);
+        const [space, worker] = perspective.slice(1).map(Number);
+        const [loopSeq, turnSeq, sequence] = address.slice(1).map(Number);
         assert.equal(space, workspaceId);
         const row = (await daemon.readLog({ workspaceId, workerId: worker, loopSeq, turnSeq, sequence }))
             .find(({ op }: { op: string | null }) => op === "READ");

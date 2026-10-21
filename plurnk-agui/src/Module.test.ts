@@ -149,7 +149,9 @@ const mockSeam = (operatorSecret: string | null = null) => {
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         cancelLoop: async () => false,
         readLog: async () => logRows([{ id: 1, op: "SEND", status_rx: 200, origin: "model" }]),
-        readReasoning: async () => null,
+        readEntryChannel: async ({ target }) => ({ status: 404, entry: null, problem: {
+            type: "https://problems.plurnk.xyz/daemon/entry/entry-not-found", title: "Entry not found", status: 404, detail: `No visible entry exists at ${target}.`,
+        } }),
         readMessages: async () => [],
         readInbox: async () => [],
         readStreams: async () => [],
@@ -3269,63 +3271,40 @@ test("{§credential-authority} PLURNK-owned HTTP failures use application/proble
     } finally { await mod.close(); }
 });
 
-// {§agui-body-reference} A row's body at its address: the address names the row exactly, the body is typed as its
-// receipt types it, and an address that holds no body is refused; the perimeter admits the request first.
-test("{§agui-body-reference}: a row's body is served at its address, typed as its receipt types it, and nothing else is", async () => {
+// {§agui-entry-route} An address at this daemon: the module asks core for the channel it selects and answers it as its
+// media type, and core's refusal is the answer when core refuses; the perimeter admits the request first.
+test("{§agui-entry-route}: an address is served as the channel it selects, typed as core types it, and core's refusal stands", async () => {
     const { seam } = mockSeam("expected");
     const reads: unknown[] = [];
-    seam.readLog = async (args) => {
+    const missing = seam.readEntryChannel;
+    seam.readEntryChannel = async (args) => {
         reads.push(args);
-        const row = { worker_id: 77, loop_seq: 1, turn_seq: 2, sequence: args.sequence ?? 0, origin: "model" };
-        if (args.sequence === 3) return logRows([{ ...row, id: 7, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "# Title\n" } }]);
-        if (args.sequence === 4) return logRows([{ ...row, id: 8, op: "NOTE", rx: { status: 200 } }]);
-        return [];
+        return args.target === "log:///1/2/3/READ"
+            ? { status: 200, entry: { entryId: null, target: args.target, channels: {
+                "": { content: "# Title\n", contentOffset: 0, contentLength: 8, mimetype: "text/markdown", weight: 4, state: "static" },
+            } } }
+            : missing(args);
     };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
     const base = `http://127.0.0.1:${mod.address().port}`;
+    const at = (address: string): string => `${base}/agui/3/77/entry?${new URLSearchParams({ target: address })}`;
     try {
-        const refused = await fetch(`${base}/agui/3/77/log/1/2/3/READ`);
-        assert.equal(refused.status, 401, "the perimeter admits a body request as it admits a Run");
+        const refused = await fetch(at("log:///1/2/3/READ"));
+        assert.equal(refused.status, 401, "the perimeter admits an address request as it admits a Run");
         assert.deepEqual(reads, [], "nothing is read for a request the perimeter refused");
         const authorization = { authorization: `Bearer ${await mintAccess(mod.address().port, { id: "operator", secret: "expected" })}` };
-        const body = await fetch(`${base}/agui/3/77/log/1/2/3/READ`, { headers: authorization });
+        const body = await fetch(at("log:///1/2/3/READ"), { headers: authorization });
         assert.equal(body.status, 200);
-        assert.equal(body.headers.get("content-type"), "text/markdown; charset=utf-8", "typed as its receipt types it");
-        assert.equal(await body.text(), "# Title\n", "the body, verbatim");
-        assert.deepEqual(reads.at(-1), { workspaceId: 3, workerId: 77, loopSeq: 1, turnSeq: 2, sequence: 3 }, "the address names its row exactly");
-        for (const address of ["1/2/4/NOTE", "1/2/3/EDIT", "1/2/5/READ"]) {
-            const none = await fetch(`${base}/agui/3/77/log/${address}`, { headers: authorization });
-            assert.equal(none.status, 404, `${address} holds no body`);
-            assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/body-not-found");
-        }
-    } finally { await mod.close(); }
-});
-
-// {§agui-body-reference} {§methods-reasoning-read} A turn's reasoning at its address: the daemon's reading of the turn's
-// reasoning source as text, and a turn that reasoned none is refused; the perimeter admits the request first.
-test("{§agui-body-reference}: a turn's reasoning is served at its address as text, and a turn without one is refused", async () => {
-    const { seam } = mockSeam("expected");
-    const reads: unknown[] = [];
-    seam.readReasoning = async (args) => {
-        reads.push(args);
-        return args.turnSeq === 2 ? "Weighing it.\nThen deciding." : null;
-    };
-    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
-    const base = `http://127.0.0.1:${mod.address().port}`;
-    try {
-        const refused = await fetch(`${base}/agui/3/77/reasoning/1/2`);
-        assert.equal(refused.status, 401, "the perimeter admits a reasoning request as it admits a Run");
-        assert.deepEqual(reads, [], "nothing is read for a request the perimeter refused");
-        const authorization = { authorization: `Bearer ${await mintAccess(mod.address().port, { id: "operator", secret: "expected" })}` };
-        const reasoning = await fetch(`${base}/agui/3/77/reasoning/1/2`, { headers: authorization });
-        assert.equal(reasoning.status, 200);
-        assert.equal(reasoning.headers.get("content-type"), "text/plain; charset=utf-8");
-        assert.equal(reasoning.headers.get("cache-control"), "no-store");
-        assert.equal(await reasoning.text(), "Weighing it.\nThen deciding.", "the reasoning, verbatim");
-        assert.deepEqual(reads.at(-1), { workspaceId: 3, workerId: 77, loopSeq: 1, turnSeq: 2 }, "the address names its turn exactly");
-        const none = await fetch(`${base}/agui/3/77/reasoning/1/3`, { headers: authorization });
+        assert.equal(body.headers.get("content-type"), "text/markdown; charset=utf-8", "typed as core types the channel");
+        assert.equal(body.headers.get("cache-control"), "no-store");
+        assert.equal(await body.text(), "# Title\n", "the channel, verbatim");
+        assert.deepEqual(reads.at(-1), { workspaceId: 3, workerId: 77, target: "log:///1/2/3/READ" }, "the address and perspective, exactly");
+        const none = await fetch(at("reasoning://main/1/3"), { headers: authorization });
         assert.equal(none.status, 404);
-        assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/reasoning-not-found");
+        assert.equal((await none.json() as { type: string }).type, "https://problems.plurnk.xyz/daemon/entry/entry-not-found", "core's refusal");
+        const unnamed = await fetch(`${base}/agui/3/77/entry`, { headers: authorization });
+        assert.equal(unnamed.status, 400);
+        assert.equal((await unnamed.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/entry-target-required");
     } finally { await mod.close(); }
 });
 

@@ -11,14 +11,11 @@ const TRACER_NAME = "plurnk.agui";
 
 const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
 
-export type AguiRouteTemplate = "/agui" | "/agui/connect" | "/agui/{workspace}/{worker}/log/{loop}/{turn}/{sequence}/{op}"
-    | "/agui/{workspace}/{worker}/reasoning/{loop}/{turn}" | "/agui/{workspace}/{worker}/messages" | "preflight" | "unmatched";
+export type AguiRouteTemplate = "/agui" | "/agui/connect" | "/agui/{workspace}/{worker}/entry" | "/agui/{workspace}/{worker}/messages"
+    | "preflight" | "unmatched";
 
-// {§agui-body-reference} A row's body at this daemon: workspace, worker, then the row's log address `L/T/S/OP`.
-export const BODY_ROUTE = /^\/agui\/(\d+)\/(\d+)\/log\/(\d+)\/(\d+)\/(\d+)\/([^/?#]+)$/u;
-
-// {§agui-body-reference} A turn's reasoning at this daemon: workspace, worker, then the turn's address `L/T`.
-export const REASONING_ROUTE = /^\/agui\/(\d+)\/(\d+)\/reasoning\/(\d+)\/(\d+)$/u;
+// {§agui-entry-route} An address at this daemon: workspace, the worker whose perspective reads it, then the address as a query.
+export const ENTRY_ROUTE = /^\/agui\/(\d+)\/(\d+)\/entry(?:\?([^#]*))?$/u;
 
 // {§agui-history-page} A worker's history pages at this daemon: workspace, worker, then the view and cursor as a query.
 export const HISTORY_ROUTE = /^\/agui\/(\d+)\/(\d+)\/messages(?:\?([^#]*))?$/u;
@@ -30,8 +27,7 @@ export const aguiRouteTemplate = (
     if (method === "OPTIONS") return "preflight";
     if (method === "POST" && url === "/agui") return "/agui";
     if (method === "POST" && url === "/agui/connect") return "/agui/connect";
-    if (method === "GET" && url !== undefined && BODY_ROUTE.test(url)) return "/agui/{workspace}/{worker}/log/{loop}/{turn}/{sequence}/{op}";
-    if (method === "GET" && url !== undefined && REASONING_ROUTE.test(url)) return "/agui/{workspace}/{worker}/reasoning/{loop}/{turn}";
+    if (method === "GET" && url !== undefined && ENTRY_ROUTE.test(url)) return "/agui/{workspace}/{worker}/entry";
     if (method === "GET" && url !== undefined && HISTORY_ROUTE.test(url)) return "/agui/{workspace}/{worker}/messages";
     return "unmatched";
 };

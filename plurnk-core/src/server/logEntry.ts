@@ -11,6 +11,7 @@ import type { Db } from "../core/Db.ts";
 export interface LogEntryRow {
     readonly id: number;
     readonly worker_id: number;
+    readonly worker_name: string;
     readonly loop_id: number;
     readonly loop_seq: number;
     readonly turn_id: number;
@@ -65,6 +66,7 @@ export default class LogEntry {
         return {
             id: row.id,
             worker_id: row.worker_id,
+            worker_name: row.worker_name,
             loop_id: row.loop_id,
             loop_seq: row.loop_seq,
             turn_id: row.turn_id,

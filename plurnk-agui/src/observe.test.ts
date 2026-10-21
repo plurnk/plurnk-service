@@ -7,9 +7,7 @@ test("{§observability-boundary} AG-UI observation classifies routes without exp
     assert.equal(aguiRouteTemplate("POST", "/agui"), "/agui");
     assert.equal(aguiRouteTemplate("OPTIONS", "/secret-in-path?token=xyzzy"), "preflight");
     assert.equal(aguiRouteTemplate("GET", "/secret-in-path?token=xyzzy"), "unmatched");
-    assert.equal(aguiRouteTemplate("GET", "/agui/3/77/log/1/2/3/READ"), "/agui/{workspace}/{worker}/log/{loop}/{turn}/{sequence}/{op}",
-        "{§agui-body-reference} a body's address leaves the perimeter as its template");
-    assert.equal(aguiRouteTemplate("GET", "/agui/3/77/reasoning/1/2"), "/agui/{workspace}/{worker}/reasoning/{loop}/{turn}",
-        "{§agui-body-reference} and so does a turn's reasoning");
+    assert.equal(aguiRouteTemplate("GET", "/agui/3/77/entry?target=reasoning%3A%2F%2Fmain%2F1%2F2"), "/agui/{workspace}/{worker}/entry",
+        "{§agui-entry-route} an address leaves the perimeter as its template, never the address itself");
     assert.equal(aguiRouteTemplate(undefined, undefined), "unmatched");
 });

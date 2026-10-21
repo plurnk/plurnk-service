@@ -27,6 +27,8 @@ const authored = (source: string): Record<string, unknown> => {
 };
 
 const t = (): Translator => new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run-1" });
+// {§agui-entry-route} An address at this daemon, read from `worker`'s perspective.
+const at = (worker: number, address: string): string => `${ORIGIN}/agui/3/${worker}/entry?${new URLSearchParams({ target: address })}`;
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
     const rx = over.op === "SEND" && (tx as { target?: unknown } | undefined)?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
@@ -109,7 +111,7 @@ test("{§agui-call-result} {§methods-invocation} a started execution is answere
         "the started command's receipt is no result; each observation answers it under its own coordinate, and a failed command's receipt is its result");
     assert.deepEqual(results[2].content, [
         { type: "text", text: JSON.stringify({ status: 200, exitCode: 0, terminal: true }) },
-        { type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/2/1/READ` } },
+        { type: "document", source: { type: "url", value: at(10, "log:///1/2/1/READ") } },
     ], "{§agui-body-reference} the observation carries its receipt, and its output by reference");
     assert.ok(!live.some((event) => event.type === EventType.CUSTOM && event.name === "plurnk.ambient"), "an observation that answers a call is not ambient");
 
@@ -142,7 +144,7 @@ test("{§agui-call-result} {§worker-obligations} {§agui-progress-reply} a dele
     assert.deepEqual(live.filter((event) => event.type === EventType.TOOL_CALL_RESULT).map((event) => [event.toolCallId, event.messageId, event.content]),
         [["1/1/1", "1/2/2", [
             { type: "text", text: JSON.stringify({ status: 200, resource: "ops://helper/1" }) },
-            { type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/2/2/READ` } },
+            { type: "document", source: { type: "url", value: at(10, "log:///1/2/2/READ") } },
         ]], ["1/1/2", "1/2/3", "forty-two"]],
         "neither receipt is a result; the child's conclusion answers the WORK, its body by reference, and the reply's words the SEND");
     assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_START).map((event) => [event.messageId, event.role, event.name]),
@@ -529,7 +531,7 @@ test("{§agui-readable-reasoning} a Run that joins mid-request presents none of 
 // {§agui-reasoning-link} A Run that negotiated reasoning by link: the text never rides a message, only its link does.
 const linked = (args: { modelWorkerId?: number; continuation?: ReturnType<Translator["interrupt"]>["continuation"] } = {}) =>
     new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th-1", runId: "run", reasoningByLink: true, modelWorkerId: 2, ...args });
-const link = (worker: number, turn: string) => ({ plurnk: { coordinate: turn, body: { url: `${ORIGIN}/agui/3/${worker}/reasoning/${turn}`, mimeType: "text/plain" } } });
+const link = (worker: number, turn: string) => ({ plurnk: { coordinate: turn, body: { url: at(worker, `reasoning://main/${turn}`), mimeType: "text/plain" } } });
 
 test("{§agui-reasoning-link} live reasoning opens an empty message, its text an ephemeral preview, and its row folds the link on", () => {
     const tr = linked();
@@ -597,9 +599,9 @@ test("{§agui-reasoning-link} a snapshot holds each turn's reasoning once, empty
 
 test("{§agui-reasoning-link} {§agui-ambient} another worker's row carries its reasoning by link, the thread's own row none: no row carries reasoning text", () => {
     const tr = linked();
-    const foreign = tr.logEntry({ entry: wireRow({ id: 9, op: "SEND", status_rx: 200, worker_id: 5, turn_id: 7, loop_seq: 2, turn_seq: 7, sequence: 1,
+    const foreign = tr.logEntry({ entry: wireRow({ id: 9, op: "SEND", status_rx: 200, worker_id: 5, worker_name: "peer", turn_id: 7, loop_seq: 2, turn_seq: 7, sequence: 1,
         rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, tx: { body: "worker speech" }, reasoning: "worker reasoning" }) });
-    assert.deepEqual((foreign[0] as { value: Record<string, unknown> }).value.reasoning, { url: `${ORIGIN}/agui/3/5/reasoning/2/7`, mimeType: "text/plain" },
+    assert.deepEqual((foreign[0] as { value: Record<string, unknown> }).value.reasoning, { url: at(5, "reasoning://peer/2/7"), mimeType: "text/plain" },
         "its reasoning, which no message of this Run holds, rides the row by reference");
     const own = tr.logEntry({ entry: wireRow({ id: 2, op: "error", worker_id: 2, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, status_rx: 400, tx: "",
         rx: { status: 400, problem: { type: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax", title: "Invalid operation syntax", status: 400, detail: "unreadable" } },
@@ -1089,7 +1091,7 @@ test("{§agui-words-by-reference} words past the ceiling stream live in deltas w
     assert.ok(deltas.every((event) => JSON.stringify(event).length <= ceiling), "each delta's event serializes within the ceiling");
     assert.ok(deltas.every(({ delta }) => !/[\ud800-\udbff]$/u.test(delta)), "no delta ends inside a surrogate pair");
     assert.equal(deltas.map(({ delta }) => delta).join(""), words, "joined, they are the words");
-    const document = (turn: number, sequence: number) => [{ type: "document", source: { type: "url", value: `${ORIGIN}/agui/3/10/log/1/${turn}/${sequence}/SEND`, mimeType: "text/plain" } }];
+    const document = (turn: number, sequence: number) => [{ type: "document", source: { type: "url", value: at(10, `log:///1/${turn}/${sequence}/SEND`), mimeType: "text/plain" } }];
     const [snapshot] = translator().replay([arrival]);
     if (snapshot?.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
     assert.deepEqual(snapshot.messages.map(({ role, content }) => [role, content]), [["user", document(1, 1)]], "an arrival's words, by reference");

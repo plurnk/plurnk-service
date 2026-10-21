@@ -133,13 +133,6 @@ export interface ApplicationPort extends HttpHost {
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;
-    // {§methods-reasoning-read} — a turn's readable reasoning, `reasoning://<worker>/<loop>/<turn>`; null when it has none.
-    readReasoning(args: {
-        readonly workspaceId: number;
-        readonly workerId: number;
-        readonly loopSeq: number;
-        readonly turnSeq: number;
-    }): Promise<string | null>;
     /** {§agui-provider-routes} Each alias is the route a worker seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
@@ -222,6 +215,12 @@ export interface ApplicationPort extends HttpHost {
         readonly target: string;
         readonly channel?: string;
         readonly offset?: number;
+    }): Promise<EntryReadResult>;
+    // {§methods-entry-channel-read} — the channel `target` selects, its fragment's or else its scheme's default, complete.
+    readEntryChannel(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+        readonly target: string;
     }): Promise<EntryReadResult>;
     forkWorker(args: {
         readonly workspaceId: number;

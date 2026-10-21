@@ -556,6 +556,11 @@ export default class Engine {
         return this.#dispatcher.capabilityProjection(workspaceId);
     }
 
+    // {§methods-entry-channel-read} The channel an address without a fragment selects: its scheme's default there.
+    defaultChannelAt(target: ParsedPath & { readonly kind: "url" }, workspaceId: number): string | undefined {
+        return this.#schemes.manifestAt(target.scheme, target, workspaceId)?.defaultChannel;
+    }
+
     // {§client-entry-address}
     readClientEntry(context: {
         target: ParsedPath;

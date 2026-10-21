@@ -5497,8 +5497,8 @@ teaches, so a wrong example fails boot rather than the model.
 | {§methods-loop-cancel} | Loops — `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? |
 | {§methods-op-mirror} | Op mirror: client dispatch — `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? |
 | {§methods-log-read} | Reads — `readLog({ workspaceId, workerId, ...coordinate })` |
-| {§methods-reasoning-read} | Reads — `readReasoning({ workspaceId, workerId, loopSeq, turnSeq })` |
 | {§methods-entry-read} | Reads — `readEntry({ workspaceId, workerId, target, channel?, offset? |
+| {§methods-entry-channel-read} | Reads — `readEntryChannel({ workspaceId, workerId, target })` |
 | {§methods-workspace-create} | Workspace lifecycle — `createWorkspace({ name?, projectRoot?, settings? |
 | {§methods-workspace-attach} | Workspace lifecycle — `attachWorkspace({ workspaceId } \ |
 | {§methods-workspace-activate} | Workspace lifecycle — `activateWorkspace({ workspaceId })` |
@@ -5573,8 +5573,8 @@ Core's behavior behind them.
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)`; `cancelWorker({ workspaceId, workerId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelWorker` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime worker shares its scope. |
 | §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextWorkerId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextWorkerId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
-| §methods-reasoning-read Reads                     | `readReasoning({ workspaceId, workerId, loopSeq, turnSeq })` | Ownership-checks the worker, then returns the turn's readable reasoning source, `reasoning://<worker>/<loop>/<turn>` ({§turn-source-resources}): the text its first model operation row projects ({§methods-readable-reasoning}), or `null` when the turn reasoned none. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Acquires the selector from that worker's perspective ({§client-entry-address}) and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
+| §methods-entry-channel-read Reads                 | `readEntryChannel({ workspaceId, workerId, target })` | The channel `target` selects, its fragment's or else its scheme's default there, read as `readEntry` reads it and returned complete as {§entry-read-result}: what the HTTP form of an address answers with. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
@@ -5787,9 +5787,10 @@ beside database ids, so a client can render and resolve the logical `L/T/S`
 coordinate without fetching all rows and matching locally.
 
 §methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
-preserve causal `source` and the row's lifecycle `state` (`proposed` while a proposal awaits its
-decision, then `resolved`, `failed` or `cancelled`), and parse the row's JSON `attrs` into structured data.
-Client interfaces do not reconstruct these fields from operation or origin.
+name the row's worker by its id and its immutable name (`worker_id`, `worker_name`,
+{§machine-processes-worker-origin}), preserve causal `source` and the row's lifecycle `state` (`proposed` while a
+proposal awaits its decision, then `resolved`, `failed` or `cancelled`), and parse the row's JSON `attrs` into
+structured data. Client interfaces do not reconstruct these fields from operation or origin.
 
 §methods-readable-reasoning **Readable provider reasoning remains derived
 provider evidence.** On a turn's first model operation row, `readLog` and `log/entry`

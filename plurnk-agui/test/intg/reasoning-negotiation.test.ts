@@ -87,7 +87,7 @@ test("{§agui-reasoning-link}: a stock client receives reasoning's text, live an
     assert.equal(message?.content, "", "the message holds no text");
     const link = (message?.metadata as { plurnk?: { body?: { url?: string; mimeType?: string } } } | undefined)?.plurnk?.body;
     assert.equal(link?.mimeType, "text/plain");
-    assert.ok(link?.url?.endsWith("/reasoning/1/2"), "the link addresses the turn the message names");
+    assert.match(new URL(link?.url ?? "").searchParams.get("target") ?? "", /^reasoning:\/\/[^/]+\/1\/2$/u, "the link addresses the turn the message names");
     const fetched = await fetch(link?.url ?? "");
     assert.equal(fetched.status, 200);
     assert.equal(await fetched.text(), thought, "the text is one fetch at the message's link");

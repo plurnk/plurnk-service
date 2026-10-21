@@ -172,18 +172,27 @@ a new stream. Clients need not disconnect for the daemon to stop.
 
 A result's body travels when its client asks for it. A result whose receipt holds a body (`content`, a
 non-empty string) reaches its client as two standard parts: a text part, the receipt without its body, and
-a document part whose `url` source is the body's address at this daemon, carrying the receipt's `mimetype`
-as its `mimeType`; a result without a body is its receipt as text. No receipt carries the line anchors only
+a document part whose `url` source is the body's address at this daemon ({§agui-entry-route}), carrying the
+receipt's `mimetype` as its `mimeType`; a result without a body is its receipt as text. No receipt carries the line anchors only
 the model edits by (`lineAnchors`, `lineAnchorIdentity`, `lineNumberWidth`). The live `TOOL_CALL_RESULT`, the
 snapshot's tool message and a `plurnk.ambient` row follow one rule, so live and replayed messages agree:
 an ambient row's `rx` is its receipt without the body, beside `body: { url, mimeType }`. A reply's words
 are speech and travel inline ({§agui-call-result}). A Run that negotiated reasoning by link receives a turn's
 reasoning the same way: its message holds no text and names the reasoning's address ({§agui-reasoning-link}).
 
-| Fact | Rule |
+| By reference | The address it names, in its HTTP form |
 | --- | --- |
-| The address | `<origin>/agui/<workspaceId>/<workerId>/log/L/T/S/OP`: the HTTP form of the row's log address ({§methods-log-coordinate}), at the configured public origin, else the one the Run's request reached ({§http-request-origin}); a turn's reasoning is `<origin>/agui/<workspaceId>/<workerId>/reasoning/L/T`, the HTTP form of `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
-| The fetch | `GET` at either address, admitted by the same perimeter as a Run ({§agui-http-authorization}), answers with `cache-control: no-store`: the body as `content-type: <mimetype>; charset=utf-8`, or the turn's reasoning, `ApplicationPort.readReasoning` ({§methods-reasoning-read}), as `text/plain; charset=utf-8`; a message's row, an arrival's or a reply's, whose receipt holds no body answers its words as `text/plain; charset=utf-8` ({§agui-words-by-reference}); a row that holds no body is `404 body-not-found`, a turn that reasoned none `404 reasoning-not-found`, and a worker outside the workspace is the daemon's own refusal |
+| A result's body | The row's log address `log:///L/T/S/OP` ({§methods-log-coordinate}), read from the row's worker's perspective: the row's canonical body, the one its receipt holds |
+| A turn's reasoning | `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
+| A message's words | Its row's log address, an arrival's or a reply's, whose canonical body is its words ({§agui-words-by-reference}) |
+
+§agui-entry-route **An address at this daemon has one HTTP form:** `<origin>/agui/<workspaceId>/<workerId>/entry?target=<address>`,
+at the configured public origin, else the one the request reached ({§http-request-origin}). `target` is the plurnk
+address, percent-encoded, its fragment naming the channel. `GET` at it is admitted by the same perimeter as a Run
+({§agui-http-authorization}) and answers the channel the address selects, read from that worker's perspective
+({§methods-entry-channel-read}), as `content-type: <mimetype>; charset=utf-8` with `cache-control: no-store`. A
+request naming no `target` is 400 `entry-target-required`; every other refusal is the daemon's own
+({§client-entry-address}).
 
 ## §agui-projection The projection
 
@@ -1166,8 +1175,7 @@ reconstruct one from `RUN_ERROR`.
 | `credential-revoked` | 401 | The credential this stream was admitted under has been revoked. |
 | `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
-| `body-not-found` | 404 | The row holds no body at this address ({§agui-body-reference}). |
-| `reasoning-not-found` | 404 | The turn holds no reasoning at this address ({§agui-body-reference}). |
+| `entry-target-required` | 400 | The request names no address in `target`. Recovery: Request `?target=<address>`, the address percent-encoded. |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
 | `thread-not-found` | 404 | The thread has no conversation. |
