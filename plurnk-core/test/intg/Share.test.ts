@@ -60,7 +60,7 @@ test("{§share-snapshot}: a snapshot of an open WAL database keeps the commits a
 
     const bytes = join(root, "bytes.db");
     copyFileSync(dbPath, bytes);
-    assert.throws(() => workspacesOf(bytes, join(root, "bytes")), { message: "no such table: workspaces" }, "the schema and the commit are still in the -wal file");
+    assert.deepEqual(workspacesOf(bytes, join(root, "bytes")), [], "the byte copy holds the migrated schema, but not the commit still in the -wal file");
     const copy = join(root, "snapshot.db");
     Share.snapshot(dbPath, copy);
     assert.deepEqual(workspacesOf(copy, join(root, "snapshot")), ["committed-in-wal"]);

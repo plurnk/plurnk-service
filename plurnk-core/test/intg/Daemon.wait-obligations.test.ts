@@ -8,9 +8,9 @@ import { holdChild } from "./_db.ts";
 import Engine from "../../src/core/Engine.ts";
 import { withDaemon, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelWorker } from "./_workers.ts";
 
-test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async () => {
+test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.
     const provider = new Mock({
         contextWindow: 65536,
@@ -30,9 +30,9 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                 effort: "adaptive" as const, systemPrompt: "test system",
             };
-            const accepted = await Promise.all([
-                daemon.inject({ ...common, prompt: "First task." }),
-                daemon.inject({ ...common, prompt: "Second task." }),
+            const accepted = await admitTogether(t, workerId, [
+                () => daemon.inject({ ...common, prompt: "First task." }),
+                () => daemon.inject({ ...common, prompt: "Second task." }),
             ]);
             const ids = new Set(accepted.map(({ loopId }) => loopId));
             await waitForDb(

@@ -9,11 +9,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow } from "./_packet.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelWorker } from "./_workers.ts";
 
 // {§message-arrival} — an arrival row's body is its sent side.
 const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { body: { raw: string } }).body.raw;
@@ -53,19 +52,9 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
         const workspace = await daemon.createWorkspace({ name: "concurrent-loop-allocation" });
         const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
         const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
-        const admitted = Promise.withResolvers<void>();
-        const ensureDrain = DrainSupervisor.prototype.ensureDrain;
-        let starts = 0;
         // {§worker-message-admission}: both admissions must precede the first drain claim.
-        t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>) {
-            if (args[0].workerId === workerId) {
-                if (++starts === 2) admitted.resolve();
-                await admitted.promise;
-            }
-            return ensureDrain.apply(this, args);
-        });
-        const accepted = await Promise.all([
-            daemon.inject({
+        const accepted = await admitTogether(t, workerId, [
+            () => daemon.inject({
                 workspaceId: workspace.workspaceId,
                 workerId,
                 prompt: "concurrent prompt one",
@@ -73,7 +62,7 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
                 effort: "adaptive",
                 systemPrompt: "test system",
             }),
-            daemon.inject({
+            () => daemon.inject({
                 workspaceId: workspace.workspaceId,
                 workerId,
                 prompt: "concurrent prompt two",

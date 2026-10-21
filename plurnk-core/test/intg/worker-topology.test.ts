@@ -18,7 +18,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelWorker } from "./_workers.ts";
 
 test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -73,7 +73,7 @@ test("{§worker-loop-lifecycle} a child cancelling itself (499) also wakes the p
     });
 });
 
-test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent while another task stays parked", async () => {
+test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent while another task stays parked", async (t) => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const provider = new Mock({ contextWindow: 100000, responses: [
@@ -98,9 +98,9 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
                     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                     effort: "adaptive" as const, systemPrompt: "test system",
                 };
-                const childTasks = await Promise.all([
-                    daemon.inject({ ...common, prompt: "First child task." }),
-                    daemon.inject({ ...common, prompt: "Second child task." }),
+                const childTasks = await admitTogether(t, childId, [
+                    () => daemon.inject({ ...common, prompt: "First child task." }),
+                    () => daemon.inject({ ...common, prompt: "Second child task." }),
                 ]);
                 const ids = new Set(childTasks.map(({ loopId }) => loopId));
                 await waitForDb(

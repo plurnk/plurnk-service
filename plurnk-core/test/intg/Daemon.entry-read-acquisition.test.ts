@@ -38,7 +38,9 @@ class Remote implements SchemeHandler {
 
 const typeOf = (result: EntryReadResult): string | null => result.entry === null ? result.problem.type.replace(/^.*\//u, "") : null;
 
-test("{§client-entry-address} a client read acquires every kind of address as exact READ does, and runs only core's acquisition", async () => {
+// Under the shipped database posture, and with a reader Worker beside the writer, the other posture an operator may choose
+// (`PLURNK_SERVICE_SQLITE_READERS`): every read here follows a write it must see.
+for (const readers of [undefined, 1]) test(`{§client-entry-address} a client read acquires every kind of address as exact READ does, and runs only core's acquisition (${readers === undefined ? "shipped readers" : `${readers} reader`})`, async () => {
     const thought = "Weighing the note.";
     const minted = "proto://anonymous/threads/t/messages/m1";
     const provider = new Mock({ contextWindow: 32768, responses: [
@@ -135,5 +137,5 @@ test("{§client-entry-address} a client read acquires every kind of address as e
             const refused = await read(target);
             assert.deepEqual([refused.status, typeOf(refused), refused.entry], [status, code, null], target);
         }
-    });
+    }, readers === undefined ? {} : { readers });
 });

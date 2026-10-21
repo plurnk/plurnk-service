@@ -160,8 +160,9 @@ export const connect = (addr: DaemonAddr): Promise<SeamSocket> =>
 export const withDaemon = async <T>(
     provider: Provider | null,
     fn: (db: Db, daemon: Daemon, addr: DaemonAddr) => Promise<T>,
+    database: { readers?: number } = {},
 ): Promise<T> => {
-    const db = await openMigrated();
+    const db = await openMigrated(undefined, database);
     const daemon = new Daemon({ db, provider });
     await daemon.start(); // listenerless — the harness rides the seam, not a socket
     try { return await fn(db, daemon, { daemon }); }

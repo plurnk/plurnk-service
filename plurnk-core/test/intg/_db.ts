@@ -1,9 +1,11 @@
 // Integration harness: the migrated per-test database and its row seeding. {§test-artifact-retention}
 
 import SqlRite from "@possumtech/sqlrite";
+import { Knob } from "@plurnk/plurnk-meta";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, readdir, rename } from "node:fs/promises";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { MessageOpener } from "../../src/core/ChannelWrite.ts";
@@ -28,16 +30,34 @@ let artifacts: Promise<string> | null = null;
 
 const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDirectory(process.env.PLURNK_TEST_LANE ?? "core"));
 
-export const openMigrated = async (atPath?: string): Promise<Db> => {
+// A database the migrations alone produced, once per run and migration set: a test's fresh database is a copy of it,
+// so no test pays to migrate. It holds nothing a test's own open would not have written first.
+let template: Promise<string> | null = null;
+
+const migratedTemplate = (): Promise<string> => (template ??= (async () => {
+    const digest = createHash("sha256");
+    for (const name of (await readdir(MIGRATIONS_DIR)).toSorted()) digest.update(name).update(await readFile(join(MIGRATIONS_DIR, name)));
+    const path = join(await artifactDirectory(), `template-${digest.digest("hex").slice(0, 16)}.db`);
+    if (await access(path).then(() => true, () => false)) return path;
+    // Concurrent first processes each build one and rename it into place; the renames are atomic and the copies equal.
+    const staging = `${path}.${crypto.randomUUID()}`;
+    await mkdir(dirname(path), { recursive: true });
+    const db = await SqlRite.open({ path: staging, synchronous: sqliteSynchronous(), dir: [MIGRATIONS_DIR], functions: sqlFunctionPaths });
+    await db.close();
+    await rename(staging, path);
+    return path;
+})());
+
+// A migrated database at `atPath`, a fresh one for each test when none is given; a path that already holds a database is
+// reopened. Its readers are the package's own setting unless a test names the posture it exercises.
+export const openMigrated = async (atPath?: string, { readers = Knob.integer("PLURNK_SERVICE_SQLITE_READERS", 0) }: { readers?: number } = {}): Promise<Db> => {
     const dbPath = atPath ?? join(await artifactDirectory(), `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
+    if (!await access(dbPath).then(() => true, () => false)) await copyFile(await migratedTemplate(), dbPath);
     const db = await SqlRite.open({
         path: dbPath,
         synchronous: sqliteSynchronous(),
-        // The suite already runs eight isolated databases concurrently. One reader
-        // per fixture exercises the WAL read lane without multiplying a host-sized
-        // pool by every test database.
-        readers: 1,
+        readers,
         dir: [
             MIGRATIONS_DIR,
             resolve(PROJECT_ROOT, "src"),

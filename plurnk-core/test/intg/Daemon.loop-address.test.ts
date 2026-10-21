@@ -5,9 +5,9 @@ import { withDaemon, waitForDb } from "./_rpc.ts";
 import { holdChild } from "./_db.ts";
 import { answer, makeMockResponse } from "./_mock.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelWorker } from "./_workers.ts";
 
-test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked Loop, not the oldest", async () => {
+test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked Loop, not the oldest", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("````WAIT\n````")) });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address" });
@@ -15,8 +15,8 @@ test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked
         await holdChild(db, workspaceId, workerId);
         const common = { workspaceId, workerId, providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             effort: "adaptive" as const, systemPrompt: "test system" };
-        const [first, second] = await Promise.all([
-            daemon.inject({ ...common, prompt: "first" }), daemon.inject({ ...common, prompt: "second" }),
+        const [first, second] = await admitTogether(t, workerId, [
+            () => daemon.inject({ ...common, prompt: "first" }), () => daemon.inject({ ...common, prompt: "second" }),
         ]);
         try {
             await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }),
