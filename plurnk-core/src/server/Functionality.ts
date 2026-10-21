@@ -141,7 +141,10 @@ const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
 const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "worker")[] => adapter.scopes ?? ["workspace"];
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
-const SCHEMA = (name: string): JsonSchema => ({ $ref: `https://schemas.plurnk.xyz/v0/${name}.json` });
+// One object per verb result: every family action, in every daemon, shares its compiled validator.
+const LIST_RESULT: JsonSchema = Object.freeze({ $ref: "https://schemas.plurnk.xyz/v0/FunctionalityListResult.json" });
+const DISCOVER_RESULT: JsonSchema = Object.freeze({ $ref: "https://schemas.plurnk.xyz/v0/FunctionalityDiscoverResult.json" });
+const MUTATION_RESULT: JsonSchema = Object.freeze({ $ref: "https://schemas.plurnk.xyz/v0/FunctionalityMutationResult.json" });
 const ALIAS_INPUT: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,
@@ -269,11 +272,7 @@ export default class Functionality {
                     scope,
                     residency: verb === "list" || verb === "discover" ? "none" : "required",
                     inputSchema,
-                    outputSchema: SCHEMA(verb === "list"
-                        ? "FunctionalityListResult"
-                        : verb === "discover"
-                            ? "FunctionalityDiscoverResult"
-                            : "FunctionalityMutationResult"),
+                    outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
                     handler: async (params, context) => {
                         if (context.scope === "daemon" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
                         const identity: FunctionalityIdentity = context.scope === "worker"
