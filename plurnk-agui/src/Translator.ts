@@ -626,8 +626,8 @@ export default class Translator {
     // {§agui-plurnk-metadata} A reasoning message's facts: its turn's `L/T` in its worker's log, and its link for a Run
     // that negotiated reasoning by link ({§agui-reasoning-link}).
     #reasoningMetadata(e: BodyRow): { plurnk: { coordinate: string; body?: { url: string; mimeType: string } } } {
-        const body = this.#reasoningBody(e);
-        return { plurnk: { coordinate: `${String(e.loop_seq)}/${String(e.turn_seq)}`, ...(this.#reasoningByLink ? { body } : {}) } };
+        if (!isSafeInteger(e.loop_seq) || !isSafeInteger(e.turn_seq)) throw new TypeError("A row that carries reasoning names its loop and turn.");
+        return { plurnk: { coordinate: `${e.loop_seq}/${e.turn_seq}`, ...(this.#reasoningByLink ? { body: this.#reasoningBody(e) } : {}) } };
     }
 
     // {§agui-body-reference} The HTTP form of a turn's reasoning source, `reasoning://<worker>/L/T`, at this daemon.
