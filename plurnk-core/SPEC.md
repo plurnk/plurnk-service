@@ -3681,6 +3681,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 | {§effect-policy-tunable} | Effect admission is one knob per effect. |
 | {§exec-stream} | Stream surfacing. |
 | {§stream-observation-result} | A stream observation's result carries one liveness fact. |
+| {§stream-channel-deletion} | A deleted channel owes no observation. |
 | {§exec-conclusion-summary} | An execution's conclusion summary is its address, how it ended and its channel sizes. |
 | {§exec-concurrency} | Execution concurrency is bounded per workspace (#389). |
 | {§exec-stream-page} | An unrequested delivery never exceeds the retrieval page. |
@@ -3936,6 +3937,13 @@ publication transition consumes the same result flag; private log attributes
 retain only the publication offset, not a second liveness value. A closed channel
 publishes only once subscription settlement has installed its terminal result;
 until then the stream is still in flight and publishes on the turn after it settles.
+
+§stream-channel-deletion **A deleted channel owes no observation.** A subscription publishes the
+channels its entry held when it opened. A channel deleted before its terminal publication, such as
+the `readable` sibling a response did not project ({§readable-channel}), has nothing left to
+publish: each of its publications settles as an empty sibling's does, so the stream's conclusion
+counts as delivered and the loop can conclude ({§loop-completion}). A channel the entry gains
+later belongs to the subscriptions opened after it.
 
 §exec-conclusion-summary **An execution's conclusion summary is its address, how it ended and its
 channel sizes.** The `summary` of an execution's `stream/concluded` ({§notifications-stream-concluded})

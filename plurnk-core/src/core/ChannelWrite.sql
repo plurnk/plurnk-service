@@ -214,6 +214,21 @@ BEGIN
     ) THEN RAISE(ABORT, 'subscription has no publishable channel') END;
 END;
 
+-- INIT: entry_channel_rows_settle_publications
+-- {§stream-channel-deletion}: a channel deleted before its terminal publication has nothing left
+-- to publish; every publication of it settles, as an empty sibling's does.
+DROP TRIGGER IF EXISTS entry_channel_rows_settle_publications;
+CREATE TRIGGER entry_channel_rows_settle_publications
+AFTER DELETE ON entry_channel_rows
+BEGIN
+    UPDATE subscription_publications
+    SET terminal_published = 1,
+        version = version + 1
+    WHERE terminal_published = 0
+      AND channel = OLD.name
+      AND subscription_id IN (SELECT id FROM subscriptions WHERE entry_id = OLD.entry_id);
+END;
+
 -- INIT: log_entries_advance_subscription_publication
 -- The generated READ and its cursor transition are one SQLite statement. A
 -- later log KILL removes evidence from active context without rewinding the
