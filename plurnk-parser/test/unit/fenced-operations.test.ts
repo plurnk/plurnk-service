@@ -190,3 +190,19 @@ test("{§executor-runtime-declaration} fenced operations: a closed malformed tar
         assert.deepEqual(admitted.map((statement) => "target" in statement ? statement.target?.raw : undefined), ["safe.md"], header);
     }
 });
+
+// One long line above its closer pairs as the same words on short lines do: rescanning it from each character would not.
+test("{§quotation} fenced operations: a body line of any length above its closer pairs in one pass", () => {
+    const words = "the survey went on without a break ".repeat(9_000);
+    const parsed = (body: string): number => {
+        const started = performance.now();
+        const item = PlurnkParser.parse(PlurnkParser.frame("NOTE", body)).items[0];
+        const elapsed = performance.now() - started;
+        assert.ok(item?.kind === "statement" && item.statement.op === "NOTE");
+        assert.equal(item.statement.body, body);
+        return elapsed;
+    };
+    const lines = parsed(words.replaceAll("break ", "break\n"));
+    const line = parsed(words);
+    assert.ok(line < 10 * lines, `one ${words.length}-character line took ${line.toFixed(0)} ms; the same words on short lines, ${lines.toFixed(0)} ms`);
+});

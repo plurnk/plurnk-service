@@ -104,7 +104,7 @@ export default class FencePairing {
             const line = FencePairing.#line(text.replace(/\r$/u, ""), options);
             // {§quotation}: the orphan is the closer of a heading written mid-line, in prose, that opened nothing —
             // a fence run on the line above that does not start it. A fence under a real closer is a surplus fence.
-            lines.push(line.kind === "text" ? { kind: "text", blank: text.trim() === "" } : line.kind === "bare" ? { ...line, underFence: /\S[^`]*`{3,}/u.test(previous) && !/^ {0,3}`{3,}/u.test(previous) } : line);
+            lines.push(line.kind === "text" ? { kind: "text", blank: text.trim() === "" } : line.kind === "bare" ? { ...line, underFence: /\S\s*`{3}/u.test(previous) && !/^ {0,3}`{3,}/u.test(previous) } : line);
             previous = text;
         }
         for (const [index, line] of lines.entries()) {
