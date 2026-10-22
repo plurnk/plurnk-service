@@ -17,7 +17,7 @@ is test tooling, not an installed Plurnk dependency. Use a separate checkout:
 ```sh
 git clone https://github.com/a2aproject/a2a-tck.git ../a2a-tck
 git -C ../a2a-tck checkout --detach 263b9cfaf16a554bdfb166a7ba5b67716e946349
-PLURNK_MODEL=<selector> npm run test:live -- --specimen "live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"
+PLURNK_MODEL=<selector> npm run test:live -- --specimen "live a2a: the upstream TCK's HTTP+JSON requirement tiers find only the ruled divergences in the assembled daemon"
 ```
 
 The checker is a live specimen ({§tier-census}): it runs in every live tier whose
@@ -27,38 +27,14 @@ and tracked-file cleanliness, starts a temporary Core daemon on a loopback
 ephemeral port, runs all HTTP+JSON requirement tiers, then stops its daemon.
 Inference is deterministic and free. It does not use or restart the operator's
 daemon. Each run retains the database and digest, service log, checker output,
-JSON/HTML/JUnit reports, command, and source/spec revisions in its run directory
-under the tier's `$PLURNK_BENCHMARKS/tier-live-<stamp>/` (`~/benchmarks` when
-unset). A nonzero checker result fails the specimen.
+JSON/HTML/JUnit reports, command, source/spec revisions and its `rulings.json` verdict in its run
+directory under the tier's `$PLURNK_BENCHMARKS/tier-live-<stamp>/` (`~/benchmarks` when unset).
 
 ## Interpretation
 
-Read individual failures **and skips**, not the compatibility percentage. The
-TCK's requirement aggregate also counts requirements not exercised by this
-transport/tier. A skipped prerequisite is not a passing lifecycle test.
-
-The pinned TCK vendors specification revision
-`173695755607e884aa9acf8ce4feed90e32727a1`, from March 2026. Its content-type and
-error-status assertions differ from the later [official SDK 1.1.0](https://github.com/a2aproject/a2a-js/blob/v1.1.0/CHANGELOG.md): it expects
-`application/json`, 415 for unsupported content, and 409 for uncancellable
-Tasks, where the SDK uses `application/a2a+json` and 400. Compare each assertion with the
-[upstream protocol](https://github.com/a2aproject/A2A/blob/main/docs/specification.md)
-before changing the adapter. Do not patch
-the checker or count these assertions as passing.
-
-The deterministic provider supplies text completion and text/file Artifacts. The
-exposure never asks its caller for input ({§a2a-worker-ownership}), so the checker skips
-its input-required requirements: those Tasks complete instead. The Agent Card carries no
-`Last-Modified` header, an optional caching aid the checker reports. File output
-uses ordinary scratch EDIT and SEND attachment acquisition through Core, not
-fabricated SDK Artifacts. Core's scratch text is `text/markdown`; the checker
-requests `text/plain`. That mismatch remains visible instead of relabeling
-the source's media type in the adapter. URL and structured-data Artifact emission are not provided by the
-current attachment contract; a JSON resource is delivered as typed file bytes.
-Direct Message responses are an optional protocol branch, whereas inbound
-Plurnk work consistently creates Tasks. These unexercised branches remain
-visible in the checker report. Follow investigation in #663, binary translation
-in #702, and complete Message history in #705. Hosted execution uses no SDK event
-manager. The module joins its own observations at close, including pending application
-reads; this is distinct from the SDK's HTTP disconnect behavior. Current behavior belongs to
-{§a2a-inbound-exposure} and {§a2a-resource-projection}.
+The specimen reads the JUnit report, not the exit code or the compatibility percentage: it requires exactly the
+failures {§a2a-tck-rulings} rules on, each for its ruled reason, and an explained reason for every skip. A skipped
+prerequisite is not a passing lifecycle test, so a skip the rulings do not explain fails the specimen too. Its
+`rulings.json` names any unruled failure, any ruled failure that now passes, any failure with another reason, and
+any unexplained skip; settle each against the [upstream protocol](https://github.com/a2aproject/A2A/blob/main/docs/specification.md)
+and update the rulings with the specimen. Do not patch the checker.

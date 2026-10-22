@@ -35,7 +35,7 @@ test("{§tier-census} the live catalog contains every registered specimen exactl
     assert.equal(names.length, 42);
     // {§tier-census} — the surfaces that were flags and scripts are specimens with requirements.
     assert.ok(names.includes("live mcp: current third-party stdio and HTTP servers compose through the assembled product"));
-    assert.ok(names.includes("live a2a: the upstream TCK's HTTP+JSON requirement tiers pass against the assembled daemon"));
+    assert.ok(names.includes("live a2a: the upstream TCK's HTTP+JSON requirement tiers find only the ruled divergences in the assembled daemon"));
     assert.ok(names.includes("live client: the terminal client's real-model TUI tier passes against this service"));
     assert.ok(names.includes("live llama-server honors PLURNK's request-scoped reasoning allowance"));
     assert.ok(names.includes("live: the official AG-UI client accepts the complete model response stream"));

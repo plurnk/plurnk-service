@@ -52,6 +52,22 @@ independent agent may use the SDK's reference request handler and task store;
 those test actors establish wire behavior and are not the Plurnk task
 architecture.
 
+§a2a-tck-rulings **The upstream TCK's failures are ruled divergences.** The pinned `a2aproject/a2a-tck`
+checker, which vendors specification v1.0.0, runs every HTTP+JSON requirement tier against the assembled daemon
+as a live specimen ({§tier-census}). The specimen requires exactly these failures, each for its stated reason,
+and a reason the hosted card ({§a2a-hosted-card}) or the exposure's rules explain for every skip; anything else
+fails it.
+
+| TCK requirement | The checker expects | Ruling |
+|---|---|---|
+| HTTP_JSON-SVC-001, HTTP_JSON-ERR-001 | `Content-Type: application/json` | The official SDK owns the framing ({§a2a-inbound-exposure}) and sends `application/a2a+json`, the binding's SHOULD and registered media type on the upstream specification's `main`; released v1.0.1 still names `application/json`. |
+| HTTP_JSON-STATUS-001 | 415 for an unsupported content type | Released v1.0.1 maps `ContentTypeNotSupportedError` to 400. |
+| CORE-CANCEL-002 | 409 for cancelling a terminal Task | Released v1.0.1 maps `TaskNotCancelableError` to 400. |
+| DM-MSG-001 | A direct Message | Every admitted message is Task work ({§a2a-inbound-exposure}); a direct Message is the protocol's optional branch. |
+| DM-ART-001 | A structured-data Part; a file Part by URL | Hosted Artifacts are the worker's selected resources as raw Parts ({§a2a-response-preferences}); none is structured data or a URL. |
+| DM-ART-001 | `text/plain` for the file `output.txt` | A `worker:///` entry is `text/markdown`, and the projection never relabels source bytes ({§a2a-response-preferences}). |
+| CARD-CACHE-003 | `Last-Modified` on the Agent Card, a MAY | The SDK validates the card by an `ETag` of its content beside `Cache-Control`; the card varies with the asking request ({§http-request-origin}) and the posture at serve time ({§a2a-hosted-credentials}), so no single modification time describes it. |
+
 ## §a2a-module The package module
 
 One discovered module composes both halves of the package: it declares `plurnk.kind: "module"`
