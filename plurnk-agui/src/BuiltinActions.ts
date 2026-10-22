@@ -338,9 +338,11 @@ export default class BuiltinActions {
                             { field: "command", recovery: "Provide the command to execute." },
                         );
                     }
+                    // {§env-option} An `env` rides the statement's metadata block, as a fence's `[{"env": {…}}]` does.
                     const statement: ExecStatement = {
                         runtime: "sh", aside: null, target: null,
-                        metadata: null, lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
+                        metadata: p.env === undefined ? null : [JSON.stringify({ env: p.env })],
+                        lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     const [result] = await this.#clientOperation(input, workspace, principal, [statement], onLoop);
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");

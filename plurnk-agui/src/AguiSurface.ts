@@ -155,7 +155,8 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         channel: NONEMPTY,
         offset: NONNEGATIVE,
     }, ["target"]), ref("EntryReadResult")),
-    "op.exec": action("workspace", object({ command: NONEMPTY }, ["command"]), OPERATION_RESULT),
+    // {§env-option} — `env` is the execution's own environment; the family's admission owns its names.
+    "op.exec": action("workspace", object({ command: NONEMPTY, env: { type: "object", additionalProperties: string() } }, ["command"]), OPERATION_RESULT),
     "op.parse": action("workspace", object({ text: NONEMPTY }, ["text"]), object({
         results: array(OPERATION_RESULT),
     }, ["results"])),
