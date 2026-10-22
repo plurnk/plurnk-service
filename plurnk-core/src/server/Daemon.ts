@@ -26,12 +26,13 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationWorkerOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import Envelope, { projectWorkerRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
 import WorkerReferences from "./WorkerReferences.ts";
+import WorkerOverview from "./WorkerOverview.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
 import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
@@ -721,6 +722,24 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
+
+    // {§methods-worker-overview} The places of the daemon, or of one workspace, with what waits there.
+    async readWorkerOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationWorkerOverview> {
+        const workspaceId = args.workspaceId === undefined ? null : ClientInput.assertId("worker.overview", "workspaceId", args.workspaceId);
+        const { limit, excerptChars } = args;
+        if (!isSafeInteger(limit) || limit < 1 || !isSafeInteger(excerptChars) || excerptChars < 1) {
+            throw new TypeError("readWorkerOverview takes a positive limit and excerpt length.");
+        }
+        if (workspaceId !== null && await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId }) === undefined) {
+            throw daemonFailure("daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId });
+        }
+        return await WorkerOverview.read(this.#db, {
+            workspaceId, limit, excerptChars, projectLabel: (projectRoot) => this.#projectLabel(projectRoot),
+            // {§agui-status-descendants} The gates the status tree counts: the pending proposals and client interactions.
+            pending: async (id) => [...await this.#engine.pendingProposals(id), ...await this.#engine.pendingClientInteractions(id)],
+        });
+    }
+
     // {§methods-workspace-prompts}: root-worker loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
@@ -850,7 +869,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedWorkspaceId = ClientInput.assertId("workspace.rename", "workspaceId", workspaceId);
         const checkedName = ClientInput.assertOptionalWorkspaceName("workspace.rename", "name", name);
         if (checkedName === undefined) throw new Error("ClientInput.assertOptionalWorkspaceName accepted a required name as undefined");
-        return { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
+        const renamed = { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
+        // {§notifications-workspace-renamed}
+        this.#broadcast({ workspaceId: checkedWorkspaceId }, "workspace/renamed", renamed);
+        return renamed;
     }
 
     // {§methods-worker-create}: a fresh worker is model-origin, with an empty private log.

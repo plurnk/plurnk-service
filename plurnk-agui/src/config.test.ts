@@ -13,7 +13,8 @@ const floor: NodeJS.ProcessEnv = {
     PLURNK_AGUI_HEARTBEAT_MS: "15000",
     PLURNK_AGUI_HISTORY_LOOPS: "2",
     PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000",
-    PLURNK_AGUI_LOOP_OPENING_CHARS: "240",
+    PLURNK_AGUI_EXCERPT_CHARS: "240",
+    PLURNK_AGUI_OVERVIEW_WORKERS: "200",
 };
 
 test("[{§agui-configuration}] AG-UI consumes and validates its package-owned environment", () => {
@@ -29,7 +30,8 @@ test("[{§agui-configuration}] AG-UI consumes and validates its package-owned en
         heartbeatMs: 15000,
         historyLoops: 2,
         historyPageChars: 2000000,
-        loopOpeningChars: 240,
+        excerptChars: 240,
+        overviewWorkers: 200,
     });
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "-1" } }).maxTurns, -1);
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AGUI_MAX_TURNS: "0" } }).maxTurns, 0);
@@ -69,7 +71,8 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
         heartbeatMs: 0,
         historyLoops: 2,
         historyPageChars: 2000000,
-        loopOpeningChars: 240,
+        excerptChars: 240,
+        overviewWorkers: 200,
     });
     assert.equal(resolveModuleOptions({ auth: false, env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, false, "an explicit posture overrides the environment's");
 });
@@ -110,7 +113,7 @@ test("[{§agui-configuration}] missing and malformed configuration fails at the 
         delete env[key];
         assert.throws(() => resolve(env), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
     }
-    for (const key of ["PLURNK_AGUI_ACCESS_TTL_SEC", "PLURNK_AGUI_REFRESH_TTL_SEC", "PLURNK_AGUI_HISTORY_LOOPS", "PLURNK_AGUI_HISTORY_PAGE_CHARS", "PLURNK_AGUI_LOOP_OPENING_CHARS"]) {
+    for (const key of ["PLURNK_AGUI_ACCESS_TTL_SEC", "PLURNK_AGUI_REFRESH_TTL_SEC", "PLURNK_AGUI_HISTORY_LOOPS", "PLURNK_AGUI_HISTORY_PAGE_CHARS", "PLURNK_AGUI_EXCERPT_CHARS", "PLURNK_AGUI_OVERVIEW_WORKERS"]) {
         assert.throws(() => resolve({ ...floor, [key]: "0" }), new RegExp(`${key} must be a safe integer from 1`, "u"));
         assert.throws(() => resolve({ ...floor, [key]: "" }), new RegExp(`${key} must be a safe integer`, "u"));
     }

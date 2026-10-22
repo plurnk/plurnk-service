@@ -56,6 +56,51 @@ export interface ApplicationWorkerProjection {
     readonly lifecycle: LoopLifecycle;
 }
 
+/** {§application-worker-overview} A worker's latest finished reply ({§worker-finished-reply}). */
+export interface ApplicationWorkerReply {
+    /** The reply's durable log row. */
+    readonly id: number;
+    /** Its log coordinate `L/T/S` in its worker's log. */
+    readonly coordinate: string;
+    /** The message completion its receipt records. */
+    readonly completion: 200 | 499;
+    /** When it was recorded, Unix milliseconds. */
+    readonly at: number;
+    /** {§list-excerpt} */
+    readonly excerpt: string;
+    readonly continued: boolean;
+}
+
+/** {§application-worker-overview} One place of the overview and what waits there. */
+export interface ApplicationOverviewWorker {
+    readonly workspaceId: number;
+    readonly id: number;
+    readonly name: string;
+    readonly parentWorkerId: number | null;
+    readonly kind: ApplicationWorkerKind;
+    readonly lifecycle: LoopLifecycle;
+    /** The proposals and client interactions it waits on. */
+    readonly gates: number;
+    readonly reply: ApplicationWorkerReply | null;
+}
+
+/** {§application-worker-overview} A workspace the overview's places belong to. */
+export interface ApplicationOverviewWorkspace {
+    readonly id: number;
+    readonly name: string;
+    readonly projectRoot: string | null;
+    /** {§workspace-label} */
+    readonly projectLabel: string | null;
+}
+
+/** {§application-worker-overview} The places in a scope, most recently finished first, and the workspaces they belong to. */
+export interface ApplicationWorkerOverview {
+    readonly workers: readonly ApplicationOverviewWorker[];
+    readonly workspaces: readonly ApplicationOverviewWorkspace[];
+    /** The places in scope the overview leaves out. */
+    readonly omitted: number;
+}
+
 export interface ApplicationWorkerQuery {
     readonly origin?: ApplicationWorkerOrigin;
     /** Omitted means every lineage position; null means roots only. */

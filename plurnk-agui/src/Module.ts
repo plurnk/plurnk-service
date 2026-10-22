@@ -15,6 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Portal, { type PortalPort } from "./Portal.ts";
+import Overview from "./Overview.ts";
 import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { ENTRY_ROUTE, HISTORY_ROUTE, aguiRouteTemplate, observed } from "./observe.ts";
@@ -66,6 +67,7 @@ export type AguiPort = Pick<
     | "readInbox"
     | "readStreams"
     | "readWorker"
+    | "readWorkerOverview"
     | "readWorkerReference"
     | "ensureWorkerReference"
     | "readWorkerModel"
@@ -122,8 +124,14 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§agui-shutdown} The requests this module admitted and the work they and its Runs started: each may reach core
     // until it settles.
     readonly #work = new Set<Promise<unknown>>();
-    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace, openingChars: () => this.#opts.loopOpeningChars });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req), track: this.#track.bind(this) });
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace, excerptChars: () => this.#opts.excerptChars });
+    // {§agui-overview} The worker overview's observations.
+    readonly #overview = new Overview({
+        seam: () => this.#seam,
+        bounds: () => ({ limit: this.#opts.overviewWorkers, excerptChars: this.#opts.excerptChars, heartbeatMs: this.#opts.heartbeatMs }),
+        track: this.#track.bind(this),
+    });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req), track: this.#track.bind(this), overview: () => this.#overview });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
@@ -219,6 +227,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#registerActions();
         this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars }, this.#track.bind(this));
         this.#portal.start();
+        this.#overview.start();
         if (this.#opts.authenticates) {
             // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
             this.#oauth = new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: (req) => this.#issuer(req) });
@@ -226,8 +235,10 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                 if (prefix !== "/agui") seam.registerHttpRoute(prefix, (req, res) => this.#oauthRoute(req, res));
             }
             // {§agui-oauth-revocation} — a revoked family's open Runs end; their loops continue.
-            this.#offRevoked = seam.credentials.onRevoked((family) =>
-                this.#portal.failFamily(family, runErrorEvents(credentialRevokedProblem())));
+            this.#offRevoked = seam.credentials.onRevoked((family) => {
+                this.#portal.failFamily(family, runErrorEvents(credentialRevokedProblem()));
+                this.#overview.failFamily(family, runErrorEvents(credentialRevokedProblem()));
+            });
         }
         this.#activated = true;
     }
@@ -244,6 +255,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#activated = false;
         this.#offRevoked?.();
         this.#portal.stop();
+        this.#overview.stop(runErrorEvents(serviceStoppingProblem()));
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
     }
 

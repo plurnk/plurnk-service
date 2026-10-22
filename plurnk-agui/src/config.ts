@@ -23,7 +23,8 @@ export interface ModuleOptions {
     readonly heartbeatMs?: number;
     readonly historyLoops?: number;
     readonly historyPageChars?: number;
-    readonly loopOpeningChars?: number;
+    readonly excerptChars?: number;
+    readonly overviewWorkers?: number;
     readonly env?: NodeJS.ProcessEnv;
 }
 
@@ -42,8 +43,10 @@ export interface ResolvedModuleOptions {
     readonly historyLoops: number;
     /** {§agui-history-window} The most characters one snapshot, page or live delta serializes to. */
     readonly historyPageChars: number;
-    /** {§agui-worker-loops} The most characters of a loop's opening line its list entry carries. */
-    readonly loopOpeningChars: number;
+    /** {§list-excerpt} The most characters of a message's excerpt a list carries. */
+    readonly excerptChars: number;
+    /** {§agui-overview} The places one overview holds beside those waiting on a gate. */
+    readonly overviewWorkers: number;
 }
 
 const CLIENT_KEY = /^PLURNK_AGUI_CLIENT_([A-Za-z0-9._-]+)$/u;
@@ -105,7 +108,7 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
 
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "accessTtlSec" | "refreshTtlSec" | "historyLoops" | "historyPageChars" | "loopOpeningChars", key: string, minimum: number): number =>
+    const number = (option: "accessTtlSec" | "refreshTtlSec" | "historyLoops" | "historyPageChars" | "excerptChars" | "overviewWorkers", key: string, minimum: number): number =>
         safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
     const clients = options.clients === undefined ? environmentClients(env) : options.clients;
     for (const [id, client] of Object.entries(clients)) {
@@ -134,6 +137,7 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         ),
         historyLoops: number("historyLoops", "PLURNK_AGUI_HISTORY_LOOPS", 1),
         historyPageChars: number("historyPageChars", "PLURNK_AGUI_HISTORY_PAGE_CHARS", 1),
-        loopOpeningChars: number("loopOpeningChars", "PLURNK_AGUI_LOOP_OPENING_CHARS", 1),
+        excerptChars: number("excerptChars", "PLURNK_AGUI_EXCERPT_CHARS", 1),
+        overviewWorkers: number("overviewWorkers", "PLURNK_AGUI_OVERVIEW_WORKERS", 1),
     };
 };

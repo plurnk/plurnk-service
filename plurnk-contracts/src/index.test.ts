@@ -63,6 +63,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "WORKER_NAME",
         "aguiConformanceReport",
         "errnoCode",
+        "excerptOf",
         "formatJsonDocument",
         "isExecution",
         "isExecutionOp",

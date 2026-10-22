@@ -3411,6 +3411,7 @@ pattern-bounded and admits files only; it does not become an unrestricted walk.
 | Tag | Promise |
 | --- | --- |
 | {§message-completion} | Reply delivery and message completion are distinct. |
+| {§worker-finished-reply} | A worker's latest finished reply is its newest delivered completion. |
 | {§loop-completion} | The loop concludes from discharged obligations, not a terminating operation. |
 | {§worker-obligations} | A worker's obligations are the work it opened and still awaits. |
 | {§message-abandonment} | Message abandonment: an ended loop answers what it left open. |
@@ -3454,6 +3455,13 @@ The numeric modifier belongs to SEND's reply metadata, not its text scope; it co
 | With none open | a targetless SEND is speech to the loop's latest published message: delivered to that message's originating client and recorded in `answers`, and a completion code on it changes no outcome; only a loop with no published message refuses it; it never broadcasts, and a correction that changes an outcome names the message explicitly |
 | Empty replies | empty completion replies resolve their selected messages without inventing speech or erasing an earlier answer; an empty addressed progress reply adds no speech |
 | Outcome | failed delivery resolves nothing; the latest explicit completion reply determines each message's outcome, and ordinary progress replies never reopen a completed message; curation changes neither delivery nor completion |
+
+§worker-finished-reply **A worker's latest finished reply is its newest delivered completion.** It is the worker's newest
+log row that is a model-authored SEND, resolved, delivered, not copied history ({§machine-processes-fork-copies-the-log}), whose receipt
+records a message completion: `completion` `200` or `499`. A progress reply, a failed delivery and speech that completed no
+message record none, and never count. The daemon's own `499` answers to abandoned messages ({§message-abandonment}) are not
+the model's, so a cancellation without a model `[499]` leaves the latest finished reply as it was. A child's reply is the
+child's; its parent's collect row is a READ. An empty completion reply is the latest finished reply, with no words.
 
 Completion replies execute in authored order, including alongside mutations and
 other replies. Their bodies are delivered immediately, never held as drafts to
@@ -5510,6 +5518,7 @@ teaches, so a wrong example fails boot rather than the model.
 | {§methods-workspace-prompts} | Workspace metadata — `listPrompts(workspaceId, limit?, workerId?)` |
 | {§methods-worker-read} | Worker topology — `readWorker({ workspaceId, identity })` |
 | {§methods-worker-list} | Worker topology — `listWorkers(workspaceId, query?)` |
+| {§methods-worker-overview} | Worker overview — `readWorkerOverview({ workspaceId?, limit, excerptChars })` |
 | {§methods-worker-loops} | Loop lifecycle — `listWorkerLoops({ workspaceId, workerId })` |
 | {§methods-worker-accounting} | Worker spend — `workerAccounting({ workspaceId, workerId })` |
 | {§methods-worker-gauge} | Worker gauge — `workerGauge({ workspaceId, workerId })` |
@@ -5542,6 +5551,7 @@ teaches, so a wrong example fails boot rather than the model.
 | {§notifications-loop-proposal} | `loop/proposal` — contracts-owned `ProposalProjection` |
 | {§notifications-loop-interaction} | `loop/interaction` — contracts-owned `ClientInteractionProjection` |
 | {§notifications-workspace-created} | `workspace/created` — `{ id, name, projectRoot }` |
+| {§notifications-workspace-renamed} | `workspace/renamed` — `{ id, name }` |
 | {§notifications-worker-policy} | `worker/policy` — `{ workerId, model, spawnModel }`, the worker's generation policy as… |
 | {§notifications-stream-event-on-channel-change} | `stream/event` — `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?,… |
 | {§notifications-stream-concluded} | `stream/concluded` — `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction,… |
@@ -5594,6 +5604,7 @@ Core's behavior behind them.
 | Workspace metadata                                | `listWorkspaces()`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder and its label ({§workspace-label}), and derivation progress. |
 | §methods-worker-read Worker topology              | `readWorker({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Worker projection or `null` under {§application-worker-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime worker's `_plurnk` included: the lookup is no minting door ({§worker-name-minting}). |
 | §methods-worker-list Worker topology              | `listWorkers(workspaceId, query?)` | Returns the workspace's durable Worker projections under {§application-worker-observation}. The origin filter is exact; an explicitly present `parentWorkerId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position. Each projection carries `kind` (`root` for a worker with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound worker's own status gauge shows; clients infer neither (#523). |
+| §methods-worker-overview Worker overview | `readWorkerOverview({ workspaceId?, limit, excerptChars })` | Returns `{ workers, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-worker-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§worker-finished-reply}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. An unknown `workspaceId` is 404 `workspace-not-found`. |
 | §methods-worker-loops Loop lifecycle              | `listWorkerLoops({ workspaceId, workerId })` | Ownership-checks the Worker and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ workerId, address }`, the Worker and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§worker-obligations}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
 | §methods-worker-accounting Worker spend       | `workerAccounting({ workspaceId, workerId })` | Ownership-checks the Worker and returns the {§provider-accounting} projection of every settled request on any loop the Worker or a descendant of it (`parent_worker_id`, to any depth) ran, since the Worker began: its own spend and its delegations', the same tree the turn cap counts ({§turn-cap-counts-the-tree}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
 | §methods-worker-gauge Worker gauge | `workerGauge({ workspaceId, workerId })` | Ownership-checks the Worker and returns the four {§tokenomics-client-gauge} facts its latest packet reported in `loop/packet.gauge`, read from durable evidence: each `null` when unknown, all `null` before the Worker's first packet. A client attaching later starts from the gauge a live one holds. |
@@ -5836,6 +5847,7 @@ answering a message in this worker's inbox, omits the field, as does every other
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
+| §notifications-workspace-renamed `workspace/renamed`         | `{ id, name }` | A workspace's name changes ({§methods-workspace-rename}), delivered in that workspace's scope; the id is unchanged. |
 | `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
 | §notifications-worker-policy `worker/policy` | `{ workerId, model, spawnModel }`, the worker's generation policy as `ApplicationPort.readWorkerModel` reads it | A worker's stored model, effort, effort source or spawn model changes, by whichever path: a client's set, a message's selector, or the seeding of a worker's first model. A write that changes nothing, and a change refused while the worker has unfinished tasks, fire nothing. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for routing to the bound worker, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic extension notification capability does not require it. It carries metadata, not content: `contentLength` counts the channel's whole stored content in Unicode code points, the unit of {§entry-read-result}'s `contentOffset` and `contentLength`, and consumers read the content by canonical workspace address. |

@@ -25,7 +25,7 @@ const { default: Credentials } = await import("../../plurnk-core/src/server/Cred
 const FLOOR = {
     PLURNK_AUTH: "0", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
-    PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000", PLURNK_AGUI_LOOP_OPENING_CHARS: "240",
+    PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000", PLURNK_AGUI_EXCERPT_CHARS: "240", PLURNK_AGUI_OVERVIEW_WORKERS: "200",
 };
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
@@ -195,6 +195,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         // Every named model worker of this fixture's workspace is worker 77, as createWorker mints it.
         readWorker: async ({ identity }) => workerRow(77, identity.name ?? "model-fresh", "model"),
         listWorkerLoops: async () => [],
+        readWorkerOverview: async () => ({ workers: [], workspaces: [], omitted: 0 }),
         workerAccounting: async () => ({ requests: [], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null }),
         workerGauge: async () => NO_GAUGE,
         listPrompts: async () => ["hi"],
@@ -4583,13 +4584,13 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
     } finally { await mod.close(); }
 });
 
-test("{§agui-oauth-revocation} revoking a credential ends the streams admitted under it and cancels no worker; another family's stream continues", async () => {
+test("{§agui-oauth-revocation} {§agui-overview} revoking a credential ends the streams admitted under it, an overview's among them, and cancels no worker; another family's stream continues", async () => {
     const { seam } = mockSeam("s3cret");
     existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
     const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
-    const controllers = [new AbortController(), new AbortController()];
+    const controllers = [new AbortController(), new AbortController(), new AbortController()];
     try {
         const port = mod.address().port;
         const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
@@ -4603,6 +4604,11 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         };
         const ending = await open(revoked, 0);
         const surviving = await open(kept, 1);
+        const overview = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
+            method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${revoked}` }, signal: controllers[2].signal,
+            body: JSON.stringify(standardInput({ threadId: "overview", messages: [], forwardedProps: { plurnk: { overview: {} } } })),
+        });
+        assert.equal(overview.status, 200);
         const revocation = await fetch(`http://127.0.0.1:${port}/oauth/revoke`, {
             method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ token: revoked, client_id: "operator", client_secret: "s3cret" }).toString(),
@@ -4612,6 +4618,9 @@ test("{§agui-oauth-revocation} revoking a credential ends the streams admitted 
         const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
         assert.equal(runProblem(events)?.type, "https://problems.plurnk.xyz/agui/http/credential-revoked", JSON.stringify(events.map(({ type }) => type)));
         assert.equal(events.at(-1)?.type, "RUN_ERROR");
+        const watched = (await overview.text()).split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
+        assert.deepEqual([watched.map(({ type }) => type), runProblem(watched)?.type], [["RUN_STARTED", "STATE_SNAPSHOT", "RUN_ERROR"],
+            "https://problems.plurnk.xyz/agui/http/credential-revoked"], "the overview admitted under it ends the same way");
         assert.deepEqual(cancellations, [], "a revoked observer is not a cancelling one");
         const stillOpen = await Promise.race([surviving.text().then(() => false), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 200))]);
         assert.equal(stillOpen, true, "the other family's stream is still open");
@@ -4709,7 +4718,7 @@ test("{§agui-worker-loops} worker.loops names each loop by its number, lifecycl
         loop(4, 500, "😀".repeat(12), null),
         loop(5, 202, "Trailing space only.   \n   ", "schedule://nightly"),
     ];
-    const mod = await host(seam, { loopOpeningChars: 10 });
+    const mod = await host(seam, { excerptChars: 10 });
     try {
         const run = async (action: Record<string, unknown>) => actionOutcome(await post(mod.address().port, {
             threadId: "main", forwardedProps: { plurnk: { workspace: "loops", action } },
@@ -4719,7 +4728,7 @@ test("{§agui-worker-loops} worker.loops names each loop by its number, lifecycl
         assert.deepEqual(listed?.result.loops, [
             { id: 101, sequence: 1, lifecycle: "completed", source: "agui://anonymous/threads/main/messages/m1", opening: "Let's buil", continued: true },
             { id: 102, sequence: 2, lifecycle: "cancelled", source: "agui://anonymous/threads/main/messages/m2", opening: "No, you di", continued: true },
-            { id: 103, sequence: 3, lifecycle: "running", source: "worker://helper", opening: "Check the ", continued: true },
+            { id: 103, sequence: 3, lifecycle: "running", source: "worker://helper", opening: "Check the", continued: true },
             { id: 104, sequence: 4, lifecycle: "failed", source: null, opening: "😀".repeat(10), continued: true },
             { id: 105, sequence: 5, lifecycle: "parked", source: "schedule://nightly", opening: "Trailing s", continued: true },
         ], "the first line holding anything, cut to whole characters, with the loop's lifecycle word");
@@ -4728,7 +4737,7 @@ test("{§agui-worker-loops} worker.loops names each loop by its number, lifecycl
             existingWorkspace(other, "loops");
             directory(other, [workerRow(20, "main")]);
             other.listWorkerLoops = async () => [loop(1, 200, "Fits.", null), loop(2, 200, "Fits.\n   \n", null)];
-            const small = await host(other, { loopOpeningChars: 10 });
+            const small = await host(other, { excerptChars: 10 });
             try {
                 return actionOutcome(await post(small.address().port, { threadId: "main", forwardedProps: { plurnk: { workspace: "loops", action: { kind: "worker.loops" } } } })) as { result: { loops: Array<{ continued: boolean }> } };
             } finally { await small.close(); }

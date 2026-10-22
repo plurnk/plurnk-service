@@ -1564,6 +1564,8 @@ than alternate consumer entry points:
 | {§application-port} | 13.9 Exterior application port |
 | {§application-worker-observation} | Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a… |
 | {§loop-lifecycle-vocabulary} | One projection maps a loop's durable status onto the lifecycle words every client renders, shared by the… |
+| {§list-excerpt} | A list shows a message by its excerpt. |
+| {§application-worker-overview} | The worker overview is the places in a scope with what waits there. |
 | {§application-loop-observation} | Loop observation exposes the durable scheduler state of work loops (excluding maintenance-only administrative… |
 <!-- /map -->
 
@@ -1835,6 +1837,23 @@ concluded loop's: below 400 `completed`; 499 `cancelled`, a loop stopped without
 ({§agui-run-outcome}); any other of 400 or more `failed` (413 budget, 429 turn ceiling, 500 fail,
 504 execution timeout, 508 runaway). `lifecycleOfLoopStatus`
 in `@plurnk/plurnk-contracts` is that projection's one owner.
+
+§list-excerpt **A list shows a message by its excerpt.** The excerpt is the message's first line holding anything but
+blanks (spaces, tabs and line ends), cut to at most N characters, a character never cut in two, with blanks trimmed from
+its end; `continued` says whether anything but blanks follows. `excerptOf` in `@plurnk/plurnk-contracts` is that rule's one
+owner, for a loop's opening in a worker's loop list ({§agui-worker-loops}) and a worker's latest finished reply
+({§worker-finished-reply}).
+
+§application-worker-overview **The worker overview is the places in a scope with what waits there.** A place is a
+model-origin worker; bookkeeping workers are not places. The scope is the daemon or one workspace.
+
+| Fact | Rule |
+| --- | --- |
+| A place | `{ workspaceId, id, name, parentWorkerId, kind, lifecycle, gates, reply }`: `kind` and `lifecycle` as {§application-worker-observation} projects them, `gates` the proposals and client interactions it waits on as `pendingProposals` and `pendingClientInteractions` project them, `reply` its latest finished reply or `null` |
+| A reply | `{ id, coordinate, completion, at, excerpt, continued }`: its durable log row, `L/T/S` in its worker's log, the completion its receipt records, when it was recorded (Unix milliseconds) and its excerpt ({§list-excerpt}) |
+| Order | most recently finished first, by reply row (the log's commit order, so two replies never tie), then the places with no reply, newest first |
+| Bound | every place waiting on a gate, then the first `limit` in that order; `omitted` counts the places in scope it leaves out, so no place is left out silently |
+| Workspaces | `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to ({§workspace-label}) |
 
 §application-loop-observation Loop observation exposes the durable scheduler
 state of work loops (excluding maintenance-only administrative loops), nullable

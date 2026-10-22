@@ -1,7 +1,7 @@
 // The AG-UI built-in actions: the management-plane calls a client makes by name. Split out of the module.
 import { type ActionOutcome } from "./AguiPlus.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Problems, UNKNOWN_POSITION, Validator, isRecord, lifecycleOfLoopStatus, type AguiDiscovery, type ApplicationLoopProjection, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { Problems, UNKNOWN_POSITION, Validator, excerptOf, isRecord, lifecycleOfLoopStatus, type AguiDiscovery, type ApplicationLoopProjection, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { actionFailure } from "./action-results.ts";
 import MessageAddress from "./MessageAddress.ts";
@@ -78,17 +78,9 @@ export type BuiltinActionsPort = Pick<
 >;
 
 export default class BuiltinActions {
-    // {§agui-worker-loops} A loop as its list names it: the first line of its opening message that holds anything, at
-    // most `chars` characters, never cutting a character in two; `continued` when the message holds more.
+    // {§agui-worker-loops} A loop as its list names it: its opening message by its excerpt ({§list-excerpt}).
     static #listed(loop: ApplicationLoopProjection, chars: number) {
-        const { prompt } = loop;
-        let at = 0;
-        while (at < prompt.length && /\s/u.test(prompt[at] ?? "")) at++;
-        const lineEnd = prompt.indexOf("\n", at);
-        const end = lineEnd < 0 ? prompt.length : lineEnd;
-        const line = prompt.slice(at, Math.min(end, at + chars * 2)).trimEnd();
-        const opening = Array.from(line).slice(0, chars).join("");
-        const continued = /\S/u.test(prompt.slice(at + opening.length));
+        const { excerpt: opening, continued } = excerptOf(loop.prompt, chars);
         return { id: loop.id, sequence: loop.sequence, lifecycle: lifecycleOfLoopStatus(loop.status), source: loop.promptSource, opening, continued };
     }
 
@@ -103,17 +95,17 @@ export default class BuiltinActions {
     readonly #namedWorkspace: (name: string, options?: Readonly<Record<string, unknown>>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #threadWorker: (threadId: string, workspaceId: number, forwarded?: Record<string, unknown>) => Promise<number | undefined>;
     readonly #requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
-    readonly #openingChars: () => number;
+    readonly #excerptChars: () => number;
 
-    constructor({ seam, capabilities, namedWorkspace, threadWorker, requireWorkspace, openingChars }: {
+    constructor({ seam, capabilities, namedWorkspace, threadWorker, requireWorkspace, excerptChars }: {
         seam: () => BuiltinActionsPort;
         capabilities: () => Promise<AguiDiscovery>;
         namedWorkspace: (name: string, options?: Readonly<Record<string, unknown>>) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         threadWorker: (threadId: string, workspaceId: number, forwarded?: Record<string, unknown>) => Promise<number | undefined>;
         requireWorkspace: (kind: string, env: ClientEnvelope | null) => ClientEnvelope;
-        openingChars: () => number;
+        excerptChars: () => number;
     }) {
-        this.#openingChars = openingChars;
+        this.#excerptChars = excerptChars;
         this.#seam = seam;
         this.#capabilities = capabilities;
         this.#namedWorkspace = namedWorkspace;
@@ -249,7 +241,7 @@ export default class BuiltinActions {
                         workspaceId: workspace.workspaceId,
                         workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
                     });
-                    const chars = this.#openingChars();
+                    const chars = this.#excerptChars();
                     return { ok: true, result: { loops: loops.map((loop) => BuiltinActions.#listed(loop, chars)) } };
                 }
                 // Default worker: the bound worker; p.workerId pins another — the log.read shape.

@@ -905,8 +905,10 @@ test("{§workspace-label} every envelope, row and created notice carries the fol
     });
 });
 
-test("{§workspace-name} a folderless workspace is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
+test("{§workspace-name} {§notifications-workspace-renamed} a folderless workspace is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
+        const renames: Array<[number | null, unknown]> = [];
+        const unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => { if (method === "workspace/renamed") renames.push([workspaceId, params]); });
         const headless = await daemon.createWorkspace({ name: "headless" });
         assert.equal(headless.projectRoot, null);
         const other = await daemon.createWorkspace({ name: "other" });
@@ -915,8 +917,11 @@ test("{§workspace-name} a folderless workspace is created, listed, renamed and 
         await assert.rejects(daemon.renameWorkspace(headless.workspaceId, "other"), (error: unknown) =>
             error instanceof OperationFailureError && (error.result.problem?.type ?? "").endsWith("name-conflict"));
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === headless.workspaceId)?.name, "headless", "a collision renames nothing");
+        assert.deepEqual(renames, [], "a refused rename announces nothing");
         const renamed = await daemon.renameWorkspace(headless.workspaceId, "headless-2");
         assert.equal(renamed.name, "headless-2");
+        unsubscribe();
+        assert.deepEqual(renames, [[headless.workspaceId, { id: headless.workspaceId, name: "headless-2" }]], "a rename is announced once, in its workspace");
         const attached = await daemon.attachWorkspace({ workspaceId: headless.workspaceId });
         assert.equal(attached.workspaceName, "headless-2");
         assert.equal(attached.projectRoot, null, "renaming leaves the folder null");

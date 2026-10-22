@@ -2,6 +2,7 @@ import { Problems, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 // The AG-UI Run endpoint: one client run resolved to its worker, streamed, and settled. Split out of the module, which keeps the delegating entry point.
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import type Portal from "./Portal.ts";
+import type Overview from "./Overview.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { stateSnapshot, parseAction, actionRunResult, derivationActivity, type ActionRequest, type ActionOutcome, type AguiWorkerGauge } from "./AguiPlus.ts";
@@ -43,8 +44,9 @@ export default class RunHandler {
     readonly #workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
     readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     readonly #origin: (req: IncomingMessage) => string;
+    readonly #overview: () => Overview;
 
-    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action, origin, track }: {
+    constructor({ seam, opts, portal, stopping, requiresWorkspace, controlRun, envelope, conversation, boundWorker, actionBinding, workerGauge, action, origin, track, overview }: {
         seam: () => RunPort;
         opts: () => ResolvedModuleOptions;
         portal: () => Portal;
@@ -61,6 +63,8 @@ export default class RunHandler {
         action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
         // {§agui-body-reference} The origin a request reached this daemon at, where its Run's bodies are fetched.
         origin: (req: IncomingMessage) => string;
+        // {§agui-overview} The observations of the worker overview.
+        overview: () => Overview;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -76,6 +80,29 @@ export default class RunHandler {
         this.#workerGauge = workerGauge;
         this.#action = action;
         this.#origin = origin;
+        this.#overview = overview;
+    }
+
+    // {§agui-run-input} A Run does one thing.
+    static #ambiguous(): HttpProblemError {
+        return new HttpProblemError(httpProblem(
+            "ambiguous-run-input",
+            400,
+            "The Run carries more than one of a new message, an action, an interrupt resume and an overview.",
+            { stage: "request-validation", recovery: "Send each in its own Run.", retryable: false },
+        ));
+    }
+
+    // {§agui-overview-run} The overview a Run asks for: the daemon's, or one workspace's; null when it asks for none.
+    static #overviewScope(forwarded: Record<string, unknown> | undefined): { readonly workspaceId: number | null } | null {
+        const value = forwarded?.overview;
+        if (value === undefined) return null;
+        if (!isRecord(value) || Object.keys(value).some((key) => key !== "workspaceId")
+            || (value.workspaceId !== undefined && (!isSafeInteger(value.workspaceId) || value.workspaceId < 1))) {
+            throw new HttpProblemError(httpProblem("overview-invalid", 400, "An overview's scope is {} or { workspaceId: <positive integer> }.",
+                { overview: value, stage: "request-validation", retryable: false }));
+        }
+        return { workspaceId: value.workspaceId ?? null };
     }
 
     // {§agui-http-authorization} — the principal and credential family the perimeter admitted this request under.
@@ -120,6 +147,12 @@ export default class RunHandler {
         const action = parseAction(input.forwardedProps);
         const fresh = await this.#newMessage(input, forwarded, principal);
         const asks = Number(input.resume !== undefined) + Number(action !== null) + Number(fresh !== null);
+        // {§agui-overview-run} An overview is a Run of its own, binding nothing: the snapshot, or on a connection what follows it.
+        const overview = RunHandler.#overviewScope(forwarded);
+        if (overview !== null) {
+            if (asks > 0) throw RunHandler.#ambiguous();
+            return await this.#overview().observe(input, res, { workspaceId: overview.workspaceId, live: connect, origin: this.#origin(req), family });
+        }
         if (connect && asks > 0) {
             throw new HttpProblemError(httpProblem(
                 "invalid-connect-input",
@@ -128,14 +161,7 @@ export default class RunHandler {
                 { stage: "request-validation", retryable: false },
             ));
         }
-        if (asks > 1) {
-            throw new HttpProblemError(httpProblem(
-                "ambiguous-run-input",
-                400,
-                "The Run carries more than one of a new message, an action, and an interrupt resume.",
-                { stage: "request-validation", recovery: "Send each in its own Run.", retryable: false },
-            ));
-        }
+        if (asks > 1) throw RunHandler.#ambiguous();
         const synchronize = connect || asks === 0;
         // {§agui-held-interrupts} The interrupts a Run that submits nothing names as its client's, unanswered.
         const holding = synchronize && forwarded?.interrupts !== undefined ? RunHandler.#forwardedStrings(forwarded, "interrupts") : [];

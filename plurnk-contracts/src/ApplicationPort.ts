@@ -25,6 +25,7 @@ import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
     ClientEnvelope,
+    ApplicationWorkerOverview,
     ApplicationWorkerProjection,
     ApplicationWorkerQuery,
     ApplicationWorkerIdentity,
@@ -173,6 +174,12 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly workerId: number;
     }): Promise<ApplicationLoopProjection[]>;
+    // {§methods-worker-overview} — the places of the daemon, or of one workspace, with what waits there.
+    readWorkerOverview(args: {
+        readonly workspaceId?: number;
+        readonly limit: number;
+        readonly excerptChars: number;
+    }): Promise<ApplicationWorkerOverview>;
     // {§methods-worker-accounting} — the spend of the worker and its descendants since it began.
     workerAccounting(args: {
         readonly workspaceId: number;

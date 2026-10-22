@@ -549,6 +549,60 @@ Words by reference are one `document` part at the address that serves them ({§a
 address, `mimeType: "text/plain"`, or for an accepted message the address that minted it, `mimeType: "text/markdown"`.
 No message is shortened, omitted or invented. A client-authored statement rides `plurnk.ambient` whole ({§agui-ambient}).
 
+## §agui-overview The worker overview
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§agui-overview-run} | An overview is a Run that binds nothing. |
+| {§agui-overview-state} | The overview is AG-UI state. |
+| {§agui-overview-updates} | A connected overview changes by patches. |
+<!-- /map -->
+
+A client sees the daemon's places and what waits there without attaching to each worker: one Run observes the
+overview of the daemon, or of one workspace ({§application-worker-overview}), as AG-UI state.
+
+§agui-overview-run **An overview is a Run that binds nothing.** `forwardedProps.plurnk.overview` is `{}` for the daemon
+or `{ workspaceId }` for one workspace. The Run binds no workspace and no worker, creates nothing, claims nothing and
+presents no interrupt: watching, reconnecting and leaving start, cancel and approve no work.
+
+| Endpoint | It |
+| --- | --- |
+| `POST /agui` | `RUN_STARTED`, the `STATE_SNAPSHOT`, then `RUN_FINISHED`: one read |
+| `POST /agui/connect` | `RUN_STARTED`, the `STATE_SNAPSHOT`, then one `STATE_DELTA` per change until the client leaves; SSE comments at `PLURNK_AGUI_HEARTBEAT_MS` keep a quiet observation connected |
+
+| Refused before anything is streamed | Status |
+| --- | --- |
+| `overview` that is not `{}` or `{ workspaceId: <positive integer> }` | 400 `overview-invalid` |
+| `overview` beside a new message, an action or an interrupt resume | 400 `ambiguous-run-input` ({§agui-run-input}) |
+| A `workspaceId` that names no workspace | the daemon's 404 `workspace-not-found` |
+
+An observation ends as any Run does: its credential revoked, with `credential-revoked` ({§agui-oauth-revocation}); the
+daemon stopping, with `service-stopping` ({§agui-shutdown}); a read that fails, with its Problem.
+
+§agui-overview-state **The overview is AG-UI state.** `STATE_SNAPSHOT` carries `{ plurnk: { overview } }`:
+
+| Field | Holds |
+| --- | --- |
+| `scope` | `{ workspaceId }`, `null` for the daemon |
+| `workspaces` | by id, `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to |
+| `workers` | by id, each held place `{ workspaceId, id, name, parentWorkerId, kind, lifecycle, gates, reply }` ({§application-worker-overview}); `reply` is `null` or `{ id, coordinate, completion, at, excerpt, continued, body }` ({§worker-finished-reply}), `body` its words by reference, `{ url, mimeType: "text/plain" }` at the entry route of its own worker ({§agui-entry-route}) |
+| `recent` | the held places' ids in order, most recently finished first |
+| `omitted` | the places in scope the overview leaves out |
+
+It holds every place waiting on a gate and `PLURNK_AGUI_OVERVIEW_WORKERS` places in order, each excerpt at most
+`PLURNK_AGUI_EXCERPT_CHARS` characters ({§list-excerpt}). It never carries words, reasoning or history: a reply's words
+are one read away under the same perimeter ({§agui-http-authorization}).
+
+§agui-overview-updates **A connected overview changes by patches.** After each event in its scope that can change it,
+the observation reads the overview again ({§methods-worker-overview}) and sends what changed as one `STATE_DELTA`: RFC
+6902 `add`, `replace` or `remove` of `/plurnk/overview/workspaces/<id>` and `/plurnk/overview/workers/<id>`, then
+`replace` of `/plurnk/overview/recent` and `/plurnk/overview/omitted` when they change; nothing unchanged travels.
+Events that land while it reads are read once after it, so a burst is one read; streamed reasoning, outside text and
+stream chunks never change it. A place moves in `recent` only when it finishes a reply or enters or leaves the
+overview; a lifecycle, a gate or a rename ({§notifications-workspace-renamed}) replaces the place or workspace where it
+stands.
+
 ## §agui-first-party-client-conformance First-party client conformance
 
 §agui-official-client-conformance The ordinary integration gate runs the official
@@ -742,7 +796,7 @@ successfully transported management Run; it does not turn the Run into
 | `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
 | `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's bound worker.                                                        |
 | `workspace.prompts`      | Workspace | `workerId?`, `limit?`                                | `ApplicationPort.listPrompts` scoped like `log.read`: the thread's bound worker unless `workerId` pins another.    |
-| §agui-worker-loops `worker.loops` | Workspace | `workerId?` | `ApplicationPort.listWorkerLoops` scoped like `log.read`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }`: its lifecycle under {§loop-lifecycle-vocabulary}, `source` the sender of its opening message, `opening` that message's first line holding anything, at most `PLURNK_AGUI_LOOP_OPENING_CHARS` characters, and `continued` whether the message holds more. Its rows are `log.read` by its `id`; its messages, its loop page ({§agui-loop-page}). |
+| §agui-worker-loops `worker.loops` | Workspace | `workerId?` | `ApplicationPort.listWorkerLoops` scoped like `log.read`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }`: its lifecycle under {§loop-lifecycle-vocabulary}, `source` the sender of its opening message, `opening` and `continued` that message's excerpt ({§list-excerpt}) of at most `PLURNK_AGUI_EXCERPT_CHARS` characters. Its rows are `log.read` by its `id`; its messages, its loop page ({§agui-loop-page}). |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
 | `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the thread's owner ({§agui-client-operation}); returns the `RollbackReport`. |
@@ -1095,7 +1149,8 @@ address is the daemon's.
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
 | `PLURNK_AGUI_HISTORY_LOOPS`        | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The bound worker's newest loops a snapshot holds ({§agui-history-window}). |
 | `PLURNK_AGUI_HISTORY_PAGE_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live delta serializes to, but for a page holding one part of model output past it ({§agui-history-window}); keep it below what a client takes in one event. |
-| `PLURNK_AGUI_LOOP_OPENING_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters of a loop's opening line one entry of a worker's loop list carries ({§agui-worker-loops}). |
+| `PLURNK_AGUI_EXCERPT_CHARS`        | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters of a message's excerpt a list carries ({§list-excerpt}): a loop's opening ({§agui-worker-loops}) and a place's latest finished reply ({§agui-overview-state}). |
+| `PLURNK_AGUI_OVERVIEW_WORKERS`     | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The places one overview holds beside every place waiting on a gate ({§agui-overview-state}); it counts the rest. |
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 
@@ -1129,6 +1184,7 @@ anything, and a refused Run binds, creates and claims nothing:
 | An interrupt resume | Resolves its interrupts ({§agui-proposal-resolve}) |
 | `forwardedProps.plurnk.action` | Acts ({§agui-management-plane}) |
 | A new message | Submits it, durable before the Run presents anything ({§agui-message-acceptance}): its text is the `ApplicationPort.runLoop` prompt, `maxTurns` from the forwarded PLURNK properties |
+| `forwardedProps.plurnk.overview` | Observes the worker overview, binding nothing ({§agui-overview-run}) |
 | None of them | Synchronizes ({§agui-sync}) |
 | More than one of them | Is refused, 400 `ambiguous-run-input` |
 
@@ -1199,6 +1255,8 @@ reconstruct one from `RUN_ERROR`.
 | `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `entry-target-required` | 400 | The request names no address in `target`. Recovery: Request `?target=<address>`, the address percent-encoded. |
+| `overview-invalid` | 400 | An overview's scope is `{}` or `{ workspaceId: <positive integer> }` ({§agui-overview-run}). |
+| `overview-read-failed` | 500 | The overview read failed; the observation ends with it ({§agui-overview-run}). |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
 | `thread-not-found` | 404 | The thread has no conversation. |
