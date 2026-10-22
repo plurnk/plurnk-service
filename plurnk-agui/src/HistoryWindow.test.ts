@@ -1,5 +1,5 @@
-// {§agui-history-window} {§agui-history-page} — the cut matrix: loops, whole turns, parts, the ceiling, accepted
-// messages, and pages that walk back to reassemble the complete conversation.
+// {§agui-history-window} {§agui-history-page} {§agui-loop-page} — the cut matrix: loops, whole turns, parts, the ceiling,
+// accepted messages, pages that walk back to reassemble the complete conversation, and each loop by its number.
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ContentPart, Message } from "@ag-ui/core";
@@ -105,6 +105,22 @@ test("{§agui-history-page} a page is settled when every call in it holds its re
     const loop2 = window.page(window.window(none), none);
     assert.equal(window.settled(loop2), false, "a call still awaiting its result");
     assert.equal(window.settled(window.page(loop2.start, none)), true);
+});
+
+test("{§agui-loop-page} a loop is its messages from its first to the next loop's first, every subagent message among them, whole past the ceiling; the loops are the conversation before its accepted messages", () => {
+    const run = "ops://helper/1";
+    // The helper's turn begins in loop 1 and its next in loop 2; loop 2's call outgrows any ceiling below.
+    const helper = (turn: number): Message[] => [call(`worker://helper#1/${turn}/1`, run), result(`worker://helper#1/${turn}/1`, run)];
+    const large = [user("m2", "2/1/1"), call("2/2/1", undefined, JSON.stringify({ body: "x".repeat(3000) })), result("2/2/1"), speech("2/2/2")];
+    const messages = [...loop(1), ...helper(2), ...large, ...helper(3), ...loop(3), pending("p")];
+    const expected = [[...ids(loop(1)), ...ids(helper(2))], [...ids(large), ...ids(helper(3))], ids(loop(3))];
+    for (const chars of [Number.POSITIVE_INFINITY, 2000, 200]) {
+        const window = new HistoryWindow(messages, { loops: 1, chars });
+        const spans = [1, 2, 3].map((sequence) => window.loopSpan(sequence));
+        assert.deepEqual(spans.map((span) => span === null ? null : ids(messages.slice(span.start, span.end))), expected, `${chars}: each loop whole, in order`);
+        assert.equal(spans.at(-1)?.end, window.pending, `${chars}: the newest loop ends where the accepted messages begin`);
+        assert.deepEqual([window.loopSpan(4), window.loopSpan(0)], [null, null], `${chars}: a number the conversation holds no loop of`);
+    }
 });
 
 test("{§agui-words-by-reference} a part carries its senders' words by reference exactly when it alone, envelope included, would pass the ceiling", () => {

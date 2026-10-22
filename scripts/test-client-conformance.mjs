@@ -363,7 +363,8 @@ try {
     // The glyph is the lifecycle; the status line carries no turn count.
     await tui.waitFor(/❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     tui.write("/workers\r");
-    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
+    // The bound worker's row carries its lifecycle mark.
+    await tui.waitFor(/● rejected-worker ❌[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }
@@ -421,7 +422,7 @@ try {
         tui.write("Please keep observing the unresolved stream.\r");
         await tui.waitFor(/Follow-up accepted while parked\./);
         tui.write("/workers\r");
-        await tui.waitFor(/Recovery_Worker[^\n]*← bound/);
+        await tui.waitFor(/● Recovery_Worker\b/);
         await faultDb.test_restore_stream_close();
         tui.write("/stop\r");
         await tui.waitFor(/cancelled|final 499/);

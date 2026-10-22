@@ -1034,20 +1034,38 @@ export default class Portal {
     // {§agui-history-page} The page before `before` of the conversation `view` holds, or its newest when `before` is
     // null; null when `before` names no message of it.
     async page(view: HistoryView, before: string | null, entries: readonly LogEntryWire[], history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<HistoryPage | null> {
+        const { window, older } = await this.#projection(view, entries, history);
+        const end = before === null ? window.pending : window.messages.findIndex(({ id }) => id === before);
+        if (end === -1) return null;
+        const cut = window.page(end, (from) => HistoryWindow.pageEnvelope(older(from)));
+        return { final: await this.#loopConcluded(view, window.loopOf(cut)) && window.settled(cut), messages: window.messages.slice(cut.start, cut.end), older: older(cut.start) };
+    }
+
+    // {§agui-loop-page} The bound worker's loop `sequence` of the conversation `view` holds, whole, under the identities a
+    // page gives its messages and its parts' words by reference where a page's are; null when it holds no such loop.
+    async loopPage(view: HistoryView, sequence: number, entries: readonly LogEntryWire[], history: (workerId: number) => Promise<readonly LogEntryWire[]>): Promise<HistoryPage | null> {
+        const { window, older } = await this.#projection(view, entries, history);
+        const span = window.loopSpan(sequence);
+        if (span === null) return null;
+        return { final: await this.#loopConcluded(view, sequence) && window.settled(span), messages: window.messages.slice(span.start, span.end), older: older(span.start) };
+    }
+
+    // The complete projection a page of `view` is cut from, and the link to the page before a position in it.
+    async #projection(view: HistoryView, entries: readonly LogEntryWire[], history: (workerId: number) => Promise<readonly LogEntryWire[]>) {
         const thread = this.#compose({ workspaceId: view.workspaceId, workerId: view.workerId, threadId: view.threadId, origin: view.origin,
             replyThreads: view.replyThreads, notificationScope: "worker", emit: () => {}, modelWorkerId: view.workerId,
             descendants: view.descendants, reasoningByLink: view.reasoningByLink });
         const inbox = await this.#seam.readInbox({ workspaceId: view.workspaceId, workerId: view.workerId });
         const { messages, references } = Portal.#conversation(thread, entries, inbox, await this.#subagentParts(thread, history));
         const older = (start: number): string | null => start === 0 ? null : Portal.#historyUrl(view, messages[start]?.id ?? null);
-        const window = new HistoryWindow(messages, this.#history, references, (from) => HistoryWindow.snapshotEnvelope(older(from)));
-        const end = before === null ? window.pending : messages.findIndex(({ id }) => id === before);
-        if (end === -1) return null;
-        const cut = window.page(end, (from) => HistoryWindow.pageEnvelope(older(from)));
-        const loop = window.loopOf(cut);
-        const loops = loop === null ? [] : await this.#seam.listWorkerLoops({ workspaceId: view.workspaceId, workerId: view.workerId });
-        const concluded = loop === null || loops.some(({ sequence, terminatedAt }) => sequence === loop && terminatedAt !== null);
-        return { final: concluded && window.settled(cut), messages: window.messages.slice(cut.start, cut.end), older: older(cut.start) };
+        return { window: new HistoryWindow(messages, this.#history, references, (from) => HistoryWindow.snapshotEnvelope(older(from))), older };
+    }
+
+    // Whether the bound worker's loop `sequence` has concluded; a page of no loop has nothing to conclude.
+    async #loopConcluded(view: HistoryView, sequence: number | null): Promise<boolean> {
+        if (sequence === null) return true;
+        const loops = await this.#seam.listWorkerLoops({ workspaceId: view.workspaceId, workerId: view.workerId });
+        return loops.some((loop) => loop.sequence === sequence && loop.terminatedAt !== null);
     }
 
     #finishThread(thread: Thread, events: AguiEvent[], result: unknown): void {

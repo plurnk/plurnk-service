@@ -1,7 +1,8 @@
-// {§agui-history-window} {§agui-history-page} {§agui-words-by-reference} {§agui-history-advance} — through the official
-// HttpAgent against the real daemon: a long conversation attaches as its newest loops, and the pages before them, followed
-// back, reassemble it whole; the ceiling bounds every snapshot and page, a message's words past it one fetch away; and a
-// loop that outgrows the ceiling reaches its client as a fresh window at a turn boundary.
+// {§agui-history-window} {§agui-history-page} {§agui-loop-page} {§agui-words-by-reference} {§agui-history-advance} — through
+// the official HttpAgent against the real daemon: a long conversation attaches as its newest loops, and the pages before
+// them, followed back, reassemble it whole, as its loops by number do; the ceiling bounds every snapshot and page, a
+// message's words past it one fetch away; and a loop that outgrows the ceiling reaches its client as a fresh window at a
+// turn boundary.
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
@@ -83,6 +84,63 @@ test("{§agui-history-window} {§agui-history-page}: a long conversation attache
     assert.deepEqual(users(all), prompts, "every prompt, in order");
     assert.deepEqual(all.filter(({ role }) => role === "assistant").map(text).filter((words) => words.length > 0), prompts.map((_, n) => `Answer ${n + 1}.`),
         "every answer, in order");
+});
+
+test("{§agui-loop-page}: each loop by its number is one page, whole past the ceiling, and the loops are the conversation once each and in order; a malformed or absent loop is refused", { timeout: 120_000 }, async (t) => {
+    const ceiling = 6000;
+    const note = (n: number) => `\`\`\`\`NOTE\nObservation ${n}: ${"a long working note the worker keeps ".repeat(60)}\n\`\`\`\``;
+    const { url } = await boot(t, { PLURNK_AGUI_HISTORY_LOOPS: "1", PLURNK_AGUI_HISTORY_PAGE_CHARS: String(ceiling) }, [
+        "````SEND [200]\nAnswer 1.\n````", ...[1, 2, 3, 4].map(note), "````SEND [200]\nAnswer 2.\n````", "````SEND [200]\nAnswer 3.\n````",
+    ]);
+    const prompts = [1, 2, 3].map((n) => `Question ${n}.`);
+    const submitter = new HttpAgent({ url, threadId: "main" });
+    t.after(() => submitter.abortRun());
+    for (const [n, prompt] of prompts.entries()) {
+        submitter.messages = [...submitter.messages, { id: `prompt-${n + 1}`, role: "user", content: prompt }];
+        await submitter.runAgent({ forwardedProps: { plurnk: { workspace: "loops", control: true } } });
+    }
+    const reader = new HttpAgent({ url, threadId: "main" });
+    t.after(() => reader.abortRun());
+    let window: Message[] = [];
+    let history: History | null = null;
+    await reader.runAgent({ forwardedProps: { plurnk: { workspace: "loops" } } }, {
+        onMessagesSnapshotEvent: ({ event }) => { window = event.messages; history = historyOf(event.metadata); },
+    });
+    const older = (history as unknown as History).older;
+    assert.ok(typeof older === "string", "the window holds the newest loop only");
+    const link = (query: Record<string, string>): string => {
+        const at = new URL(older);
+        at.searchParams.delete("before");
+        for (const [key, value] of Object.entries(query)) at.searchParams.set(key, value);
+        return at.href;
+    };
+    const loops: Page[] = [];
+    for (const n of [1, 2, 3]) {
+        const response = await fetch(link({ loop: String(n) }));
+        assert.equal(response.status, 200, `loop ${n}`);
+        loops.push(await response.json() as Page);
+    }
+    const ids = (messages: readonly Message[]): string[] => messages.map(({ id }) => id);
+    const conversation = [...(await pagesBefore(older)).flatMap(({ messages }) => messages), ...window];
+    assert.deepEqual(loops.flatMap(({ messages }) => ids(messages)), ids(conversation), "the loops are the projection the window and its pages are, once each and in order");
+    assert.deepEqual(loops.map(({ messages }) => messages.filter(({ role }) => role === "user").map(text)), prompts.map((prompt) => [prompt]), "each loop opens with its own prompt");
+    assert.ok(loops.every(({ final }) => final), "a concluded loop whose calls hold their results is final");
+    const notes = loops[1].messages.flatMap((message) => message.role === "assistant" ? (message.toolCalls ?? []) : []).filter(({ function: { name } }) => name === "NOTE");
+    assert.equal(notes.length, 4, "the loop that outgrew the ceiling travels whole");
+    assert.ok(JSON.stringify(loops[1]).length > ceiling, "past the ceiling, as one page");
+    assert.equal(loops[0].older, null, "the first loop is the conversation's beginning");
+    const before = await fetch(loops[1].older ?? "");
+    assert.equal(before.status, 200);
+    assert.equal(ids((await before.json() as Page).messages).at(-1), ids(loops[0].messages).at(-1), "and a later loop's older link is the page that ends where it begins");
+
+    const refused = async (query: Record<string, string>, status: number, code: string): Promise<void> => {
+        const response = await fetch(link(query));
+        assert.equal(response.status, status, JSON.stringify(query));
+        assert.match((await response.json() as { type: string }).type, new RegExp(`/${code}$`, "u"), JSON.stringify(query));
+    };
+    for (const loop of ["0", "-1", "1.5", "two", ""]) await refused({ loop }, 400, "history-loop-invalid");
+    await refused({ loop: "1", before: ids(loops[0].messages)[0] }, 400, "history-loop-invalid");
+    await refused({ loop: "4" }, 404, "history-loop-not-found");
 });
 
 test("{§agui-history-window} {§agui-words-by-reference}: the ceiling bounds every snapshot and page, and words past it are one fetch away", { timeout: 120_000 }, async (t) => {

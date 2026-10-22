@@ -57,6 +57,8 @@ const workspace = object({
     project_label: nullable(string()),
     created_at: NONEMPTY,
 }, ["id", "name", "project_root", "project_label", "created_at"]);
+// {§loop-lifecycle-vocabulary} — the one lifecycle vocabulary every client renders.
+const LIFECYCLE = { enum: ["idle", "queued", "running", "parked", "completed", "cancelled", "failed"] };
 // {§application-worker-observation} — kind and lifecycle ride the directory row (#523).
 const worker = object({
     id: POSITIVE,
@@ -66,8 +68,18 @@ const worker = object({
     origin: { enum: ["model", "_plurnk"] },
     parentWorkerId: nullable(POSITIVE),
     kind: { enum: ["root", "fork", "work"] },
-    lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "cancelled", "failed"] },
+    lifecycle: LIFECYCLE,
 }, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle"]);
+// {§agui-worker-loops} — a loop as a list names it: its number, lifecycle, the sender of its opening message and
+// that message's first line, and whether the message holds more.
+const loop = object({
+    id: POSITIVE,
+    sequence: POSITIVE,
+    lifecycle: LIFECYCLE,
+    source: nullable(string()),
+    opening: string(),
+    continued: { type: "boolean" },
+}, ["id", "sequence", "lifecycle", "source", "opening", "continued"]);
 const capabilityProjection = ref("CapabilityProjection");
 // {§worker-effort-source} — `source` says whether the effort was chosen or seeded.
 const effortProperties: Readonly<Record<string, JsonSchema>> = {
@@ -132,6 +144,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     }),
     "loop.cancel": action("workspace", object({ reason: NONEMPTY }), object({ cancelled: { type: "boolean" } }, ["cancelled"])),
     "workspace.prompts": action("workspace", object({ workerId: POSITIVE, limit: POSITIVE }), object({ prompts: array(string()) }, ["prompts"])),
+    "worker.loops": action("workspace", object({ workerId: POSITIVE }), object({ loops: array(loop) }, ["loops"])),
     "workspace.share": action("workspace", object({ folder: NONEMPTY }, ["folder"]), object({ folder: NONEMPTY }, ["folder"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
     // {§rollback} — undo the bound worker's file mutations after a log coordinate, through ordinary operations.

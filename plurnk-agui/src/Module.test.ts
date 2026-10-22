@@ -25,7 +25,7 @@ const { default: Credentials } = await import("../../plurnk-core/src/server/Cred
 const FLOOR = {
     PLURNK_AUTH: "0", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
     PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
-    PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000",
+    PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000", PLURNK_AGUI_LOOP_OPENING_CHARS: "240",
 };
 
 // Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
@@ -3509,6 +3509,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "worker.child.set",
             "worker.effort.get",
             "worker.effort.set",
+            "worker.loops",
             "worker.model.get",
             "worker.model.set",
             "workspace.attach",
@@ -3677,12 +3678,14 @@ const REQUIRING_FORMS: Readonly<Record<string, RunForm & { readonly effect: stri
     "log.read": { ...actionForm("log.read"), effect: "readLog" },
     "entry.read": { ...actionForm("entry.read", { target: "worker:///x" }), effect: "readEntry" },
     "workspace.prompts": { ...actionForm("workspace.prompts"), effect: "listPrompts" },
+    "worker.loops": { ...actionForm("worker.loops"), effect: "listWorkerLoops" },
     "workspace.rollback": { ...actionForm("workspace.rollback", { to: "1/1/1" }), effect: "rollback" },
 };
 const UNBOUND_FORMS: Readonly<Record<string, RunForm>> = {
     "log.read naming worker 91": actionForm("log.read", { workerId: 91 }),
     "entry.read naming worker 91": actionForm("entry.read", { target: "worker:///x", workerId: 91 }),
     "workspace.prompts naming worker 91": actionForm("workspace.prompts", { workerId: 91 }),
+    "worker.loops naming worker 91": actionForm("worker.loops", { workerId: 91 }),
     "workspace.rollback naming worker 91": actionForm("workspace.rollback", { to: "1/1/1", workerId: 91 }),
     "workspace.workers": actionForm("workspace.workers"),
     "workspace.rename": actionForm("workspace.rename", { name: "workspace" }),
@@ -3851,7 +3854,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
         for (const name of [
             "createWorkspace", "createWorker", "registerWorkerOwner", "claimWorkerOwner", "activateWorkspace",
             "runLoop", "cancelDrain", "forkWorker", "readWorkerModel", "readWorkerEffort", "invokeModuleAction",
-            "readLog", "readEntry", "listPrompts", "rollback",
+            "readLog", "readEntry", "listPrompts", "listWorkerLoops", "rollback",
         ] as const) {
             const original = seam[name] as (...args: never[]) => unknown;
             Object.assign(seam, { [name]: (...args: never[]) => { effects.push(name); return original(...args); } });
@@ -3892,6 +3895,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
         seam.invokeModuleAction = async (_name, _params, context) => { reach("invokeModuleAction", (context as { workerId: number }).workerId); return {}; };
         seam.readEntry = async ({ workerId }) => { reach("readEntry", workerId); return { status: 200, entry: { entryId: 1, target: "worker:///x", channels: {} } }; };
         seam.listPrompts = async (_workspaceId, _limit, workerId) => { reach("listPrompts", workerId!); return []; };
+        seam.listWorkerLoops = async ({ workerId }) => { reach("listWorkerLoops", workerId); return []; };
         seam.rollback = async ({ workerId, to }) => { reach("rollback", workerId); return { to, restored: [], skipped: [], stopped: null }; };
         seam.createWorker = async () => { throw new Error("a Run that requires its worker minted one"); };
         const mod = await host(seam);
@@ -3955,6 +3959,7 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
         seam.readLog = async ({ workerId }) => { addressed.push(workerId); return logRows([]); };
         seam.readEntry = async ({ workerId }) => { addressed.push(workerId); return { status: 200, entry: { entryId: 1, target: "worker:///x", channels: {} } }; };
         seam.listPrompts = async (_workspaceId, _limit, workerId) => { addressed.push(workerId!); return []; };
+        seam.listWorkerLoops = async ({ workerId }) => { addressed.push(workerId); return []; };
         seam.rollback = async ({ workerId, to }) => { addressed.push(workerId); return { to, restored: [], skipped: [], stopped: null }; };
         const mod = await host(seam);
         try {
@@ -4685,4 +4690,48 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
         for (const controller of controllers) controller.abort();
         await (closing ?? mod.close());
     }
+});
+
+// {§agui-worker-loops} {§loop-lifecycle-vocabulary}: the list a client navigates a worker's loops by.
+test("{§agui-worker-loops} worker.loops names each loop by its number, lifecycle, opening sender and first line", async () => {
+    const { seam } = mockSeam();
+    existingWorkspace(seam, "loops");
+    directory(seam, [workerRow(20, "main")]);
+    const loop = (sequence: number, status: number, prompt: string, promptSource: string | null) => ({
+        id: 100 + sequence, workerId: 20, sequence, status, prompt, promptSource, claimedAt: null, terminatedAt: null,
+        terminalResult: null, packetCount: 1, waitUntil: null, invocation: null,
+    });
+    seam.listWorkerLoops = async () => [
+        loop(1, 200, "Let's build an app! Make no mistakes.", "agui://anonymous/threads/main/messages/m1"),
+        loop(2, 499, "\n \n  No, you did it wrong!  \r\nHere is why.", "agui://anonymous/threads/main/messages/m2"),
+        loop(3, 102, "Check the tests, all of them.", "worker://helper"),
+        loop(4, 500, "😀".repeat(12), null),
+        loop(5, 202, "Trailing space only.   \n   ", "schedule://nightly"),
+    ];
+    const mod = await host(seam, { loopOpeningChars: 10 });
+    try {
+        const run = async (action: Record<string, unknown>) => actionOutcome(await post(mod.address().port, {
+            threadId: "main", forwardedProps: { plurnk: { workspace: "loops", action } },
+        })) as { ok: boolean; result: Record<string, unknown> } | undefined;
+        const listed = await run({ kind: "worker.loops" });
+        assert.equal(listed?.ok, true, JSON.stringify(listed));
+        assert.deepEqual(listed?.result.loops, [
+            { id: 101, sequence: 1, lifecycle: "completed", source: "agui://anonymous/threads/main/messages/m1", opening: "Let's buil", continued: true },
+            { id: 102, sequence: 2, lifecycle: "cancelled", source: "agui://anonymous/threads/main/messages/m2", opening: "No, you di", continued: true },
+            { id: 103, sequence: 3, lifecycle: "running", source: "worker://helper", opening: "Check the ", continued: true },
+            { id: 104, sequence: 4, lifecycle: "failed", source: null, opening: "😀".repeat(10), continued: true },
+            { id: 105, sequence: 5, lifecycle: "parked", source: "schedule://nightly", opening: "Trailing s", continued: true },
+        ], "the first line holding anything, cut to whole characters, with the loop's lifecycle word");
+        const whole = await (async () => {
+            const { seam: other } = mockSeam();
+            existingWorkspace(other, "loops");
+            directory(other, [workerRow(20, "main")]);
+            other.listWorkerLoops = async () => [loop(1, 200, "Fits.", null), loop(2, 200, "Fits.\n   \n", null)];
+            const small = await host(other, { loopOpeningChars: 10 });
+            try {
+                return actionOutcome(await post(small.address().port, { threadId: "main", forwardedProps: { plurnk: { workspace: "loops", action: { kind: "worker.loops" } } } })) as { result: { loops: Array<{ continued: boolean }> } };
+            } finally { await small.close(); }
+        })();
+        assert.deepEqual(whole.result.loops.map(({ continued }) => continued), [false, false], "a message the opening holds whole, its trailing blank lines included, continues nothing");
+    } finally { await mod.close(); }
 });

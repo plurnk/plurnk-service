@@ -485,6 +485,7 @@ requests is not retained ({§agui-readable-reasoning}).
 | --- | --- |
 | {§agui-history-window} | A snapshot holds the bound worker's newest loops. |
 | {§agui-history-page} | History before the window travels one page at a time. |
+| {§agui-loop-page} | A loop travels whole by its number. |
 | {§agui-history-advance} | A Run's window advances. |
 | {§agui-words-by-reference} | Words past the ceiling travel by reference. |
 <!-- /map -->
@@ -518,6 +519,13 @@ of the conversation 404 `history-cursor-not-found`, and a worker outside the wor
 | `older` | The URL of the page before, or `null` at the conversation's beginning |
 
 A snapshot and its pages, followed back, reassemble the complete projection exactly: each message once, in order.
+
+§agui-loop-page **A loop travels whole by its number.** A page link with `loop=<sequence>` in place of `before` answers
+the bound worker's loop of that sequence ({§agui-worker-loops}) as one page: from its first message to the next loop's
+first, every subagent message among them, never cut to the ceiling, its parts' words by reference where a page's are. The
+accepted messages the Worker has not yet observed belong to no loop. `final` is a page's, and `older` the page before the
+loop's first message. A `loop` that is not a positive integer, or one beside `before`, is 400 `history-loop-invalid`;
+a sequence the conversation holds no loop of is 404 `history-loop-not-found`.
 
 §agui-history-advance **A Run's window advances.** Each Run begins with the current window, and a Run spans at
 most one loop of its worker. Within a Run, once a turn ends with what its client holds of messages since its latest
@@ -673,6 +681,7 @@ selection.
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
+| {§agui-worker-loops} | `worker.loops` — Workspace |
 | {§agui-action-binding} | What a Run binds. |
 | {§agui-client-operation} | `op.exec` and `op.parse` are the thread owner's client operations. |
 | {§agui-worker-model-actions} | Worker model selection is server-backed. |
@@ -731,6 +740,7 @@ successfully transported management Run; it does not turn the Run into
 | `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
 | `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's bound worker.                                                        |
 | `workspace.prompts`      | Workspace | `workerId?`, `limit?`                                | `ApplicationPort.listPrompts` scoped like `log.read`: the thread's bound worker unless `workerId` pins another.    |
+| §agui-worker-loops `worker.loops` | Workspace | `workerId?` | `ApplicationPort.listWorkerLoops` scoped like `log.read`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }`: its lifecycle under {§loop-lifecycle-vocabulary}, `source` the sender of its opening message, `opening` that message's first line holding anything, at most `PLURNK_AGUI_LOOP_OPENING_CHARS` characters, and `continued` whether the message holds more. Its rows are `log.read` by its `id`; its messages, its loop page ({§agui-loop-page}). |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
 | `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the thread's owner ({§agui-client-operation}); returns the `RollbackReport`. |
@@ -756,10 +766,10 @@ worker, or binds none, may create the workspace:
 | The thread's worker | The workspace | Runs and actions |
 |---|---|---|
 | Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set` |
-| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` unless `workerId` names another worker |
+| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` unless `workerId` names another worker |
 | The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§agui-proposal-resolve}) |
 | Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
-| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts` and `workspace.rollback` naming a `workerId` |
+| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` naming a `workerId` |
 
 A daemon action ({§agui-module-action-scope}), and an action the module does not register or
 whose input its schema refuses, binds neither: it is answered on the control path, the refusal in
@@ -1083,6 +1093,7 @@ address is the daemon's.
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
 | `PLURNK_AGUI_HISTORY_LOOPS`        | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The bound worker's newest loops a snapshot holds ({§agui-history-window}). |
 | `PLURNK_AGUI_HISTORY_PAGE_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live delta serializes to, but for a page holding one part of model output past it ({§agui-history-window}); keep it below what a client takes in one event. |
+| `PLURNK_AGUI_LOOP_OPENING_CHARS`   | AG-UI   | Invalid; the package floor is required | Positive safe integer               | The most characters of a loop's opening line one entry of a worker's loop list carries ({§agui-worker-loops}). |
 
 ## §agui-run-endpoint The AG-UI Run endpoint
 

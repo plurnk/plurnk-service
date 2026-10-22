@@ -101,7 +101,7 @@ export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "cred
 // without one.
 const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set(["worker.model.set", "worker.child.set", "worker.effort.set"]);
 const WORKER_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel", "run.fork", "worker.model.get", "worker.effort.get"]);
-const WORKER_READING_ACTIONS: ReadonlySet<string> = new Set(["log.read", "entry.read", "workspace.prompts", "workspace.rollback"]);
+const WORKER_READING_ACTIONS: ReadonlySet<string> = new Set(["log.read", "entry.read", "workspace.prompts", "workspace.rollback", "worker.loops"]);
 
 export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
@@ -122,7 +122,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§agui-shutdown} The requests this module admitted and the work they and its Runs started: each may reach core
     // until it settles.
     readonly #work = new Set<Promise<unknown>>();
-    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace });
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace, openingChars: () => this.#opts.loopOpeningChars });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req), track: this.#track.bind(this) });
 
     private constructor(opts: ModuleOptions) {
@@ -383,13 +383,28 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }));
             return;
         }
+        // {§agui-loop-page} A loop by its number, in place of a cursor.
+        const loop = query.get("loop");
+        if (loop !== null && (!/^[1-9]\d*$/u.test(loop) || query.get("before") !== null)) {
+            writeHttpProblem(res, httpProblem("history-loop-invalid", 400, "A loop page names one loop by its number, and no cursor.", {
+                workspaceId, workerId, loop, before: query.get("before"), stage: "request-validation", recovery: "Name the loop's number as `loop`, or follow an `older` link.", retryable: false,
+            }));
+            return;
+        }
         // The daemon refuses a worker outside the workspace as it reads the worker's log.
         const entries = await this.#runs.history(workspaceId, workerId);
         const view = {
             workspaceId, workerId, threadId, origin: this.#issuer(req), replyThreads: await this.#runs.replyThreads(workspaceId, workerId, threadId),
             descendants: query.get("descendants") === "true", reasoningByLink: query.get("reasoning") === "link",
         };
-        const page = await this.#portal.page(view, query.get("before"), entries, (descendant) => this.#runs.history(workspaceId, descendant));
+        const history = (descendant: number) => this.#runs.history(workspaceId, descendant);
+        const page = loop === null ? await this.#portal.page(view, query.get("before"), entries, history) : await this.#portal.loopPage(view, Number(loop), entries, history);
+        if (page === null && loop !== null) {
+            writeHttpProblem(res, httpProblem("history-loop-not-found", 404, "This conversation holds no loop by that number.", {
+                workspaceId, workerId, loop: Number(loop), stage: "routing", recovery: "List the worker's loops with `worker.loops`.", retryable: false,
+            }));
+            return;
+        }
         if (page === null) {
             writeHttpProblem(res, httpProblem("history-cursor-not-found", 404, "No message of this conversation holds the page's cursor.", {
                 workspaceId, workerId, before: query.get("before"), stage: "routing", recovery: "Follow the `older` link a snapshot or page carries.", retryable: false,

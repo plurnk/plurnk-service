@@ -198,6 +198,16 @@ export default class HistoryWindow {
         return null;
     }
 
+    // {§agui-loop-page} The bound worker's loop `sequence`: from its first message to the next loop's first, every subagent
+    // message among them, never the accepted messages not yet observed; null when the projection holds no such loop.
+    loopSpan(sequence: number): HistoryCut | null {
+        const start = this.#places.findIndex(({ loop }) => loop === sequence);
+        if (start === -1 || start >= this.#pending) return null;
+        let end = start + 1;
+        while (end < this.#pending && (this.#places[end].loop === null || this.#places[end].loop === sequence)) end++;
+        return { start, end };
+    }
+
     // Where the accepted messages the worker has not yet observed begin.
     get pending(): number { return this.#pending; }
 
