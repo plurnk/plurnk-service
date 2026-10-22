@@ -447,16 +447,16 @@ export default class Translator {
             .toSorted((left, right) => order(left.e) - order(right.e));
         // {§agui-readable-reasoning} The turns whose reasoning each translator's messages already hold.
         const reasoned = new Map<Translator, Set<number>>();
-        for (const { translator, e } of rows) {
-            const turns = reasoned.get(translator) ?? new Set<number>();
-            reasoned.set(translator, turns);
-            translator.#replayRow(e, messages, turns, references);
-        }
-        // {§agui-message-acceptance} The accepted messages the bound worker has not yet observed, after every row: each a
-        // client on this thread sent, under that client's id; the client then holds its words, and its arrival folds.
+        // {§agui-message-acceptance} Each accepted message the bound worker has not yet observed sits after its loop's rows:
+        // a client's on this thread under that client's id; the client then holds its words, and its arrival folds.
         const bound = parts[0]?.translator;
-        if (bound !== undefined) {
-            for (const message of inbox) {
+        const remaining = [...inbox];
+        const accept = (beforeLoopId: number): void => {
+            if (bound === undefined) return;
+            for (let index = 0; index < remaining.length;) {
+                const message = remaining[index];
+                if (message.loopId >= beforeLoopId) { index++; continue; }
+                remaining.splice(index, 1);
                 const pending = bound.#pending(message);
                 if (pending === null || messages.some(({ id }) => id === pending.id)) continue;
                 messages.push(pending);
@@ -464,7 +464,14 @@ export default class Translator {
                 const at = bound.#pendingAt(message);
                 if (at !== null) references.set(pending.id, at);
             }
+        };
+        for (const { translator, e } of rows) {
+            if (translator === bound && isSafeInteger(e.loop_id)) accept(e.loop_id);
+            const turns = reasoned.get(translator) ?? new Set<number>();
+            reasoned.set(translator, turns);
+            translator.#replayRow(e, messages, turns, references);
         }
+        accept(Number.POSITIVE_INFINITY);
         return { messages, references };
     }
 

@@ -20,13 +20,15 @@ export interface HistoryCut {
 }
 
 // Where a message sits: its turn, the part of that turn it begins or continues, the bound worker's loop when the message is
-// that worker's own, and whether it is an accepted message the worker has not yet observed, which always travels.
+// that worker's own, and whether it is an accepted message of a live loop not yet observed, which always travels.
 interface Place {
     readonly turn: string;
     readonly part: number;
     readonly loop: number | null;
     readonly pending: boolean;
 }
+
+const CONCLUDED = new Set<unknown>(["completed", "cancelled", "failed"]);
 
 const plurnkFacts = (metadata: unknown): Readonly<Record<string, unknown>> | null =>
     isRecord(metadata) && isRecord(metadata.plurnk) ? metadata.plurnk : null;
@@ -116,6 +118,7 @@ export default class HistoryWindow {
         const places: Place[] = [];
         const calls = new Map<string, Place>();
         let part = -1;
+        let currentLoop: number | null = null;
         for (const message of messages) {
             const call = message.role === "tool" ? calls.get(message.toolCallId) : undefined;
             if (call !== undefined) {
@@ -126,11 +129,16 @@ export default class HistoryWindow {
             const scope = (message as { subagentRunId?: string }).subagentRunId ?? "";
             const coordinate = coordinateOf(message);
             const [loop, turn] = coordinate === null ? [null, null] : coordinate.split("/").map(Number);
+            const ownLoop = scope === "" && loop !== null && Number.isSafeInteger(loop) ? loop : null;
+            if (ownLoop !== null) currentLoop = ownLoop;
+            const facts = plurnkFacts(message.metadata);
+            const unpublished = coordinate === null && message.role === "user" && facts?.published === false;
+            const concluded = unpublished && CONCLUDED.has(facts?.lifecycle);
             const place: Place = {
                 turn: coordinate === null ? `message|${message.id}` : `${scope}|${loop}/${turn}`,
                 part,
-                loop: scope === "" && loop !== null && Number.isSafeInteger(loop) ? loop : null,
-                pending: coordinate === null && message.role === "user" && plurnkFacts(message.metadata)?.published === false,
+                loop: concluded ? currentLoop : ownLoop,
+                pending: unpublished && !concluded,
             };
             places.push(place);
             if (message.role === "assistant") for (const { id } of message.toolCalls ?? []) calls.set(id, place);

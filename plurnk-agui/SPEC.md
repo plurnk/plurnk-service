@@ -474,7 +474,7 @@ client rebuilds them. It is cut from the bound worker's whole log, read page by 
 | A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§agui-call-result}) |
 | A reply reporting progress on a message this worker sent | `user` identified by its coordinate and named by its source ({§agui-progress-reply}) |
 | Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
-| An accepted message a client on this thread sent, not yet observed | `user` under that client's message id, after every row, `metadata.plurnk.published` false and no coordinate ({§agui-message-acceptance}) |
+| An accepted message a client on this thread sent, not yet observed | `user` under that client's message id, after its loop's rows, `metadata.plurnk.published` false and no coordinate ({§agui-message-acceptance}) |
 
 Interrupts are not snapshot messages: a pending gate is re-presented as an interrupt naming the call
 the snapshot holds, and a settled one's evidence is its operation's call and result. Transient reasoning of failed or rejected
@@ -501,7 +501,7 @@ the complete projection ({§agui-snapshot}), and a client fetches what lies befo
 | The loops | The bound worker's newest `PLURNK_AGUI_HISTORY_LOOPS` loops, with every subagent message among them in log order; a conversation of fewer loops travels whole |
 | The cut | Between whole turns: a turn's reasoning, its calls and their results travel together, a result a later row delivered with its call. Only a turn larger than the ceiling is cut between its parts: an arrival, a reasoning message, speech, or a call with its results |
 | The ceiling | The snapshot, its envelope included, serializes to at most `PLURNK_AGUI_HISTORY_PAGE_CHARS`. A part that alone would pass it carries its senders' words by reference ({§agui-words-by-reference}); a part that passes it still, which only model output or a receipt can, never travels in a snapshot: it falls into history whole, a page of its own, the one page that passes the ceiling |
-| Accepted messages | The accepted messages the Worker has not yet observed travel last, always ({§agui-message-acceptance}) |
+| Accepted messages | Accepted messages of a live loop (`queued`, `running`, `parked`) travel last, always; one whose loop concluded without observing it stays with that loop ({§agui-message-acceptance}) |
 | The link | `metadata.plurnk.history` is `{ older }`: the URL of the page before the window, or `null` when the window holds the whole conversation |
 | What the Run holds | The rows whose messages the window holds ({§agui-sync}); a later delivery of a row the window left in history is a row the client does not hold, and arrives whole |
 | AG-UI's reasoning rule | A snapshot that carries no reasoning message leaves the reasoning messages a client holds in place, as AG-UI defines `MESSAGES_SNAPSHOT`: a window without reasoning keeps what the client held, and the next window that carries reasoning replaces it |
@@ -524,10 +524,11 @@ A snapshot and its pages, followed back, reassemble the complete projection exac
 
 §agui-loop-page **A loop travels whole by its number.** A page link with `loop=<sequence>` in place of `before` answers
 the bound worker's loop of that sequence ({§agui-worker-loops}) as one page: from its first message to the next loop's
-first, every subagent message among them, never cut to the ceiling, its parts' words by reference where a page's are. The
-accepted messages the Worker has not yet observed belong to no loop. `final` is a page's, and `older` the page before the
-loop's first message. A `loop` that is not a positive integer, or one beside `before`, is 400 `history-loop-invalid`;
-a sequence the conversation holds no loop of is 404 `history-loop-not-found`.
+first, every subagent message and any accepted message that loop concluded without observing among them, never cut to the
+ceiling, its parts' words by reference where a page's are. Accepted messages of a live loop belong to no loop page.
+`final` is a page's, and `older` the page before the loop's first message. A `loop` that is not a positive integer, or
+one beside `before`, is 400 `history-loop-invalid`; a sequence the conversation holds no loop of is 404
+`history-loop-not-found`.
 
 §agui-history-advance **A Run's window advances.** Each Run begins with the current window, and a Run spans at
 most one loop of its worker. Within a Run, once a turn ends with what its client holds of messages since its latest
@@ -1197,7 +1198,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | Where | What |
 | --- | --- |
 | `status.inbox` | every accepted message the bound Worker has not yet observed, `{ path, id, loopId, lifecycle }`: its immutable source address, that client's message id when a client on this thread sent it (else `null`), the loop holding it and that loop's lifecycle ({§loop-lifecycle-vocabulary}); read from `ApplicationPort.readInbox` with the gauge ({§methods-worker-inbox}) and republished as `STATE_DELTA /plurnk/status/inbox` under the rule of {§agui-status-descendants}, after the Run's own submission and after an arrival row lands |
-| The snapshot | each such message a client on this thread sent, as a `user` message under that client's id with its words and `metadata.plurnk` `{ message, loop, lifecycle, source, published: false }`, after every row and with no coordinate ({§agui-snapshot}); one another client, a worker or a schedule sent waits for its arrival row, which names it by its coordinate |
+| The snapshot | each such message a client on this thread sent, as a `user` message under that client's id with its words and `metadata.plurnk` `{ message, loop, lifecycle, source, published: false }`, after its loop's rows and with no coordinate ({§agui-snapshot}); one another client, a worker or a schedule sent waits for its arrival row, which names it by its coordinate |
 | Its arrival | the row folds its facts onto the message the client holds — a repeated `TEXT_MESSAGE_START` and `TEXT_MESSAGE_END` under the same id and no words again ({§agui-plurnk-metadata}) — and the message leaves `status.inbox`; a loop that concludes without observing it — cancelled, say — leaves it listed with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}) |
 | A refused input | is nowhere: a refusal before admission is the Run's own error ({§agui-run-input}), and the client's copy stays its own |
 

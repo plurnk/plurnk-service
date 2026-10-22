@@ -13,7 +13,7 @@ const call = (id: string, run?: string, args = "{}"): Message =>
 const result = (callId: string, run?: string, content = "{}"): Message => attributed({ id: `${callId}/result`, role: "tool", toolCallId: callId, content }, run);
 const reasoning = (id: string, turn: string): Message => ({ id, role: "reasoning", content: "", metadata: facts(turn) });
 const speech = (id: string, content = "Done."): Message => ({ id, role: "assistant", content, metadata: facts(id) });
-const pending = (id: string): Message => ({ id, role: "user", content: "next", metadata: { plurnk: { published: false } } });
+const pending = (id: string, lifecycle = "running"): Message => ({ id, role: "user", content: "next", metadata: { plurnk: { lifecycle, published: false } } });
 
 // One loop of the bound worker: its arrival, a turn's reasoning, a call and its result, and its reply.
 const loop = (n: number): Message[] => [user(`m${n}`, `${n}/1/1`), reasoning(`r${n}`, `${n}/2`), call(`${n}/2/1`), result(`${n}/2/1`), speech(`${n}/2/2`)];
@@ -60,12 +60,18 @@ test("{§agui-history-window} {§agui-history-page} a part that alone passes the
     assert.deepEqual(ids(messages.slice(page.start, page.end)), ["2/2/1", "2/2/1/result"], "it is fetched whole, alone");
 });
 
-test("{§agui-history-window} accepted messages the worker has not yet observed always travel, and no cut falls after them", () => {
-    const messages = [...[1, 2, 3].flatMap(loop), pending("p1"), pending("p2")];
+test("{§agui-history-window} {§agui-history-page} {§agui-loop-page} accepted messages of a live loop always travel, while one whose loop concluded without observing it stays and ages out with that loop", () => {
+    const messages = [...loop(1), pending("c1", "cancelled"), ...[2, 3].flatMap(loop), pending("p1"), pending("p2")];
     const window = new HistoryWindow(messages, { loops: 1, chars: 400 });
     const held = ids(messages.slice(window.window(none)));
     assert.deepEqual(held.slice(-2), ["p1", "p2"]);
+    assert.equal(held.includes("c1"), false, "loop 1's cancelled message aged out with loop 1");
     assert.equal(window.pending, messages.length - 2);
+    const full = new HistoryWindow(messages, { loops: 2, chars: Number.POSITIVE_INFINITY });
+    assert.deepEqual(ids(messages.slice(full.window(none))), [...ids([2, 3].flatMap(loop)), "p1", "p2"]);
+    const loop1 = full.page(full.window(none), none);
+    assert.deepEqual(ids(messages.slice(loop1.start, loop1.end)), [...ids(loop(1)), "c1"], "the page before loop 2 holds loop 1 and its unobserved message");
+    assert.deepEqual(ids(messages.slice(full.loopSpan(1)!.start, full.loopSpan(1)!.end)), [...ids(loop(1)), "c1"], "loop 1's page by number holds it too");
 });
 
 test("{§agui-history-window} the serialized snapshot, envelope included, stays within the ceiling", () => {

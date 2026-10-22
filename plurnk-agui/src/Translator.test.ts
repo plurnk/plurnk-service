@@ -894,30 +894,36 @@ test("{§agui-plurnk-metadata} the newest-first workspace log replays user promp
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snap), "reattach uses the standard AG-UI message snapshot");
 });
 
-test("{§agui-message-acceptance} {§agui-snapshot} an accepted message a client sent rides the snapshot under its id, unpublished, and its arrival folds without repeating its words", () => {
+test("{§agui-message-acceptance} {§agui-snapshot} an accepted message a client sent rides the snapshot under its id, after its loop's rows, unpublished, and its arrival folds without repeating its words", () => {
     const tr = t();
+    const cancelled = "agui://alice/threads/th-1/messages/m-cancelled";
     const own = "agui://alice/threads/th-1/messages/m-pending";
     const elsewhere = "agui://bob/threads/th-2/messages/m-elsewhere";
-    const earlier = wireRow({ id: 1, origin: "_plurnk", op: "SEND", source: "agui://alice/threads/th-1/messages/m-old", attrs: { kind: "message" }, tx: { body: { raw: "Earlier." } } });
-    const snapshot = tr.replay([earlier], [
+    const loop1 = wireRow({ id: 1, loop_id: 1, loop_seq: 1, origin: "_plurnk", op: "SEND", source: "agui://alice/threads/th-1/messages/m-loop1", attrs: { kind: "message" }, tx: { body: { raw: "Loop one." } } });
+    const earlier = wireRow({ id: 2, loop_id: 4, loop_seq: 2, origin: "_plurnk", op: "SEND", source: "agui://alice/threads/th-1/messages/m-old", attrs: { kind: "message" }, tx: { body: { raw: "Earlier." } } });
+    const snapshot = tr.replay([loop1, earlier], [
+        { path: cancelled, source: cancelled, body: "Proceed.", loopId: 1, lifecycle: "cancelled" },
         { path: own, source: own, body: "Pending words.", loopId: 4, lifecycle: "running" },
         { path: elsewhere, source: elsewhere, body: "Another thread's.", loopId: 4, lifecycle: "running" },
         { path: "message://main/abc", source: "schedule://daily", body: "A schedule's.", loopId: 4, lifecycle: "running" },
     ])[0] as { messages: Array<{ id: string; role: string; content: unknown; metadata?: unknown }> };
     assert.deepEqual(snapshot.messages.map(({ id, role, content }) => ({ id, role, content })), [
+        { id: "m-loop1", role: "user", content: "Loop one." },
+        { id: "m-cancelled", role: "user", content: "Proceed." },
         { id: "m-old", role: "user", content: "Earlier." },
         { id: "m-pending", role: "user", content: "Pending words." },
-    ], "the snapshot carries this thread's accepted message after every row, and nobody else's before its arrival");
-    assert.deepEqual(snapshot.messages[1].metadata, { plurnk: { message: own, loop: 4, lifecycle: "running", source: own, published: false } },
+    ], "the snapshot places each accepted message of this thread after its loop's rows, and nobody else's before its arrival");
+    assert.deepEqual(snapshot.messages[1].metadata, { plurnk: { message: cancelled, loop: 1, lifecycle: "cancelled", source: cancelled, published: false } });
+    assert.deepEqual(snapshot.messages[3].metadata, { plurnk: { message: own, loop: 4, lifecycle: "running", source: own, published: false } },
         "its acceptance is its metadata, and it has no coordinate");
     assert.doesNotThrow(() => MessagesSnapshotEventSchema.parse(snapshot), "the snapshot stays the standard AG-UI message snapshot");
-    const arrival = tr.logEntry({ entry: wireRow({ id: 2, origin: "_plurnk", op: "SEND", source: own, attrs: { kind: "message" }, tx: { body: { raw: "Pending words." } } }) })
+    const arrival = tr.logEntry({ entry: wireRow({ id: 3, loop_id: 4, loop_seq: 2, sequence: 2, origin: "_plurnk", op: "SEND", source: own, attrs: { kind: "message" }, tx: { body: { raw: "Pending words." } } }) })
         .filter((event) => event.type.startsWith("TEXT_MESSAGE_"));
     assert.deepEqual(arrival.map(({ type }) => type), ["TEXT_MESSAGE_START", "TEXT_MESSAGE_END"],
         "its arrival folds the row's facts onto the message the client holds and repeats no words");
     const start = arrival[0] as { messageId: string; metadata?: { plurnk?: { coordinate?: unknown; published?: unknown } } };
     assert.equal(start.messageId, "m-pending");
-    assert.equal(start.metadata?.plurnk?.coordinate, "1/1/2", "{§agui-plurnk-metadata} the fold carries the coordinate it now has");
+    assert.equal(start.metadata?.plurnk?.coordinate, "2/1/2", "{§agui-plurnk-metadata} the fold carries the coordinate it now has");
     assert.equal(start.metadata?.plurnk?.published, undefined, "and the row's facts replace the acceptance facts");
 });
 

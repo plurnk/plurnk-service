@@ -226,4 +226,36 @@ test("{§agui-message-acceptance} a worker cancelled before observing an accepte
     assert.equal(held.length, 1, "and the snapshot carries it once");
     assert.equal(held[0].plurnk?.published, false);
     assert.equal(held[0].plurnk?.lifecycle, "cancelled");
+
+    // Subsequent loops place their messages after B, and once PLURNK_AGUI_HISTORY_LOOPS newer loops run, B ages into loop 1's history page.
+    const C: Message = { id: "C", role: "user", content: "Third question." };
+    const D: Message = { id: "D", role: "user", content: "Fourth question." };
+    const second = agent();
+    second.messages = [...later.messages, C];
+    await second.runAgent({ forwardedProps });
+    const afterSecond = agent();
+    await afterSecond.runAgent({ forwardedProps: { plurnk: { workspace: "acceptance-cancel" } } });
+    assert.deepEqual(users(afterSecond.messages).map(({ id }) => id), ["A", "B", "C"], "B stays at the end of loop 1, before loop 2's prompt");
+
+    const third = agent();
+    third.messages = [...afterSecond.messages, D];
+    await third.runAgent({ forwardedProps });
+    let olderUrl: string | null = null;
+    const afterThird = agent();
+    await afterThird.runAgent({ forwardedProps: { plurnk: { workspace: "acceptance-cancel" } } }, {
+        onMessagesSnapshotEvent: ({ event }) => {
+            olderUrl = (event as { metadata?: { plurnk?: { history?: { older?: string | null } } } }).metadata?.plurnk?.history?.older ?? null;
+        },
+    });
+    assert.deepEqual(users(afterThird.messages).map(({ id }) => id), ["C", "D"], "{§agui-history-window} loop 1 and B aged out of the 2-loop window together");
+    assert.ok(typeof olderUrl === "string", "the snapshot links to the history page before loop 2");
+    const page1 = await (await fetch(olderUrl)).json() as { final: boolean; messages: Message[]; older: string | null };
+    assert.equal(page1.final, true);
+    assert.equal(page1.older, null);
+    assert.deepEqual(users(page1.messages).map(({ id }) => id), ["A", "B"], "{§agui-history-page} loop 1's history page carries A and the cancelled follow-up B");
+    const byLoop = new URL(olderUrl);
+    byLoop.searchParams.delete("before");
+    byLoop.searchParams.set("loop", "1");
+    const loop1 = await (await fetch(byLoop)).json() as { final: boolean; messages: Message[]; older: string | null };
+    assert.deepEqual(users(loop1.messages).map(({ id }) => id), ["A", "B"], "{§agui-loop-page} loop 1 by number carries A and the cancelled follow-up B");
 });
