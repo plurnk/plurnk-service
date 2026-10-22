@@ -715,7 +715,7 @@ model physics. `Discovery.packageAttributions` carries the canonical package map
 | Tag | Promise |
 | --- | --- |
 | {§provider-local-capabilities} | The `openai` local adapter probes `/v1/models`. |
-| {§llama-template-effort} | The template control expresses two postures, so on the wire an admitted effort rides as `adaptive` and `off`… |
+| {§llama-template-effort} | A detected llama-server rail admits `off` and `adaptive`, and a fixed effort only where the operator declares… |
 | {§llama-reasoning-request} | The allowance is cumulative across the complete response. |
 <!-- /map -->
 
@@ -743,15 +743,17 @@ OpenAI-compatible generation endpoint through the SDK adapter.
 For a detected llama-server, PLURNK sends the complete reasoning contract on
 every request:
 
-| Posture | Template activation | `thinking_budget_tokens` |
-|---|---:|---:|
-| `off` | false | `0` |
-| `adaptive` | true | configured reasoning subset, otherwise omitted |
+| Posture | Template activation | Template `reasoning_effort` | `thinking_budget_tokens` |
+|---|---:|---|---:|
+| `off` | false | none | `0` |
+| `adaptive` | true | none | configured reasoning subset, otherwise omitted |
+| A declared fixed effort | true | the effort's name | configured reasoning subset, otherwise omitted |
 
-§llama-template-effort The template control expresses two postures, so on the wire an
-admitted effort rides as `adaptive` and `off` as `off`; a detected llama-server rail admits
-the whole policy vocabulary (`low`, `medium`, `high`), because the chat template, not this
-host, decides what each level means.
+§llama-template-effort A detected llama-server rail admits `off` and `adaptive`, and a fixed
+effort only where the operator declares it (`REASONING_EFFORTS`,
+{§provider-wire-declaration}). The chat template decides what each level means and which
+levels it accepts; PLURNK infers neither from the template nor from the model's name, and a
+template that refuses a declared level answers on the first request.
 
 The allowance is contained by the request's total output budget. Template calls
 normally use `reasoning_format: "auto"` for a separate

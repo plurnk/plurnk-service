@@ -2,7 +2,9 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
+import type { Effort } from "@plurnk/plurnk-contracts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
+import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const env = {
@@ -134,16 +136,77 @@ test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no D
     assert.equal("dry_allowed_length" in (body ?? {}), false);
 });
 
-test("{§llama-template-effort} a detected llama-server rail admits the operator's stated effort", async () => {
+// {§llama-template-effort} What a llama-server rail admits, and what each admitted effort sends.
+const TEMPLATE_EFFORTS: ReadonlyArray<{
+    name: string;
+    declared: Record<string, string>;
+    effort: Effort;
+    admits?: readonly Effort[];
+    sends?: Record<string, unknown>;
+    refused?: RegExp;
+}> = [
+    { name: "off, nothing declared", declared: {}, effort: "off", admits: ["off", "adaptive"], sends: { enable_thinking: false } },
+    { name: "adaptive, nothing declared", declared: {}, effort: "adaptive", admits: ["off", "adaptive"], sends: { enable_thinking: true } },
+    {
+        name: "a fixed effort, nothing declared", declared: {}, effort: "medium",
+        refused: /effort 'medium' is unsupported; supported efforts: off, adaptive\. Declare each effort the served chat template distinguishes: PLURNK_PROVIDERS_REASONING_EFFORTS=medium /,
+    },
+    {
+        name: "a declared fixed effort", declared: { PLURNK_PROVIDERS_REASONING_EFFORTS: "low,medium,xhigh" }, effort: "medium",
+        admits: ["off", "adaptive", "low", "medium", "xhigh"], sends: { enable_thinking: true, reasoning_effort: "medium" },
+    },
+    {
+        name: "adaptive beside a declaration", declared: { PLURNK_PROVIDERS_REASONING_EFFORTS: "low" }, effort: "adaptive",
+        admits: ["off", "adaptive", "low"], sends: { enable_thinking: true },
+    },
+    {
+        name: "a fixed effort outside the declaration", declared: { PLURNK_PROVIDERS_REASONING_EFFORTS: "low,xhigh" }, effort: "high",
+        refused: /effort 'high' is unsupported; supported efforts: off, adaptive, low, xhigh\./,
+    },
+    {
+        name: "the provider-wide declaration", declared: { PLURNK_PROVIDERS_PROVIDER_OPENAI_REASONING_EFFORTS: "max" }, effort: "max",
+        admits: ["off", "adaptive", "max"], sends: { enable_thinking: true, reasoning_effort: "max" },
+    },
+];
+
+for (const row of TEMPLATE_EFFORTS) {
+    test(`{§llama-template-effort} a llama-server rail, ${row.name}`, async () => {
+        let sent: Record<string, unknown> | undefined;
+        mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+            const url = requestUrl(input);
+            if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));
+            if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
+            if (url.endsWith("/chat/completions")) {
+                sent = JSON.parse(requestBody(init)) as Record<string, unknown>;
+                return streamedChatResponse("ok");
+            }
+            throw new Error(`unexpected request ${url}`);
+        });
+        const configured = { ...env, ...row.declared, PLURNK_PROVIDERS_EFFORT: row.effort };
+        if (row.refused !== undefined) {
+            const refused = row.refused;
+            await assert.rejects(compatibleProviderFromEnv(configured, "local"),
+                (error: unknown) => error instanceof UnsupportedEffortError && refused.test(error.message));
+            return;
+        }
+        const provider = await compatibleProviderFromEnv(configured, "local");
+        assert.deepEqual(provider.supportedEfforts, row.admits, "the rail admits off, adaptive and what the operator declared");
+        await provider.generate({ workerId: "worker-effort", messages: [{ role: "user", content: "hello" }] });
+        assert.deepEqual(sent?.chat_template_kwargs, row.sends, "a fixed effort rides as the template's own variable");
+    });
+}
+
+test("{§provider-effort} a compatible route without a template refuses a fixed effort and names no declaration", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
         const url = requestUrl(input);
-        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 8192 } }] }));
-        if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
+        if (url.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "local", n_ctx: 8192 }] }));
         throw new Error(`unexpected request ${url}`);
     });
-    const provider = await compatibleProviderFromEnv({ ...env, PLURNK_PROVIDERS_EFFORT: "medium" }, "local");
-    assert.ok(provider.supportedEfforts.includes("medium"), "the template governs: medium is admitted on a llama-server rail");
-    assert.ok(provider.supportedEfforts.includes("low") && provider.supportedEfforts.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
+    await assert.rejects(
+        compatibleProviderFromEnv({ ...env, PLURNK_PROVIDERS_EFFORT: "high", PLURNK_PROVIDERS_REASONING_EFFORTS: "high" }, "local"),
+        (error: unknown) => error instanceof UnsupportedEffortError
+            && error.message.endsWith("effort 'high' is unsupported; supported efforts: off, adaptive. This route sends no fixed-effort control."),
+    );
 });
 
 test("{§provider-local-capabilities} detected llama-server measures the complete chat request through input_tokens", async () => {

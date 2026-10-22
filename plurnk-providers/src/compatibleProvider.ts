@@ -1,4 +1,4 @@
-import { EFFORTS, isRecord } from "@plurnk/plurnk-contracts";
+import { EFFORTS, isRecord, type Effort } from "@plurnk/plurnk-contracts";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
@@ -17,7 +17,8 @@ import {
     inferenceAdmissionFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
-import type { Provider } from "./types.ts";
+import RequestFields from "./RequestFields.ts";
+import { UnsupportedEffortError, type Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
 type EndpointProbe = {
@@ -28,6 +29,13 @@ type EndpointProbe = {
 };
 
 const provider = "openai";
+
+// {§llama-template-effort} The server enforces off and adaptive itself; a fixed effort is the
+// operator's declaration of a level the served chat template distinguishes.
+const templateEfforts = (env: NodeJS.ProcessEnv): readonly Effort[] => {
+    const declared: ReadonlySet<string> = new Set(RequestFields.declaredEfforts(provider, env));
+    return EFFORTS.filter((policy) => policy === "off" || policy === "adaptive" || declared.has(policy));
+};
 
 const chatUrl = (env: NodeJS.ProcessEnv, override?: string): string => {
     const configured = override ?? env.OPENAI_BASE_URL ?? env.OPENAI_API_BASE;
@@ -175,9 +183,12 @@ export const compatibleProviderFromEnv = async (
     }
     const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
     const effort = effortFromEnv(env, provider, envelope.reasoningBudget);
-    // A detected llama-server rail runs the template style: the chat template governs
-    // reasoning, so the operator's stated effort is admitted and forwarded verbatim (#483).
-    const supportedEfforts = reasoningStyle === "template" ? EFFORTS : (["off", "adaptive"] as const);
+    const supportedEfforts: readonly Effort[] = reasoningStyle === "template" ? templateEfforts(env) : ["off", "adaptive"];
+    if (!supportedEfforts.includes(effort.mode)) {
+        throw new UnsupportedEffortError(providerSource(provider), effort.mode, supportedEfforts, reasoningStyle === "template"
+            ? `Declare each effort the served chat template distinguishes: PLURNK_PROVIDERS_REASONING_EFFORTS=${effort.mode} (comma-separated; an alias suffix scopes it to one alias).`
+            : "This route sends no fixed-effort control.");
+    }
     return new AiSdkProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
         model,
