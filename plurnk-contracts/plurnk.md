@@ -74,6 +74,11 @@ Describe the child's complete task in the body.
 | `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
 | none   | literal or glob/extglob     | `?(export )?(async )function *` |
 
+> [!TIP]
+> Patterns select source text as written, and an EDIT body replaces all of it:
+> `//book/@lang` selects `lang="en"`;
+> `$.lang` selects `"en"` with its quotes.
+
 ## `<scope|range>`
 
 > [!TIP]
@@ -127,7 +132,7 @@ qux
 baz
 ```
 
-```EDIT (example.md) <@fghij,1,@fghij,1> <!-- insert after line 42: insert before line 43 -->
+```EDIT (example.md) <@fghij,1,@fghij,1> <!-- insert after line 42: insert before line 43; insert after the last line: <-1> -->
 qux
 ```
 
