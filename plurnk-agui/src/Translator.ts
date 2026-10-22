@@ -382,6 +382,7 @@ export default class Translator {
                 // {§loop-lifecycle-vocabulary}
                 { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(result.status) },
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
+                { op: "replace", path: "/plurnk/status/loopSeq", value: n.loopSeq },
                 { op: "replace", path: "/plurnk/status/terminatedAt", value: n.terminatedAt },
                 { op: "replace", path: "/plurnk/status/waitUntil", value: null },
             ],
@@ -537,6 +538,7 @@ export default class Translator {
             if (value.waitUntil !== null && (typeof value.waitUntil !== "number" || !Number.isFinite(value.waitUntil) || value.waitUntil < 0)) {
                 throw new TypeError("A loop_status notice carries a nullable Unix-millisecond waitUntil.");
             }
+            if (!isSafeInteger(value.loopSeq) || value.loopSeq <= 0) throw new TypeError("A loop_status notice carries its loop's number.");
             if (!isSafeInteger(value.packetCount) || value.packetCount < 0) throw new TypeError("A loop_status notice carries its loop's packet count.");
             if (value.claimedAt !== null && (!isSafeInteger(value.claimedAt) || value.claimedAt <= 0)) {
                 throw new TypeError("A loop_status notice carries a nullable Unix-millisecond claimedAt.");
@@ -547,6 +549,7 @@ export default class Translator {
                 delta: [
                     { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(value.status) },
                     { op: "replace", path: "/plurnk/status/loopId", value: loopId },
+                    { op: "replace", path: "/plurnk/status/loopSeq", value: value.loopSeq },
                     { op: "replace", path: "/plurnk/status/packetCount", value: value.packetCount },
                     { op: "replace", path: "/plurnk/status/waitUntil", value: value.status === 202 ? value.waitUntil : null },
                     { op: "replace", path: "/plurnk/status/claimedAt", value: value.claimedAt },
@@ -572,6 +575,7 @@ export default class Translator {
             delta: [
                 { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
                 { op: "replace", path: "/plurnk/status/loopId", value: packet.loopId },
+                { op: "replace", path: "/plurnk/status/loopSeq", value: packet.loopSeq },
                 { op: "replace", path: "/plurnk/status/packetCount", value: packet.packetCount },
                 { op: "replace", path: "/budget/curationWeight", value: packet.gauge.curationWeight },
                 { op: "replace", path: "/budget/curationBudget", value: packet.gauge.curationBudget },

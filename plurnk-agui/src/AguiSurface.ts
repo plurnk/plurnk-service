@@ -226,6 +226,7 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
     "loop/terminated": notification<TerminatedNotification>(object({
         workerId: POSITIVE,
         loopId: POSITIVE,
+        loopSeq: POSITIVE,
         result: OPERATION_RESULT,
         hitMaxTurns: { type: "boolean" },
         turnIds: array(POSITIVE),
@@ -240,10 +241,11 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
         }, ["accounting", "curationWeight", "curationBudget", "contextTokens", "contextCapacity", "meta"]),
         // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
         terminatedAt: POSITIVE,
-    }, ["workerId", "loopId", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
+    }, ["workerId", "loopId", "loopSeq", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
     "loop/packet": notification<ApplicationLoopPacket>(object({
         workerId: POSITIVE,
         loopId: POSITIVE,
+        loopSeq: POSITIVE,
         packetCount: POSITIVE,
         gauge: object({
             curationWeight: nullable(NONNEGATIVE),
@@ -251,7 +253,7 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             contextTokens: nullable(NONNEGATIVE),
             contextCapacity: nullable(POSITIVE),
         }, ["curationWeight", "curationBudget", "contextTokens", "contextCapacity"]),
-    }, ["workerId", "loopId", "packetCount", "gauge"])),
+    }, ["workerId", "loopId", "loopSeq", "packetCount", "gauge"])),
     "loop/proposal": notification(ref("ProposalProjection")),
     "loop/interaction": notification(ref("ClientInteractionProjection")),
     "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({

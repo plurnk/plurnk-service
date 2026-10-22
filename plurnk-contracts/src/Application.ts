@@ -100,6 +100,8 @@ export interface ApplicationLoopProjection {
 export interface ApplicationLoopPacket {
     readonly workerId: number;
     readonly loopId: number;
+    /** The loop's number among its worker's loops, the L of its log coordinates. */
+    readonly loopSeq: number;
     readonly packetCount: number;
     /** The loop's client gauge once this packet's turn has its call. */
     readonly gauge: ApplicationGauge;

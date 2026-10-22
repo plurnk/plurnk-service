@@ -55,6 +55,8 @@ export interface OutsideEventNotification {
 export interface TerminatedNotification {
     workerId: number;
     loopId: number;
+    // {§notifications-loop-terminated} — the loop's number among its worker's loops.
+    loopSeq: number;
     result: OperationResult;
     hitMaxTurns: boolean;
     turnIds: number[];   // on the wire (Daemon.ts broadcast) — the turn count for a client's json record

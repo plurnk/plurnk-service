@@ -77,6 +77,7 @@
                                 "lifecycle": "idle",
                                 "model": null,
                                 "loopId": null,
+                                "loopSeq": null,
                                 "packetCount": 0,
                                 "waitUntil": null,
                                 "claimedAt": null,
@@ -104,6 +105,7 @@
                         { "op": "replace", "path": "/plurnk/workspace/preparation", "value": [] },
                         { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "running" },
                         { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/loopSeq", "value": 1 },
                         { "op": "replace", "path": "/plurnk/status/packetCount", "value": 1 }
                     ]
                 },
@@ -125,7 +127,8 @@
                     "type": "STATE_DELTA",
                     "delta": [
                         { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "completed" },
-                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 }
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/loopSeq", "value": 1 }
                     ]
                 },
                 {
@@ -140,6 +143,7 @@
                                 "workspaceId": 1,
                                 "workerId": 7,
                                 "loopId": 1,
+                                "loopSeq": 1,
                                 "result": { "status": 200 },
                                 "hitMaxTurns": false,
                                 "turnIds": [1],
@@ -472,6 +476,7 @@
                                 "workspaceId": 1,
                                 "workerId": 7,
                                 "loopId": 1,
+                                "loopSeq": 1,
                                 "result": { "status": 200 },
                                 "hitMaxTurns": false,
                                 "turnIds": [1],
@@ -517,6 +522,7 @@
                                 "workspaceId": 1,
                                 "workerId": 7,
                                 "loopId": 1,
+                                "loopSeq": 1,
                                 "result": { "status": 200 },
                                 "hitMaxTurns": false,
                                 "turnIds": [1],
@@ -587,6 +593,7 @@
                                 "workspaceId": 1,
                                 "workerId": 7,
                                 "loopId": 1,
+                                "loopSeq": 1,
                                 "result": { "status": 200 },
                                 "hitMaxTurns": false,
                                 "turnIds": [1],
@@ -649,6 +656,7 @@
                                 "workspaceId": 1,
                                 "workerId": 7,
                                 "loopId": 1,
+                                "loopSeq": 1,
                                 "result": {
                                     "status": 499,
                                     "problem": {

@@ -259,7 +259,7 @@ test("{§agui-status-descendants}: each moment that may change the tree reads it
     const drain = async () => { for (let i = 0; i < 4; i++) await nextTask(); };
     await drain();
     const beat = (workerId: number, lifecycle: 100 | 102 | 202) => ({ workerId, loopId: 5, notice: {
-        source: "engine:lifecycle", kind: "loop_status", level: "info", status: lifecycle, waitUntil: null, packetCount: 0, claimedAt: null,
+        source: "engine:lifecycle", kind: "loop_status", level: "info", status: lifecycle, loopSeq: 2, waitUntil: null, packetCount: 0, claimedAt: null,
     } });
     const turn = (kind: string) => ({ workerId: 20, loopId: 5, notice: { source: "engine:turn", kind, level: "info" } });
     const row = (op: string, id: number, workerId = 10) => ({ entry: wireRow({ id, worker_id: workerId, op }) });

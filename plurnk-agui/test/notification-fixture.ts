@@ -9,6 +9,7 @@ export const termination = (
 ): TerminatedNotification => ({
     workerId: 10,
     loopId: 1,
+    loopSeq: 1,
     result: { status: 200 },
     hitMaxTurns: false,
     turnIds: [1],
@@ -76,6 +77,7 @@ export const interaction = Object.freeze({
 export const packet = (overrides: Partial<ApplicationLoopPacket> = {}): ApplicationLoopPacket => ({
     workerId: 10,
     loopId: 1,
+    loopSeq: 1,
     packetCount: 1,
     gauge: { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null },
     ...overrides,

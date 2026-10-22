@@ -147,6 +147,8 @@ export interface AguiStatusState {
     readonly lifecycle: AguiLifecycle;
     readonly model: ModelRoute | null;
     readonly loopId: number | null;
+    // {§agui-status-loop-number} — that Loop's number among the bound Worker's loops.
+    readonly loopSeq: number | null;
     readonly packetCount: number;
     readonly waitUntil: number | null;
     // {§agui-status-descendants} — the bound Worker's tree beneath it, depth first.
@@ -241,6 +243,7 @@ export const statusState = (
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
     model,
     loopId: loop?.id ?? null,
+    loopSeq: loop?.sequence ?? null,
     packetCount: loop?.packetCount ?? 0,
     waitUntil: loop?.status === 202 ? loop.waitUntil : null,
     ...loopTiming(loop),

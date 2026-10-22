@@ -56,7 +56,7 @@ test("{§worker-wait-timing} a new supervisor restores the durable deadline with
         },
         observation: async (id: number) => {
             assert.equal(id, 7);
-            return { claimedAt: 9_000, terminatedAt: null, packetCount: 4 };
+            return { loopSeq: 3, claimedAt: 9_000, terminatedAt: null, packetCount: 4 };
         },
     };
     const create = () => {
@@ -82,8 +82,8 @@ test("{§worker-wait-timing} a new supervisor restores the durable deadline with
     await resumed.idle();
     assert.equal(starts, 1, "one expiry queues one drain at the original deadline");
     assert.deepEqual(events, [{ workerId: 2, loopId: 7, notice: {
-        source: "engine:lifecycle", kind: "loop_status", level: "info", status: 100, waitUntil: null, packetCount: 4, claimedAt: 9_000,
-    } }], "the wake clears the public countdown before waiting for inference, beside the woken loop's own observation");
+        source: "engine:lifecycle", kind: "loop_status", level: "info", status: 100, loopSeq: 3, waitUntil: null, packetCount: 4, claimedAt: 9_000,
+    } }], "the wake clears the public countdown before waiting for inference, beside the woken loop's own number and observation");
     t.mock.timers.tick(10_000);
     await resumed.idle();
     assert.equal(starts, 1);

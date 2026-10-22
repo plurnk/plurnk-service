@@ -515,7 +515,7 @@ export default class TurnRunner {
         await Turn.recordInference(this.#db, args.turnId, args.evidence);
         if (this.#notify.loopPacketNotify === undefined) return;
         const packetCount = await this.#db.engine_loop_packet_count.get<{
-            count: number; id: number;
+            count: number; id: number; sequence: number;
         }>({ loop_id: args.loopId });
         if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
         // {§tokenomics-client-gauge} The turn's inference is recorded: its packet and its call are the gauge now.
@@ -523,6 +523,7 @@ export default class TurnRunner {
         this.#notify.loopPacketNotify(args.workspaceId, {
             workerId: args.workerId,
             loopId: args.loopId,
+            loopSeq: packetCount.sequence,
             packetCount: packetCount.count,
             gauge,
         });

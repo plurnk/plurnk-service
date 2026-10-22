@@ -220,6 +220,7 @@ request naming no `target` is 400 `entry-target-required`; every other refusal i
 | {§agui-state-patches} | Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s. |
 | {§agui-provider-routes} | `snapshot.plurnk.providers[*]` — `providers.list.aliases[*]` |
 | {§agui-status-model} | `snapshot.plurnk.status.model` — `ApplicationPort.readWorkerModel` |
+| {§agui-status-loop-number} | `snapshot.plurnk.status.loopSeq` — that Loop's `ApplicationLoopProjection.sequence` |
 | {§agui-status-wait} | `snapshot.plurnk.status.waitUntil` — `ApplicationLoopProjection.waitUntil` |
 | {§agui-workspace-state} | `snapshot.plurnk.workspace` — the Run's client envelope |
 | {§agui-cost-evidence} | AG-UI carries token usage on `RUN_FINISHED` ({§agui-run-outcome}), but it defines no monetary accounting and… |
@@ -372,8 +373,8 @@ reasoning ({§agui-lifecycle-projection}), and a response row still precedes its
 when it concluded, both Unix milliseconds like `waitUntil` and null until they happen. A snapshot
 reads them from `ApplicationPort.listWorkerLoops` ({§application-loop-observation}); live, they arrive
 with the events that change the Loop. A lifecycle beat ({§loop-status-notice}) replaces `lifecycle`,
-`loopId`, `packetCount`, `waitUntil`, `claimedAt` and `terminatedAt` in one delta, and the terminal
-({§notifications-loop-terminated}) replaces `lifecycle`, `loopId` and `terminatedAt` in one delta
+`loopId`, `loopSeq`, `packetCount`, `waitUntil`, `claimedAt` and `terminatedAt` in one delta, and the terminal
+({§notifications-loop-terminated}) replaces `lifecycle`, `loopId`, `loopSeq` and `terminatedAt` in one delta
 before the Run's own terminal. A connected observer therefore never holds one Loop's stamp beside
 another Loop's number, and a fresh observer measures a running Loop's elapsed time from
 `claimedAt`, never from its own attachment.
@@ -394,6 +395,7 @@ bound Worker's gauge and ride only a Run that binds one ({§agui-action-binding}
 | `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
 | §agui-status-model `snapshot.plurnk.status.model` | `ApplicationPort.readWorkerModel` | The bound Worker's durable resolved model route, including its alias when selected. Computed for every snapshot and whole-gauge replacement, read again when `worker/policy` names the bound Worker ({§notifications-worker-policy}), whoever changed it, and republished as `STATE_DELTA /plurnk/status/model` only when it differs from the route the Run's client holds. |
 | `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
+| §agui-status-loop-number `snapshot.plurnk.status.loopSeq` | that Loop's `ApplicationLoopProjection.sequence` | The Loop's number among the bound Worker's loops, the L of its log coordinates and the number `worker.loops` lists and a loop page takes ({§agui-worker-loops}, {§agui-loop-page}); `null` exactly when `loopId` is. Every delta that replaces `loopId` replaces it ({§loop-status-notice}, {§notifications-loop-packet}, {§notifications-loop-terminated}). |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
 | §agui-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |

@@ -89,12 +89,13 @@ test("{§agui-projection} notice → plurnk.notice custom; stopped-world events 
 test("{§agui-state-patches} packet chronology and derivation progress ride replaceable standard STATE", () => {
     const r = router();
     const gauge = { curationWeight: 5751, curationBudget: 409292, contextTokens: 400, contextCapacity: 28672 };
-    const packet = r.route("loop/packet", loopPacket({ workerId: 10, loopId: 4, packetCount: 3, gauge }));
+    const packet = r.route("loop/packet", loopPacket({ workerId: 10, loopId: 4, loopSeq: 2, packetCount: 3, gauge }));
     assert.deepEqual(packet, [{
         type: "STATE_DELTA",
         delta: [
             { op: "replace", path: "/plurnk/status/lifecycle", value: "running" },
             { op: "replace", path: "/plurnk/status/loopId", value: 4 },
+            { op: "replace", path: "/plurnk/status/loopSeq", value: 2 },
             { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
             { op: "replace", path: "/budget/curationWeight", value: 5751 },
             { op: "replace", path: "/budget/curationBudget", value: 409292 },

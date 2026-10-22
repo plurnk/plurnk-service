@@ -696,7 +696,7 @@ test("{§agui-plurnk-metadata} turn boundaries are STEPs; termination closes the
     assert.equal(first[0]?.type, "STEP_STARTED");
     const second = tr.logEntry(entry({ op: "WAIT", turn_id: 2, tx: { body: "second" } }));
     assert.deepEqual(second.slice(0, 2).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
-    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, loopSeq: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "RUN_FINISHED"]);
 });
@@ -706,6 +706,7 @@ test("{§agui-cost-evidence} {§agui-plurnk-metadata} a Run's end carries the fu
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 77,
+        loopSeq: 3,
         result: { status: 200 },
         hitMaxTurns: false,
         turnIds: [1, 2, 3],
@@ -744,7 +745,7 @@ test("{§agui-run-outcome} {§agui-plurnk-metadata} a loop's end is the Run's st
         { provider: "openai", model: "b", outcome: "error", status: 503, cost: unknown },
     ] as const;
     const loopEnd = (result: TerminatedNotification["result"], reported: ReadonlyArray<(typeof requests)[number]> = requests): TerminatedNotification => ({
-        terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result, hitMaxTurns: false, turnIds: [1], attributions: [],
+        terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, loopSeq: 1, result, hitMaxTurns: false, turnIds: [1], attributions: [],
         usage: loopUsage({ accounting: { requests: [...reported], usage: null, knownUsage: null, costUsd: null, knownCostUsd: null } }),
     });
     const ended = (n: TerminatedNotification) => t().terminated(n).filter(({ type }) => type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR);
@@ -787,7 +788,7 @@ test("{§agui-plurnk-metadata} {§agui-state-patches} each packet moves the budg
         "/budget/contextCapacity",
     ], "AG-UI keeps curation and physical occupancy as separate pairs");
     // A loop that ends after a packetless turn, or before any packet, leaves the gauge its latest packet set.
-    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage() };
+    const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250, workerId: 2, loopId: 1, loopSeq: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage() };
     const ending = tr.terminated(term).flatMap((e) => e.type === "STATE_DELTA" ? e.delta : []);
     assert.deepEqual(ending.filter(({ path }) => path.startsWith("/budget")), [], "the terminal does not touch the budget");
 });
@@ -804,6 +805,7 @@ test("{§agui-plurnk-metadata} a failed termination preserves its Problem and ma
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 1,
+        loopSeq: 1,
         result: { status: 502, problem },
         hitMaxTurns: false,
         turnIds: [],
@@ -826,6 +828,7 @@ test("{§agui-plurnk-metadata} a failed termination without a Problem is rejecte
     const term: TerminatedNotification = { terminatedAt: 1_792_008_205_250,
         workerId: 2,
         loopId: 1,
+        loopSeq: 1,
         result: { status: 502 },
         hitMaxTurns: false,
         turnIds: [],
@@ -955,14 +958,15 @@ test("{§agui-outside-text}: outside text projects one plurnk.outside per admitt
     assert.equal(tr.outside({ ...event, turnId: 7 }).filter(({ type }) => type === EventType.STEP_STARTED).length, 0, "a second emission in the same turn opens no second step");
 });
 
-test("{§loop-status-notice} {§agui-status-timing} a lifecycle notice is its loop's gauge, identity, count and stamps together, and nothing else", () => {
+test("{§loop-status-notice} {§agui-status-timing} {§agui-status-loop-number} a lifecycle notice is its loop's gauge, identity, number, count and stamps together, and nothing else", () => {
     const tr = t();
-    const beat = (status: number, waitUntil: number | null = null, facts: Record<string, unknown> = { packetCount: 3, claimedAt: 1_792_008_000_000 }, loopId: number | null = 50) =>
+    const beat = (status: number, waitUntil: number | null = null, facts: Record<string, unknown> = { loopSeq: 4, packetCount: 3, claimedAt: 1_792_008_000_000 }, loopId: number | null = 50) =>
         tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil, ...facts }, loopId);
     for (const [status, lifecycle, waitUntil] of [[202, "parked", 123_000], [202, "parked", null], [100, "queued", null], [102, "running", null]] as const) {
         assert.deepEqual(beat(status, waitUntil), [{ type: EventType.STATE_DELTA, delta: [
             { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycle },
             { op: "replace", path: "/plurnk/status/loopId", value: 50 },
+            { op: "replace", path: "/plurnk/status/loopSeq", value: 4 },
             { op: "replace", path: "/plurnk/status/packetCount", value: 3 },
             { op: "replace", path: "/plurnk/status/waitUntil", value: waitUntil },
             { op: "replace", path: "/plurnk/status/claimedAt", value: 1_792_008_000_000 },
@@ -971,8 +975,10 @@ test("{§loop-status-notice} {§agui-status-timing} a lifecycle notice is its lo
     }
     assert.throws(() => beat(200), /carries 100, 102 or 202/u, "a terminal is loop/terminated's, never a beat");
     assert.throws(() => beat(202, NaN), /nullable Unix-millisecond waitUntil/u);
-    assert.throws(() => beat(102, null, { claimedAt: 1 }), /packet count/u);
-    assert.throws(() => beat(102, null, { packetCount: 0, claimedAt: "now" }), /claimedAt/u);
+    assert.throws(() => beat(102, null, { packetCount: 3, claimedAt: 1 }), /loop's number/u);
+    assert.throws(() => beat(102, null, { loopSeq: 0, packetCount: 3, claimedAt: 1 }), /loop's number/u);
+    assert.throws(() => beat(102, null, { loopSeq: 4, claimedAt: 1 }), /packet count/u);
+    assert.throws(() => beat(102, null, { loopSeq: 4, packetCount: 0, claimedAt: "now" }), /claimedAt/u);
     assert.throws(() => beat(102, null, undefined, null), /names its loop/u);
 });
 

@@ -302,16 +302,16 @@ for (const status of [200, 502]) {
                     source: "engine:derivation", kind: "search_progress", level: "info",
                     phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } });
-                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 1,
+                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, loopSeq: 3, packetCount: 1,
                     gauge: { curationWeight: 100, curationBudget: 4000, contextTokens: 700, contextCapacity: 8000 } }));
                 children = true;
                 emit(3, "loop/packet", packet({ workerId: 88, loopId: 10, packetCount: 1 }));
                 await new Promise<void>((resolve) => setImmediate(resolve));
                 emit(3, "notice/event", { workerId: 88, loopId: 10, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
                 await new Promise<void>((resolve) => setImmediate(resolve));
-                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 2,
+                emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, loopSeq: 3, packetCount: 2,
                     gauge: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 } }));
-                emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage,
+                emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, loopSeq: 3, usage,
                     result: status === 200 ? { status } : { status, problem: Problems.create("test:provider", "failed", status, "Provider refused.") },
                 }));
             });
@@ -338,7 +338,7 @@ for (const status of [200, 502]) {
                 plurnk: { ...initial.snapshot.plurnk, workspace: { ...workspace, activity: {
                     kind: "derivation", phase: "indexing", completed: 1, total: 2, percent: 50, message: "Indexing.",
                 } }, status: {
-                    lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
+                    lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9, loopSeq: 3,
                     packetCount: 2, inbox: [], streams: [], waitUntil: null, claimedAt: null, terminatedAt: 1_792_008_205_250,
                     descendants: [{ id: 88, name: "child", parentWorkerId: 77, kind: "work", lifecycle: "running", gates: 0 }],
                     spend: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, knownUsage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01", knownCostUsd: "0.01" },
@@ -356,7 +356,7 @@ test("{§agui-status-timing} a connected observer never pairs one loop's stamp w
     seam.runLoop = async () => {
         setImmediate(async () => {
             const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-            emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, waitUntil: null, packetCount: 0, claimedAt: claimed } });
+            emit(3, "notice/event", { workerId: 77, loopId: 9, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102, loopSeq: 2, waitUntil: null, packetCount: 0, claimedAt: claimed } });
             await tick();
             emit(3, "loop/packet", packet({ workerId: 77, loopId: 9, packetCount: 1 }));
             await tick();
@@ -882,6 +882,7 @@ test("{§agui-workspace-state} the initial AG-UI snapshot carries durable model 
             lifecycle: "queued",
             model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
             loopId: 9,
+            loopSeq: 2,
             packetCount: 3,
             waitUntil: null,
             claimedAt: null,
