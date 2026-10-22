@@ -3657,6 +3657,8 @@ type RunForm = {
 const WORKER_ACTION = "example.worker.inspect";
 const WORKSPACE_ACTION = "example.workspace.inspect";
 const bindingModuleActions = () => [
+    { name: "worker.env.add", scope: "worker" as const, inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA },
+    { name: "worker.env.replace", scope: "worker" as const, inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA },
     { name: WORKER_ACTION, scope: "worker" as const, inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA },
     { name: WORKSPACE_ACTION, scope: "workspace" as const, inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA },
 ];
@@ -3666,6 +3668,8 @@ const CREATING_FORMS: Readonly<Record<string, RunForm>> = {
     "worker.model.set": actionForm("worker.model.set", { selector: "fresh" }),
     "worker.child.set": actionForm("worker.child.set", { selector: null }),
     "worker.effort.set": actionForm("worker.effort.set", { effort: "adaptive" }),
+    "worker.env.add": actionForm("worker.env.add"),
+    "worker.env.replace": actionForm("worker.env.replace"),
 };
 // Each names the seam call that carries its effect to the worker it binds.
 const REQUIRING_FORMS: Readonly<Record<string, RunForm & { readonly effect: string }>> = {
@@ -3744,6 +3748,8 @@ for (const [form, input] of Object.entries(CREATING_FORMS)) {
             seam.setWorkerModel = async ({ workerId }) => { reached.push(workerId); return { alias: "fresh", provider: "openai", model: "mocktest" }; };
             seam.setWorkerSpawnModel = async ({ workerId }) => { reached.push(workerId); return null; };
             seam.setWorkerEffort = async ({ workerId }) => { reached.push(workerId); return { effort: "adaptive", source: "explicit", supportedEfforts: ["adaptive"] }; };
+            seam.listModuleActions = bindingModuleActions;
+            seam.invokeModuleAction = async (_name, _params, context) => { reached.push((context as { workerId: number }).workerId); return {}; };
             // Twice through one module, then once through a fresh one: the daemon's directory decides, not a cache.
             for (const runs of [2, 1]) {
                 const mod = await host(seam);
@@ -4030,6 +4036,8 @@ test("{§agui-thread-binding} {§agui-action-binding}: concurrent first touches 
     seam.setWorkerModel = async ({ workerId }) => { reached.push(workerId); return { alias: "fresh", provider: "openai", model: "mocktest" }; };
     seam.setWorkerSpawnModel = async ({ workerId }) => { reached.push(workerId); return null; };
     seam.setWorkerEffort = async ({ workerId }) => { reached.push(workerId); return { effort: "adaptive", source: "explicit", supportedEfforts: ["adaptive"] }; };
+    seam.listModuleActions = bindingModuleActions;
+    seam.invokeModuleAction = async (_name, _params, context) => { reached.push((context as { workerId: number }).workerId); return {}; };
     const mod = await host(seam);
     try {
         const forms = Object.values(CREATING_FORMS);

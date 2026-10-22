@@ -98,10 +98,16 @@ interface RegisteredAction extends AguiActionContract {
 // start, and takes the listener's address so the face answers its issuer from then on ({§http-host}).
 export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials" | "httpAddress">;
 
-// {§agui-action-binding} The builtin actions addressed to the thread's worker: those that set its durable
+// {§agui-action-binding} The actions addressed to the thread's worker: those that set its durable
 // policy create it, the rest require it, and the readers that take an explicit `workerId` require it only
 // without one.
-const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set(["worker.model.set", "worker.child.set", "worker.effort.set"]);
+const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set([
+    "worker.model.set",
+    "worker.child.set",
+    "worker.effort.set",
+    "worker.env.add",
+    "worker.env.replace",
+]);
 const WORKER_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel", "run.fork", "worker.model.get", "worker.effort.get"]);
 const WORKER_READING_ACTIONS: ReadonlySet<string> = new Set(["log.read", "entry.read", "workspace.prompts", "workspace.rollback", "worker.loops"]);
 

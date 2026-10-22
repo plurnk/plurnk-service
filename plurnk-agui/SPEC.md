@@ -821,8 +821,8 @@ worker, or binds none, may create the workspace:
 
 | The thread's worker | The workspace | Runs and actions |
 |---|---|---|
-| Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set` |
-| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` unless `workerId` names another worker |
+| Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set`, `worker.env.add`, `worker.env.replace` |
+| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, other worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` unless `workerId` names another worker |
 | The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§agui-proposal-resolve}) |
 | Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
 | Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` naming a `workerId` |
