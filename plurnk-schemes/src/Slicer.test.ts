@@ -358,13 +358,16 @@ test("{§slicer-text-algebra} page rejects fractional result positions instead o
     assert.equal(result.range?.requested[0], 0.5);
 });
 
-test("{§pinned-wording-schemes} page rejects text-shaped coordinate lists", () => {
-    const marks: [number, ...number[]] = [1, 1, 1, 1];
-    const result = Slicer.page(["a", "b"], { marks });
-    assert.equal(result.status, 416);
-    assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
-    assert.deepEqual(result.problem?.requestedPositions, marks);
-});
+for (const marks of [[2, 1, 4], [1620, 1, 1660, 1]] as Array<[number, ...number[]]>) {
+    test(`{§pinned-wording-schemes} {§range-extent} page rejects ${marks.length} positions, naming them as written and no extent`, () => {
+        const result = Slicer.page(["a", "b"], { marks });
+        assert.equal(result.status, 416);
+        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
+        assert.deepEqual(result.problem?.requestedPositions, marks);
+        assert.equal(result.range, undefined, "an extent holds one or two positions");
+        assert.equal(result.problem?.range, undefined);
+    });
+}
 
 test("{§slicer-text-algebra} lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
     const edits = [

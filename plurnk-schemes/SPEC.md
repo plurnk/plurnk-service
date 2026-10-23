@@ -558,7 +558,9 @@ A successful line or pagination selection carries the contracts-owned
 `returned`. Exact regions use `region` instead. An exact-region failure,
 including a failed tolerated three-coordinate scope, carries
 `requestedCoordinates` exactly as authored; an invalid-arity text scope does
-likewise. Both carry `columnKind: "unicodeCodePoints"`.
+likewise. Both carry `columnKind: "unicodeCodePoints"`. A pagination request of
+neither one nor two positions carries `requestedPositions` exactly as authored
+and no extent.
 
 ### §path-extension-mimetype Path-extension mimetype — `PathMimetype`
 

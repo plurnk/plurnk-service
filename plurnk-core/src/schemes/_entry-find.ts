@@ -207,7 +207,7 @@ export const projectFindResult = (
     const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {
         if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
-        return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range });
+        return Results.assert({ status: page.status, problem: page.problem, ...fields, ...(page.range === undefined ? {} : { range: page.range }) });
     }
 
     if (statement.matcher !== null && matchingPathCount === 0) {

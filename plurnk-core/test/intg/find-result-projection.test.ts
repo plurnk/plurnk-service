@@ -82,3 +82,20 @@ test("{§find-result-projection}: explicit later and all-results pages use the s
         await db.close();
     }
 });
+
+test("{§find-result-projection} {§range-extent}: a FIND range of three or four positions is refused, naming them as written and no extent", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `find-arity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "one\ntwo\n", mimetype: "text/markdown" });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        for (const marks of [[2, 1, 4], [1620, 1, 1660, 1]] as Array<[number, ...number[]]>) {
+            const refused = await EntryFind.findWorkspaceEntries(findAll(marks), ctx, Worker.manifest, {});
+            assert.equal(refused.status, 416, JSON.stringify(marks));
+            assert.deepEqual(refused.problem?.requestedPositions, marks);
+            assert.equal(Object.hasOwn(refused, "range"), false, "the receipt carries no extent");
+            assert.equal(refused.problem?.range, undefined);
+        }
+    } finally { await db.close(); }
+});
