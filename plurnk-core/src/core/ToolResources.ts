@@ -1,11 +1,11 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, isExecution, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { isExecution, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { generatedPathname } from "./plurnk-uri.ts";
-import ToolInputSchema from "./ToolInputSchema.ts";
-import type {
-    RuntimeInvocationDecl,
-    RuntimeSummaryDecl,
-    RuntimeToolRegistry,
+import {
+    ToolInputSchema,
+    type RuntimeInvocationDecl,
+    type RuntimeSummaryDecl,
+    type RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 
 export interface ToolResource {
@@ -37,12 +37,6 @@ const summaryParagraph = (value: string): string =>
         ? `\\${value}`
         : value;
 
-const asideText = (value: string): string => {
-    const normalized = value.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
-    const safeStart = /^(?:>|->)/u.test(normalized) ? `Description: ${normalized}` : normalized;
-    return safeStart.endsWith("-") ? `${safeStart}.` : safeStart;
-};
-
 const requirement = (required: boolean): string => required ? "required" : "optional";
 
 const invocationRows = (
@@ -64,37 +58,17 @@ const invocationRows = (
     ];
 };
 
-const optionalPropertyCount = (schema?: JsonSchema): number => {
-    if (typeof schema !== "object" || schema === null) return 0;
-    const properties = isRecord(schema.properties) ? schema.properties : {};
-    const required = ToolInputSchema.requiredFields(schema);
-    return Object.keys(properties).filter((key) => !required.includes(key)).length;
-};
-
 const invocationHeader = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
     aside?: string,
     schemaPath?: string,
-): string => {
-    const target = exactTarget ?? invocation.example?.target;
-    const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
-    const optionalCount = schemaPath === undefined ? 0 : optionalPropertyCount(invocation.inputSchema);
-    const optionalNote = optionalCount > 0 ? `(+${optionalCount} opt)` : undefined;
-    const note = [
-        ...(aside === undefined ? [] : [asideText(aside)]),
-        ...(optionalNote === undefined ? [] : [optionalNote]),
-        ...(schemaPath === undefined ? [] : [`Schema: worker://${schemaPath}`]),
-    ].join(" ");
-    return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
-};
+): string => ToolInputSchema.header(runtime, invocation, { exactTarget, aside, schemaPath });
 
 // {§tools-resource-materialization} — summaries retain one-line invocation witnesses.
 const invocationInput = (invocation: RuntimeInvocationDecl): string | undefined =>
-    invocation.example?.body ?? (invocation.inputSchema === undefined
-        ? invocation.signature
-        : ToolInputSchema.preview(invocation.inputSchema));
+    ToolInputSchema.input(invocation);
 
 const summaryWitness = (
     runtime: string,
@@ -185,7 +159,7 @@ const schemaDocument = (pathname: string, title: string, schema: JsonSchema, det
 export default class ToolResources {
     // {§executor-blank-invocation} An invocation's copyable fence: its header and input preview, as its document shows them.
     static fence(runtime: string, invocation: RuntimeInvocationDecl, exactTarget?: string): string {
-        return PlurnkParser.frame(invocationHeader(runtime, invocation, exactTarget), invocationInput(invocation) ?? null);
+        return ToolInputSchema.fence(runtime, invocation, { exactTarget });
     }
 
     static documentPath(runtime: string, resourcesPath?: string): string {
@@ -200,8 +174,7 @@ export default class ToolResources {
     }
 
     static targetSegment(target: string): string {
-        return encodeURIComponent(target).replaceAll(/[!'()*]/gu, (character) =>
-            `%${character.codePointAt(0)?.toString(16).toUpperCase()}`);
+        return ToolInputSchema.targetSegment(target);
     }
 
     static render(source: ToolSource): ToolResource[] {

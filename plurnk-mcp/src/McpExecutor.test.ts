@@ -305,6 +305,7 @@ test("{§mcp-tool-problem-detail} tool-reported errors retain bounded text expla
             if (specimen.result.isError) {
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-reported-error", specimen.name);
                 assert.equal(result.problem?.retryable, false, specimen.name);
+                assert.equal(result.problem?.recovery, "```fixture (inspect) <!-- Schema: worker:///_plurnk/tools/fixture/inspect.json -->\n{}\n```", specimen.name);
             }
         }
     } finally {
@@ -594,7 +595,10 @@ test("{§problems-mcp} invalid tool arguments carry the one-object recovery", as
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
-            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call."); // {§problems-mcp}
+            assert.equal(
+                result.problem?.recovery,
+                "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: worker:///_plurnk/tools/echo/echo.json -->\n{\"message\": \"\"}\n```",
+            ); // {§problems-mcp}
         }
     } finally {
         await connection.close();

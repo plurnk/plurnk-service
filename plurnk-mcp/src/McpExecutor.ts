@@ -3,6 +3,7 @@ import {
     ErrorDetail,
     Results,
     RuntimeInvocation,
+    ToolInputSchema,
 } from "@plurnk/plurnk-execs";
 import { isRecord, formatJsonDocument } from "@plurnk/plurnk-contracts";
 import type {
@@ -358,6 +359,14 @@ export default class McpExecutor extends BaseExecutor {
             );
         }
 
+        const registered = this.#registry?.tools.find((candidate) => candidate.target === target);
+        const workingFence = (): string => registered === undefined
+            ? "One JSON object per MCP tool call."
+            : ToolInputSchema.fence(runtime, registered.invocation, {
+                exactTarget: target,
+                schemaPath: `/_plurnk/tools/${runtime}/${ToolInputSchema.targetSegment(target)}.json`,
+            });
+
         let args: Record<string, unknown> = {};
         if (input.length > 0) {
             try {
@@ -367,7 +376,7 @@ export default class McpExecutor extends BaseExecutor {
                 }
                 args = parsed;
             } catch (cause) {
-                // Name the form that works (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
+                // Name the form that works (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, #1228).
                 return fail(
                     "invalid-tool-arguments",
                     400,
@@ -376,7 +385,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         diagnostic: ErrorDetail.preview(message(cause)),
-                        recovery: "One JSON object per MCP tool call.",
+                        recovery: `One JSON object per MCP tool call.\n${workingFence()}`,
                     },
                 );
             }
@@ -412,6 +421,7 @@ export default class McpExecutor extends BaseExecutor {
                         tool: target,
                         retryable: false,
                         ...(diagnostic.length === 0 ? {} : { diagnostic: ErrorDetail.preview(diagnostic) }),
+                        recovery: workingFence(),
                     },
                 );
             }

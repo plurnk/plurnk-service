@@ -980,8 +980,8 @@ servers are composition evidence only.
 |---|---:|---|
 | `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
 | `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
-| `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). |
-| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call. |
+| `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
+| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call, followed by the tool's working invocation fence (#1228). |
 | `resource-address-invalid` | 400 | The MCP resource address is invalid (a malformed encoded address); not retryable. |
 | `resource-part-not-found` | 404 | The resource response does not contain this part. |
 | `resource-read-failed` | 502 | MCP resource preparation failed; retryable, with the bounded upstream diagnostic. |

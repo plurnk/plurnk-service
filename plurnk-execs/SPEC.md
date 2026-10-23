@@ -551,7 +551,7 @@ Registries without definitions and empty registries publish no catalog.
 | --- | --- |
 | A general runtime's | exact H2 `Summary` and `Invocation` sections plus its executable witness; its Summary is that compact invocation witness in plain text, with the authored description as an operation aside on its invocation line and a literal `\n` before a one-line body; the bundled subprocess interpreters declare concrete inline-program examples, and their catalog summaries include the program body without a script target |
 | An exact registry's | one compact runtime document whose Summary is authored or derived from its effective tools; its H2 `Tools` contains one executable fence per tool, naming the runtime and exact target, with its aside and input preview |
-| A schema-backed invocation | links from its aside to an exact `.json` child document (`application/json`) containing the full description and original input JSON Schema, noting any omitted optional top-level properties as `(+N opt)` before the schema pointer |
+| A schema-backed invocation | links from its aside to an exact `.json` child document (`application/json`) containing the full description and original input JSON Schema, preceded by the compact schema signature of any required multi-value enums, required one-level object/array shapes, and optional top-level properties ({§executor-input-schema-preview}) |
 | A non-schema invocation | retains its authored witness and supplemental details |
 
 §executor-input-schema-preview **Schema-backed previews emit a compact, valid JSON skeleton containing only explicitly required top-level fields.** The preview is not a complete signature or validation promise. Its schema link provides the complete original schema, including descriptions, definitions, references, and constraints; repository-owned referenced schemas are included unchanged alongside it. Documentation performs no network reference resolution. Output schemas are not input teaching.
@@ -559,10 +559,10 @@ Registries without definitions and empty registries publish no catalog.
 | Required field | Default in the skeleton |
 | --- | --- |
 | By declared JSON type | `""` for string, `0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object; an undeclared type is `null` |
-| A closed set of strings (`enum`) | its first choice, so common invocations require no verb guesswork (#762) |
+| A closed set of strings (`enum`) | its first choice in the JSON skeleton; when a required field declares between 2 and 12 string choices, the aside lists the full `"a"\|"b"\|…` union (#762, #1228) |
 | A top-level `anyOf` | contributes its first branch's required fields, so a schema that requires one of several inputs previews one valid form |
-| Nested objects and arrays | stay empty; optional fields, references, other constraints, and other conditional branches are not interpreted |
-| Declared top-level properties beyond the required set | the aside signals their presence with `(+N opt)` |
+| Nested objects and arrays | stay empty (`{}` / `[]`) in the JSON skeleton; when a required object or array of objects declares nested `properties` (or item string enums), the aside summarizes one level of its `{field: type, opt?: type}` shape up to 6 fields, with `… +N opt` for any remainder (#1228) |
+| Declared top-level properties beyond the required set | the aside lists up to 12 optional properties as `name?: type` (using string enum unions up to 12 choices, typed `item[]` arrays, one-level `{…}` objects, or declared JSON types), with `… +N opt` for any remainder (#1228) |
 
 Runtime-name admission is one identity contract:
 

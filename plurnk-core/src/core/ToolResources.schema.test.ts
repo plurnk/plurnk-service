@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { ToolInputSchema } from "@plurnk/plurnk-execs";
 import ToolResources from "./ToolResources.ts";
-import ToolInputSchema from "./ToolInputSchema.ts";
 
 const schema = {
     type: "object",
@@ -39,13 +39,13 @@ const render = (runtime = "gitea", inputSchema: JsonSchema = schema) => ToolReso
     }] },
 });
 
-test("{§executor-input-schema-preview} catalogs only required top-level fields and preserves the complete schema separately", () => {
+test("{§executor-input-schema-preview} catalogs required top-level fields in the skeleton, surfaces enums/options in the aside, and preserves the complete schema separately", () => {
     const before = structuredClone(schema);
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
-    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
-    assert.doesNotMatch(family.content, /page|oneOf|Selection|minItems/);
+    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
+    assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
     assert.equal(parsed.title, "gitea: issue/read");
@@ -158,8 +158,8 @@ test("{§executor-input-schema-preview} includes original repository-owned refer
     assert.equal((JSON.parse(extDetail.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
-test("{§executor-input-schema-preview} a required closed set of strings shows its values; a long or mixed set keeps its type (#762)", () => {
-    assert.equal(ToolInputSchema.preview({
+test("{§executor-input-schema-preview} a required closed set of strings previews its first value and lists bounded choices in the aside (#762, #1228)", () => {
+    const issueRead = {
         type: "object",
         required: ["method", "owner", "issue_number"],
         properties: {
@@ -167,16 +167,21 @@ test("{§executor-input-schema-preview} a required closed set of strings shows i
             owner: { type: "string" },
             issue_number: { type: "number" },
         },
-    }), '{"method": "get", "owner": "", "issue_number": 0}');
-    assert.equal(ToolInputSchema.preview({
+    };
+    assert.equal(ToolInputSchema.preview(issueRead), '{"method": "get", "owner": "", "issue_number": 0}');
+    assert.equal(ToolInputSchema.asideNote(issueRead), '(method: "get"|"get_comments"|"get_labels")');
+
+    const oversizedOrMixed = {
         type: "object", required: ["a", "b", "c", "d"],
         properties: {
-            a: { type: "string", enum: Array.from({ length: 9 }, (_, i) => `v${i}`) },
+            a: { type: "string", enum: Array.from({ length: 13 }, (_, i) => `v${i}`) },
             b: { type: "string", enum: ["x", 1] },
             c: { type: "boolean" },
             d: { type: "array" },
         },
-    }), '{"a": "v0", "b": "x", "c": false, "d": []}');
+    };
+    assert.equal(ToolInputSchema.preview(oversizedOrMixed), '{"a": "v0", "b": "x", "c": false, "d": []}');
+    assert.equal(ToolInputSchema.asideNote(oversizedOrMixed), undefined);
 });
 
 test("{§executor-input-schema-preview} a schema that requires one of several inputs previews its first branch", () => {
@@ -187,10 +192,11 @@ test("{§executor-input-schema-preview} a schema that requires one of several in
     };
     assert.equal(ToolInputSchema.preview(oneOf), '{"source": ""}');
     assert.deepEqual(ToolInputSchema.requiredFields(oneOf), ["source"]);
+    assert.equal(ToolInputSchema.asideNote(oneOf), "(configuration?: object)");
     assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
 });
 
-test("{§executor-input-schema-preview} notes omitted optional properties as (+N opt) before the schema pointer", () => {
+test("{§executor-input-schema-preview} surfaces optional properties, nested object/array shapes, and bounded tails before the schema pointer (#1228)", () => {
     const withOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
         invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },
@@ -201,12 +207,55 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
                 target: { role: "tool", required: true, kind: "literal" },
                 inputSchema: {
                     type: "object", required: ["query"],
-                    properties: { query: { type: "string" }, page: { type: "integer" }, sort: { type: "string" } },
+                    properties: {
+                        query: { type: "string" },
+                        page: { type: "integer" },
+                        sort: { type: "string" },
+                        state: { type: "string", enum: ["open", "closed", "all"] },
+                        labels: { type: "array", items: { type: "string" } },
+                    },
                 },
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(\+2 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+
+    const fillForm = {
+        type: "object",
+        required: ["fields"],
+        properties: {
+            fields: {
+                type: "array",
+                items: {
+                    type: "object",
+                    required: ["target", "name", "type", "value"],
+                    properties: {
+                        element: { type: "string" },
+                        name: { type: "string" },
+                        target: { type: "string" },
+                        type: { type: "string", enum: ["textbox", "checkbox", "radio", "combobox", "slider"] },
+                        value: { type: "string" },
+                    },
+                },
+            },
+        },
+    };
+    assert.equal(
+        ToolInputSchema.asideNote(fillForm),
+        '(fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
+    );
+    assert.equal(
+        ToolResources.fence("browser", {
+            body: { role: "JSON arguments", required: true },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            inputSchema: fillForm,
+        }, "browser_fill_form"),
+        '```browser (browser_fill_form) <!-- (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) -->\n{"fields": []}\n```',
+    );
+
+    const manyOptionalProps = Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`opt${i}`, { type: "string" }]));
+    const capped = ToolInputSchema.asideNote({ type: "object", properties: manyOptionalProps });
+    assert.ok(capped?.endsWith(", … +2 opt)"), `expected bounded optional tail, got ${capped}`);
 
     const noOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
