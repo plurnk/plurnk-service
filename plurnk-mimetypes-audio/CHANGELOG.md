@@ -1,5 +1,16 @@
 # @plurnk/plurnk-mimetypes-audio
 
+## 2.0.4
+
+### Patch Changes
+
+- c30873c: Pull external runtime and protocol dependencies across the platform
+  constellation to their latest stable releases, including
+  `@modelcontextprotocol/client` and `@modelcontextprotocol/core` `2.4.0`,
+  `json-p3` `^3.0.1`, `ai` `7.0.152` and its `@ai-sdk/*` providers,
+  `eventsource-parser` `^4.1.2`, `linkedom` `^0.18.14`, `marked` `^18.1.1`,
+  `music-metadata` `^12.2.3`, and `zod` `^4.6.7` (#1227).
+
 ## 2.0.3
 
 ### Patch Changes

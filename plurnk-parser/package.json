@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-parser",
-    "version": "4.2.1",
+    "version": "4.2.2",
     "description": "The PLURNK language parser: ANTLR grammars, generated parser, AST builder, and path decomposition implementing @plurnk/plurnk-contracts",
     "keywords": [
         "plurnk",

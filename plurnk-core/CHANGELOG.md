@@ -1,5 +1,50 @@
 # @plurnk/plurnk-service
 
+## 4.3.1
+
+### Patch Changes
+
+- c30873c: Pull external runtime and protocol dependencies across the platform
+  constellation to their latest stable releases, including
+  `@modelcontextprotocol/client` and `@modelcontextprotocol/core` `2.4.0`,
+  `json-p3` `^3.0.1`, `ai` `7.0.152` and its `@ai-sdk/*` providers,
+  `eventsource-parser` `^4.1.2`, `linkedom` `^0.18.14`, `marked` `^18.1.1`,
+  `music-metadata` `^12.2.3`, and `zod` `^4.6.7` (#1227).
+- 2b882f9: Surface required multi-value `enum` unions, one-level structured object/array
+  shapes, and bounded optional property signatures (`name?: type`) in tool
+  invocation asides and blank-invocation recovery fences, include the tool's
+  working invocation fence in `invalid-tool-arguments` and `tool-reported-error`
+  recovery, hold model Functionality mutations at the workspace boundary across
+  `authorization-required` sign-in, and conclude loops when a turn pairs a reply
+  `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
+  {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-mutation},
+  {§oauth-continuation}, {§wait-obligation-matrix}) (#1228).
+- b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
+  `effort-unsupported` and `effort-invalid` name the route's supported or valid
+  efforts in `recovery`, and `provider-unavailable` includes the provider's
+  instantiation failure ({§worker-effort}, {§problems-functionality}).
+- 2b882f9: Translate the calibrated curation budget additively by measured overhead
+  without extrapolating unmeasured content, remove daemon-side row shedding at
+  the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
+  the effective output ceiling, and refuse model changes whose calibrated budget
+  cannot hold the worker's current context with `413 context-exceeds-model-budget`
+  ({§tokenomics-calibrated-readout}, {§context-wall}, {§provider-output-floor},
+  {§worker-model-selection}) (#1225).
+- Updated dependencies [c30873c]
+- Updated dependencies [2b882f9]
+- Updated dependencies [b28031f]
+- Updated dependencies [2b882f9]
+  - @plurnk/plurnk-providers@5.0.1
+  - @plurnk/plurnk-mcp@3.3.1
+  - @plurnk/plurnk-parser@4.2.2
+  - @plurnk/plurnk-mimetypes@3.0.6
+  - @plurnk/plurnk-schemes-http@2.0.5
+  - @plurnk/plurnk-mimetypes-text-html@2.0.4
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.3
+  - @plurnk/plurnk-mimetypes-audio@2.0.4
+  - @plurnk/plurnk-execs@4.0.3
+  - @plurnk/plurnk-models@3.0.2
+
 ## 4.3.0
 
 ### Minor Changes
