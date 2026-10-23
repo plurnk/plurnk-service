@@ -51,7 +51,8 @@ const workspacePackageNames = async () => {
 
 if (import.meta.main) {
     const { waivers = {}, ownerVeto = [] } = JSON.parse(await readFile("deps-waivers.json", "utf8"));
-    const { blockers, excused } = classify(await outdated(), waivers, ownerVeto, await workspacePackageNames());
+    const workspaces = await workspacePackageNames();
+    const { blockers, excused } = classify(await outdated(), waivers, ownerVeto, workspaces);
 
     for (const e of excused) console.log(`waived  ${e.name} ${e.current} → ${e.latest}  ${e.waiver.issue} (${e.waiver.lane})`);
 
@@ -60,6 +61,17 @@ if (import.meta.main) {
         for (const b of blockers) console.error(`  ${b.name} ${b.current} → ${b.latest}${b.vetoed ? "  [ownerVeto — waiver ignored]" : ""}`);
         console.error("Resolve (bump range, relock, drill) or waive in deps-waivers.json { reason, issue, lane }. ownerVeto outranks any waiver.");
         process.exit(1);
+    }
+
+    if (workspaces.has("@plurnk/plurnk-mimetypes")) {
+        try {
+            const { stdout } = await run(process.execPath, ["--conditions=plurnk-dev", "plurnk-mimetypes/scripts/deps-check.mjs", "--only", "pins"]);
+            process.stdout.write(stdout);
+        } catch (err) {
+            if (err.stdout) process.stdout.write(err.stdout);
+            if (err.stderr) process.stderr.write(err.stderr);
+            process.exit(1);
+        }
     }
 
     console.log(`deps-preflight OK — ${excused.length} waived, 0 blocking`);

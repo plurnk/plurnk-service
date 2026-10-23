@@ -65,7 +65,8 @@ export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbo
                 if (name) push(out, "class", name.text, node, "");
                 break;
             }
-            case "type_synomym": {
+            case "type_synomym":
+            case "type_synonym": {
                 const name = findFirstNamedChild(node, "name");
                 if (name) push(out, "type", name.text, node, "");
                 break;

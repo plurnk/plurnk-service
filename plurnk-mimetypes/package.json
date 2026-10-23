@@ -62,6 +62,7 @@
         "grammars:check": "node --conditions=plurnk-dev scripts/update-grammars.mjs --check",
         "grammars:verify": "node scripts/verify-grammar-packages.mjs",
         "grammars:update": "node --conditions=plurnk-dev scripts/update-grammars.mjs",
+        "deps:check": "node --conditions=plurnk-dev scripts/deps-check.mjs",
         "probe:memory": "node --expose-gc --conditions=plurnk-dev --env-file=.env.defaults scripts/memory-probe.mjs",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "prepack": "npm run build"
