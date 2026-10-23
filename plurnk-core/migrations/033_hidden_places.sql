@@ -1,4 +1,5 @@
 -- MIGRATE: 33 hidden places
+-- Released in 4.3.0 and frozen ({§db-migrations}).
 -- {§place-hiding} A hidden workspace or worker is marked, never deleted. A worker's hide marks it and every worker
 -- beneath it with the worker that hid it (`hidden_by`), the group that comes back whole.
 ALTER TABLE workspaces ADD COLUMN hidden_at TEXT CHECK (hidden_at IS NULL OR length(hidden_at) > 0);

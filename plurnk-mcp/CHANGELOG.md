@@ -1,5 +1,63 @@
 # @plurnk/plurnk-mcp
 
+## 3.3.0
+
+### Minor Changes
+
+- b8ec13b: An enabled server that cannot run keeps its alias, registered out of service;
+  a call to it is refused with the state that keeps it from running
+  ({§mcp-unavailable-runtime}). A request refused for want of a sign-in — a tool
+  call, a resource or prompt read, or a completion — on a URL-only or interactive
+  OAuth definition fails `401 authorization-required` and republishes its alias
+  awaiting a sign-in ({§mcp-request-unauthorized}).
+- a7ccdf9: `list` shows the grant an active alias presents as its `detail.grant`: the
+  issuer its tokens came from, the scope its authorization server stated, and
+  whether it refreshes; never a token ({§oauth-grant}).
+- 8e07dc6: An accepted interactive sign-in outlives its connection: each later connection
+  for its alias with the same definition presents and refreshes it, after
+  workspace cooling, an enable, or disable then enable ({§oauth-grant}). A
+  connection carrying a grant starts a sign-in only at a redirect its definition
+  configures.
+- 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
+  to, where discovery starts, and `authorizationParams` added to the
+  authorization request, such as `access_type=offline` ({§mcp-oauth},
+  {§oauth-issuer}). `oauth.begin` for an alias awaiting a sign-in after a refused
+  request starts the authorization on a connection its server never challenges
+  ({§oauth-begin-unchallenged}).
+
+### Patch Changes
+
+- 77ba31d: A completion's parameters are read through the protocol's own schema
+  (`@modelcontextprotocol/core`, now a dependency); a malformed request is
+  refused with the schema's issues.
+- 041d30e: The `mcp` page teaches that a sign-in takes effect between turns: in the turn
+  it completes, `list` still reports `authorization-required` and a call to the
+  server is refused ({§oauth-continuation}).
+- Updated dependencies [cfa2be9]
+- Updated dependencies [ff99f76]
+- Updated dependencies [a8200fb]
+- Updated dependencies [65da58e]
+- Updated dependencies [d2dcf47]
+- Updated dependencies [d679cc5]
+- Updated dependencies [25aadcf]
+- Updated dependencies [cc3e9cb]
+- Updated dependencies [f7e3b0e]
+- Updated dependencies [558c0db]
+- Updated dependencies [0cee49c]
+- Updated dependencies [878d630]
+- Updated dependencies [c3922c2]
+- Updated dependencies [dd52a9b]
+- Updated dependencies [50fbe81]
+- Updated dependencies [4e4cb32]
+- Updated dependencies [06d4a8d]
+- Updated dependencies [39f234e]
+- Updated dependencies [de4fc63]
+- Updated dependencies [de9ce8f]
+- Updated dependencies [f3cd7de]
+- Updated dependencies [4a048a8]
+- Updated dependencies [2e5b2c1]
+  - @plurnk/plurnk-contracts@6.0.0
+
 ## 3.2.1
 
 ### Patch Changes

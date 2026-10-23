@@ -1,5 +1,34 @@
 # @plurnk/plurnk-hooks
 
+## 2.0.4
+
+### Patch Changes
+
+- Updated dependencies [cfa2be9]
+- Updated dependencies [ff99f76]
+- Updated dependencies [a8200fb]
+- Updated dependencies [65da58e]
+- Updated dependencies [d2dcf47]
+- Updated dependencies [d679cc5]
+- Updated dependencies [25aadcf]
+- Updated dependencies [cc3e9cb]
+- Updated dependencies [f7e3b0e]
+- Updated dependencies [558c0db]
+- Updated dependencies [0cee49c]
+- Updated dependencies [878d630]
+- Updated dependencies [c3922c2]
+- Updated dependencies [dd52a9b]
+- Updated dependencies [50fbe81]
+- Updated dependencies [4e4cb32]
+- Updated dependencies [06d4a8d]
+- Updated dependencies [39f234e]
+- Updated dependencies [de4fc63]
+- Updated dependencies [de9ce8f]
+- Updated dependencies [f3cd7de]
+- Updated dependencies [4a048a8]
+- Updated dependencies [2e5b2c1]
+  - @plurnk/plurnk-contracts@6.0.0
+
 ## 2.0.3
 
 ### Patch Changes

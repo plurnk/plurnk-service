@@ -1,5 +1,13 @@
 # @plurnk/plurnk-mimetypes-text-ini
 
+## 2.0.2
+
+### Patch Changes
+
+- 19df83f: Specifications: every extension handler states its contract in a shipped
+  `SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
+  result-shape guards, the card read per wake and the llama-server effort posture.
+
 ## 2.0.1
 
 ### Patch Changes

@@ -1,5 +1,256 @@
 # @plurnk/plurnk-service
 
+## 4.3.0
+
+### Minor Changes
+
+- cfa2be9: An address at the daemon has one HTTP form:
+  `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
+  the address selects, read from that worker's perspective through
+  `ApplicationPort.readEntryChannel` ({§agui-entry-route},
+  {§methods-entry-channel-read}). A result's body, a turn's reasoning and a
+  message's words travel by reference at it. A log row names its worker,
+  `worker_name` beside `worker_id` ({§methods-log-entry-wire}).
+- d679cc5: A client entry read acquires an address as exact READ does, from its worker's
+  perspective: `log:///`, `reasoning://`, `ops://` and `note://` read as the
+  representations core computes, with `entryId` null, and a message core
+  retains reads at the address that minted it. Only core's own acquisition runs:
+  another scheme's entry reads as stored, never prepared, so a client read never
+  fetches ({§client-entry-address}). A channel name may be empty, a log row's
+  unnamed default ({§entry-read-result}).
+- 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
+  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
+  {§methods-worker-hide}). A worker's hide covers its subtree as one group;
+  `409 live-work` while anything covered is live; a live loop shows its group
+  and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
+  `hidden_at`; the overview omits hidden places; `workspace/hidden`,
+  `worker/hidden`. AG-UI: `workspace.hidden.set`, `worker.hidden.set`;
+  `workspace.list` and `workspace.workers` take `includeHidden`
+  ({§agui-place-hiding}). Migration 33.
+- c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
+  status gauge, the worker directory, `status.descendants` and the inbox; any
+  other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
+  ({§loop-lifecycle-vocabulary}).
+- 92270b9: The project's root `AGENTS.local.md` is projected as
+  `worker:///_plurnk/AGENTS.local.md`, read from disk whatever its git status and
+  hidden only by an exclusion, and read at turn 0 after `AGENTS.md`
+  ({§turn0-local-instructions}).
+- dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
+  the loop's number among its worker's loops, beside `loopId`
+  ({§notifications-loop-packet}, {§notifications-loop-terminated},
+  {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
+  replaced in every delta that replaces `loopId` ({§agui-status-loop-number}); the
+  conformance kit's gauge carries it.
+- 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
+  `status.inbox` lists the accepted messages the bound Worker has not yet
+  observed; the snapshot carries the ones a client on the thread sent, with
+  `metadata.plurnk.published` false, and their arrival folds onto them; a
+  message Run admits its message before it presents anything, and no Run echoes
+  its input into a snapshot. Contracts and the service gain `readInbox`.
+- 952d5ce: The OpenTelemetry SDK registration is the new `@plurnk/plurnk-otel` module
+  (#1167): it registers the trace and metric providers `OTEL_*` selects at
+  module setup and releases them at stop, on OpenTelemetry JS 3
+  (`@opentelemetry/sdk-trace`, API 1.10), and ships with the default
+  installation. The service keeps only the OpenTelemetry API and sheds six SDK
+  packages; an unsupported exporter name is now reported as that module's
+  contained configuration (`module:@plurnk/plurnk-otel`).
+- 06d4a8d: `reasoning/event` carries its turn's `loopSeq` and `turnSeq`
+  ({§notifications-reasoning-event}), and every reasoning message names that
+  turn as `metadata.plurnk.coordinate` (`L/T`) from its first event, live, as
+  its row folds onto it and in a snapshot, a subagent's included
+  ({§agui-plurnk-metadata}). The AG-UI conformance kit's specimens follow.
+- 39f234e: A Run may negotiate its reasoning by link with
+  `forwardedProps.plurnk.reasoning: "link"`: each reasoning message holds no
+  text and names its turn's `reasoning://<worker>/L/T` address in its HTTP form,
+  the live text arrives as `CUSTOM plurnk.reasoning`, and a snapshot holds each
+  turn's link ({§agui-reasoning-link}). Every other Run receives reasoning as
+  AG-UI defines it. No row repeats reasoning its message holds.
+- 4b70069: Every receipt's H3 names its operand (`→ path`, `→ from → to` for
+  COPY/MOVE), whether or not it is paired with its replayed operation; a
+  paired receipt still leaves the pattern, scope, aside, metadata and body to
+  that operation ({§paired-receipt}).
+- b3864d5: `plurnk-service stop` ends the service that holds the configured database
+  and returns once it has exited; a database nobody holds is not running, and
+  that is success ({§service-stop}). A `shared` launch without a log file
+  writes to the service's `<state dir>/service.log`, which the result names as
+  `logFile` ({§daemon-launch}).
+- de9ce8f: `status.streams` lists the streams the bound Worker holds open, each with its
+  identity, lifetime, the row that opened it, and every channel's state, written
+  or not, so a client attaching mid-execution finds a silent one; it is
+  republished as `STATE_DELTA /plurnk/status/streams` when it changes
+  ({§agui-status-streams}). `ApplicationPort.readStreams` reads it
+  ({§methods-worker-streams}). `stream/event`'s `contentLength` counts Unicode
+  code points.
+- 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
+  lifecycle, the gates they wait on and their latest finished reply, most recently
+  finished first and bounded ({§methods-worker-overview}, {§worker-finished-reply},
+  {§application-worker-overview}); `excerptOf` is the one list excerpt rule
+  ({§list-excerpt}). `workspace/renamed` announces a rename
+  ({§notifications-workspace-renamed}). AG-UI: a Run carrying
+  `forwardedProps.plurnk.overview` observes the overview as state, binding
+  nothing: a snapshot on `/agui`, patches until the client leaves on
+  `/agui/connect` ({§agui-overview-run}, {§agui-overview-state},
+  {§agui-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
+  `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
+- 2693a59: A change to a worker's model, effort or spawn model is announced as
+  `worker/policy` ({§notifications-worker-policy}), and every client attached to
+  the worker is sent the new route as `STATE_DELTA /plurnk/status/model`,
+  whichever view made the change ({§agui-status-model}). A delta an event causes
+  reaches the Run before any later event, its terminal included
+  ({§agui-state-patches}).
+
+### Patch Changes
+
+- 0a3b016: A refusal of a blank tool request, a required body or target absent or neither
+  supplied, carries the invocation's working form in `recovery`; a registry
+  runtime named without a target answers with every enabled target's fence
+  ({§executor-blank-invocation}).
+- 93c0d87: `instanceof ConfigurationError` recognizes a configuration error from any copy of
+  the package by its name and key ({§configuration-error-identity}), so a module
+  loaded from its own plugin root reports its configuration errors as its
+  diagnostic instead of aborting daemon boot.
+- 8760da7: A READ of a file on disk that a members exclusion covers names the exclusion and
+  that only the user can lift it, instead of offering a `members (add)` that cannot
+  admit it ({§membership-read-refusal}).
+- 519e7a1: An execution's `stream/concluded` summary sizes only the channels its executor
+  declares and reads how it ended from the settled result: `completed`, with any
+  exit code, for a success, and the Problem's title in lowercase for a failure
+  ({§exec-conclusion-summary}).
+- 65028a4: `plurnk-service` refuses a Node.js below its `engines.node` floor with one
+  line naming both versions, exit 1, before any other module loads
+  ({§service-runtime-floor}). `daemon/provider/not-configured` recovers with
+  "Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as
+  the service default; that provider's API key must be in the service's
+  environment." ({§problems-functionality}). The generated
+  `~/.config/plurnk/.env` cites no spec tag.
+- 1fc7b1f: Membership honors the daemon user's own git excludes file, the configured
+  `core.excludesFile` or git's default, and a refusal or `discover` verdict for an
+  ignored file names the rule's file and line instead of "the repository"
+  ({§membership-git-hermetic}, {§membership-ignore-source}).
+- 6c197b2: A model worker's initialization opens with the plan `1. Survey the environment.`
+  `2. Evaluate and react to the Open Message.` and closes with its second step. A
+  survey that would select nothing is left out of the program, and the program no
+  longer READs its own `ops://` source ({§actor-boundary-catalog-preview},
+  {§worker-initialization-entry}).
+- 70b19d7: A loop's terminal reaps every loop-bound stream, one spawned before a park
+  included, and is announced once those streams have concluded
+  ({§exec-lifetime}, {§notifications-loop-terminated}).
+- 6f3d277: A file beyond the model's members scope is admitted only by a client or operator
+  definition, the user's to give: the `model-scope` refusal and the members
+  teaching say so and no longer suggest staging a file ({§members-model-scope}).
+- 2606732: A `members` glob is matched against member keys: an absolute spelling admits
+  exactly what its root-relative spelling does, inside the root or beyond it, and
+  READ reaches those members by either spelling. An absolute glob used to list
+  matches that no READ could reach ({§members-functionality}).
+- 22ec9ca: A result range of neither one nor two positions is refused naming
+  `requestedPositions` as written and no extent ({§range-extent}).
+- 68e8d53: A mounted route's failure ends its own request, never the daemon: its request
+  answers `500 route-failed`, or is cut where its response had begun, and the
+  failure is reported. A request target the listener cannot parse answers
+  `400 request-target-invalid` instead of ending the process ({§http-host}).
+- 19df83f: Specifications: every extension handler states its contract in a shipped
+  `SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
+  result-shape guards, the card read per wake and the llama-server effort posture.
+- 1e6019e: A channel deleted before its terminal publication settles every publication of
+  it ({§stream-channel-deletion}). An HTTP response without a readable projection
+  drops the `readable` channel its request seeded; the loop that sent it no longer
+  runs to its turn ceiling after its final reply.
+- 808f1b6: A loop's `loop/terminated` is announced once. A gate its running turn holds
+  settles first, and a cancellation announces the loops it retired after the
+  worker's drain settles and the streams it reaped close
+  ({§notifications-loop-terminated}).
+- 4d1873a: A loop's `loop/terminated` follows its worker's pending `stream/concluded`,
+  including a stream whose durable close already released its live handle
+  ({§notifications-loop-terminated}).
+- f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
+  `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
+  reported ({§notifications-loop-packet}, {§methods-worker-gauge}). AG-UI moves
+  the budget with every packet and its snapshots carry the latest, so a live and
+  a reattached observer agree ({§agui-state-patches}).
+- e52015a: A worker name lost to a concurrent claim is refused as `name-conflict` (409),
+  like any taken name, instead of escaping as an internal error.
+- Updated dependencies [cfa2be9]
+- Updated dependencies [b9f50b0]
+- Updated dependencies [adc7466]
+- Updated dependencies [ff99f76]
+- Updated dependencies [21ada9c]
+- Updated dependencies [a8200fb]
+- Updated dependencies [65da58e]
+- Updated dependencies [d2dcf47]
+- Updated dependencies [d679cc5]
+- Updated dependencies [93c0d87]
+- Updated dependencies [25aadcf]
+- Updated dependencies [f490341]
+- Updated dependencies [cc3e9cb]
+- Updated dependencies [1f136f9]
+- Updated dependencies [fccdbf5]
+- Updated dependencies [f7e3b0e]
+- Updated dependencies [558c0db]
+- Updated dependencies [c8866ff]
+- Updated dependencies [0cee49c]
+- Updated dependencies [ccf591f]
+- Updated dependencies [878d630]
+- Updated dependencies [c3922c2]
+- Updated dependencies [72cfbc3]
+- Updated dependencies [dd52a9b]
+- Updated dependencies [b8ec13b]
+- Updated dependencies [77ba31d]
+- Updated dependencies [a7ccdf9]
+- Updated dependencies [8e07dc6]
+- Updated dependencies [50fbe81]
+- Updated dependencies [041d30e]
+- Updated dependencies [4e4cb32]
+- Updated dependencies [1f3568a]
+- Updated dependencies [4d934e4]
+- Updated dependencies [952d5ce]
+- Updated dependencies [7246520]
+- Updated dependencies [22ec9ca]
+- Updated dependencies [06d4a8d]
+- Updated dependencies [39f234e]
+- Updated dependencies [6adcfc6]
+- Updated dependencies [ff0d82e]
+- Updated dependencies [19df83f]
+- Updated dependencies [de4fc63]
+- Updated dependencies [de9ce8f]
+- Updated dependencies [f3cd7de]
+- Updated dependencies [1c125d0]
+- Updated dependencies [4a048a8]
+- Updated dependencies [2693a59]
+- Updated dependencies [2e5b2c1]
+  - @plurnk/plurnk-agui@5.0.0
+  - @plurnk/plurnk-contracts@6.0.0
+  - @plurnk/plurnk-meta@2.1.2
+  - @plurnk/plurnk-schemes@3.3.0
+  - @plurnk/plurnk-parser@4.2.1
+  - @plurnk/plurnk-execs-common@3.0.1
+  - @plurnk/plurnk-modules@4.1.0
+  - @plurnk/plurnk-providers@5.0.0
+  - @plurnk/plurnk-mcp@3.3.0
+  - @plurnk/plurnk-otel@1.0.0
+  - @plurnk/plurnk-mimetypes-application-ipynb@2.0.3
+  - @plurnk/plurnk-mimetypes-application-json@2.0.2
+  - @plurnk/plurnk-mimetypes-application-jsonl@2.0.2
+  - @plurnk/plurnk-mimetypes-application-pdf@2.0.2
+  - @plurnk/plurnk-mimetypes-application-xml@2.0.3
+  - @plurnk/plurnk-mimetypes-audio@2.0.3
+  - @plurnk/plurnk-mimetypes-image@2.0.2
+  - @plurnk/plurnk-mimetypes-text-csv@2.0.2
+  - @plurnk/plurnk-mimetypes-text-diff@2.0.2
+  - @plurnk/plurnk-mimetypes-text-dotenv@2.0.2
+  - @plurnk/plurnk-mimetypes-text-html@2.0.3
+  - @plurnk/plurnk-mimetypes-text-ini@2.0.2
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.2
+  - @plurnk/plurnk-mimetypes-text-plain@2.0.2
+  - @plurnk/plurnk-a2a@4.0.2
+  - @plurnk/plurnk-agent-skills@2.0.4
+  - @plurnk/plurnk-digest@3.2.3
+  - @plurnk/plurnk-execs@4.0.2
+  - @plurnk/plurnk-hooks@2.0.4
+  - @plurnk/plurnk-mimetypes@3.0.5
+  - @plurnk/plurnk-schedule@3.0.5
+  - @plurnk/plurnk-schemes-http@2.0.4
+  - @plurnk/plurnk-skills@3.0.4
+
 ## 4.2.1
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @plurnk/plurnk-execs-common
 
+## 3.0.1
+
+### Patch Changes
+
+- f7e3b0e: The card's FIND example says its range pages results, not lines. The `sh`
+  page says a receipt names the working directory, relative to the project root,
+  only when the command ran elsewhere.
+
 ## 3.0.0
 
 - **Breaking:** `sh` follows the environment's executable absolute `SHELL`,

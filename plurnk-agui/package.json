@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "4.0.1",
+    "version": "5.0.0",
     "description": "AG-UI HTTP and SSE interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",
@@ -49,7 +49,7 @@
     },
     "devDependencies": {
         "@ag-ui/client": "^1.0.3",
-        "@plurnk/plurnk-providers": "^4.0.0",
+        "@plurnk/plurnk-providers": "^5.0.0",
         "json-p3": "2.3.1"
     },
     "keywords": [
@@ -76,7 +76,7 @@
     "dependencies": {
         "@ag-ui/core": "^1.0.3",
         "@opentelemetry/api": "^1.9.1",
-        "@plurnk/plurnk-contracts": "^5.0.0",
+        "@plurnk/plurnk-contracts": "^6.0.0",
         "@plurnk/plurnk-meta": "^2.0.0",
         "@plurnk/plurnk-parser": "^4.2.0"
     },

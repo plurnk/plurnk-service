@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-otel",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "description": "Register the OpenTelemetry trace and metric providers OTEL_* selects for a Plurnk daemon.",
     "keywords": [
         "plurnk",
