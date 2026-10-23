@@ -48,7 +48,7 @@
         "prepack": "npm run build"
     },
     "devDependencies": {
-        "@ag-ui/client": "^1.0.0",
+        "@ag-ui/client": "^1.0.3",
         "@plurnk/plurnk-providers": "^4.0.0",
         "json-p3": "2.3.1"
     },
@@ -74,7 +74,7 @@
         "access": "public"
     },
     "dependencies": {
-        "@ag-ui/core": "^1.0.0",
+        "@ag-ui/core": "^1.0.3",
         "@opentelemetry/api": "^1.9.1",
         "@plurnk/plurnk-contracts": "^5.0.0",
         "@plurnk/plurnk-meta": "^2.0.0",
