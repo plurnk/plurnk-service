@@ -62,6 +62,7 @@ import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
+import { WorkerNameConflictError } from "../core/WorkerName.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
@@ -936,20 +937,25 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         } else if (args.owner !== undefined) {
             await WorkerOwners.registered(this.#db, workspaceId, args.owner);
         }
-        if (name !== undefined) {
-            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
-            if (taken !== undefined) {
-                throw daemonFailure(
-                    "daemon:worker",
-                    "name-conflict",
-                    409,
-                    `Worker name '${name}' is already in use in workspace ${workspaceId} by a ${taken.origin} worker.`,
-                    { workspaceId, name, actualOrigin: taken.origin, recovery: "Choose another worker name.", retryable: false },
-                );
-            }
+        let worker;
+        try { worker = await Envelope.createModelWorker(this.#db, workspaceId, name, parentWorkerId, args.owner); }
+        catch (error) {
+            if (name === undefined || !(error instanceof WorkerNameConflictError)) throw error;
+            throw await this.#workerNameConflict(workspaceId, name);
         }
-        const worker = await Envelope.createModelWorker(this.#db, workspaceId, name, parentWorkerId, args.owner);
         return { workerId: worker.id, workerName: worker.name };
+    }
+
+    // {§methods-worker-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.
+    async #workerNameConflict(workspaceId: number, name: string): Promise<Error> {
+        const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
+        return daemonFailure(
+            "daemon:worker",
+            "name-conflict",
+            409,
+            `Worker name '${name}' is already in use in workspace ${workspaceId}${taken === undefined ? "" : ` by a ${taken.origin} worker`}.`,
+            { workspaceId, name, ...(taken === undefined ? {} : { actualOrigin: taken.origin }), recovery: "Choose another worker name.", retryable: false },
+        );
     }
 
     // {§worker-scheme-fork} — branch a worker's log while sharing its workspace.
@@ -960,23 +966,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const name = ClientInput.assertOptionalWorkerName("run.fork", "name", args.name);
         // {§machine-processes-worker-origin} A branch is a model's: only a model worker's log forks.
         await this.#workerModels.assertModelWorker(workspaceId, workerId);
-        if (name !== undefined) {
-            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
-            if (taken !== undefined) {
-                throw daemonFailure(
-                    "daemon:worker",
-                    "name-conflict",
-                    409,
-                    `Worker name '${name}' is already in use in workspace ${workspaceId} by a ${taken.origin} worker.`,
-                    { workspaceId, name, actualOrigin: taken.origin, recovery: "Choose another worker name.", retryable: false },
-                );
-            }
+        let branchWorkerId;
+        try { branchWorkerId = await Fork.fork(this.#db, workerId, name); }
+        catch (error) {
+            if (name === undefined || !(error instanceof WorkerNameConflictError)) throw error;
+            throw await this.#workerNameConflict(workspaceId, name);
         }
-        const branchWorkerId = await Fork.fork(
-            this.#db,
-            workerId,
-            name,
-        );
         const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }

@@ -91,3 +91,28 @@ test("{§worker-auto-name}: concurrent unnamed fresh workers claim distinct shor
         } finally { ws.close(); }
     });
 });
+
+test("{§methods-worker-create}: concurrent requests for one name create it once; the others are refused as name-conflict", async () => {
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `contest-${crypto.randomUUID()}` });
+            const workspaceId = (created.result as { id: number }).id;
+            const parent = await daemon.createWorker({ workspaceId, name: "parent" });
+            const attempts: Array<[string, () => Promise<unknown>]> = [
+                ["create", () => daemon.createWorker({ workspaceId, name: "contested" })],
+                ["fork", () => daemon.forkWorker({ workspaceId, workerId: parent.workerId, name: "branched" })],
+            ];
+            for (const [label, attempt] of attempts) {
+                const settled = await Promise.allSettled(Array.from({ length: 4 }, attempt));
+                assert.equal(settled.filter(({ status }) => status === "fulfilled").length, 1, `${label}: one request claims the name`);
+                for (const outcome of settled) {
+                    if (outcome.status === "fulfilled") continue;
+                    assert.ok(outcome.reason instanceof OperationFailureError, `${label}: ${String(outcome.reason)}`);
+                    assert.equal(outcome.reason.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict", label);
+                    assert.equal(outcome.reason.result.problem.status, 409, label);
+                }
+            }
+        } finally { ws.close(); }
+    });
+});
