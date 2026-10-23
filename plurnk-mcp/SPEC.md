@@ -536,7 +536,7 @@ not changes to the persisted definition.
 ```mermaid
 sequenceDiagram
     Model->>MCP: add URL-only definition
-    MCP-->>Model: authorization-required
+    MCP-->>Client: authorization-required notice
     User->>Client: sign in to alias
     Client->>Client: bind callback
     Client->>MCP: oauth.begin(alias, redirectUrl)
@@ -545,7 +545,7 @@ sequenceDiagram
     User->>Client: browser callback
     Client->>MCP: oauth.complete(alias, callbackUrl)
     MCP-->>Client: 202 sign-in accepted; activation pending
-    MCP-->>Model: active tools through normal publication
+    MCP-->>Model: settled active outcome and tools
 ```
 
 `oauth.begin` prepares an authorization attempt without enabling the alias or waiting for workspace quiescence; `oauth.complete` accepts the complete callback URL so state, `code`, and `iss` remain one parsing unit.

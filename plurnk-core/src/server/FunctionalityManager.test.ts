@@ -24,16 +24,18 @@ const coordinator = {
 const args = (target: string | null, body: string) => {
     const written: string[] = [];
     const states: string[] = [];
+    const emitted: unknown[] = [];
     return {
         args: {
             runtime: "fx", body, cwd: null, target, signal: new AbortController().signal,
             write: (_channel: string, chunk: string) => { written.push(chunk); },
             setState: (_channel: string, state: string) => { states.push(state); },
-            emit: () => undefined,
+            emit: (notice: unknown) => { emitted.push(notice); },
             interact: async () => ({ status: "cancelled" as const }),
         } as never,
         written,
         states,
+        emitted,
     };
 };
 
@@ -142,18 +144,27 @@ test("{§functionality-model-projection} every family's owned refusal survives i
     }
 });
 
-test("{§functionality-model-mutation} a pending resource sign-in is a completed management invocation", async () => {
-    const body = { status: 202, family: "fx", alias: "remote", definition: {
-        alias: "remote", origin: "workspace", state: "authorization-required", authorization: {},
+test("{§functionality-model-mutation} a pending resource sign-in emits an authorization notice while holding for the settled outcome", async () => {
+    const body = { status: 201, family: "mcp", alias: "remote", definition: {
+        alias: "remote", origin: "workspace", state: "active",
     } };
     const manager = new FunctionalityManager({
-        family: "fx", workspaceId: 1, inputSchemas,
-        coordinator: { invoke: async () => ({ status: 202, body }) } as unknown as Functionality,
+        family: "mcp", workspaceId: 1, inputSchemas,
+        coordinator: { invoke: async (_f: string, _v: string, _p: unknown, _i: unknown, _c: string, options?: { onAuthorizationRequired?: (aliases: readonly string[]) => void }) => {
+            options?.onAuthorizationRequired?.(["remote"]);
+            return { status: 201, body };
+        } } as unknown as Functionality,
     });
-    const { args: runArgs, written, states } = args("add", "{}");
-    assert.deepEqual(await manager.run(runArgs), { status: 200 }, "the executor finished; it is not waiting for the user's sign-in");
+    const { args: runArgs, written, states, emitted } = args("add", "{}");
+    assert.deepEqual(await manager.run(runArgs), { status: 201 });
+    assert.deepEqual(emitted, [{
+        source: "functionality:mcp",
+        kind: "authorization_required",
+        level: "info",
+        message: "MCP server 'remote' awaits sign-in (/mcp oauth remote).",
+    }]);
     assert.deepEqual(states, ["active", "closed"]);
-    assert.deepEqual(JSON.parse(written.join("")), body, "the pending resource state remains exact in the result body");
+    assert.deepEqual(JSON.parse(written.join("")), body);
 });
 
 test("{§functionality-model-projection} an unexpected exception is not reclassified as a managed refusal", async () => {

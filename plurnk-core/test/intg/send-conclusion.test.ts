@@ -479,3 +479,31 @@ test("{§empty-turn}: a reasoning NOTE is work, not a request to wait, after the
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
     } finally { await db.close(); }
 });
+
+test("{§wait-obligation-matrix}: WAIT on a turn with a reply SEND or non-final SEND [200] concludes when no work or unobserved result remains", async () => {
+    for (const [label, extraMessage, emission, withRead, expected] of [
+        ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\n${PlurnkParser.frame("WAIT [60]", "Waiting for reply.")}`, false, 200],
+        ["non-final SEND [200] + WAIT concludes remaining message", true, `${conclude("Four.")}\n\n${PlurnkParser.frame("WAIT", null)}`, false, 200],
+        ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\n${PlurnkParser.frame("READ (worker:///input.txt)", null)}\n\n${PlurnkParser.frame("WAIT", null)}`, true, 102],
+    ] as const) {
+        const { db, engine, turn, answer, ids, leadLoop } = await setup([said(emission)]);
+        try {
+            if (extraMessage) {
+                await engine.injectIntoLoop(ids.loopId, "And confirm.", [], "worker://lead", {}, "message://alice/followup", await sendingOperation(db, leadLoop));
+            }
+            if (withRead) {
+                await seedEntryWithChannel(db, {
+                    workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+                    channel: "body", content: "witness", mimetype: "text/plain", state: "static",
+                });
+            }
+            const settled = await turn();
+            assert.equal(settled.status, expected, label);
+            if (expected === 200) {
+                const delivered = await answer();
+                assert.ok("content" in delivered);
+                assert.equal(delivered.content, "Four.", label);
+            }
+        } finally { await db.close(); }
+    }
+});

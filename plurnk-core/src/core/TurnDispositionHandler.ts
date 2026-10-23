@@ -95,7 +95,11 @@ export default class TurnDispositionHandler {
         }
         if (recovery || !completionAllowed) return { status: 102 };
         const unresolved = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
-        if (unresolved!.count > 0) return { status: 102 };
+        if (unresolved!.count > 0) {
+            if (!wait || pending.some((kind) => !held(kind))) return { status: 102 };
+            const completed = await this.#db.message_complete_turn_on_wait.run({ loop_id: loopId, turn_id: turnId });
+            if (completed.changes === 0) return { status: 102 };
+        }
         if (pending.some((kind) => !held(kind))) return {
             status: 102, detail: "All Open Messages resolved. Review new results; emit no OPs if finished.",
         };

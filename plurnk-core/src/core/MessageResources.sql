@@ -57,6 +57,24 @@ SELECT CASE WHEN COUNT(*) > 0 AND MIN(c.status) = 499 THEN 499 ELSE 200 END AS s
 FROM message_completions c JOIN loop_messages m ON m.id = c.message_id
 WHERE m.loop_id = $loop_id;
 
+-- PREP: message_complete_turn_on_wait
+-- {§wait-obligation-matrix} {§message-completion}: a turn with a resolved reply SEND and an idle WAIT
+-- completes the loop's remaining published Open Messages.
+INSERT INTO message_completions (message_id, response_id, status)
+SELECT m.id, reply.id, COALESCE(json_extract(reply.rx, '$.completion'), 200)
+FROM unanswered_messages m
+JOIN (
+    SELECT id, rx FROM log_entries
+    WHERE turn_id = $turn_id
+      AND op = 'SEND' AND origin = 'model' AND state = 'resolved'
+      AND status_rx BETWEEN 200 AND 299
+      AND source IS NULL AND inherited_history = 0
+      AND json_valid(rx) AND json_array_length(rx, '$.answers') > 0
+    ORDER BY id DESC
+    LIMIT 1
+) reply
+WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL;
+
 -- INIT: message_complete_on_reply
 DROP TRIGGER IF EXISTS message_complete_on_reply;
 CREATE TRIGGER message_complete_on_reply

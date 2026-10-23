@@ -12,7 +12,11 @@ SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_worker_id AS parent
           FROM work_loops l WHERE l.worker_id = w.id) AS loopObservations,
        reply.id AS replyId,
        reply.at AS replyAt,
-       json_extract(reply.rx, '$.completion') AS replyCompletion,
+       COALESCE(
+           CASE WHEN reply.mimetype_rx = 'application/json' AND json_valid(reply.rx)
+                THEN json_extract(reply.rx, '$.completion') END,
+           (SELECT MIN(c.status) FROM message_completions c WHERE c.response_id = reply.id)
+       ) AS replyCompletion,
        CASE WHEN reply.id IS NULL THEN NULL
             ELSE printf('%d/%d/%d', reply_loop.sequence, reply_turn.sequence, reply.sequence) END AS replyCoordinate
 FROM workers w
@@ -21,8 +25,11 @@ LEFT JOIN log_entries reply ON reply.id = (
     WHERE le.worker_id = w.id
       AND le.op = 'SEND' AND le.origin = 'model' AND le.inherited_history = 0
       AND le.state = 'resolved' AND le.status_rx < 400
-      AND (CASE WHEN le.mimetype_rx = 'application/json' AND json_valid(le.rx)
-                THEN json_extract(le.rx, '$.completion') END) IN (200, 499)
+      AND COALESCE(
+          CASE WHEN le.mimetype_rx = 'application/json' AND json_valid(le.rx)
+               THEN json_extract(le.rx, '$.completion') END,
+          (SELECT MIN(c.status) FROM message_completions c WHERE c.response_id = le.id)
+      ) IN (200, 499)
     ORDER BY le.id DESC
     LIMIT 1)
 LEFT JOIN loops reply_loop ON reply_loop.id = reply.loop_id

@@ -101,15 +101,11 @@ For an OAuth server, start by adding its URL; the client supplies the callback.
 {"alias": "remote", "definition": {"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}}
 ```
 
-`authorization-required` means the user must run `/mcp oauth remote` in their
-client. Tell them the alias and that command; do not run it in a model executor.
-The client opens the browser and receives the callback; Plurnk handles OAuth
-and activates the tools. Neither the sign-in URL nor callback is a resource to
-READ. A sign-in takes effect between turns: in the turn it completes, `list`
-still reports `authorization-required` and a call to the server is refused. The
-next turn's `list` confirms readiness, and the server's tool reference becomes
-available; an active server's `detail.grant` names the sign-in it holds.
-`enable` alone does not sign in.
+When a server requires OAuth sign-in, Plurnk notifies the user in the client and
+holds `add`, `replace`, or `enable` until sign-in completes. Once the operation
+returns `active`, the server's tool reference is ready for the next turn; an
+active server's `detail.grant` names the sign-in it holds. Neither the sign-in
+URL nor callback is a resource to READ.
 
 An advanced `authorization` definition can specify scope, client registration,
 the authorization server (`issuer`) or extra request parameters; the add schema

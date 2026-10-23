@@ -180,7 +180,29 @@ export default class FunctionalityManager extends BaseExecutor {
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {
-            result = await this.#coordinator.invoke(this.runtime, verb, params, identity, "operation", { env: EnvFunctionality.modifier(args.metadata) }, args.signal);
+            result = await this.#coordinator.invoke(
+                this.runtime,
+                verb,
+                params,
+                identity,
+                "operation",
+                {
+                    env: EnvFunctionality.modifier(args.metadata),
+                    onAuthorizationRequired: (aliases) => {
+                        for (const alias of aliases) {
+                            args.emit({
+                                source: `functionality:${this.runtime}`,
+                                kind: "authorization_required",
+                                level: "info",
+                                message: this.runtime === "mcp"
+                                    ? `MCP server '${alias}' awaits sign-in (/mcp oauth ${alias}).`
+                                    : `${this.runtime} '${alias}' awaits authorization.`,
+                            });
+                        }
+                    },
+                },
+                args.signal,
+            );
         } catch (cause) {
             // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
             // verb's own outcome with its own status, never an executor fault: it streams as the result,
@@ -194,6 +216,6 @@ export default class FunctionalityManager extends BaseExecutor {
         args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
         // {§functionality-model-mutation} Resource readiness is the body; this invocation has settled.
         args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
-        return refusal ?? { status: result.status === 202 ? 200 : result.status };
+        return refusal ?? { status: result.status };
     }
 }

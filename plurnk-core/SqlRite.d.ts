@@ -268,6 +268,7 @@ export class SqlRiteSync {
 	message_latest_published: SqlRiteSyncPreparedStatements;
 	message_unanswered_count: SqlRiteSyncPreparedStatements;
 	message_completion_outcome: SqlRiteSyncPreparedStatements;
+	message_complete_turn_on_wait: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -581,6 +582,7 @@ export default class SqlRite {
 	message_latest_published: SqlRitePreparedStatements;
 	message_unanswered_count: SqlRitePreparedStatements;
 	message_completion_outcome: SqlRitePreparedStatements;
+	message_complete_turn_on_wait: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;

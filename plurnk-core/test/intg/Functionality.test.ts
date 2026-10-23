@@ -323,10 +323,30 @@ for (const caller of ["action", "operation"] as const) {
         assert.equal((await run(parseOne(PlurnkParser.frame("local", "fixture")))).status, 200,
             "the preceding capability still executes after replacement fails");
 
-        const auth = await replace("local", "auth");
-        assert.equal(auth.status, 202, "authorization-required is a successful handoff, not a refused replacement");
-        assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "authorization-required");
-        assert.equal((await replace("local", "ok")).status, 200);
+        if (caller === "action") {
+            const auth = await replace("local", "auth");
+            assert.equal(auth.status, 202, "authorization-required is a successful handoff, not a refused replacement");
+            assert.equal((await listed()).find(({ alias }) => alias === "local")?.state, "authorization-required");
+            assert.equal((await replace("local", "ok")).status, 200);
+        } else {
+            let IntermediateState: string | undefined;
+            const unsubscribe = daemon.subscribeToEvents((eventWorkspaceId, method, params) => {
+                if (eventWorkspaceId !== workspaceId || method !== "notice/event") return;
+                const notice = (params as { notice?: { kind?: string } }).notice;
+                if (notice?.kind === "authorization_required") {
+                    void (async () => {
+                        IntermediateState = (await listed()).find(({ alias }) => alias === "local")?.state;
+                        await action("replace", { alias: "local", definition: { kind: "ok" } });
+                    })();
+                }
+            });
+            try {
+                const auth = await replace("local", "auth");
+                assert.equal(IntermediateState, "authorization-required");
+                assert.equal(auth.status, 200, "operation holds across authorization-required and settles with the resolved state");
+                assert.equal((auth.definition as { state?: string } | undefined)?.state, "active");
+            } finally { unsubscribe(); }
+        }
         await action("disable", { alias: "local" });
         assert.equal((await replace("local", "fail")).status, 200, "disabled definitions do not prepare their unavailable candidate");
         assert.deepEqual((await listed()).find(({ alias }) => alias === "local"), {
@@ -1145,32 +1165,46 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "fx:host"]) {
     });
 }
 
-test("{§functionality-model-mutation} authorization-required reaches the model as a finished stream, not a live obligation", { timeout: 15_000 }, async (t) => {
+test("{§functionality-model-mutation} authorization-required holds the model mutation at the workspace boundary until resolved", { timeout: 15_000 }, async (t) => {
     serverProposals(t, "accept");
     const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "fx:host";
     t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
+    const log: string[] = [];
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "auth" } }))),
-        makeMockResponse(PlurnkParser.frame("SEND [200]", "The candidate needs sign-in.")),
+        makeMockResponse(PlurnkParser.frame("candidate", "fixture")),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "The candidate ran after sign-in.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter([])); } }, "test-module");
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter(log)); } }, "test-module");
     const ws = await connect({ daemon });
     try {
         await daemon.start();
         const created = await rpcCall(ws, 1, "workspace.create", { name: `authorization-result-${crypto.randomUUID()}` });
         const workspaceId = (created.result as { id: number }).id;
-        const result = await runLoopToTerminal(ws, 2, { prompt: "Add the candidate fixture." }, { timeoutMs: 8_000 });
+        const notices: Array<{ kind?: string; message?: string }> = [];
+        const unsubscribe = daemon.subscribeToEvents((eventWorkspaceId, method, params) => {
+            if (eventWorkspaceId !== workspaceId || method !== "notice/event") return;
+            const notice = (params as { notice?: { kind?: string; message?: string } }).notice;
+            if (notice?.kind === "authorization_required") {
+                notices.push(notice);
+                void daemon.invokeModuleAction("workspace.fx.replace", { alias: "candidate", definition: { kind: "ok" } }, workspaceContext(workspaceId));
+            }
+        });
+        t.after(unsubscribe);
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Add and run the candidate fixture." }, { timeoutMs: 8_000 });
         assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
+        assert.equal(notices.length, 1, "the sign-in requirement is announced while the mutation holds");
+        assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
         assert.ok(result.modelWorkerId !== undefined, "the loop identifies its model worker");
         const rows = await daemon.readLog({ workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
-        const observed = rows.find((row) => row.op === "READ" && row.scheme === "fx" && JSON.stringify(row.rx).includes("authorization-required"));
-        assert.ok(observed, "the ordinary terminal observation carries the pending resource outcome");
-        assert.equal(observed.status_rx, 200, "the observation is of a completed management invocation");
+        const observed = rows.find((row) => row.op === "READ" && row.scheme === "fx" && JSON.stringify(row.rx).includes("active"));
+        assert.ok(observed, "the terminal observation carries the settled active resource outcome");
+        assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
         const body = await awaitExecOutcome(db, { workspaceId, scheme: "fx" });
-        assert.equal(body.status, 202, "resource-level accepted status survives inside the exact result body");
+        assert.equal(body.status, 201, "creation status survives inside the settled result body");
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
 

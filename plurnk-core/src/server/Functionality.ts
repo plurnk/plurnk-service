@@ -78,6 +78,10 @@ export interface FunctionalityInvocation {
     readonly body: unknown;
 }
 
+export interface FunctionalityInvocationOptions extends FunctionalityOptions {
+    readonly onAuthorizationRequired?: (aliases: readonly string[]) => void;
+}
+
 // Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
 // belong to ({§functionality-scope}); the locally-owned origin follows from it, so a worker-scoped
 // family's own entries say "worker" rather than claiming the workspace set them.
@@ -120,6 +124,15 @@ interface Transition {
     readonly status: 200 | 201;
     readonly removed: boolean;
     readonly admissions: readonly FunctionalityAdmission[];
+}
+
+interface AuthorizationWaiter {
+    readonly adapter: HostFunctionalityAdapter;
+    readonly verb: FunctionalityVerb;
+    readonly identity: FunctionalityIdentity;
+    readonly transition: Transition;
+    readonly resolve: (invocation: FunctionalityInvocation) => void;
+    readonly reject: (reason: unknown) => void;
 }
 
 interface WorkspaceFamily {
@@ -182,6 +195,7 @@ export default class Functionality {
     readonly #queues = new Map<string, Promise<unknown>>();
     readonly #admissions = new Map<Promise<unknown>, number>();
     readonly #preparations = new Map<number, Map<string, FunctionalityPreparationActivity>>();
+    readonly #authorizationWaiters = new Map<string, Set<AuthorizationWaiter>>();
 
     constructor(host: FunctionalityHost) {
         this.#host = host;
@@ -407,20 +421,16 @@ export default class Functionality {
         params: unknown,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
-        options: FunctionalityOptions = {},
+        options: FunctionalityInvocationOptions = {},
         signal = this.#host.signal,
     ): Promise<FunctionalityInvocation> {
         const lifetime = signal === this.#host.signal ? signal : AbortSignal.any([this.#host.signal, signal]);
         lifetime.throwIfAborted();
-        const pending = this.#invoke(family, verb, params, identity, caller, options, lifetime);
-        this.#admissions.set(pending, identity.workspaceId);
         try {
-            return await pending;
+            return await this.#invoke(family, verb, params, identity, caller, options, lifetime);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             throw Functionality.#configurationFailure(family, cause);
-        } finally {
-            this.#admissions.delete(pending);
         }
     }
 
@@ -433,13 +443,22 @@ export default class Functionality {
         }), { cause });
     }
 
+    async #trackAdmission<T>(workspaceId: number, pending: Promise<T>): Promise<T> {
+        this.#admissions.set(pending, workspaceId);
+        try {
+            return await pending;
+        } finally {
+            this.#admissions.delete(pending);
+        }
+    }
+
     async #invoke(
         family: string,
         verb: FunctionalityVerb,
         params: unknown,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
-        options: FunctionalityOptions,
+        options: FunctionalityInvocationOptions,
         signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
@@ -463,7 +482,7 @@ export default class Functionality {
         identity = { ...identity, scope };
         if (verb === "discover") {
             const { scope: _scope, ...query } = input;
-            return { status: 200, body: await this.#discover(adapter, query, identity, options) };
+            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity, options)) };
         }
         // {§functionality-scope} — a worker-scoped family's list and mutations act for the invoking
         // Worker. The state is that Worker's and nothing resident changes, so they serialize on the
@@ -471,16 +490,31 @@ export default class Functionality {
         // its siblings run.
         if (scope === "worker") {
             const workerId = Functionality.#workerOf(adapter, identity);
-            return this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options, signal));
+            return this.#trackAdmission(
+                identity.workspaceId,
+                this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options, signal)),
+            );
         }
-        if (verb === "list") return { status: 200, body: await this.#list(adapter, identity) };
+        if (verb === "list") return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity)) };
         const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options, signal));
         // A context family (one that declares the worker scope) is read where it is used, so its workspace
         // defaults change nothing resident either: they serialize on the family's lane, as a Worker's own do,
         // and an operation inside its own held turn never waits on itself.
-        if (scopesOf(adapter).includes("worker")) return mutate();
+        if (scopesOf(adapter).includes("worker")) {
+            const outcome = await this.#trackAdmission(identity.workspaceId, mutate());
+            if (outcome.settled === undefined) return outcome.invocation;
+            options?.onAuthorizationRequired?.(outcome.aliases);
+            return await outcome.settled;
+        }
         const publish = () => this.#withWorkspaceGate(identity.workspaceId, adapter.namespaceOwner, caller === "operation" ? "wait" : "try", mutate, signal);
-        return caller === "operation" ? this.#host.atWorkspaceBoundary(identity.workspaceId, publish) : publish();
+        return caller === "operation"
+            ? this.#host.atWorkspaceBoundary(identity.workspaceId, async () => {
+                const outcome = await publish();
+                if (outcome.settled === undefined) return outcome.invocation;
+                options?.onAuthorizationRequired?.(outcome.aliases);
+                return await outcome.settled;
+            })
+            : (await publish()).invocation;
     }
 
     // A worker-scoped verb that names no Worker is a defect at the projection, never a client
@@ -750,14 +784,16 @@ export default class Functionality {
             return definition === undefined ? undefined : this.#projection(definition, outcomes.get(alias));
         });
         const authorization = projections.some((projection) => projection?.state === "authorization-required");
+        const isRemoved = removed || projections.every((projection) => projection === undefined);
+        const settledStatus = authorization ? 202 : isRemoved ? 200 : status;
         const body = Validator.assertFunctionalityMutationResult(adapter.addressing !== undefined && verb === "add"
-            ? { status: authorization ? 202 : status, family: adapter.family, definitions: projections.map((projection) => projection!) }
+            ? { status: settledStatus, family: adapter.family, definitions: projections.map((projection) => projection!) }
             : {
-                status: authorization ? 202 : status,
+                status: settledStatus,
                 family: adapter.family,
                 alias: aliases[0],
                 ...(projections[0] === undefined ? {} : { definition: projections[0] }),
-                ...(removed ? { removed: true } : {}),
+                ...(isRemoved ? { removed: true } : {}),
             });
         return { status: body.status, body };
     }
@@ -768,9 +804,12 @@ export default class Functionality {
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
-        options: FunctionalityOptions,
+        options: FunctionalityInvocationOptions,
         signal: AbortSignal,
-    ): Promise<FunctionalityInvocation> {
+    ): Promise<
+        | { invocation: FunctionalityInvocation; settled?: undefined }
+        | { invocation: FunctionalityInvocation; aliases: readonly string[]; settled: Promise<FunctionalityInvocation> }
+    > {
         signal.throwIfAborted();
         const key = this.#key(identity.workspaceId, adapter.family);
         const family = this.#families.get(key);
@@ -790,7 +829,66 @@ export default class Functionality {
             signal,
         });
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
-        return this.#mutationResult(adapter, verb, transition, effectiveAfter, publication.outcomes);
+        const invocation = this.#mutationResult(adapter, verb, transition, effectiveAfter, publication.outcomes);
+        if (caller !== "operation" || invocation.status !== 202) return { invocation };
+        const aliases = transition.aliases.filter((alias) => publication.outcomes.get(alias)?.state === "authorization-required");
+        return {
+            invocation,
+            aliases,
+            settled: this.#waitForAuthorization(key, { adapter, verb, identity, transition }, signal),
+        };
+    }
+
+    #waitForAuthorization(
+        key: string,
+        args: Omit<AuthorizationWaiter, "resolve" | "reject">,
+        signal: AbortSignal,
+    ): Promise<FunctionalityInvocation> {
+        signal.throwIfAborted();
+        return new Promise<FunctionalityInvocation>((resolve, reject) => {
+            let set = this.#authorizationWaiters.get(key);
+            if (set === undefined) {
+                set = new Set();
+                this.#authorizationWaiters.set(key, set);
+            }
+            const remove = (): void => {
+                signal.removeEventListener("abort", onAbort);
+                set?.delete(waiter);
+                if (set?.size === 0) this.#authorizationWaiters.delete(key);
+            };
+            const onAbort = (): void => {
+                remove();
+                reject(signal.reason);
+            };
+            const waiter: AuthorizationWaiter = {
+                ...args,
+                resolve: (invocation) => {
+                    remove();
+                    resolve(invocation);
+                },
+                reject: (reason) => {
+                    remove();
+                    reject(reason);
+                },
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+            set.add(waiter);
+        });
+    }
+
+    async #resolveAuthorizationWaiters(
+        key: string,
+        adapter: HostFunctionalityAdapter,
+        nextState: FamilyState,
+        outcomes: ReadonlyMap<string, FunctionalityOutcome>,
+    ): Promise<void> {
+        const waiters = this.#authorizationWaiters.get(key);
+        if (waiters === undefined || waiters.size === 0) return;
+        for (const waiter of [...waiters]) {
+            const effectiveAfter = await this.#effective(adapter, waiter.identity, nextState);
+            const result = this.#mutationResult(adapter, waiter.verb, waiter.transition, effectiveAfter, outcomes);
+            if (result.status !== 202) waiter.resolve(result);
+        }
     }
 
     // {§functionality-scope} — the Worker's own lane. State is read at each verb rather than held: the
@@ -1051,7 +1149,9 @@ export default class Functionality {
             else if (previous !== null) await adapter.teardown(previous.snapshot, identity);
         };
         await commit();
-        return { outcomes: prepared?.outcomes ?? new Map() };
+        const outcomes = prepared?.outcomes ?? new Map();
+        await this.#resolveAuthorizationWaiters(key, adapter, nextState, outcomes);
+        return { outcomes };
     }
 
     // {§functionality-preparation-cancellation} Join the adapter; abort a returned candidate before publication.
