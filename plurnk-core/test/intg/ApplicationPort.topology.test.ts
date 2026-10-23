@@ -53,6 +53,8 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             // {§application-worker-observation} — a root worker with no loop yet (#523).
             kind: "root",
             lifecycle: "idle",
+            // {§place-hiding} — shown.
+            hidden_at: null,
         });
         assert.equal(typeof projectedContext.created_at, "string");
         // {§methods-worker-list} — an omitted parent filter returns every lineage
@@ -81,6 +83,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             // forkWorker mints a FORK child (fork boundary set); no loop has run on it yet.
             kind: "fork",
             lifecycle: "idle",
+            hidden_at: null,
         });
 
         const terminated: Array<{ loopId: number }> = [];

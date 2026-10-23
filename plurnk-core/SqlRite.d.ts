@@ -282,6 +282,13 @@ export class SqlRiteSync {
 	engine_emission_history: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
+	place_scope: SqlRiteSyncPreparedStatements;
+	place_workspace_mark: SqlRiteSyncPreparedStatements;
+	place_workspace_hide: SqlRiteSyncPreparedStatements;
+	place_workspace_show: SqlRiteSyncPreparedStatements;
+	place_worker_mark: SqlRiteSyncPreparedStatements;
+	place_worker_hide: SqlRiteSyncPreparedStatements;
+	place_worker_show: SqlRiteSyncPreparedStatements;
 	proposal_record_decision: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
@@ -587,6 +594,13 @@ export default class SqlRite {
 	engine_emission_history: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
+	place_scope: SqlRitePreparedStatements;
+	place_workspace_mark: SqlRitePreparedStatements;
+	place_workspace_hide: SqlRitePreparedStatements;
+	place_workspace_show: SqlRitePreparedStatements;
+	place_worker_mark: SqlRitePreparedStatements;
+	place_worker_hide: SqlRitePreparedStatements;
+	place_worker_show: SqlRitePreparedStatements;
 	proposal_record_decision: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;

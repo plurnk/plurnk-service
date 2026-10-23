@@ -28,6 +28,8 @@ export interface WorkspaceRow {
     name: string;
     project_root: string | null;
     created_at: string;
+    // {§place-hiding}
+    hidden_at: string | null;
 }
 
 // The stored envelope; the daemon adds the folder's label, which needs its home ({§workspace-label}).
@@ -40,6 +42,8 @@ export interface WorkerRow {
     origin: "model" | "_plurnk";
     owner: string;
     parentWorkerId: number | null;
+    // {§place-hiding}
+    hidden_at: string | null;
     // {§application-worker-observation}
     kind: ApplicationWorkerKind;
     lifecycle: WorkerLifecycle;
@@ -55,6 +59,7 @@ export const projectWorkerRow = <T extends { loopObservations: string }>(row: T)
 export interface WorkerQuery {
     origin?: WorkerRow["origin"];
     parentWorkerId?: number | null;
+    hidden?: boolean;
 }
 
 export default class Envelope {
@@ -78,11 +83,13 @@ export default class Envelope {
         while (workspace === undefined && opts.name === undefined) workspace = await insert(Envelope.generateWorkspaceName());
         if (workspace === undefined) {
             const name = opts.name!;
+            // {§place-hiding} A hidden workspace still holds its name.
+            const holder = await db.envelope_get_workspace_by_name.get<{ hidden_at: string | null }>({ name });
             throw envelopeFailure(
                 "daemon:workspace",
                 "name-conflict",
                 409,
-                `Workspace name '${name}' is already in use.`,
+                `Workspace name '${name}' is already in use${holder === undefined || holder.hidden_at === null ? "" : " by a hidden workspace"}.`,
                 {
                     name,
                     recovery: "Choose another workspace name or attach to the existing workspace.",
@@ -140,6 +147,7 @@ export default class Envelope {
             origin: query.origin ?? null,
             filter_parent: filterParent ? 1 : 0,
             parent_worker_id: query.parentWorkerId ?? null,
+            hidden: query.hidden === undefined ? null : query.hidden ? 1 : 0,
         });
         return rows.map(projectWorkerRow);
     }
@@ -163,8 +171,8 @@ export default class Envelope {
         });
     }
 
-    static async listWorkspaces(db: Db): Promise<WorkspaceRow[]> {
-        return await db.envelope_list_workspaces.all<WorkspaceRow>();
+    static async listWorkspaces(db: Db, hidden?: boolean): Promise<WorkspaceRow[]> {
+        return await db.envelope_list_workspaces.all<WorkspaceRow>({ hidden: hidden === undefined ? null : hidden ? 1 : 0 });
     }
 
     // workspace.rename — the workspace name is a mutable handle (vs a worker's immutable

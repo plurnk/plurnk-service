@@ -99,8 +99,8 @@ interface RegisteredAction extends AguiActionContract {
 export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials" | "httpAddress">;
 
 // {§agui-action-binding} The actions addressed to the thread's worker: those that set its durable
-// policy create it, the rest require it, and the readers that take an explicit `workerId` require it only
-// without one.
+// policy create it, the rest require it, and those that take an explicit `workerId` require it only
+// without one. A workspace action that would act on nothing in a workspace it created attaches only.
 const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set([
     "worker.model.set",
     "worker.child.set",
@@ -109,7 +109,10 @@ const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set([
     "worker.env.replace",
 ]);
 const WORKER_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel", "run.fork", "worker.model.get", "worker.effort.get"]);
-const WORKER_READING_ACTIONS: ReadonlySet<string> = new Set(["log.read", "entry.read", "workspace.prompts", "workspace.rollback", "worker.loops"]);
+const WORKER_NAMING_ACTIONS: ReadonlySet<string> = new Set([
+    "log.read", "entry.read", "workspace.prompts", "workspace.rollback", "worker.loops", "worker.hidden.set",
+]);
+const WORKSPACE_ATTACHING_ACTIONS: ReadonlySet<string> = new Set(["workspace.hidden.set"]);
 
 export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
@@ -600,8 +603,9 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     #actionBinding({ kind, params }: ActionRequest): WorkerBinding {
         const action = this.#actions.get(kind)!;
         if (WORKER_CREATING_ACTIONS.has(kind)) return "create";
-        if (WORKER_READING_ACTIONS.has(kind)) return typeof params.workerId === "number" ? "attach" : "required";
+        if (WORKER_NAMING_ACTIONS.has(kind)) return typeof params.workerId === "number" ? "attach" : "required";
         if (WORKER_ACTIONS.has(kind)) return "required";
+        if (WORKSPACE_ATTACHING_ACTIONS.has(kind)) return "attach";
         return action.scope === "worker" ? "required" : "none";
     }
 

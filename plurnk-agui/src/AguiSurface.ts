@@ -41,6 +41,7 @@ const object = (
 });
 
 const EMPTY = object();
+const BOOLEAN = { type: "boolean" };
 const NONEMPTY = string({ minLength: 1 });
 const POSITIVE = integer(1);
 const NONNEGATIVE = integer(0);
@@ -56,7 +57,9 @@ const workspace = object({
     // {§workspace-label}
     project_label: nullable(string()),
     created_at: NONEMPTY,
-}, ["id", "name", "project_root", "project_label", "created_at"]);
+    // {§place-hiding}
+    hidden_at: nullable(NONEMPTY),
+}, ["id", "name", "project_root", "project_label", "created_at", "hidden_at"]);
 // {§loop-lifecycle-vocabulary} — the one lifecycle vocabulary every client renders.
 const LIFECYCLE = { enum: ["idle", "queued", "running", "parked", "completed", "cancelled", "failed"] };
 // {§application-worker-observation} — kind and lifecycle ride the directory row (#523).
@@ -69,7 +72,9 @@ const worker = object({
     parentWorkerId: nullable(POSITIVE),
     kind: { enum: ["root", "fork", "work"] },
     lifecycle: LIFECYCLE,
-}, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle"]);
+    // {§place-hiding}
+    hidden_at: nullable(NONEMPTY),
+}, ["id", "name", "created_at", "owner", "origin", "parentWorkerId", "kind", "lifecycle", "hidden_at"]);
 // {§agui-worker-loops} — a loop as a list names it: its number, lifecycle, the sender of its opening message and
 // that message's first line, and whether the message holds more.
 const loop = object({
@@ -110,7 +115,8 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         }, ["alias", "provider", "model", "active", "inputCapacity"])),
     }, ["aliases"])),
     "models.list": action("daemon", ref("ModelCatalogQuery"), ref("ModelCatalogPage")),
-    "workspace.list": action("daemon", EMPTY, object({ workspaces: array(workspace) }, ["workspaces"])),
+    // {§agui-place-hiding} A directory leaves hidden places out unless it includes them.
+    "workspace.list": action("daemon", object({ includeHidden: BOOLEAN }), object({ workspaces: array(workspace) }, ["workspaces"])),
     "workspace.create": action("daemon", object({
         name: NONEMPTY,
         projectRoot: nullable(string()),
@@ -121,7 +127,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         object({ name: NONEMPTY }, ["name"]),
         object({ projectRoot: NONEMPTY }, ["projectRoot"]),
     ] }, object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
-    "workspace.workers": action("workspace", object({ id: POSITIVE }), object({ workers: array(worker) }, ["workers"])),
+    "workspace.workers": action("workspace", object({ id: POSITIVE, includeHidden: BOOLEAN }), object({ workers: array(worker) }, ["workers"])),
     "log.read": action("workspace", object({
         workerId: POSITIVE,
         limit: POSITIVE,
@@ -147,6 +153,16 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     "worker.loops": action("workspace", object({ workerId: POSITIVE }), object({ loops: array(loop) }, ["loops"])),
     "workspace.share": action("workspace", object({ folder: NONEMPTY }, ["folder"]), object({ folder: NONEMPTY }, ["folder"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
+    // {§agui-place-hiding}
+    "workspace.hidden.set": action("workspace", object({ hidden: BOOLEAN }, ["hidden"]), object({
+        id: POSITIVE,
+        hidden_at: nullable(NONEMPTY),
+    }, ["id", "hidden_at"])),
+    "worker.hidden.set": action("workspace", object({ hidden: BOOLEAN, workerId: POSITIVE }, ["hidden"]), object({
+        id: POSITIVE,
+        hidden_at: nullable(NONEMPTY),
+        workerIds: array(POSITIVE),
+    }, ["id", "hidden_at", "workerIds"])),
     // {§rollback} — undo the bound worker's file mutations after a log coordinate, through ordinary operations.
     "workspace.rollback": action("workspace", object({ to: NONEMPTY, workerId: POSITIVE }, ["to"]), ref("RollbackReport")),
     "entry.read": action("workspace", object({

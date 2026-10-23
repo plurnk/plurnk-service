@@ -3,6 +3,7 @@
 -- PREP: overview_places
 -- {§application-worker-overview}: the places in scope, each with its loops' observations for its lifecycle
 -- ({§application-worker-observation}) and its latest finished reply ({§worker-finished-reply}), without the reply's words.
+-- {§place-hiding} A hidden worker is out of scope, and in the daemon's scope so is every worker of a hidden workspace.
 SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_worker_id AS parentWorkerId,
        CASE WHEN w.fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN w.parent_worker_id IS NOT NULL THEN 'work'
@@ -27,7 +28,9 @@ LEFT JOIN log_entries reply ON reply.id = (
 LEFT JOIN loops reply_loop ON reply_loop.id = reply.loop_id
 LEFT JOIN turns reply_turn ON reply_turn.id = reply.turn_id
 WHERE w.origin = 'model'
-  AND ($workspace_id IS NULL OR w.workspace_id = $workspace_id);
+  AND w.hidden_at IS NULL
+  AND (w.workspace_id = $workspace_id
+       OR ($workspace_id IS NULL AND (SELECT ws.hidden_at FROM workspaces ws WHERE ws.id = w.workspace_id) IS NULL));
 
 -- PREP: overview_reply_words
 -- {§list-excerpt}: the words of the replies the overview holds, $ids a JSON array of their log rows.

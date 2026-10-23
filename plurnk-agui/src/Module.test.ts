@@ -61,6 +61,7 @@ const workspaceRow = (id: number, name: string) => ({
     project_root: null,
     project_label: null,
     created_at: "2026-01-01T00:00:00.000Z",
+    hidden_at: null as string | null,
 });
 // {§agui-sync} An observation watches a workspace that exists: here, workspace 3 named `name`.
 const existingWorkspace = (seam: ApplicationPort, name: string): void => {
@@ -81,15 +82,17 @@ const workerRow = (
     parentWorkerId,
     kind: (parentWorkerId === null ? "root" : "work") as "root" | "fork" | "work",
     lifecycle: "idle" as const,
+    hidden_at: null as string | null,
 });
 type WorkerRow = ReturnType<typeof workerRow>;
 // A workspace's workers as the daemon serves them: listed, and read by exact name or id whatever their
 // origin. Rows read live, so a fixture that mints a worker can add its row.
 const directory = (seam: ApplicationPort, workers: readonly WorkerRow[] | ((workspaceId: number) => readonly WorkerRow[])): void => {
     const rows = typeof workers === "function" ? workers : () => workers;
-    seam.listWorkers = async (workspaceId, query) => rows(workspaceId).filter(({ origin, parentWorkerId }) =>
+    seam.listWorkers = async (workspaceId, query) => rows(workspaceId).filter(({ origin, parentWorkerId, hidden_at }) =>
         (query?.origin === undefined || origin === query.origin)
-        && (query?.parentWorkerId === undefined || parentWorkerId === query.parentWorkerId));
+        && (query?.parentWorkerId === undefined || parentWorkerId === query.parentWorkerId)
+        && (query?.hidden === undefined || (hidden_at !== null) === query.hidden));
     seam.readWorker = async ({ workspaceId, identity }) => rows(workspaceId)
         .find(({ id, name }) => identity.name === undefined ? id === identity.id : name === identity.name) ?? null;
 };
@@ -200,6 +203,8 @@ const mockSeam = (operatorSecret: string | null = null) => {
         workerGauge: async () => NO_GAUGE,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
+        setWorkspaceHidden: async ({ workspaceId, hidden }) => ({ id: workspaceId, hidden_at: hidden ? "2026-01-02T00:00:00.000Z" : null }),
+        setWorkerHidden: async ({ workerId, hidden }) => ({ id: workerId, hidden_at: hidden ? "2026-01-02T00:00:00.000Z" : null, workerIds: [workerId] }),
         rollback: async () => { throw new Error("rollback is not exercised here"); },
         workspaceDerivationStatus: () => null,
         workspacePreparationStatus: () => [],
@@ -3418,7 +3423,7 @@ test("{§agui-reasoning-link} a Run negotiates its reasoning by link with \"link
 
 test("{§workspace-label} the workspace list and the snapshot carry each folder's label exactly as the daemon spelled it", async () => {
     const { seam } = mockSeam();
-    seam.listWorkspaces = async () => [{ id: 3, name: "proj", project_root: "/home/u/proj", project_label: "~/proj", created_at: "2026-01-01T00:00:00.000Z" }];
+    seam.listWorkspaces = async () => [{ id: 3, name: "proj", project_root: "/home/u/proj", project_label: "~/proj", created_at: "2026-01-01T00:00:00.000Z", hidden_at: null }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "proj", projectRoot: "/home/u/proj", projectLabel: "~/proj" });
     const mod = await host(seam);
     try {
@@ -3511,6 +3516,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "worker.child.set",
             "worker.effort.get",
             "worker.effort.set",
+            "worker.hidden.set",
             "worker.loops",
             "worker.model.get",
             "worker.model.set",
@@ -3518,6 +3524,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "workspace.capabilities.get",
             "workspace.capabilities.set",
             "workspace.create",
+            "workspace.hidden.set",
             "workspace.list",
             "workspace.prompts",
             "workspace.rename",
@@ -3686,6 +3693,7 @@ const REQUIRING_FORMS: Readonly<Record<string, RunForm & { readonly effect: stri
     "workspace.prompts": { ...actionForm("workspace.prompts"), effect: "listPrompts" },
     "worker.loops": { ...actionForm("worker.loops"), effect: "listWorkerLoops" },
     "workspace.rollback": { ...actionForm("workspace.rollback", { to: "1/1/1" }), effect: "rollback" },
+    "worker.hidden.set": { ...actionForm("worker.hidden.set", { hidden: true }), effect: "setWorkerHidden" },
 };
 const UNBOUND_FORMS: Readonly<Record<string, RunForm>> = {
     "log.read naming worker 91": actionForm("log.read", { workerId: 91 }),
@@ -3693,6 +3701,8 @@ const UNBOUND_FORMS: Readonly<Record<string, RunForm>> = {
     "workspace.prompts naming worker 91": actionForm("workspace.prompts", { workerId: 91 }),
     "worker.loops naming worker 91": actionForm("worker.loops", { workerId: 91 }),
     "workspace.rollback naming worker 91": actionForm("workspace.rollback", { to: "1/1/1", workerId: 91 }),
+    "worker.hidden.set naming worker 91": actionForm("worker.hidden.set", { hidden: true, workerId: 91 }),
+    "workspace.hidden.set": actionForm("workspace.hidden.set", { hidden: true }),
     "workspace.workers": actionForm("workspace.workers"),
     "workspace.rename": actionForm("workspace.rename", { name: "workspace" }),
     "workspace.share": actionForm("workspace.share", { folder: "/srv/share" }),
@@ -3862,7 +3872,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
         for (const name of [
             "createWorkspace", "createWorker", "registerWorkerOwner", "claimWorkerOwner", "activateWorkspace",
             "runLoop", "cancelDrain", "forkWorker", "readWorkerModel", "readWorkerEffort", "invokeModuleAction",
-            "readLog", "readEntry", "listPrompts", "listWorkerLoops", "rollback",
+            "readLog", "readEntry", "listPrompts", "listWorkerLoops", "rollback", "setWorkerHidden", "setWorkspaceHidden",
         ] as const) {
             const original = seam[name] as (...args: never[]) => unknown;
             Object.assign(seam, { [name]: (...args: never[]) => { effects.push(name); return original(...args); } });
@@ -3905,6 +3915,7 @@ for (const [form, input] of Object.entries(REQUIRING_FORMS)) {
         seam.listPrompts = async (_workspaceId, _limit, workerId) => { reach("listPrompts", workerId!); return []; };
         seam.listWorkerLoops = async ({ workerId }) => { reach("listWorkerLoops", workerId); return []; };
         seam.rollback = async ({ workerId, to }) => { reach("rollback", workerId); return { to, restored: [], skipped: [], stopped: null }; };
+        seam.setWorkerHidden = async ({ workerId }) => { reach("setWorkerHidden", workerId); return { id: workerId, hidden_at: "2026-01-02T00:00:00.000Z", workerIds: [workerId] }; };
         seam.createWorker = async () => { throw new Error("a Run that requires its worker minted one"); };
         const mod = await host(seam);
         const controller = new AbortController();
@@ -3969,6 +3980,7 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
         seam.listPrompts = async (_workspaceId, _limit, workerId) => { addressed.push(workerId!); return []; };
         seam.listWorkerLoops = async ({ workerId }) => { addressed.push(workerId); return []; };
         seam.rollback = async ({ workerId, to }) => { addressed.push(workerId); return { to, restored: [], skipped: [], stopped: null }; };
+        seam.setWorkerHidden = async ({ workerId }) => { addressed.push(workerId); return { id: workerId, hidden_at: "2026-01-02T00:00:00.000Z", workerIds: [workerId] }; };
         const mod = await host(seam);
         try {
             const events = await post(mod.address().port, formInput("page", input));
@@ -3990,6 +4002,97 @@ for (const [form, input] of Object.entries(UNBOUND_FORMS)) {
         } finally { await mod.close(); }
     });
 }
+
+// {§agui-action-binding} The Runs that attach their workspace only: an action naming a worker, and a workspace's hide.
+const ATTACHING_FORMS: Readonly<Record<string, RunForm>> = Object.fromEntries(Object.entries(UNBOUND_FORMS)
+    .filter(([form]) => form.endsWith("naming worker 91") || form === "workspace.hidden.set"));
+
+for (const [form, input] of Object.entries(ATTACHING_FORMS)) {
+    test(`{§agui-action-binding} ${form} attaches its workspace only: 404 before any SSE when there is none, with nothing created`, async () => {
+        const { seam } = mockSeam();
+        seam.listWorkspaces = async () => [];
+        const created: string[] = [];
+        seam.createWorkspace = async () => { created.push("workspace"); throw new Error("an attach-only Run created its workspace"); };
+        seam.createWorker = async () => { created.push("worker"); throw new Error("an attach-only Run minted a worker"); };
+        const mod = await host(seam);
+        try {
+            const response = await runForm(mod.address().port, "page", input);
+            assert.equal(response.status, 404);
+            assert.equal(response.headers.get("content-type"), "application/problem+json", "the refusal precedes any SSE");
+            assert.equal((await response.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/workspace-not-found");
+            assert.deepEqual(created, []);
+        } finally { await mod.close(); }
+    });
+}
+
+for (const kind of ["workspace.list", "workspace.workers"] as const) {
+    test(`{§agui-place-hiding} ${kind} leaves hidden places out unless it includes them`, async () => {
+        const { seam } = mockSeam();
+        existingWorkspace(seam, "workspace");
+        const hidden_at = "2026-01-02T00:00:00.000Z";
+        const queries: unknown[] = [];
+        seam.listWorkspaces = async (query) => {
+            queries.push(query);
+            return [workspaceRow(3, "workspace"), { ...workspaceRow(4, "hidden"), hidden_at }]
+                .filter((row) => query?.hidden === undefined || (row.hidden_at !== null) === query.hidden);
+        };
+        directory(seam, [workerRow(20, "shown"), { ...workerRow(21, "hidden"), hidden_at }]);
+        const listWorkers = seam.listWorkers;
+        seam.listWorkers = async (workspaceId, query) => { queries.push(query); return await listWorkers(workspaceId, query); };
+        const mod = await host(seam);
+        try {
+            const listed = async (params: Record<string, unknown>): Promise<string[]> => {
+                const outcome = actionOutcome(await post(mod.address().port, formInput("page", actionForm(kind, params)))) as
+                    { ok: boolean; result: { workspaces?: Array<{ name: string }>; workers?: Array<{ name: string }> } };
+                assert.equal(outcome.ok, true, JSON.stringify(outcome));
+                return (outcome.result.workspaces ?? outcome.result.workers ?? []).map(({ name }) => name).toSorted();
+            };
+            queries.length = 0;
+            assert.deepEqual(await listed({}), kind === "workspace.list" ? ["workspace"] : ["shown"]);
+            assert.deepEqual(queries.at(-1), { hidden: false }, "a directory asks for shown places by default");
+            assert.deepEqual(await listed({ includeHidden: false }), kind === "workspace.list" ? ["workspace"] : ["shown"]);
+            assert.deepEqual(await listed({ includeHidden: true }), kind === "workspace.list" ? ["hidden", "workspace"] : ["hidden", "shown"],
+                "the rows carry their marks, hidden ones included when asked");
+            assert.deepEqual(queries.at(-1), {});
+        } finally { await mod.close(); }
+    });
+}
+
+test("{§agui-place-hiding} workspace.hidden.set and worker.hidden.set carry the daemon's mark and its refusal unchanged", async () => {
+    const { seam } = mockSeam();
+    existingWorkspace(seam, "workspace");
+    directory(seam, [workerRow(44, "page"), workerRow(45, "other")]);
+    const calls: unknown[] = [];
+    seam.setWorkspaceHidden = async (args) => { calls.push(["workspace", args]); return { id: args.workspaceId, hidden_at: args.hidden ? "2026-01-02T00:00:00.000Z" : null }; };
+    seam.setWorkerHidden = async (args) => {
+        calls.push(["worker", args]);
+        if (args.workerId === 45) {
+            const problem = Problems.create("daemon:worker", "live-work", 409, "Worker 45 and the workers beneath it hold 1 live loop.", { loops: 1, streams: 0, proposals: 0, questions: 0, retryable: false });
+            throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });
+        }
+        return { id: args.workerId, hidden_at: args.hidden ? "2026-01-02T00:00:00.000Z" : null, workerIds: [args.workerId] };
+    };
+    const mod = await host(seam);
+    try {
+        const outcome = async (kind: string, params: Record<string, unknown>) =>
+            actionOutcome(await post(mod.address().port, formInput("page", actionForm(kind, params)))) as { ok: boolean; result?: unknown; problem?: { status: number; type: string; loops?: number } };
+        assert.deepEqual(await outcome("workspace.hidden.set", { hidden: true }), { kind: "workspace.hidden.set", ok: true, result: { id: 3, hidden_at: "2026-01-02T00:00:00.000Z" } });
+        assert.deepEqual(await outcome("worker.hidden.set", { hidden: true }), { kind: "worker.hidden.set", ok: true, result: { id: 44, hidden_at: "2026-01-02T00:00:00.000Z", workerIds: [44] } },
+            "the thread's worker by default");
+        assert.deepEqual(await outcome("worker.hidden.set", { hidden: false, workerId: 44 }), { kind: "worker.hidden.set", ok: true, result: { id: 44, hidden_at: null, workerIds: [44] } });
+        const refused = await outcome("worker.hidden.set", { hidden: true, workerId: 45 });
+        assert.equal(refused.ok, false);
+        assert.deepEqual([refused.problem?.status, refused.problem?.type, refused.problem?.loops], [409, "https://problems.plurnk.xyz/daemon/worker/live-work", 1]);
+        const unflagged = await outcome("workspace.hidden.set", {});
+        assert.equal(unflagged.ok, false, "a hide states whether to hide");
+        assert.deepEqual(calls, [
+            ["workspace", { workspaceId: 3, hidden: true }],
+            ["worker", { workspaceId: 3, workerId: 44, hidden: true }],
+            ["worker", { workspaceId: 3, workerId: 44, hidden: false }],
+            ["worker", { workspaceId: 3, workerId: 45, hidden: true }],
+        ]);
+    } finally { await mod.close(); }
+});
 
 test("{§credential-authority} a thread naming no worker MINTS one named for it, and the loop drives there", async () => {
     const created: Array<{ workspaceId: number; name?: string }> = [];

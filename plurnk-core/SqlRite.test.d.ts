@@ -292,6 +292,13 @@ export class SqlRiteSync {
 	engine_emission_history: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
+	place_scope: SqlRiteSyncPreparedStatements;
+	place_workspace_mark: SqlRiteSyncPreparedStatements;
+	place_workspace_hide: SqlRiteSyncPreparedStatements;
+	place_workspace_show: SqlRiteSyncPreparedStatements;
+	place_worker_mark: SqlRiteSyncPreparedStatements;
+	place_worker_hide: SqlRiteSyncPreparedStatements;
+	place_worker_show: SqlRiteSyncPreparedStatements;
 	proposal_record_decision: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
@@ -607,6 +614,7 @@ export class SqlRiteSync {
 	test_parser_pathnames: SqlRiteSyncPreparedStatements;
 	test_parser_log_indices: SqlRiteSyncPreparedStatements;
 	test_parser_log_first: SqlRiteSyncPreparedStatements;
+	test_place_marks: SqlRiteSyncPreparedStatements;
 	test_proposal_decision: SqlRiteSyncPreparedStatements;
 	test_proposal_decision_rewrite: SqlRiteSyncPreparedStatements;
 	test_proposal_decision_delete: SqlRiteSyncPreparedStatements;
@@ -914,6 +922,13 @@ export default class SqlRite {
 	engine_emission_history: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
+	place_scope: SqlRitePreparedStatements;
+	place_workspace_mark: SqlRitePreparedStatements;
+	place_workspace_hide: SqlRitePreparedStatements;
+	place_workspace_show: SqlRitePreparedStatements;
+	place_worker_mark: SqlRitePreparedStatements;
+	place_worker_hide: SqlRitePreparedStatements;
+	place_worker_show: SqlRitePreparedStatements;
 	proposal_record_decision: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
@@ -1229,6 +1244,7 @@ export default class SqlRite {
 	test_parser_pathnames: SqlRitePreparedStatements;
 	test_parser_log_indices: SqlRitePreparedStatements;
 	test_parser_log_first: SqlRitePreparedStatements;
+	test_place_marks: SqlRitePreparedStatements;
 	test_proposal_decision: SqlRitePreparedStatements;
 	test_proposal_decision_rewrite: SqlRitePreparedStatements;
 	test_proposal_decision_delete: SqlRitePreparedStatements;

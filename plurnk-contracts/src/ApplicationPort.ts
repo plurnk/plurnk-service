@@ -28,6 +28,8 @@ import type {
     ApplicationWorkerOverview,
     ApplicationWorkerProjection,
     ApplicationWorkerQuery,
+    ApplicationWorkerHiding,
+    ApplicationWorkspaceHiding,
     ApplicationWorkerIdentity,
     ApplicationWorkerCreation,
     ApplicationLoopAdmission,
@@ -154,13 +156,16 @@ export interface ApplicationPort extends HttpHost {
     ensureWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number }>;
     /** {§worker-external-reference} Inspect the adapter's retained references to this worker. */
     listWorkerReferences(args: { readonly workspaceId: number; readonly workerId: number; readonly namespace: string }): Promise<string[]>;
-    listWorkspaces(): Promise<Array<{
+    /** {§place-hiding} Omitted `hidden` lists every workspace; true only hidden ones, false only shown ones. */
+    listWorkspaces(query?: { readonly hidden?: boolean }): Promise<Array<{
         readonly id: number;
         readonly name: string;
         readonly project_root: string | null;
         /** {§workspace-label} */
         readonly project_label: string | null;
         readonly created_at: string;
+        /** {§place-hiding} When the workspace was hidden, or null while it is shown. */
+        readonly hidden_at: string | null;
     }>>;
     listWorkers(
         workspaceId: number,
@@ -195,6 +200,10 @@ export interface ApplicationPort extends HttpHost {
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
+    /** {§methods-workspace-hide} Hide or show a workspace; a hide is refused while it holds live work. */
+    setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding>;
+    /** {§methods-worker-hide} Hide or show a worker with every worker beneath it; a hide is refused while they hold live work. */
+    setWorkerHidden(args: { readonly workspaceId: number; readonly workerId: number; readonly hidden: boolean }): Promise<ApplicationWorkerHiding>;
     // {§rollback} — reverse `workerId`'s settled file mutations after its log coordinate `to`, latest
     // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
     // longer holds what its mutation wrote.

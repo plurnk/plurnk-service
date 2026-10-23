@@ -739,6 +739,7 @@ selection.
 | Tag | Promise |
 | --- | --- |
 | {§agui-worker-loops} | `worker.loops` — Workspace |
+| {§agui-place-hiding} | A directory leaves hidden places out. |
 | {§agui-action-binding} | What a Run binds. |
 | {§agui-client-operation} | `op.exec` and `op.parse` are the thread owner's client operations. |
 | {§agui-worker-model-actions} | Worker model selection is server-backed. |
@@ -789,16 +790,18 @@ successfully transported management Run; it does not turn the Run into
 | `discover`               | Daemon | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
 | `providers.list`         | Daemon | none                                                 | `ApplicationPort.listProviders`: each alias as the route a worker seeded from it gets ({§agui-provider-routes}).            |
 | `models.list`            | Daemon | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
-| `workspace.list`         | Daemon | none                                                 | `ApplicationPort.listWorkspaces`: each workspace with its folder and the folder's label ({§workspace-label}).                |
+| `workspace.list`         | Daemon | `includeHidden?`                                     | `ApplicationPort.listWorkspaces`: each workspace with its folder, the folder's label ({§workspace-label}) and its `hidden_at`, shown ones only unless `includeHidden` ({§agui-place-hiding}). |
 | `workspace.create`       | Daemon | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named workspace, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else a generated name ({§workspace-auto-name}). |
 | `workspace.attach`       | Daemon | exactly one of `id`, `name`, `projectRoot`              | Read-only selection under {§methods-workspace-attach}; returns `{ id, name }`, creates nothing and rebinds no thread. `name` is literal; `projectRoot` selects the daemon's folder-derived default name. |
-| `workspace.workers`      | Workspace | `id?`                                                | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace.                                              |
+| `workspace.workers`      | Workspace | `id?`, `includeHidden?`                              | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace; shown workers only unless `includeHidden` ({§agui-place-hiding}). |
 | `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's bound worker.                                                  |
 | `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
 | `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's bound worker.                                                        |
 | `workspace.prompts`      | Workspace | `workerId?`, `limit?`                                | `ApplicationPort.listPrompts` scoped like `log.read`: the thread's bound worker unless `workerId` pins another.    |
 | §agui-worker-loops `worker.loops` | Workspace | `workerId?` | `ApplicationPort.listWorkerLoops` scoped like `log.read`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }`: its lifecycle under {§loop-lifecycle-vocabulary}, `source` the sender of its opening message, `opening` and `continued` that message's excerpt ({§list-excerpt}) of at most `PLURNK_AGUI_EXCERPT_CHARS` characters. Its rows are `log.read` by its `id`; its messages, its loop page ({§agui-loop-page}). |
 | `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
+| `workspace.hidden.set`   | Workspace | `hidden`                                             | `ApplicationPort.setWorkspaceHidden` on the bound workspace ({§agui-place-hiding}); returns `{ id, hidden_at }`. |
+| `worker.hidden.set`      | Workspace | `hidden`, `workerId?`                                | `ApplicationPort.setWorkerHidden` on the thread's bound worker, or `workerId` ({§agui-place-hiding}); returns `{ id, hidden_at, workerIds }`. |
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
 | `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the thread's owner ({§agui-client-operation}); returns the `RollbackReport`. |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread's bound worker by default, preserving validated {§entry-read-result}. |
@@ -814,6 +817,11 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkspaceCapabilities` replaces the workspace policy and returns the complete resolver-owned projection {§capability-policy-projection}. |
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a daemon, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
 
+§agui-place-hiding **A directory leaves hidden places out.** `workspace.list` and `workspace.workers` list shown places
+unless `includeHidden` is true, every row carrying its `hidden_at`, so a client that knows nothing of hiding honors it.
+`workspace.hidden.set` and `worker.hidden.set` hide and show under {§place-hiding}, a refusal its `409 live-work` as the
+daemon wrote it; a connected overview follows each change ({§agui-overview-updates}). Neither creates the place it names.
+
 §agui-action-binding **What a Run binds.** A message Run and an action addressed to the thread's
 worker resolve the thread's worker ({§agui-thread-binding}); a workspace-level action
 binds none. Opaque threads allocate only for worker-creating Runs. Qualified addresses always
@@ -823,10 +831,10 @@ worker, or binds none, may create the workspace:
 | The thread's worker | The workspace | Runs and actions |
 |---|---|---|
 | Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§agui-sync}, {§agui-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set`, `worker.env.add`, `worker.env.replace` |
-| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, other worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` unless `workerId` names another worker |
+| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§agui-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, other worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops`, `workspace.rollback` and `worker.hidden.set` unless `workerId` names another worker |
 | The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§agui-proposal-resolve}) |
 | Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
-| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts`, `worker.loops` and `workspace.rollback` naming a `workerId` |
+| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts`, `worker.loops`, `workspace.rollback` and `worker.hidden.set` naming a `workerId`; `workspace.hidden.set` |
 
 A daemon action ({§agui-module-action-scope}), and an action the module does not register or
 whose input its schema refuses, binds neither: it is answered on the control path, the refusal in
@@ -919,12 +927,13 @@ type Discovery = {
 ({§client-display-capabilities}). AG-UI adds no fallback, font, theme, or packet
 policy.
 
-`actions` contains the 25 built-ins in the table plus every registered module
+`actions` contains the 29 built-ins in the table plus every registered module
 action. `notifications` contains exactly these externally projected daemon
 event families:
 
 | Notification |
 |--------------|
+| `workspace/preparation` |
 | `log/entry` |
 | `loop/terminated` |
 | `loop/packet` |

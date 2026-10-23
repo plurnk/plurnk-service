@@ -11,8 +11,8 @@ SELECT id, name, project_root FROM workspaces WHERE id = $id;
 
 
 -- PREP: envelope_get_workspace_by_name
--- workspace.rename collision check — workspaces.name is UNIQUE.
-SELECT id FROM workspaces WHERE name = $name;
+-- workspace.rename collision check — workspaces.name is UNIQUE. {§place-hiding} a hidden one still holds its name.
+SELECT id, hidden_at FROM workspaces WHERE name = $name;
 
 -- PREP: envelope_set_workspace_name
 -- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a worker's
@@ -30,7 +30,7 @@ RETURNING id, name;
 -- work, no parent → root); loop observations feed the shared lifecycle selector in TS.
 -- PREP: envelope_get_worker_by_id
 SELECT id, name, workspace_id, created_at, origin, owner,
-       parent_worker_id AS parentWorkerId,
+       parent_worker_id AS parentWorkerId, hidden_at,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -41,7 +41,7 @@ WHERE id = $id;
 
 -- PREP: envelope_get_worker_by_name
 SELECT id, name, workspace_id, created_at, origin, owner,
-       parent_worker_id AS parentWorkerId,
+       parent_worker_id AS parentWorkerId, hidden_at,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -51,7 +51,8 @@ FROM workers
 WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, origin, owner, parent_worker_id AS parentWorkerId,
+-- {§place-hiding} $hidden: null lists every worker, 1 only hidden ones, 0 only shown ones.
+SELECT id, name, created_at, origin, owner, parent_worker_id AS parentWorkerId, hidden_at,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_worker_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -61,6 +62,7 @@ FROM workers
 WHERE workspace_id = $workspace_id
   AND ($origin IS NULL OR origin = $origin)
   AND ($filter_parent = 0 OR parent_worker_id IS $parent_worker_id)
+  AND ($hidden IS NULL OR (hidden_at IS NOT NULL) = $hidden)
 ORDER BY created_at DESC;
 
 -- PREP: workspace_capability_policy_update
@@ -147,6 +149,8 @@ SET status = $status,
 WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces
-SELECT id, name, project_root, created_at
+-- {§place-hiding} $hidden: null lists every workspace, 1 only hidden ones, 0 only shown ones.
+SELECT id, name, project_root, created_at, hidden_at
 FROM workspaces
+WHERE $hidden IS NULL OR (hidden_at IS NOT NULL) = $hidden
 ORDER BY created_at DESC;

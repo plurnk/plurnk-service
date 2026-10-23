@@ -71,9 +71,11 @@ export type BuiltinActionsPort = Pick<
     | "rollback"
     | "runLoop"
     | "setWorkerEffort"
+    | "setWorkerHidden"
     | "setWorkerModel"
     | "setWorkerSpawnModel"
     | "setWorkspaceCapabilities"
+    | "setWorkspaceHidden"
     | "shareWorkspace"
 >;
 
@@ -155,7 +157,8 @@ export default class BuiltinActions {
                 case "models.list": {
                     return { ok: true, result: this.#seam().listModels(Validator.assertModelCatalogQuery(p)) };
                 }
-                case "workspace.list": return { ok: true, result: { workspaces: await this.#seam().listWorkspaces() } };
+                // {§agui-place-hiding}
+                case "workspace.list": return { ok: true, result: { workspaces: await this.#seam().listWorkspaces(p.includeHidden === true ? {} : { hidden: false }) } };
                 case "workspace.create": {
                     // An explicit name selects exactly that workspace; otherwise core names it.
                     if (Object.hasOwn(p, "name") && (typeof p.name !== "string" || p.name.length === 0)) {
@@ -195,7 +198,10 @@ export default class BuiltinActions {
             }
             const workspace = this.#requireWorkspace(kind, env);
             switch (kind) {
-                case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(typeof p.id === "number" ? p.id : workspace.workspaceId) } };
+                case "workspace.workers": return { ok: true, result: { workers: await this.#seam().listWorkers(
+                    typeof p.id === "number" ? p.id : workspace.workspaceId,
+                    p.includeHidden === true ? {} : { hidden: false },
+                ) } };
                 case "log.read": {
                     // Default worker: the bound worker; p.workerId pins another.
                     const readWorkerId = typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId);
@@ -272,6 +278,15 @@ export default class BuiltinActions {
                     }
                     return { ok: true, result: await this.#seam().renameWorkspace(workspace.workspaceId, p.name) };
                 }
+                // {§agui-place-hiding} The bound workspace; the bound worker unless `workerId` names another.
+                case "workspace.hidden.set": return { ok: true, result: await this.#seam().setWorkspaceHidden({
+                    workspaceId: workspace.workspaceId, hidden: p.hidden === true,
+                }) };
+                case "worker.hidden.set": return { ok: true, result: await this.#seam().setWorkerHidden({
+                    workspaceId: workspace.workspaceId,
+                    workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
+                    hidden: p.hidden === true,
+                }) };
                 // {§rollback} — the bound worker's log, or a named worker's; the reversals are one client
                 // operation of this thread's owner ({§connection-lifecycle}).
                 case "workspace.rollback": {

@@ -54,6 +54,8 @@ export interface ApplicationWorkerProjection {
     readonly parentWorkerId: number | null;
     readonly kind: ApplicationWorkerKind;
     readonly lifecycle: LoopLifecycle;
+    /** {§place-hiding} When the worker was hidden, or null while it is shown. */
+    readonly hidden_at: string | null;
 }
 
 /** {§application-worker-overview} A worker's latest finished reply ({§worker-finished-reply}). */
@@ -101,10 +103,28 @@ export interface ApplicationWorkerOverview {
     readonly omitted: number;
 }
 
+/** {§place-hiding} A workspace's mark after a hide or a show. */
+export interface ApplicationWorkspaceHiding {
+    readonly id: number;
+    /** When the workspace was hidden, or null while it is shown. */
+    readonly hidden_at: string | null;
+}
+
+/** {§place-hiding} A worker's mark after a hide or a show. */
+export interface ApplicationWorkerHiding {
+    readonly id: number;
+    /** When the worker was hidden, or null while it is shown. */
+    readonly hidden_at: string | null;
+    /** The workers whose mark the call changed, in id order: the group it hid or showed, none when nothing changed. */
+    readonly workerIds: readonly number[];
+}
+
 export interface ApplicationWorkerQuery {
     readonly origin?: ApplicationWorkerOrigin;
     /** Omitted means every lineage position; null means roots only. */
     readonly parentWorkerId?: number | null;
+    /** {§place-hiding} Omitted lists every worker; true only hidden ones, false only shown ones. */
+    readonly hidden?: boolean;
 }
 
 export type ApplicationWorkerIdentity =

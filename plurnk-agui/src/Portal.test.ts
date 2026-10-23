@@ -91,6 +91,7 @@ const worker = (
     parentWorkerId,
     kind: (parentWorkerId === null ? "root" : "work"),
     lifecycle: "idle" as const,
+    hidden_at: null,
 });
 
 const loop = (workerId: number, id: number): ApplicationLoopProjection => ({

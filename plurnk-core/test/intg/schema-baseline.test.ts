@@ -638,10 +638,37 @@ test("{§db-migrations} {§worker-external-reference}: upgrade preserves existin
     const upgraded = await openMigrated(path);
     await upgraded.close();
     const after = new DatabaseSync(path);
+    // The columns the released rows had: a later version may add its own beside them.
+    const retained = (row: object, seeded: object): Record<string, unknown> =>
+        Object.fromEntries(Object.entries(row).filter(([column]) => Object.hasOwn(seeded, column)));
     try {
-        assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, workspace);
-        assert.deepEqual({ ...after.prepare("SELECT * FROM workers WHERE id = 1").get() }, worker);
+        assert.deepEqual(retained({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, workspace), workspace);
+        assert.deepEqual(retained({ ...after.prepare("SELECT * FROM workers WHERE id = 1").get() }, worker), worker);
         assert.deepEqual(after.prepare("SELECT * FROM worker_references").all(), []);
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
+test(`{§db-migrations} {§place-hiding}: a ${V4_0_0.release} database keeps every row, each workspace and worker shown`, async (t) => {
+    const path = await released(t, V4_0_0);
+    const before = new DatabaseSync(path);
+    before.exec(`
+        PRAGMA foreign_keys = ON;
+        INSERT INTO workspaces (id, name) VALUES (1, 'retained');
+        INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+        INSERT INTO workers (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
+        INSERT INTO workers (id, workspace_id, name, parent_worker_id, origin) VALUES (2, 1, 'child', 1, 'model');
+    `);
+    const workspace = { ...before.prepare("SELECT * FROM workspaces WHERE id = 1").get() };
+    const workers = before.prepare("SELECT * FROM workers ORDER BY id").all().map((row) => ({ ...row }));
+    before.close();
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, { ...workspace, hidden_at: null });
+        assert.deepEqual(after.prepare("SELECT * FROM workers ORDER BY id").all().map((row) => ({ ...row })),
+            workers.map((row) => ({ ...row, hidden_at: null, hidden_by: null })));
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
 });

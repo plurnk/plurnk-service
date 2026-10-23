@@ -245,7 +245,7 @@ test("{§agui-status-wait} worker status projects the durable model, packet coun
     // {§agui-status-descendants} — the whole tree beneath the bound Worker, each worker with the gates it waits on.
     const worker = (id: number, parentWorkerId: number | null, lifecycle: "running" | "parked" | "completed") => ({
         id, name: `w${id}`, created_at: "2026-10-19 12:00:00", origin: "model" as const, owner: OWNER, parentWorkerId,
-        kind: parentWorkerId === null ? "root" as const : "work" as const, lifecycle,
+        kind: parentWorkerId === null ? "root" as const : "work" as const, lifecycle, hidden_at: null,
     });
     const workers = [worker(1, null, "running"), worker(4, 1, "completed"), worker(2, 1, "parked"), worker(3, 2, "running"),
         worker(5, null, "running"), worker(6, 5, "running")];

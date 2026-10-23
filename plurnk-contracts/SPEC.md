@@ -1822,13 +1822,13 @@ each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 
-§application-worker-observation **Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none). A client renders kind and lifecycle, it never infers them.
+§application-worker-observation **Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none), and `hidden_at`, when the worker was hidden ({§place-hiding}), null while it is shown. A client renders kind and lifecycle, it never infers them.
 
 | Fact | Rule |
 | --- | --- |
 | `selectWorkerLoop` | chooses running before parked before queued; ties select the oldest unresolved sequence; with no live work, the latest terminal settlement wins (sequence breaks equal timestamps); newer terminal history never hides unfinished work; maintenance-only loops do not change this projection, and their ordinary turns and results remain durable history |
 | `readWorker` | resolves exactly one id or name and returns `null` when absent |
-| `listWorkers` | filters collections by origin or lineage position; an omitted parent filter means every position and an explicit `null` means roots; singular and plural cardinalities are distinct contracts |
+| `listWorkers` | filters collections by origin, lineage position or mark; an omitted parent filter means every position and an explicit `null` means roots; an omitted `hidden` means shown and hidden workers alike; singular and plural cardinalities are distinct contracts |
 
 §loop-lifecycle-vocabulary One projection maps a loop's durable status onto the
 lifecycle words every client renders, shared by the status gauge and the worker
@@ -1845,7 +1845,8 @@ owner, for a loop's opening in a worker's loop list ({§agui-worker-loops}) and 
 ({§worker-finished-reply}).
 
 §application-worker-overview **The worker overview is the places in a scope with what waits there.** A place is a
-model-origin worker; bookkeeping workers are not places. The scope is the daemon or one workspace.
+model-origin worker; bookkeeping workers are not places. The scope is the daemon or one workspace; hidden places are out
+of it ({§place-hiding}).
 
 | Fact | Rule |
 | --- | --- |

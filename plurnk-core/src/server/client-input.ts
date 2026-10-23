@@ -217,6 +217,18 @@ export default class ClientInput {
         return value;
     }
 
+    static assertFlag(context: string, field: string, value: unknown): boolean {
+        if (typeof value !== "boolean") {
+            ClientInput.#invalid(
+                context,
+                "flag-invalid",
+                `${field} is not boolean.`,
+                { field, value, recovery: `Use true or false for ${field}.` },
+            );
+        }
+        return value;
+    }
+
     static assertPrompt(context: string, prompt: unknown, allowEmpty = false): string {
         if (typeof prompt !== "string" || (!allowEmpty && prompt.length === 0)) {
             ClientInput.#invalid(

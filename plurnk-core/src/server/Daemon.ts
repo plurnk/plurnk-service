@@ -26,13 +26,14 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, isSafeInteger, type ApplicationWorkerOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationWorkerOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ApplicationWorkerHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import Envelope, { projectWorkerRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
 import WorkerReferences from "./WorkerReferences.ts";
 import WorkerOverview from "./WorkerOverview.ts";
+import Places, { type PlaceGates } from "./Places.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
 import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
@@ -595,8 +596,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
-    async listWorkspaces(): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
-        return (await Envelope.listWorkspaces(this.#db)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
+    async listWorkspaces(query: { readonly hidden?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
+        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.list", "hidden", query.hidden);
+        return (await Envelope.listWorkspaces(this.#db, hidden)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
     }
 
     // {§workspace-label} — the folder as the daemon spells it for display: the spelling a default name takes.
@@ -607,7 +609,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #labelled(envelope: WorkspaceEnvelope): ClientEnvelope {
         return { ...envelope, projectLabel: this.#projectLabel(envelope.projectRoot) };
     }
-    listWorkers(
+    async listWorkers(
         workspaceId: number,
         query: ApplicationWorkerQuery = {},
     ): Promise<ApplicationWorkerProjection[]> {
@@ -626,14 +628,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             : query.parentWorkerId === null
                 ? null
                 : ClientInput.assertId("workspace.workers", "parentWorkerId", query.parentWorkerId);
+        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.workers", "hidden", query.hidden);
         // {§methods-worker-list} — an omitted parent filter must stay absent:
         // the envelope keys the filter on the property's presence, not its value.
-        return Envelope.listWorkersForWorkspace(
+        return await Envelope.listWorkersForWorkspace(
             this.#db,
             ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
             {
                 ...(origin === undefined ? {} : { origin }),
-                ...(parentWorkerId === undefined ? {} : { parentWorkerId }) },
+                ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
+                ...(hidden === undefined ? {} : { hidden }) },
         );
     }
 
@@ -791,8 +795,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
         const selected = async (): Promise<ClientEnvelope | undefined> => {
             if (derived === undefined) return undefined;
-            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name: derived });
-            return existing === undefined ? undefined : this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
+            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number; hidden_at: string | null }>({ name: derived });
+            if (existing === undefined) return undefined;
+            // {§place-hiding} Creating by the folder selects a hidden workspace and shows it.
+            if (existing.hidden_at !== null) await this.setWorkspaceHidden({ workspaceId: existing.id, hidden: false });
+            return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
         };
         return observed( // {§observability-boundary}
             "workspace.create",
@@ -873,6 +880,35 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§notifications-workspace-renamed}
         this.#broadcast({ workspaceId: checkedWorkspaceId }, "workspace/renamed", renamed);
         return renamed;
+    }
+
+    // {§methods-workspace-hide} {§place-hiding}
+    async setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding> {
+        const workspaceId = ClientInput.assertId("workspace.hidden", "workspaceId", args.workspaceId);
+        const hidden = ClientInput.assertFlag("workspace.hidden", "hidden", args.hidden);
+        const { hiding, changed } = await Places.setWorkspaceHidden(this.#db, (id) => this.#placeGates(id), workspaceId, hidden);
+        // {§notifications-workspace-hidden}
+        if (changed) this.#broadcast({ workspaceId }, "workspace/hidden", hiding);
+        return hiding;
+    }
+
+    // {§methods-worker-hide} {§place-hiding}
+    async setWorkerHidden(args: { readonly workspaceId: number; readonly workerId: number; readonly hidden: boolean }): Promise<ApplicationWorkerHiding> {
+        const workspaceId = ClientInput.assertId("worker.hidden", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.hidden", "workerId", args.workerId);
+        const hidden = ClientInput.assertFlag("worker.hidden", "hidden", args.hidden);
+        const hiding = await Places.setWorkerHidden(this.#db, (id) => this.#placeGates(id), workspaceId, workerId, hidden);
+        // {§notifications-worker-hidden}
+        if (hiding.workerIds.length > 0) this.#broadcast({ workspaceId }, "worker/hidden", hiding);
+        return hiding;
+    }
+
+    // The gates a hide is refused over, as the overview counts them.
+    async #placeGates(workspaceId: number): ReturnType<PlaceGates> {
+        return {
+            proposals: await this.#engine.pendingProposals(workspaceId),
+            questions: await this.#engine.pendingClientInteractions(workspaceId),
+        };
     }
 
     // {§methods-worker-create}: a fresh worker is model-origin, with an empty private log.
