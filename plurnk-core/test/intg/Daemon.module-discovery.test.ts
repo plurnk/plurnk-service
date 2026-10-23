@@ -136,3 +136,42 @@ export default () => ({
     }
     assert.equal(await readFile(trace, "utf8"), "stopped\nclosed\n");
 });
+
+test("{§configuration-error-identity} {§module-discovery} a plugin root's own copy of plurnk-meta reports its configuration error, and the daemon boots", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-copy-boot-"));
+    const paths = new HostPaths({ home: root, env: {} });
+    const plugin = join(paths.globalPluginsDir, "copied");
+    const priorRoots = process.env.PLURNK_SERVICE_ROOTS;
+    process.env.PLURNK_SERVICE_ROOTS = "global";
+    t.after(async () => {
+        if (priorRoots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = priorRoots;
+        await rm(root, { recursive: true, force: true });
+    });
+    // A published copy of the package, as the plugin root carries it: the same error, another class.
+    const meta = join(plugin, "node_modules/@plurnk/plurnk-meta");
+    await mkdir(meta, { recursive: true });
+    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
+    await writeFile(join(meta, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-meta", version: "2.1.1", type: "module", exports: { ".": "./index.js" } }));
+    await writeFile(join(meta, "index.js"), `export class ConfigurationError extends Error {
+    constructor(key, message, options) { super(message, options); this.name = "ConfigurationError"; this.key = key; }
+}
+`);
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "copied",
+        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.js" } },
+    }));
+    await writeFile(join(plugin, "ai.plurnk/plugin.js"), `import { ConfigurationError } from "@plurnk/plurnk-meta";
+export default () => { throw new ConfigurationError("PLURNK_COPIED_FIXTURE", "PLURNK_COPIED_FIXTURE is not a positive integer."); };
+`);
+    const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
+    try {
+        await daemon.start();
+        assert.ok(daemon.configurationNotices().some(({ key }) => key === "PLURNK_COPIED_FIXTURE"),
+            "the module's own configuration error is its diagnostic, and the daemon boots");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});

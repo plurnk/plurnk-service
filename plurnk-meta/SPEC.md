@@ -58,6 +58,7 @@ or invokes an installer merely to expose the service's own reference material.
 | --- | --- |
 | {§extension-kind} | One package, one kind |
 | {§env-knob} | One environment reader |
+| {§configuration-error-identity} | A configuration error is recognized whichever copy of this package made it. |
 | {§resource-environment} | Named resource environment projection |
 | {§error-detail-bound} | One diagnostic-preview bound |
 | {§extension-manifest-read} | One extension declaration |
@@ -126,6 +127,10 @@ composition ({§module-lifecycle}).
 | --- | --- |
 | An unset key | a broken floor, and remains an internal error |
 | An invalid operator value | raises a `ConfigurationError` naming the key; the owning capability contains that diagnostic without inventing a value ({§configuration-repair-path}); the same class is available from `@plurnk/plurnk-meta/configuration-error` without loading discovery or observability machinery |
+
+§configuration-error-identity **A configuration error is recognized whichever copy of this package made it.** A module
+loaded from its own plugin root carries its own copy, so `instanceof ConfigurationError` recognizes any `Error` named
+`ConfigurationError` with a string `key`, the shape every copy writes; an error without that shape is internal.
 
 ### §resource-environment Named resource environment projection
 
