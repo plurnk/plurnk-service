@@ -158,7 +158,7 @@ export default class DrainSupervisor {
     readonly #admissionLocks = new Map<number, Promise<unknown>>();
     readonly #completionWakeGates = new Map<number, CompletionWakeGate>();
     // {§notifications-stream-concluded} A closed subscription's `stream/concluded`, until it is published.
-    readonly #streamAnnouncements = new Map<number, Promise<void>>();
+    readonly #streamAnnouncements = new Map<number, { workerId: number; delivered: Promise<void> }>();
     #acceptingWork = false;
 
     constructor({
@@ -794,10 +794,11 @@ export default class DrainSupervisor {
     notifyWakeWorker(payload: WakeWorkerPayload): void {
         const { subscriptionId } = payload;
         const announced = Promise.withResolvers<void>();
-        this.#streamAnnouncements.set(subscriptionId, announced.promise);
+        const announcement = { workerId: payload.workerId, delivered: announced.promise };
+        this.#streamAnnouncements.set(subscriptionId, announcement);
         const handled = this.#handleWakeWorker(payload, announced.resolve).finally(() => {
             announced.resolve();
-            if (this.#streamAnnouncements.get(subscriptionId) === announced.promise) this.#streamAnnouncements.delete(subscriptionId);
+            if (this.#streamAnnouncements.get(subscriptionId) === announcement) this.#streamAnnouncements.delete(subscriptionId);
         });
         void this.#trackSettlement(handled, "wake-on-completion");
     }
@@ -806,7 +807,7 @@ export default class DrainSupervisor {
     // then its `stream/concluded` published.
     async #streamConcluded(subscriptionId: number): Promise<void> {
         await this.#subscriptionConcluded(subscriptionId);
-        await this.#streamAnnouncements.get(subscriptionId);
+        await this.#streamAnnouncements.get(subscriptionId)?.delivered;
     }
 
     // {§notifications-loop-terminated} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
@@ -1078,6 +1079,10 @@ export default class DrainSupervisor {
     // {§notifications-loop-terminated} — the terminal carries the stamp a snapshot reads.
     async #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): Promise<void> {
         const { loopSeq, terminatedAt } = await this.#lifecycle.observation(event.loopId);
+        // A durable close releases the live handle before its announcement is delivered.
+        await Promise.all([...this.#streamAnnouncements.values()]
+            .filter(({ workerId }) => workerId === event.workerId)
+            .map(({ delivered }) => delivered));
         this.#discardLoopNotices(event.loopId);
         this.#emit(workspaceId, "loop/terminated", { ...event, loopSeq, terminatedAt });
         void this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");

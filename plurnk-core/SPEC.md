@@ -4270,6 +4270,11 @@ idempotent, including its completion wake.
 | Persistence commits | Release ownership before observational delivery. Attempt channel notifications and the completion wake even if another observer throws. |
 | Observer fails after commit | Surface the cause without reverting terminal state, retaining a false live owner, or repeating delivery on another close. |
 
+The owning worker's pending stream announcements precede its loop's terminal
+notification ({§notifications-loop-terminated}), even after durable closure has
+released the live handle. This orders notification delivery, not subsequent wake
+execution, and never waits on another worker's announcements.
+
 Cancellation remains coalesced while work is live. Failed cancellation or
 failed settlement permits a subsequent cancellation attempt; it never converts
 the producer's already obtained outcome into a fictitious cancellation result.

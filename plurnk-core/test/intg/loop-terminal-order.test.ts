@@ -75,6 +75,27 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                 const workerId = await namedModelWorker(daemon, workspaceId, "main");
                 await ownWorker(db, workspaceId, workerId);
                 const order: string[] = [];
+                const delayedAnnouncement = gate === "interaction" && ending === "timeout";
+                const announcing = Promise.withResolvers<void>();
+                const deliver = Promise.withResolvers<void>();
+                const terminalReady = Promise.withResolvers<void>();
+                if (delayedAnnouncement) {
+                    const findSlept = db.drain_find_slept_loop.get.bind(db.drain_find_slept_loop);
+                    t.mock.method(db.drain_find_slept_loop, "get", async (...args: Parameters<typeof findSlept>) => {
+                        announcing.resolve();
+                        await deliver.promise;
+                        return findSlept(...args);
+                    });
+                    const observation = LoopLifecycle.prototype.observation;
+                    t.mock.method(LoopLifecycle.prototype, "observation", async function (this: LoopLifecycle, id: number) {
+                        const result = await observation.call(this, id);
+                        if (result.terminatedAt !== null) {
+                            await announcing.promise;
+                            terminalReady.resolve();
+                        }
+                        return result;
+                    });
+                }
                 const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
                     if (method === (gate === "proposal" ? "loop/proposal" : "loop/interaction")) order.push("held");
                     const entry = (params as { entry?: { op?: string; status_rx?: number } }).entry;
@@ -101,6 +122,12 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                     release.resolve();
                     await ended;
                     const terminated = `terminated ${loopId}`;
+                    if (delayedAnnouncement) {
+                        await terminalReady.promise;
+                        await new Promise<void>((resolve) => setImmediate(resolve));
+                        assert.equal(order.includes(terminated), false, "a committed stream close still owes its announcement before the terminal");
+                        deliver.resolve();
+                    }
                     await waitForDb(async () => order, (events) => events.includes(terminated));
                     // Stopped, the daemon has settled every producer: a second terminal would be here by now.
                     await daemon.stop();
@@ -108,6 +135,7 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                     assert.ok(order.indexOf("held") < settled && settled < order.indexOf(terminated), `the gate settles before its loop's terminal: ${order.join(" > ")}`);
                     assert.equal(order.filter((event) => event === terminated).length, 1, `the loop announces one terminal: ${order.join(" > ")}`);
                 } finally {
+                    deliver.resolve();
                     off();
                 }
             });

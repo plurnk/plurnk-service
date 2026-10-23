@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Db } from "../core/Db.ts";
 import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
-import { OperationFailureError } from "../core/results.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 import DrainSupervisor from "./DrainSupervisor.ts";
 
 const payload: WakeWorkerPayload = {
@@ -139,6 +139,44 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
     assert.match(String(diagnostics[0]?.[0]), /wake-on-completion/);
     await drains.idle();
 });
+
+for (const sameWorker of [true, false]) {
+    test(`{§notifications-loop-terminated}: a terminal ${sameWorker ? "waits for its worker's" : "does not wait for another worker's"} pending stream announcement`, async () => {
+        const prompt = Promise.withResolvers<string>();
+        const events: string[] = [];
+        const drains = supervisor(() => prompt.promise, (_workspaceId, method) => events.push(method), {
+            db: {
+                drain_find_slept_loop: { get: async () => undefined },
+                drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
+                find_open_subscriptions_for_worker: { all: async () => [] },
+                worker_parent_id: { get: async () => undefined },
+            } as unknown as Db,
+            lifecycle: {
+                cancelTree: async () => ({ workerIds: [2], loops: [{
+                    loopId: 7, workerId: 2,
+                    result: Results.failure("lifecycle:cancel", "scope-cancelled", 499, "The worker scope was cancelled."),
+                }] }),
+                turnIds: async () => [],
+                observation: async () => ({ loopSeq: 1, terminatedAt: 1 }),
+            } as never,
+        });
+        drains.start();
+        drains.notifyWakeWorker({ ...payload, workerId: sameWorker ? 2 : 5 });
+        const cancelled = drains.cancelWorkerTree(2, "operator cancelled");
+        try {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.deepEqual(events, sameWorker ? [] : ["loop/terminated"],
+                "durable closure does not prove delivery; another worker's delivery does not hold this terminal");
+        } finally {
+            prompt.resolve("system");
+            await cancelled;
+            await drains.idle();
+        }
+        assert.deepEqual(events, sameWorker
+            ? ["stream/concluded", "loop/terminated"]
+            : ["loop/terminated", "stream/concluded"]);
+    });
+}
 
 const cancellationCases = [
     { name: "immediate", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancel(2, "operator cancelled") },
