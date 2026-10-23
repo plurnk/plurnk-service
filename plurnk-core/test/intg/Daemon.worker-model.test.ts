@@ -429,12 +429,16 @@ test("{§worker-effort}: unsupported policy fails precisely and leaves durable s
             effort: "medium",
         }).then(
             () => null,
-            (error: unknown) => error as { result?: { problem?: { type?: string; status?: number }; supportedEfforts?: unknown } },
+            (error: unknown) => error as { result?: { problem?: { type?: string; status?: number; recovery?: string }; supportedEfforts?: unknown } },
         );
         assert.equal(refused?.result?.problem?.status, 409);
         assert.equal(
             refused?.result?.problem?.type,
             "https://problems.plurnk.xyz/daemon/provider/effort-unsupported",
+        );
+        assert.equal(
+            refused?.result?.problem?.recovery,
+            "Select one of the provider's supported efforts: off, adaptive, high.",
         );
         assert.equal((await daemon.readWorkerEffort({
             workspaceId: workspace.workspaceId,
@@ -997,7 +1001,9 @@ test("{§worker-effort}: a model and an effort it supports are chosen together; 
         assert.deepEqual([route.effort, route.effortSource], ["medium", "explicit"]);
         assert.deepEqual([(await daemon.readWorkerEffort(args)).effort, (await daemon.readWorkerEffort(args)).source], ["medium", "explicit"]);
         await assert.rejects(daemon.setWorkerModel({ ...args, selector: full.alias, effort: "turbo" }),
-            (error: { result?: { problem?: { type?: string } } }) => error.result?.problem?.type === "https://problems.plurnk.xyz/daemon/input/effort-invalid");
+            (error: { result?: { problem?: { type?: string; recovery?: string } } }) =>
+                error.result?.problem?.type === "https://problems.plurnk.xyz/daemon/input/effort-invalid"
+                && error.result?.problem?.recovery === "Select a valid effort: off, adaptive, low, medium, high, xhigh, max.");
     } finally {
         await daemon.stop();
         await db.close();

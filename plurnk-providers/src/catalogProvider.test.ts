@@ -1041,8 +1041,12 @@ test("{§provider-wire-declaration} (#458) declared efforts union into the suppo
 for (const name of ["deepinfra", "togetherai"]) {
     test(`{§provider-wire-declaration} ${name}: the catalog's strongest effort, and off, reach the wire as reasoning_effort`, async (t) => {
         const routes = Object.entries(catalogSnapshot()[name] ?? {})
-            .map(([model]) => ({ model, efforts: catalogEffortsOf(name, model) }))
-            .filter(({ efforts }) => efforts.length > 0);
+            .map(([model, info]) => ({
+                model,
+                efforts: catalogEffortsOf(name, model),
+                off: info.reasoningOptions?.some((option) => option.type === "toggle" || option.type === "effort" && option.values.includes("none")) === true,
+            }))
+            .filter(({ efforts, off }) => efforts.length > 0 && off);
         assert.ok(routes.length > 0, `the ${name} catalog documents no reasoning effort to witness`);
         const { model, efforts } = routes.find((route) => route.efforts.includes("max")) ?? routes[0];
         const effort = EFFORT_ORDER.findLast((value) => efforts.includes(value))!;

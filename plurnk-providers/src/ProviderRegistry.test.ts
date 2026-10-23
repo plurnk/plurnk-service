@@ -291,7 +291,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     const request = JSON.parse(requestBody(calls[0].init)) as Record<string, unknown>;
     assert.equal(request.model, "deepseek-v4-flash");
     assert.deepEqual(request.thinking, { type: "disabled" });
-    assert.equal(provider.contextWindow, 1_000_000);
+    assert.equal(provider.contextWindow, resolveModel("deepseek", "deepseek-v4-flash")!.info.contextWindow);
     assert.equal(response.assistant.content, "ok");
     assert.deepEqual(response.accounting[0]?.usage, {
         inputTokens: 10,

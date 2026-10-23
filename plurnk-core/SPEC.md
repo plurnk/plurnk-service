@@ -7426,6 +7426,9 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
 | `not-configured` | 501 | No provider is configured for this worker. Recovery: Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as the service default; that provider's API key must be in the service's environment. |
+| `provider-unavailable` | 503 | *route* is unavailable, followed by the provider's instantiation failure when present. |
+| `effort-unsupported` | 409 | *route* does not support effort '*effort*'. Recovery: Select one of the provider's supported efforts: *supported*. ({§worker-effort}) |
+| `effort-invalid` | 400 | The effort is invalid. Recovery: Select a valid effort: off, adaptive, low, medium, high, xhigh, max. ({§worker-effort}) |
 | `context-exceeds-model-budget` | 413 | Current context (*tokens* tokens) does not fit in *route* (budget: *budget* tokens). Recovery: Curate context below *budget* tokens or select a larger model. ({§worker-model-selection}) |
 | `model-worker-required` | 404 | No model worker exists for prompt injection (or to fork). |
 | `name-conflict` | 409 | The worker name is taken. Recovery: Choose another worker name. |

@@ -5,7 +5,7 @@ import type { Db } from "../core/Db.ts";
 import type { CurationOverflow } from "../core/PacketBuilder.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
-import { Validator, type Effort, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute } from "@plurnk/plurnk-contracts";
+import { EFFORTS, Validator, type Effort, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, UnsupportedEffortError } from "@plurnk/plurnk-providers";
 import ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
@@ -175,7 +175,7 @@ export default class WorkerModels {
             const explicit = chosen !== undefined || worker.effort_source === "explicit" && worker.effort !== null;
             const effort = chosen ?? (explicit
                 ? worker.effort!
-                : ProviderInstantiate.configuredEffort(spec));
+                : this.#configuredEffort(spec));
             const effortSource: EffortSource = explicit ? "explicit" : "default";
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
@@ -195,7 +195,7 @@ export default class WorkerModels {
         }
         const spec = this.#configured(() => resolveActiveRoute());
         if (spec !== null) {
-            const effort = ProviderInstantiate.configuredEffort(spec);
+            const effort = this.#configuredEffort(spec);
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
@@ -276,16 +276,17 @@ export default class WorkerModels {
                         effort: cause.policy,
                         supportedEfforts: cause.supported,
                         stage: "provider-selection",
-                        recovery: "Select one of the provider's supported efforts.",
+                        recovery: `Select one of the provider's supported efforts: ${cause.supported.join(", ")}.`,
                         retryable: false },
                 );
             }
             console.error(`${modelRouteLabel(spec)} could not be instantiated:`, cause);
+            const reason = cause instanceof Error && cause.message.length > 0 ? ` ${cause.message}` : "";
             throw daemonFailure(
                 "daemon:provider",
                 "provider-unavailable",
                 503,
-                `${modelRouteLabel(spec)} is unavailable.`,
+                `${modelRouteLabel(spec)} is unavailable.${reason}`,
                 {
                     ...(spec.alias === undefined ? {} : { alias: spec.alias }),
                     provider: spec.provider,
@@ -307,6 +308,14 @@ export default class WorkerModels {
         catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             throw new OperationFailureError(Results.configurationFailure(cause), { cause });
+        }
+    }
+
+    #configuredEffort(spec: ProviderSpec): Effort {
+        try { return ProviderInstantiate.configuredEffort(spec); }
+        catch (cause) {
+            const invalid = new ConfigurationError("PLURNK_PROVIDERS_EFFORT", cause instanceof Error ? cause.message : String(cause), { cause });
+            throw new OperationFailureError(Results.configurationFailure(invalid), { cause });
         }
     }
 
@@ -518,7 +527,10 @@ export default class WorkerModels {
                 chosen = Validator.assertEffort(args.effort);
             } catch (cause) {
                 throw daemonFailure("daemon:input", "effort-invalid", 400,
-                    cause instanceof Error ? cause.message : "The effort is invalid.", { field: "effort", retryable: false });
+                    cause instanceof Error ? cause.message : "The effort is invalid.", {
+                        field: "effort",
+                        recovery: `Select a valid effort: ${EFFORTS.join(", ")}.`,
+                        retryable: false });
             }
         }
         const policy = await this.resolveWorkerModel(workerId, selector, chosen);
@@ -571,7 +583,11 @@ export default class WorkerModels {
                 "effort-invalid",
                 400,
                 cause instanceof Error ? cause.message : "The effort is invalid.",
-                { field: "effort", retryable: false },
+                {
+                    field: "effort",
+                    recovery: `Select a valid effort: ${EFFORTS.join(", ")}.`,
+                    retryable: false,
+                },
             );
         }
         await this.assertModelWorker(workspaceId, workerId);
@@ -628,12 +644,7 @@ export default class WorkerModels {
             aliases: aliases.map((a) => {
                 const isActive = active === a.alias;
                 // {§agui-provider-routes} — the route a worker seeded from this alias gets: what it would read back.
-                let effort;
-                try { effort = ProviderInstantiate.configuredEffort(a); }
-                catch (cause) {
-                    const invalid = new ConfigurationError("PLURNK_PROVIDERS_EFFORT", cause instanceof Error ? cause.message : String(cause), { cause });
-                    throw new OperationFailureError(Results.configurationFailure(invalid), { cause });
-                }
+                const effort = this.#configuredEffort(a);
                 return {
                     ...projectModelRoute(a, effort, "default"), alias: a.alias, active: isActive,
                     inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null };
