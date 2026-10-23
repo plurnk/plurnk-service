@@ -32,8 +32,8 @@ are refused by name.
 
 The working directory is the workspace project root, or in a workspace without
 one the directory the shell would run in anyway. `[{"cwd": "<directory>"}]` on
-the fence line overrides it for its body; the receipt always names the
-directory the command ran in.
+the fence line overrides it for its body; a receipt names the directory,
+relative to the project root, only when the command ran elsewhere.
 
 ## Channels
 

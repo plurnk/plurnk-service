@@ -94,7 +94,7 @@ Describe the child's complete task in the body.
 
 ## Workspace Navigation
 
-```FIND (src/**/*.ts) <1,-1> /TODO/ <!-- paths with matches -->
+```FIND (src/**/*.ts) <1,-1> /TODO/ <!-- paths with matches; the range pages results, not lines -->
 ```
 
 ```READ (src/**/*.ts) <1,-1> /TODO/ <!-- the matching lines in every file -->
