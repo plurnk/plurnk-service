@@ -4,8 +4,8 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run release:version
-Applies the pending changesets and synchronizes the lockfile ({§package-release-contract}); takes no version argument.
-Reads: .changeset/*.md.
+Verifies dependency freshness ({§release-candidate-graph}), applies the pending changesets and synchronizes the lockfile ({§package-release-contract}); takes no version argument.
+Reads: deps-waivers.json, .changeset/*.md.
 Writes: package.json versions and dependency ranges, CHANGELOG.md sections, package-lock.json.
 `);
 
@@ -17,5 +17,6 @@ const run = (command, args) => new Promise((accept, reject) => {
 });
 
 if (process.argv.length !== 2) throw new Error("release:version takes no version argument; record package changes with npm run changeset first");
+await run(process.execPath, [fileURLToPath(new URL("./deps-preflight.mjs", import.meta.url))]);
 await run(process.execPath, [fileURLToPath(import.meta.resolve("@changesets/cli/bin.js")), "version"]);
 await run("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]);

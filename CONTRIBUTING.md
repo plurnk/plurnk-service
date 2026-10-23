@@ -191,11 +191,12 @@ service's outward effect explicitly when it also needs a release. Compatible,
 unchanged packages do not need new versions. Standalone repositories use their own
 version preparation and dependency ranges.
 
-Dependency upgrades are separate maintenance. Inspect available updates with
-`npm outdated --include-workspace-root --workspaces`; newer versions alone do
-not block publication ({§release-candidate-graph}).
+Every external dependency across the root and workspaces must resolve at its
+registry `latest` unless waived in `deps-waivers.json` ({§release-candidate-graph});
+`npm run deps:check` runs automatically at `release:version` and `release:check`.
 
 ```sh
+npm run deps:check
 npm run changeset
 npm run release:version
 # Review the manifests, per-package changelogs and lockfile; land through the gate.

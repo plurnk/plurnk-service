@@ -1,7 +1,7 @@
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { chatMessageText } from "./types.ts";
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
-import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
+import { APICallError, generateText, streamText, wrapLanguageModel, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, UsageDetailError } from "./usage.ts";
@@ -344,9 +344,38 @@ const executeModelOnce = async (
         maxOutputTokens,
         reasoning,
     } = request;
-    const model = typeof languageModel === "function"
+    const resolvedModel = typeof languageModel === "function"
         ? languageModel(request.fetch ?? ((input, init) => globalThis.fetch(input, init)))
         : languageModel;
+    // {§provider-native-tool-calls} — requests pass toolChoice: "none" ({§provider-native-tools-disabled}),
+    // and raw wire tool_calls plus finishReason are preserved on the response without AI SDK's
+    // ToolChoiceViolationError aborting the completed exchange.
+    const model: LanguageModel = typeof resolvedModel === "string"
+        ? resolvedModel
+        : wrapLanguageModel({
+            model: resolvedModel,
+            middleware: {
+                specificationVersion: "v4",
+                wrapGenerate: async ({ doGenerate }) => {
+                    const generated = await doGenerate();
+                    return {
+                        ...generated,
+                        content: generated.content.filter((part) => part.type !== "tool-call"),
+                    };
+                },
+                wrapStream: async ({ doStream }) => {
+                    const streamed = await doStream();
+                    return {
+                        ...streamed,
+                        stream: streamed.stream.pipeThrough(new TransformStream({
+                            transform(chunk, controller) {
+                                if (chunk.type !== "tool-call") controller.enqueue(chunk);
+                            },
+                        })),
+                    };
+                },
+            },
+        });
     const settings = {
         ...(temperature === undefined ? {} : { temperature }),
         ...(topP === undefined ? {} : { topP }),

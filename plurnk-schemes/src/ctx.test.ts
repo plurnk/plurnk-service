@@ -40,12 +40,21 @@ const makeCtx = () => {
         summary?: string;
         channelResults?: Parameters<StreamSubscription["close"]>[2];
     } | null = null;
-    const failure = <T extends Readonly<Record<string, unknown>> = Record<never, never>>(
+    function failure(code: string, status: number, detail: string): ReturnType<typeof Results.failure>;
+    function failure<T extends Readonly<Record<string, unknown>>>(
         code: string,
         status: number,
         detail: string,
-        fields: T = {} as T,
-    ) => Results.failure("scheme:test", code, status, detail, fields) as ReturnType<typeof Results.failure> & T;
+        fields: T,
+    ): ReturnType<typeof Results.failure> & T;
+    function failure(
+        code: string,
+        status: number,
+        detail: string,
+        fields: Readonly<Record<string, unknown>> = {},
+    ) {
+        return Results.failure("scheme:test", code, status, detail, fields);
+    }
 
     const entries: EntryCaps = {
         operations: {

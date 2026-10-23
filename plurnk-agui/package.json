@@ -50,7 +50,7 @@
     "devDependencies": {
         "@ag-ui/client": "^1.0.3",
         "@plurnk/plurnk-providers": "^5.0.0",
-        "json-p3": "2.3.1"
+        "json-p3": "^3.0.1"
     },
     "keywords": [
         "plurnk",

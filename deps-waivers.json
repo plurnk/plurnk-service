@@ -1,0 +1,10 @@
+{
+    "waivers": {
+        "@modelcontextprotocol/conformance": {
+            "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.12 is the exact current 2026-07-28 conformance referee",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
+            "lane": "mcp"
+        }
+    },
+    "ownerVeto": []
+}

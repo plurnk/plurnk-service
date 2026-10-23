@@ -79,9 +79,10 @@
         "test:client-conformance": "node scripts/test-client-conformance.mjs",
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
+        "deps:check": "node scripts/deps-preflight.mjs",
         "changeset": "changeset",
         "release:version": "node scripts/release-version.mjs",
-        "release:gate": "node scripts/release-gates.mjs",
+        "release:gate": "node scripts/deps-preflight.mjs && node scripts/release-gates.mjs",
         "release:check": "node scripts/release-check.mjs",
         "release:order": "node scripts/release-order.mjs",
         "release:publish": "node scripts/release-publish.mjs",
@@ -96,21 +97,21 @@
         "@plurnk/plurnk-spec-check": "^0.1.0",
         "@changesets/cli": "3.0.3",
         "@possumtech/sqlrite": "^6.6.1",
-        "@types/node": "^26.1.1",
-        "dependency-cruiser": "18.4.0",
-        "jscpd": "5.3.2",
-        "knip": "6.38.0",
-        "markdownlint-cli2": "^0.23.2",
-        "oxlint": "^1.78.0",
-        "oxlint-tsgolint": "^7.0.2001",
-        "publint": "^0.3.23",
-        "semver": "7.8.1",
+        "@types/node": "^26.6.5",
+        "dependency-cruiser": "18.7.0",
+        "jscpd": "5.4.2",
+        "knip": "6.42.1",
+        "markdownlint-cli2": "^0.24.0",
+        "oxlint": "^1.89.0",
+        "oxlint-tsgolint": "^7.0.2005",
+        "publint": "^0.3.25",
+        "semver": "7.8.5",
         "typescript": "^7.0.2"
     },
     "allowScripts": {
         "esbuild@0.28.2": true
     },
     "overrides": {
-        "smol-toml": "^1.7.1"
+        "smol-toml": "^1.9.1"
     }
 }

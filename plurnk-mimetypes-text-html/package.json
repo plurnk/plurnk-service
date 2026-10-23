@@ -65,7 +65,7 @@
         "@mozilla/readability": "^0.6.0",
         "@plurnk/plurnk-meta": "^2.0.0",
         "@xmldom/xmldom": "^0.9.10",
-        "linkedom": "^0.18.12",
+        "linkedom": "^0.18.14",
         "parse5": "^8.0.1",
         "xpath": "^0.0.35"
     },

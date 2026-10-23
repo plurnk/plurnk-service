@@ -351,13 +351,13 @@ const openTransport = (
         ],
         cwd: definition.cwd,
         stderr: "pipe",
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK types the env narrower than spawn's contract; an undefined value omits a key
         env: {
             // The SDK merges its defaults even with an explicit env. Node spawn
             // accepts undefined to omit a key; the SDK's narrower type does not.
             ...Object.fromEntries(Object.keys(getDefaultEnvironment()).map((name) => [name, undefined])),
             ...environment,
             ...definition.env,
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK types the env narrower than spawn's contract; an undefined value omits a key
         } as Record<string, string>,
     });
 };
@@ -391,6 +391,13 @@ class CatalogClient extends Client {
     // the SDK's cursorless first page.
     readonly #returned = new Map<string, Set<string>>();
     readonly #unsupported = new Set<string>();
+
+    constructor(...args: ConstructorParameters<typeof Client>) {
+        super(...args);
+        // {§mcp-header-declarations} — retain listed definitions so callTool scans them on both legs
+        // and refuses invalid declarations with HeaderDeclarationError rather than proceeding unlisted.
+        Object.defineProperty(this, "_excludeInvalidXMcpHeaderTools", { value: () => {} });
+    }
 
     get unsupportedLists(): readonly string[] {
         return [...this.#unsupported].toSorted();

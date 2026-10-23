@@ -127,10 +127,10 @@ export function queryJsonpathObject(
     // {§mimetype-channel-architecture} A handler's deep JSON is JSON-shaped by contract; this is the one place its tree
     // takes json-p3's type, which names the same values structurally.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the stated boundary above
-    const results = query.query(obj as JSONValue).nodes.map((n) => ({
+    const results = query.find(obj as JSONValue).map((n) => ({
         value: n.value,
-        path: n.getPath({ form: "canonical" }),
-        pointer: String(n.toPointer()),
+        path: n.normalizedPath(),
+        pointer: String(n.pointer),
     }));
 
     const coordinates = readableText === undefined

@@ -110,7 +110,7 @@
         "@plurnk/plurnk-meta": "^2.1.0",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",
-        "json-p3": "2.3.1",
+        "json-p3": "^3.0.1",
         "picomatch": "^4.0.7",
         "smol-toml": "^1.9.1",
         "web-tree-sitter": "^0.27.1",
