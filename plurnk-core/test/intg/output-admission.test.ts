@@ -195,13 +195,13 @@ test("{§context-wall}: an impossible window terminates the loop without provide
         const workspaceId = await insertWorkspace(db, `output-floor-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
-        // An eleven-token window with a two-token output budget: no packet fits it even as receipts.
+        // An eleven-token window with a two-token output budget: no packet fits it.
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const provider = new Mock({ contextWindow: 11, responses: [response(continuing)] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, messages, provider, maxTurns: 3 });
         assert.equal(result.result.status, 413);
-        assert.equal(result.result.problem?.detail, "Context window overflow: the packet cannot fit the model's window even as receipts."); // {§pinned-wording-core}
+        assert.equal(result.result.problem?.detail, "Context window overflow: the packet exceeds the model's window."); // {§pinned-wording-core}
         assert.equal(result.reason, "token_budget");
         assert.equal(provider.remaining, 1);
         const turn = await db.test_get_turn.get<{ packet: string | null }>({ id: result.turnIds.at(-1)! });
@@ -253,96 +253,6 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         assert.ok(firstRows.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
     } finally { await db.close(); }
 });
-
-// The provider budget variables a tight window sets stay set through its turns; restore them after.
-const restoringBudgets = async (run: (db: Awaited<ReturnType<typeof openMigrated>>) => Promise<void>): Promise<void> => {
-    const db = await openMigrated();
-    const output = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
-    const reasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-    try {
-        await run(db);
-    } finally {
-        await db.close();
-        if (output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET; else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = output;
-        if (reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET; else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
-    }
-};
-
-// {§context-own-rows-fit}: an older large NOTE (alpha) and a newer one (beta) settle on a wide window; the fourth
-// request runs on a window whose wall sits inside beta once the optional replay is omitted.
-const overTheWall = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
-    const workspaceId = await insertWorkspace(db, `own-rows-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    const alpha = "alpha ".repeat(1_000);
-    const beta = "beta ".repeat(1_200);
-    const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${alpha}\n\`\`\`\``), response(`\`\`\`\`NOTE\n${beta}\n\`\`\`\``), response(continuing)]);
-    await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
-    const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
-    const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
-    const settledTurn = (await db.test_get_turn.get<{ packet: string; sequence: number }>({ id: third.turnId }))!;
-    const settled = JSON.parse(settledTurn.packet) as { weight: number };
-    assert.equal(logEntries(settled).find((row) => row.logPath.endsWith("/NOTE") && /beta beta/u.test(String(row.body))), undefined,
-        "{§emission-history}: replayed, the newest large NOTE's text is in the replay and its paired receipt has no duplicate body");
-    // {§emission-history}: pin the wall below this request even without its optional replay, so fitting
-    // still requires a result body. Without the replay the NOTE stands as a bodied row again.
-    const baseline = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
-        initialMessages: messages, workspaceId, workerId, loopId, provider: wide,
-        currentTurnSeq: settledTurn.sequence + 1, gitStatus: null, omitEmissionHistory: true,
-    });
-    const betaRow = logEntries(baseline).find((row) => row.logPath.endsWith("/NOTE") && /beta beta/u.test(String(row.body))) as { logPath: string; tokens: number; body?: string };
-    assert.ok(betaRow, "not replayed, the newest large NOTE is a bodied row");
-    const contextWindow = Math.ceil((baseline.weight - 600) / 0.9);
-    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.floor(contextWindow / 2));
-    delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
-    const tight = new Mock({ contextWindow, responses: [response(continuing), response(`\`\`\`\`KILL (${betaRow.logPath})\`\`\`\`\n${continuing}`), response(continuing)] });
-    const wall = tight.inputWall!;
-    assert.ok(wall < baseline.weight && wall > baseline.weight - betaRow.tokens, `the wall sits inside the beta NOTE after optional replay is omitted: ${wall} of ${baseline.weight}`);
-    const fourth = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
-    return { engine, workspaceId, workerId, loopId, beta, second, betaRow, tight, wall, fourth };
-};
-
-test("{§context-own-rows-fit}: over the wall, the newest bodied rows go bodiless as receipts until the packet fits; older rows and every stored body stand, and each packet decides afresh", () => restoringBudgets(async (db) => {
-    const { engine, workspaceId, workerId, loopId, beta, second, betaRow, tight, wall, fourth } = await overTheWall(db);
-    assert.equal(fourth.status, 102, "the packet was submitted, not ended");
-    assert.equal(tight.remaining, 2);
-    const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: fourth.turnId }))!.packet) as { weight: number };
-    assert.ok(packet.weight <= wall, `the packet fits the wall: ${packet.weight} of ${wall}`);
-    assert.equal(packetSection(packet, "emission-history"), "", "optional replay is omitted before a result body");
-    const entries = logEntries(packet);
-    const taken = entries.find((row) => row.logPath === betaRow.logPath)!;
-    assert.equal(taken.body, undefined, "the newest bodied row is a receipt");
-    assert.deepEqual(taken.size, { lines: 1, tokens: betaRow.tokens }, "its size names the lines and tokens of the body it stood for");
-    assert.ok(taken.tokens < betaRow.tokens, "the receipt charges less than the body did");
-    assert.ok(entries.some((row) => /alpha alpha/u.test(String(row.body))), "the older NOTE keeps its body: newest first, and only as many as it takes");
-    assert.equal(entries.filter((row) => row.size !== undefined).length, 1, "one row was taken");
-    const gauge = JSON.parse(packetSection(packet, "budget")) as { tokens: number; budget: number };
-    assert.ok(gauge.tokens > gauge.budget, "the packet that fits the wall is still over budget");
-    assert.equal(entries.filter((row) => row.logPath.endsWith("/error")).length, 1, "{§context-over-budget-row}: the row rides the packet that fits");
-    const stored = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: second.turnId });
-    assert.ok(stored.some(({ op, tx, folded }) => op === "NOTE" && JSON.parse(tx).body === beta && folded === "[]"), "the body stays stored, whole and unfolded");
-    await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
-    const sixth = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
-    const after = logEntries(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet));
-    assert.equal(after.find((row) => row.logPath === betaRow.logPath), undefined, "{§context-verbs}: the KILL retired the row");
-    assert.equal(after.filter((row) => row.size !== undefined).length, 0, "with the room restored, nothing is taken: each packet decides afresh");
-    const afterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: sixth.turnId }))!.packet);
-    assert.match(packetSection(afterPacket, "emission-history"), /alpha alpha/u, "{§emission-history}: with the room restored the replay returns, and the older NOTE's text stands whole in it");
-    assert.equal(after.some((row) => /alpha alpha/u.test(String(row.body))), false, "its paired receipt has no duplicate body again, never a second copy");
-}));
-
-test("{§context-own-rows-fit}: a body the wall took stays readable at its address", () => restoringBudgets(async (db) => {
-    const { engine, workspaceId, workerId, betaRow, fourth } = await overTheWall(db);
-    const taken = logEntries(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: fourth.turnId }))!.packet))
-        .find((row) => row.logPath === betaRow.logPath)!;
-    assert.equal(taken.body, undefined, "the wall took the newest bodied row");
-    // `log:///` is the reader's own log ({§turn-source-resources}), so the worker reads its row, as its last action:
-    // the READ joins its log and would occupy the room the scenario above measures.
-    const recalled = await clientRead(engine, db, { statement: readStmt(urlPath("log", betaRow.logPath.slice("log://".length)), { marks: [1, -1] }), workspaceId, workerId });
-    assert.equal(recalled.status, 200);
-    assert.match(String((recalled as { content?: string }).content), /beta beta/u, "the body is readable at its address");
-}));
 
 for (const origin of ["client", "_plurnk"] as const) test(`{§context-fit}: ${origin} output crosses maintenance and loop boundaries whole, result and all`, async () => {
     const db = await openMigrated();

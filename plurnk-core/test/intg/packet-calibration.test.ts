@@ -90,9 +90,9 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     await prepareLog(f);
     const uncalibrated = await f.build();
     await recordSamples(f);
-    const factor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
-    assert.ok(factor > 0 && factor < 1);
-    const provider = providerAt(Math.floor(uncalibrated.weight / 0.85 * factor));
+    const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
+    assert.ok(offset > 0);
+    const provider = providerAt(Math.max(1, Math.floor(uncalibrated.weight / 0.85) - offset));
     const packet = await f.build(provider);
     const state = budgetOf(packet);
     const rows = logEntries(packet);
@@ -101,7 +101,7 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
     // {§packet-wire-envelope}: each complete message is measured once.
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
-    assert.equal(state.budget, Math.floor(provider.inputCapacity! / factor));
+    assert.equal(state.budget, TokenCalibration.capacity(provider.inputCapacity, offset));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
@@ -140,28 +140,30 @@ test("{§tokenomics-calibrated-readout} {§context-fit} new shared-model samples
     assert.equal((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet, persisted, "calibration never rewrites request history");
 });
 
-test("{§tokenomics-calibrated-readout} a loop's first sample fixes its factor; later samples, zero counts and other models leave it", async (t) => {
+test("{§tokenomics-calibrated-readout} a loop's latest sample updates its offset; zero counts and other models leave it", async (t) => {
     const f = await fixture(t);
     const { loopId, recorded } = await recordSamples(f, [100, 200, 300, 400, 500, 600, 700]);
-    const factor = 100 / StoredPacket.parse(recorded[0].packet)!.weight;
-    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "the loop's first response fixed it; six more did not move it");
-    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "a loop without its own sample takes the model's most recently fixed factor");
+    const offset = StoredPacket.parse(recorded.at(-1)!.packet)!.weight - 700;
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), offset, "the loop's latest response sets its offset");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), offset, "a loop without its own sample takes the model's latest offset");
     await recordSamples(f, [0, 0, 0]);
     await recordSamples(f, [10_000, 10_000, 10_000], "other-model");
-    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), factor, "zero counts and other models fix nothing for this model");
-    assert.equal(budgetOf(await f.build()).budget, Math.floor(100_000 / factor), "a different worker consumes the same model evidence");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), offset, "zero counts and other models fix nothing for this model");
+    assert.equal(budgetOf(await f.build()).budget, TokenCalibration.capacity(100_000, offset), "a different worker consumes the same model evidence");
     const later = await recordSamples(f, [50, 900]);
-    const fixedLater = 50 / StoredPacket.parse(later.recorded[0].packet)!.weight;
-    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), fixedLater, "the most recently fixed factor seeds a loop that has none");
-    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), factor, "a loop that fixed its own factor keeps it");
+    const latestLater = StoredPacket.parse(later.recorded.at(-1)!.packet)!.weight - 900;
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), latestLater, "the latest model offset seeds a loop that has none");
+    assert.equal(await TokenCalibration.forLoop(f.db, "mock", loopId), offset, "a loop with its own sample keeps its own latest offset");
 });
 
 test("{§tokenomics-calibrated-readout} overflow and attribution copies use the allowance captured at packet build", async (t) => {
     const f = await fixture(t);
     await prepareLog(f);
-    const provider = providerAt(15_000);
+    const uncalibrated = await f.build();
+    const capacity = uncalibrated.weight - 100;
+    const provider = providerAt(capacity);
     const before = await f.build(provider);
-    const expected = { weight: before.weight, budget: 15_000, excess: before.weight - 15_000 };
+    const expected = { weight: before.weight, budget: capacity, excess: before.weight - capacity };
     assert.ok(expected.excess > 0);
     await recordSamples(f);
     const after = await f.build(provider);
@@ -175,15 +177,15 @@ test("{§tokenomics-calibrated-readout} overflow and attribution copies use the 
 test("{§tokenomics-client-gauge} the response cannot retroactively change its own packet allowance or physical usage", async (t) => {
     const f = await fixture(t);
     const { recorded } = await recordSamples(f);
-    const priorFactor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
+    const priorOffset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
     const provider = providerAt(50_000, [response(17_000)]);
     const result = await f.engine.runTurn({ ...f, provider, messages });
     const raw = (await f.db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet;
     const packet = StoredPacket.parse(raw)!;
     const state = budgetOf(packet);
     const usage = await f.engine.loopUsage(f.loopId);
-    assert.notEqual(await TokenCalibration.forLoop(f.db, "mock", f.loopId), priorFactor, "the loop's first response fixes the conversion for its subsequent packets");
-    assert.equal(state.budget, Math.floor(provider.inputCapacity! / priorFactor));
+    assert.notEqual(await TokenCalibration.forLoop(f.db, "mock", f.loopId), priorOffset, "the loop's response updates the offset for its subsequent packets");
+    assert.equal(state.budget, TokenCalibration.capacity(provider.inputCapacity, priorOffset));
     assert.equal(usage.curationBudget, state.budget);
     assert.equal(usage.curationWeight, state.tokens);
     assert.equal(usage.curationWeight, packet.weight);
@@ -200,7 +202,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
         await t.test(scenario, async (t) => {
             const f = await fixture(t);
             await recordSamples(f);
-            const factor = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
+            const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
             const rejected: MockResponse = {
                 assistant: { content: "````READ (worker:///not-an-operation", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
@@ -228,7 +230,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
             assert.equal("assistant" in packet, false, "no failed or rejected request invents an accepted assistant response");
             assert.equal(usage.curationWeight, packet.weight);
             assert.equal(budgetOf(packet).tokens, packet.weight);
-            assert.equal(usage.curationBudget, Math.floor(provider.inputCapacity! / factor));
+            assert.equal(usage.curationBudget, TokenCalibration.capacity(provider.inputCapacity, offset));
             assert.equal(usage.curationBudget, budgetOf(packet).budget);
         });
     }
@@ -293,20 +295,20 @@ test("{§tokenomics-calibrated-readout} a converted zero allowance takes ordinar
     assert.equal(provider.received.length, 0, "no representable curation allowance cannot produce an admitted request");
 });
 
-test("{§context-budget} a loop's budget follows its first response either way, then holds", async (t) => {
+test("{§context-budget} a loop's budget follows its latest response either way, unaffected by other loops", async (t) => {
     for (const [direction, count] of [["enlarges", 100], ["shrinks", 10_000]] as const) {
         await t.test(direction, async (t) => {
             const f = await fixture(t);
             const provider = providerAt(20_000, [response(count)]);
-            assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "with no fixed factor, the capacity is the room");
+            assert.equal(budgetOf(await f.build(provider)).budget, 20_000, "with no sample, the capacity is the room");
             const turn = await f.engine.runTurn({ ...f, provider, messages });
             const weight = StoredPacket.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet)!.weight;
-            const fixed = Math.floor(20_000 / (count / weight));
-            assert.equal(fixed > 20_000, direction === "enlarges", `the first response ${direction} the room`);
+            const calibrated = TokenCalibration.capacity(20_000, weight - count)!;
+            assert.equal(calibrated > 20_000, direction === "enlarges", `the response ${direction} the room`);
             const after = await f.build(provider);
-            assert.equal(budgetOf(after).budget, fixed);
+            assert.equal(budgetOf(after).budget, calibrated);
             await recordSamples(f, direction === "enlarges" ? [10_000] : [100]);
-            assert.equal(budgetOf(await f.build(provider)).budget, fixed, "another loop's newer factor does not move this loop's room");
+            assert.equal(budgetOf(await f.build(provider)).budget, calibrated, "another loop's newer sample does not move this loop's room");
             assert.equal(f.packets.curationBudgetFor(after), budgetOf(after).budget, "admission measures the room the model is shown");
         });
     }

@@ -1,6 +1,6 @@
 // The context room, with a real model ({§context-budget}): two stories, each a live test of one
-// key rule the intg tier pins deterministically. The wall and the wall's own-rows receipt
-// ({§context-wall}, {§context-own-rows-fit}) stay intg-only: they need engineered output, not a model.
+// key rule the intg tier pins deterministically. The wall ({§context-wall}) stays intg-only: it
+// needs engineered output, not a model.
 //
 // Every story is read friction first: a refused or failed model operation is a failure here even
 // when the final text is right, and so is a turn that answers an over-budget packet with anything

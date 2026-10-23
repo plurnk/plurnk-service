@@ -135,7 +135,7 @@ test("{§tokenomics} context token budget carries active total and maximum witho
     } finally { await db.close(); }
 });
 
-test("{§context-wall} a packet past the window even as receipts preserves exact evidence in its terminal Problem", async () => {
+test("{§context-wall} a packet past the window preserves exact evidence in its terminal Problem", async () => {
     const db = await openMigrated();
     const partitionKeys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const previousPartition = partitionKeys.map((key) => process.env[key]);
@@ -149,10 +149,10 @@ test("{§context-wall} a packet past the window even as receipts preserves exact
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
-        // scaffolding alone blows past it and cannot be recovered by suppressing the owned boundary.
+        // scaffolding alone blows past it.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.equal(result.status, 413, "past the wall even as receipts, the loop ends rather than ask the window for what it has not got");
+        assert.equal(result.status, 413, "past the wall, the loop ends rather than ask the window for what it has not got");
         const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
         assert.equal(turn?.packet, null, "an over-ceiling candidate is never stored as a model request");
         assert.deepEqual(
@@ -187,7 +187,7 @@ test("{§tokenomics} content_hash is a stable per-content identity — identical
     assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });
 
-test("{§tokenomics-calibrated-readout} the loop's first reported prompt count fixes its ceiling without changing cost units", async () => {
+test("{§tokenomics-calibrated-readout} the loop's latest reported prompt count updates its ceiling without changing cost units", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-cal-${crypto.randomUUID()}`);
@@ -216,10 +216,8 @@ test("{§tokenomics-calibrated-readout} the loop's first reported prompt count f
             weights.push(packet.weight);
         }
         assert.deepEqual(shown, weights, "curation costs retain the raw measured weight before and after calibration");
-        assert.equal(ceilings[0], provider.inputCapacity, "before any response the model has no fixed factor: the capacity is the room");
-        const fixed = Math.floor(provider.inputCapacity! / (reported / weights[0]));
-        assert.deepEqual(ceilings.slice(1), Array(3).fill(fixed), "the first response fixes the conversion for every later packet of the loop");
-        assert.notEqual(new Set(weights.slice(1)).size, 1, "later packets weigh differently, so a sliding conversion would have moved");
-        assert.notEqual(fixed, provider.inputCapacity, "the fixture exercises a non-unit conversion");
+        assert.equal(ceilings[0], provider.inputCapacity, "before any response the model has no sample: the capacity is the room");
+        assert.deepEqual(ceilings.slice(1), weights.slice(0, -1).map((w) => provider.inputCapacity! + w - reported), "each settled response updates the additive offset for the next packet of the loop");
+        assert.notEqual(new Set(weights.slice(1)).size, 1, "later packets weigh differently");
     } finally { await db.close(); }
 });

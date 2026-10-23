@@ -2,6 +2,7 @@
 // spawn override, their client get/set surface, the loop's immutable snapshot and the conflicts an injection may
 // not introduce, and the catalog a client lists. Split out of Daemon, which keeps the delegating entry points.
 import type { Db } from "../core/Db.ts";
+import type { CurationOverflow } from "../core/PacketBuilder.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
 import { Validator, type Effort, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute } from "@plurnk/plurnk-contracts";
@@ -52,18 +53,26 @@ export default class WorkerModels {
     readonly #provider: Provider | null;
     // {§notifications-worker-policy} Told of each write that changed a worker's stored policy.
     readonly #policyChanged: (workerId: number) => Promise<void>;
+    // {§worker-model-selection} Measures whether the worker's current curated context fits a target model's budget.
+    readonly #workerCurationOverflow: (workerId: number, provider: Provider) => Promise<CurationOverflow | null>;
 
-    constructor({ db, provider, policyChanged = async () => {} }: {
+    constructor({ db, provider, policyChanged = async () => {}, workerCurationOverflow = async () => null }: {
         db: Db;
         provider: Provider | null;
         policyChanged?: (workerId: number) => Promise<void>;
+        workerCurationOverflow?: (workerId: number, provider: Provider) => Promise<CurationOverflow | null>;
     }) {
         this.#db = db;
         this.#provider = provider;
         this.#policyChanged = policyChanged;
+        this.#workerCurationOverflow = workerCurationOverflow;
     }
 
-    async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {
+    async persistGenerationPolicy(
+        workerId: number,
+        policy: WorkerGenerationPolicyRow,
+        options?: { readonly spawn?: boolean },
+    ): Promise<readonly Effort[]> {
         const params = { id: workerId, ...policy };
         // {§worker-effort-source} — the source is provenance, not generation policy: it takes no
         // part in the mid-loop change check, so the selectable probe sees only the policy columns.
@@ -73,6 +82,9 @@ export default class WorkerModels {
         }
         const supportedEfforts = await this.supportedEfforts(policy);
         const stored = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        if (options?.spawn !== true && policy.model_route_id !== null && stored?.model_route_id !== policy.model_route_id) {
+            await this.#assertContextFitsModel(workerId, policy.model_route_id, policy.effort ?? undefined);
+        }
         if (await this.#db.worker_generation_policy_update.get(params) === undefined) {
             return this.#refuseGenerationChange(workerId, policy);
         }
@@ -80,6 +92,34 @@ export default class WorkerModels {
         if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.spawn_model_route_id !== policy.spawn_model_route_id
             || stored.effort !== policy.effort || stored.effort_source !== policy.effort_source) await this.#policyChanged(workerId);
         return supportedEfforts;
+    }
+
+    // {§worker-model-selection} — a model switch cannot select a model whose calibrated budget cannot hold
+    // the worker's current context; the worker curates first or chooses a larger model.
+    async #assertContextFitsModel(workerId: number, routeId: number, effort: Effort | undefined): Promise<void> {
+        const spec = await specForRoute(this.#db, routeId);
+        if (spec === null) throw new Error(`model route ${routeId} is missing`);
+        const provider = await this.providerForPolicy(spec, effort);
+        const overflow = await this.#workerCurationOverflow(workerId, provider);
+        if (overflow === null) return;
+        throw daemonFailure(
+            "daemon:provider",
+            "context-exceeds-model-budget",
+            413,
+            `Current context (${overflow.weight} tokens) does not fit in ${modelRouteLabel(spec)} (budget: ${overflow.budget} tokens).`,
+            {
+                workerId,
+                ...(spec.alias === undefined ? {} : { alias: spec.alias }),
+                provider: spec.provider,
+                model: spec.model,
+                tokens: overflow.weight,
+                budget: overflow.budget,
+                excess: overflow.excess,
+                stage: "model-selection",
+                recovery: `Curate context below ${overflow.budget} tokens or select a larger model.`,
+                retryable: false,
+            },
+        );
     }
 
     async supportedEfforts(policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {

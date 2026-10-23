@@ -145,7 +145,7 @@ export default class MessageDelivery {
                 model_route_id: await routeForSpec(this.#db, providerSpec),
                 spawn_model_route_id: null,
                 effort: effort,
-                effort_source: "default" });
+                effort_source: "default" }, { spawn: true });
         }
         // {§env-option} — a created worker's explicit overrides replace copied values and enable them.
         // Names were admitted at the operation; a refusal here is a defect and throws.

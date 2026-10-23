@@ -271,7 +271,7 @@ test("{§provider-generation-envelope} generationEnvelopeFromEnv: output is tota
             PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
             PLURNK_PROVIDERS_REASONING_BUDGET: "4096",
         }, "x", 100_000, 32_000),
-        { outputBudget: 32_000, outputFloor: 10_000, reasoningBudget: 4096 },
+        { outputBudget: 32_000, outputFloor: 3_200, reasoningBudget: 4096 },
     );
     assert.throws(() => generationEnvelopeFromEnv({ ...floor }, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_BUDGET must be set/);
     assert.throws(() => generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "150%" }, "x", 100_000, null), /percentage must be in \(0, 100\)/);
@@ -311,16 +311,21 @@ test("{§provider-output-floor} PLURNK_PROVIDERS_OUTPUT_FLOOR parses like the ou
     );
 });
 
-test("{§provider-output-floor} the floor is capped by the output budget", () => {
+test("{§provider-output-floor} the floor resolves against the effective output ceiling and is capped by the output budget", () => {
     assert.deepEqual(
         generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, "x", 1_000_000, null),
         { outputBudget: 1_000, outputFloor: 1_000, reasoningBudget: null },
         "a floor the budget cannot hold clamps to the budget, never refuses",
     );
+    assert.deepEqual(
+        generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1_000_000, 65_536),
+        { outputBudget: 65_536, outputFloor: 6_554, reasoningBudget: null },
+        "a percentage floor resolves against min(contextWindow, maxOutputTokens), leaving positive curation room below the wall",
+    );
     assert.equal(
-        generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1_000_000, 65_536).outputFloor,
+        generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_FLOOR: "100000", PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1_000_000, 65_536).outputFloor,
         65_536,
-        "the model's own output limit caps the floor as it caps the budget",
+        "an absolute floor above the model's output limit still clamps to the physical cap and budget",
     );
     assert.equal(resolveGenerationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, 1_000_000).outputFloor, 1_000);
 });

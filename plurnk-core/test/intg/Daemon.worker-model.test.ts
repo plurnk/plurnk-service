@@ -1024,3 +1024,73 @@ test("{§worker-effort}: an effort its model no longer supports is corrected by 
         await db.close();
     }
 });
+
+test("{§worker-model-selection}: switching to a smaller model whose budget cannot hold the worker's context is a 413 until context is curated", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const largeSpec = declaredProvider("large", "large-window-model");
+    const smallSpec = declaredProvider("small", "small-window-model");
+    const bigNote = "context ".repeat(3_000);
+    const large = new Mock({
+        contextWindow: 100_000,
+        responses: [
+            makeMockResponse(`\`\`\`\`NOTE\n${bigNote}\n\`\`\`\`\n\n\`\`\`\`SEND [200]\nstored note\n\`\`\`\``),
+            makeMockResponse("````KILL (log:///**/NOTE)````\n\n````SEND [200]\ncurated note\n````"),
+        ],
+    });
+    const small = new Mock({
+        contextWindow: 12_000,
+        responses: [makeMockResponse("````SEND [200]\nsmall model ran\n````")],
+    });
+    ProviderInstantiate.registerInstance(large, largeSpec);
+    ProviderInstantiate.registerInstance(small, smallSpec);
+
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: `downsize-${crypto.randomUUID()}` });
+            const workspaceId = (created.result as { id: number }).id;
+            const first = await runLoopToTerminal(ws, 2, {
+                prompt: "accumulate context",
+                selector: largeSpec.alias,
+            });
+            assert.equal(first.finalStatus, 200);
+            const workerId = first.modelWorkerId!;
+
+            // Both worker.model.set and loop.run with a smaller selector refuse with 413 context-exceeds-model-budget.
+            const refusedSet = await daemon.setWorkerModel({
+                workspaceId,
+                workerId,
+                selector: smallSpec.alias,
+            }).then(() => null, (error: unknown) => error as OperationFailureError);
+            assert.ok(refusedSet instanceof OperationFailureError);
+            assert.equal(refusedSet.result.status, 413);
+            assert.equal(refusedSet.result.problem?.type, "https://problems.plurnk.xyz/daemon/provider/context-exceeds-model-budget");
+            assert.match(refusedSet.result.problem?.detail ?? "", new RegExp(`^Current context \\(\\d+ tokens\\) does not fit in provider alias '${smallSpec.alias}' \\(openai/small-window-model\\) \\(budget: \\d+ tokens\\)\\.$`, "u"));
+            assert.match(refusedSet.result.problem?.recovery ?? "", /^Curate context below \d+ tokens or select a larger model\.$/u);
+
+            const refusedRun = await rpcCall(ws, 3, "loop.run", {
+                prompt: "attempt on small model",
+                selector: smallSpec.alias,
+            });
+            const runFailure = refusedRun.result as { status: number; problem?: { type?: string } };
+            assert.equal(runFailure.status, 413);
+            assert.equal(runFailure.problem?.type, "https://problems.plurnk.xyz/daemon/provider/context-exceeds-model-budget");
+            assert.equal((await daemon.readWorkerModel({ workspaceId, workerId })).model?.alias, largeSpec.alias, "the refused switch leaves the worker's model unchanged");
+
+            // Curate the large NOTE out of context on the current model; switching to the smaller model now succeeds.
+            const curated = await runLoopToTerminal(ws, 4, { prompt: "curate context for smaller model" });
+            assert.equal(curated.finalStatus, 200);
+            const switched = await daemon.setWorkerModel({
+                workspaceId,
+                workerId,
+                selector: smallSpec.alias,
+            });
+            assert.equal(switched.alias, smallSpec.alias);
+            const second = await runLoopToTerminal(ws, 5, { prompt: "continue on small model" });
+            assert.equal(second.finalStatus, 200);
+            assert.equal(small.remaining, 0);
+        } finally {
+            ws.close();
+        }
+    });
+});

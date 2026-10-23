@@ -51,7 +51,7 @@ export type WorkspaceTurnStarting = (args: {
 
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { ProviderAccounting } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import LoopDriver from "./LoopDriver.ts";
@@ -514,6 +514,10 @@ export default class Engine {
     }
     referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
         return this.#packets.referenceEntries(workspaceId);
+    }
+
+    workerCurationOverflow(workerId: number, provider: Provider): ReturnType<PacketBuilder["workerCurationOverflow"]> {
+        return this.#packets.workerCurationOverflow(workerId, provider);
     }
 
     // {§env-delta-log-pull} — materialize one closed interval of the ambient

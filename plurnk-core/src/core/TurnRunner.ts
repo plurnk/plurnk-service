@@ -223,8 +223,8 @@ export type AdmittedTurnResult = {
     readonly emptyTurn: boolean;
 };
 
-// {§context-wall} — the window's one terminal: the packet cannot fit the model's window even as receipts.
-const WINDOW_OVERFLOW_DETAIL = "Context window overflow: the packet cannot fit the model's window even as receipts.";
+// {§context-wall} — the window's one terminal: the packet exceeds the model's window.
+const WINDOW_OVERFLOW_DETAIL = "Context window overflow: the packet exceeds the model's window.";
 
 const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Results.failure(
     "engine:context",
@@ -330,8 +330,6 @@ type PacketFacts = {
     readonly gitStatus: GitStatusSnapshot | null;
     readonly notices: Notice[];
     readonly transientOpenLogEntryId: number | null;
-    // {§context-own-rows-fit} — the rows the wall took for this turn's packet, shared by every rebuild.
-    readonly projection: { readonly bodiless: Set<number>; omitEmissionHistory: boolean };
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
@@ -899,7 +897,7 @@ export default class TurnRunner {
             turnId: initializationTurn.id,
             fromSequence: 1,
             failOnOperationError: true,
-            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitEmissionHistory: false } }),
+            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId }),
             signal: this.#loopSignal(loopId),
             onDispatch,
             onSettled,
@@ -1027,7 +1025,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, turnId);
         // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
         // would render now. The drained notices join the same facts below.
-        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId, projection: { bodiless: new Set(), omitEmissionHistory: false } };
+        const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId };
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
@@ -1119,7 +1117,7 @@ export default class TurnRunner {
 
     async #buildPacket(args: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
         const { messages, recap, workspaceId, workerId, loopId, provider } = args;
-        const packet = await this.#packets.buildRequestPacket({
+        return this.#packets.buildRequestPacket({
             initialMessages: messages,
             recap,
             workspaceId,
@@ -1131,16 +1129,7 @@ export default class TurnRunner {
             notices: facts.notices,
             transientOpenLogEntryId: facts.transientOpenLogEntryId,
             turnId: facts.turnId,
-            bodiless: facts.projection.bodiless,
-            omitEmissionHistory: facts.projection.omitEmissionHistory,
         });
-        // {§emission-history}: all builds, including result-admission probes, shed the optional
-        // replay before taking result bodies. Share the decision across this request's rebuilds.
-        if (PacketWire.sectionContent(packet, "emission-history").length > 0 && this.#packets.windowOverflow(packet, provider) !== null) {
-            facts.projection.omitEmissionHistory = true;
-            return this.#buildPacket(args, facts);
-        }
-        return packet;
     }
 
     // {§context-fit} — the budget left for one more row, measured by building the packet as it would
@@ -1170,59 +1159,28 @@ export default class TurnRunner {
         return { ...request, nextActionIndex: request.nextActionIndex + 1, packet };
     }
 
-    // {§context-admission} — one request through the room: over the wall by the estimate, it sheds; over
-    // budget, it carries one row whose own weight takes the same wall ({§context-over-budget-row}); then the
-    // provider assesses the exact wire request, and an exact refusal sheds by its excess
-    // ({§context-wall-measure}). Only a packet that cannot fit even as receipts returns its overflow.
+    // {§context-admission} — one request through the room: over the wall by the estimate, it ends the loop;
+    // over budget, it carries one row whose own weight takes the same wall ({§context-over-budget-row});
+    // then the provider assesses the exact wire request, and an exact refusal ends the loop
+    // ({§context-wall-measure}). The daemon never hides, folds, or strips stored rows.
     async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<AdmittedRequest> {
         const { provider, loopId, signal } = args;
         let current = request;
-        let noted = false;
-        for (;;) {
-            const estimated = this.#packets.windowOverflow(current.packet, provider);
-            if (estimated !== null) {
-                const shed = await this.#shed(args, current, estimated);
-                if (shed === null) return { request: current, wire: null, overflow: estimated };
-                current = shed;
-                continue;
-            }
-            if (!noted && this.#packets.curationOverflow(current.packet) !== null) {
-                current = await this.#noteOverBudget(args, current);
-                noted = true;
-                continue;
-            }
-            const wire = await this.#wireMessages(current.packet, current.systemCtx, provider);
-            const capacity = await provider.assessRequestCapacity(wire.messages, undefined, this.#loopSignal(loopId) ?? signal);
-            const refused = this.#packets.exactOverflow(current.packet, capacity);
-            if (refused === null) return { request: current, wire, overflow: null };
-            const shed = await this.#shed(args, current, refused);
-            if (shed === null) return { request: current, wire: null, overflow: refused };
-            current = shed;
+        const estimated = this.#packets.windowOverflow(current.packet, provider);
+        if (estimated !== null) return { request: current, wire: null, overflow: estimated };
+        if (this.#packets.curationOverflow(current.packet) !== null) {
+            current = await this.#noteOverBudget(args, current);
+            const afterNote = this.#packets.windowOverflow(current.packet, provider);
+            if (afterNote !== null) return { request: current, wire: null, overflow: afterNote };
         }
+        const wire = await this.#wireMessages(current.packet, current.systemCtx, provider);
+        const capacity = await provider.assessRequestCapacity(wire.messages, undefined, this.#loopSignal(loopId) ?? signal);
+        const refused = this.#packets.exactOverflow(current.packet, capacity);
+        if (refused !== null) return { request: current, wire: null, overflow: refused };
+        return { request: current, wire, overflow: null };
     }
 
-    // {§context-own-rows-fit} — one shedding step for whichever measure found the request over the wall: the
-    // previous program goes whole first ({§emission-history}), then the newest rows still carrying a body,
-    // enough of them by their rendered tokens to shed the excess; every body stays stored. Null when nothing
-    // is left to take.
-    async #shed(args: TurnArgs, request: TurnRequest, overflow: WindowOverflow): Promise<TurnRequest | null> {
-        if (!request.projection.omitEmissionHistory && PacketWire.sectionContent(request.packet, "emission-history").length > 0) {
-            request.projection.omitEmissionHistory = true;
-        } else {
-            let shed = 0;
-            let taken = 0;
-            for (const { id, tokens } of this.#packets.bodiedRowsOf(request.packet).toReversed()) {
-                if (shed >= overflow.excessWeight) break;
-                request.projection.bodiless.add(id);
-                shed += tokens;
-                taken += 1;
-            }
-            if (taken === 0) return null;
-        }
-        return { ...request, packet: await this.#buildPacket(args, request) };
-    }
-
-    // {§context-wall} — the packet cannot fit the window even as receipts: the turn completes on the
+    // {§context-wall} — the packet exceeds the model's window: the turn completes on the
     // overflow and the loop rules the terminal; no provider I/O.
     async #failCuration(request: TurnRequest, overflow: WindowOverflow): Promise<EngineTurnResult> {
         const curationFailure = windowOverflowFailure(overflow);

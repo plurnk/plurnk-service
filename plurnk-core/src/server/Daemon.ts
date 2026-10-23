@@ -312,7 +312,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
         });
-        this.#workerModels = new WorkerModels({ db: this.#db, provider: this.#provider, policyChanged: (workerId) => this.#announceWorkerPolicy(workerId) });
+        this.#workerModels = new WorkerModels({
+            db: this.#db,
+            provider: this.#provider,
+            policyChanged: (workerId) => this.#announceWorkerPolicy(workerId),
+            workerCurationOverflow: (workerId, selectedProvider) => this.#engine.workerCurationOverflow(workerId, selectedProvider),
+        });
         this.#delivery = new MessageDelivery({
             db, workerModels: this.#workerModels, functionality: this.#functionality, mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),

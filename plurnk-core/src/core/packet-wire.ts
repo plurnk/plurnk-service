@@ -101,22 +101,12 @@ interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
-    // {§context-own-rows-fit} — the rows the wall has taken for this packet, by log entry id: each renders
-    // bodiless, its size and address in place of its body.
-    readonly bodiless?: ReadonlySet<number>;
     // {§paired-receipt}: operation weight on its first receipt, zero on subsequent fan-out receipts.
     readonly paired?: ReadonlyMap<string, ReplayedOperation>;
 }
 
 interface ReclaimableLogItem {
     readonly path: string;
-    readonly tokens: number;
-}
-
-// {§context-own-rows-fit} — a row still carrying a body or a native part the wall may take, and the
-// tokens it charges as rendered.
-export interface BodiedLogRow {
-    readonly id: number;
     readonly tokens: number;
 }
 
@@ -127,8 +117,6 @@ export interface RenderedLog {
     readonly curationTargets: readonly ReclaimableLogItem[];
     // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
-    // {§context-own-rows-fit} — the rows the wall may still take, in row order: newest last.
-    readonly bodied: readonly BodiedLogRow[];
 }
 
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
@@ -138,7 +126,6 @@ interface RenderedLogRow {
     readonly content: string;
     readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
-    readonly bodied: BodiedLogRow | null;
 }
 
 interface VisibleLogBody {
@@ -171,7 +158,6 @@ interface RowResultFacts {
 }
 interface RowBody {
     readonly body: string;
-    readonly projectedLineCount: number;
     readonly display: "none" | "folded" | "open";
 }
 
@@ -266,7 +252,7 @@ export default class PacketWire {
     // {§context-gauge} — the wire row and its reclaimable-body accounting come from one render
     // pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
-        if (entries.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], bodied: [] };
+        if (entries.length === 0) return { content: "", records: [], curationTargets: [], attachments: [] };
         const rows = PacketWire.#renderLogEntries(entries, weighContent, options);
         const records = rows.map(({ content }) => content);
         return {
@@ -275,7 +261,6 @@ export default class PacketWire {
             curationTargets: rows.flatMap(({ curationTarget }) =>
                 curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
-            bodied: rows.flatMap(({ bodied }) => bodied === null ? [] : [bodied]),
         };
     }
 
@@ -1038,7 +1023,7 @@ export default class PacketWire {
             meta.preview = projectedChunk;
             delete meta.lines;
         }
-        return { body, projectedLineCount, display };
+        return { body, display };
     }
 
     // The row's native attachment, a landed-unfit arrival's size, and the accounting field that
@@ -1084,21 +1069,8 @@ export default class PacketWire {
             }
             throw new Error("packet log row accounting did not converge");
         };
-        const row = (rendered: { content: string; tokens: number }, part: PacketAttachment | null, bodied: BodiedLogRow | null): RenderedLogRow =>
-            ({ content: rendered.content, curationTarget: { path, tokens: rendered.tokens }, attachment: part, bodied });
-        const whole = converge(display === "open", attachment);
-        // {§context-own-rows-fit} — a row the wall may take carries a body or a native part and is not an
-        // emission row, whose folded record carries no body.
-        if (typeof e.id !== "number" || LogEntryProjection.isEmission(e) || (display !== "open" && attachment === null)) return row(whole, attachment, null);
-        if (!(options.bodiless?.has(e.id) ?? false)) return row(whole, attachment, { id: e.id, tokens: whole.tokens });
-        // Taken: the fit rule's receipt shape — its size and address, no body, no native part.
-        meta.size = { lines: projected.projectedLineCount, tokens: whole.tokens };
-        const receipt = converge(false, null);
-        if (receipt.tokens < whole.tokens) return row(receipt, null, null);
-        // A receipt that weighs no less than the body it stands for sheds nothing: the row stays whole and
-        // is spent.
-        delete meta.size;
-        return row(converge(display === "open", attachment), attachment, null);
+        const rendered = converge(display === "open", attachment);
+        return { content: rendered.content, curationTarget: { path, tokens: rendered.tokens }, attachment };
     }
 
     static #attachmentOf(

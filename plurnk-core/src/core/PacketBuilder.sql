@@ -196,3 +196,14 @@ SELECT m.id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.so
 FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;
+
+-- PREP: engine_worker_latest_packet
+-- {§worker-model-selection}: the worker's workspace, latest packet-bearing loop, and packet,
+-- so a model switch can measure the worker's current curated context against the target model's budget.
+SELECT w.workspace_id, l.id AS loop_id, t.packet
+FROM turns t
+JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
+WHERE l.worker_id = $worker_id AND t.packet IS NOT NULL
+ORDER BY l.sequence DESC, t.sequence DESC
+LIMIT 1;

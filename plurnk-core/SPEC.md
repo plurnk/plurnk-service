@@ -5778,6 +5778,7 @@ packets or state snapshots.
 - A WORK/FORK child copies the spawning loop's effective spawn model (spawn override ?? model) onto the new worker by value at creation; it retains no live link and begins with no override, so a later parent change affects only that worker's future loops and descendants.
 - The runtime worker and other Plurnk-owned bookkeeping workers run no model loops and own no model selection; the model, spawn-override, and effort controls refuse them with `409 model-worker-required` before any policy row is initialized or written.
 - An explicit model, spawn-override, or effort change while the worker holds any queued, running, or parked loop is a precise `409 worker-loop-active` ({§worker-lifecycle-live}), independent of a process-local drain; the policy write checks liveness atomically, including selections carried by new prompts. Reasserting unchanged settings is not a change. Select after concluding or cancelling the unfinished tasks.
+- An explicit change to a model whose calibrated curation budget ({§tokenomics-calibrated-readout}) cannot hold the worker's current context is refused with a precise `413 context-exceeds-model-budget` naming the current context tokens, the target model, and its budget; curate below that budget or select a larger model.
 
 A client-created branch copies the source worker's durable model, spawn
 override, and effort by value alongside its history. It retains no
@@ -6000,10 +6001,9 @@ FORK is 404 `fork-unaddressed`.
 | {§context-over-budget-row} | Over budget is a row and a request, not an ending. |
 | {§context-wall} | The context wall is the provider's window, and only it ends a loop. |
 | {§context-wall-measure} | The wall measures the request that will be sent. |
-| {§context-own-rows-fit} | The model's own rows take the same receipt. |
 | {§tokenomics-weight-stored-at-write} | Curation weight, stored at write. |
 | {§tokenomics-render-weight-budget} | Packet curation budget. |
-| {§tokenomics-calibrated-readout} | The calibrated readout converts capacity, never content costs; one factor per loop. |
+| {§tokenomics-calibrated-readout} | The calibrated readout translates capacity by measured evidence, never extrapolating unmeasured content. |
 | {§tokenomics-window-partition} | The window partition: one capacity derivation, no service-side token budget. |
 | {§tokenomics-window-unpollable-deliberate} | An unpollable window is deliberate: unknown provider capacity stays unknown. |
 | {§tokenomics-client-gauge} | Clients receive curation and physical occupancy as separate pairs. |
@@ -6072,7 +6072,6 @@ envelope ({§share-packet-names}); it is not a serialized HTTP capture.
 | Placement | Put one assistant message holding the turn's surviving operations, in program order, immediately before the turn's first surviving receipt; that turn's receipts, fan-out included, and the records between them follow together in the user role, so the model sees each past response as the batch it wrote. Preserve receipt chronology and concrete fan-out targets. No history is collected at the end. `none` adds no assistant section; filtering never makes `latest` fall back. |
 | Curation | A retired operation row loses its replay; retiring one fan-out receipt leaves the operation with its surviving receipts. A body-trimmed authored row is not replayed: its ordinary receipt shows the remaining body. Retiring the emission row removes that turn's replay, not its operation results or immutable source. No legend or separate NOTE-curation path exists. |
 | Authority | Core assembles these chronological sections before the trusted whole-list transform ({§packet-extension-transform}); this is presentation of admitted work, not additional execution or inference. |
-| Capacity | At the hard context wall, omit the selected history whole before suppressing result bodies or native parts ({§context-own-rows-fit}). Unpaired receipts regain their ordinary request facts and authored bodies. Omission lasts through rebuilds of that request; the next request decides afresh. No source, receipt, or stored historical packet changes. |
 | Accounting | The first paired receipt's displayed curation weight includes its assistant operation once. Packet accounting measures each actual message once. The emission row charges only its own record. |
 
 §paired-receipt A paired receipt names its operand and reports execution information, not a second copy of its request.
@@ -6151,23 +6150,21 @@ time of measurement.
 | Provider generation envelope | Provider response grant and optional reasoning subset, in provider tokens | Before every logical request | The reservation includes hidden reasoning; its strict reasoning subset is never additive. The response grant follows {§provider-flexed-allowance}. |
 | Provider usage and cost | Provider-reported input/output/cache/reasoning tokens and monetary evidence | After every physical request | Durable physical-request forensics under {§provider-usage}; never curation state or a preflight estimate. |
 
-§context-admission **Context admission fits one request through the room: estimated, then measured.** Core fits the packet to the wall on its estimate, marks it over budget, then has the provider measure the exact request before it is sent. Shedding is the same at both measures, and only a packet that cannot fit even as receipts ends its loop.
+§context-admission **Context admission fits one request through the room: estimated, then measured.** Core checks the packet against the wall on its calibrated estimate, marks an over-budget packet with one error row, then has the provider assess the exact request before it is sent. The daemon never hides, folds, or strips stored rows or emission history to make a packet smaller; a packet over the wall by either measure ends its loop.
 
 ```mermaid
 flowchart TD
     build["Build the packet at the budget"] --> wall{"Estimate over the wall?"}
-    wall -- yes --> shed["Shed: the emission history whole, then the newest rows bodiless"]
-    shed --> wall
+    wall -- yes --> overflow["window-overflow 413, no inference request"]
     wall -- no --> over{"Over budget, no row yet?"}
     over -- yes --> row["One over-budget row at the head of the turn"]
     row --> wall
     over -- no --> assess{"The provider assesses the exact request"}
     assess -- "admit or defer" --> send["Send"]
-    assess -- "exact refusal" --> shed
-    shed -. "nothing left to take" .-> overflow["window-overflow 413, no inference request"]
+    assess -- "exact refusal" --> overflow
 ```
 
-- §context-budget **The context budget is one room for the whole packet.** The budget is the provider's input capacity through the loop's calibration, `floor(inputCapacity / factor)` ({§tokenomics-calibrated-readout}), and it bounds the whole packet — teaching, catalog, log and gauge together. Nothing on the service panel sizes a part of it: no projection share or preview page. When the loop's first response fixes its factor, the budget follows it either way; a room that shrinks under the model is announced by the over-budget row ({§context-over-budget-row}), never hidden by keeping a larger figure.
+- §context-budget **The context budget is one room for the whole packet.** The budget is the provider's input capacity translated by the loop's calibration offset, `max(0, inputCapacity + offset)` ({§tokenomics-calibrated-readout}), and it bounds the whole packet — teaching, catalog, log and gauge together. Nothing on the service panel sizes a part of it: no projection share or preview page. When a settled emission updates the offset, the budget follows it either way; a room that shrinks under the model is announced by the over-budget row ({§context-over-budget-row}), never hidden by keeping a larger figure.
 - §context-gauge **One gauge.** Every packet carries one `## Context` section holding one JSON object: `tokens`, the packet's weight as rendered, `budget`, the known room, and `percent`, `floor(100 × tokens / budget)` over the gauge's own final figures, so the share never disagrees with the counts beside it; a zero budget states no share. Only when the packet without an inventory strictly exceeds `PLURNK_SERVICE_BUDGET_PRESSURE` of its budget does `largest` name the `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest retained log rows as `{path, tokens}`, ranked by weight then path. Unknown budget omits `budget`, `percent` and `largest`. The final `tokens` includes the inventory; over budget, its full configured count remains available for curation ({§context-over-budget-row}). Each log row heading carries its own `tokens`. The gauge is state: it never presents `budget − tokens` as response allowance and carries no mandate.
 - §context-fit **One rule: whole if it fits, otherwise as much as fits, then its size and address.** A result the model asked for — a READ without a scope, a FIND, an exec result delivered on close — arrives complete when its weight fits within `budget − tokens` as of that turn, less the room the turn still owes — one receipt's measured weight for each result still to land in it and the emission record that answers it, so that the receipts of a batch and the answer always fit. Otherwise the complete result stays where it was read from and the row is a `413` receipt naming the result's size, its weight, the remaining budget, and the two verbs: `READ` a range, or `KILL` first. Result cuts are named where they happen: the first page of what came back unasked in size ({§markerless-first-page}) and the cut at the room in the receipt.
 
@@ -6188,18 +6185,17 @@ flowchart TD
   | Shown once | in the packet it describes, then retired from the projection as a no-match KILL receipt is ({§log-kill-meta-operation}): it stays durable and readable at its coordinate, and a later packet that is over carries its own row |
   | Hides nothing | nothing is hidden to make the packet smaller; the response grant is the window's remainder above the provider's output floor ({§provider-output-floor}) |
 
-- §context-wall **The context wall is the provider's window, and only it ends a loop.** The wall is the provider's physical input limit: `maxInputTokens`, and the context window less the output floor ({§provider-output-floor}). A request over the wall sheds ({§context-own-rows-fit}) and is measured again ({§context-wall-measure}); a packet that cannot fit even as receipts ends its loop with the exact `engine/context/window-overflow` 413 Problem, and no inference request is made. An unknown window has no wall ({§tokenomics-window-unpollable-deliberate}).
-- §context-wall-measure **The wall measures the request that will be sent.** The estimate is the packet's weight through its calibration factor ({§tokenomics-calibrated-readout}) and is never assumed to overestimate. A packet that fits by the estimate is assessed by the provider as the exact wire request ({§provider-capacity-admission}): an admission sends it; an exact refusal is the wall's verdict, and the request sheds by the refusal's excess and is assessed again. A provider that can only estimate defers, and the upstream provider is then the capacity oracle: its refusal ends the loop with the provider's own 413.
-- §context-own-rows-fit **The model's own rows take the same receipt.** When a request is over the wall by either measure ({§context-wall-measure}), its newest rows that still carry a body or a native part — NOTEs, receipts, delivered results, pictures — render bodiless in the fit rule's receipt shape, newest first and only as many as it takes for the request to fit: the heading, the facts, and `size`, the lines and tokens of what the row stood for. The optional emission history has already been omitted whole ({§emission-history}); an emission record has no body to take. A row whose receipt would weigh no less than its body stays whole. Every body stays stored and readable at its address, the verbs restore the room ({§context-verbs}), and each packet decides afresh from its own newest rows. The daemon chooses nothing to summarize and hides nothing silently.
+- §context-wall **The context wall is the provider's window, and only it ends a loop.** The wall is the provider's physical input limit: `maxInputTokens`, and the context window less the output floor ({§provider-output-floor}). A packet that exceeds the wall by either measure ({§context-wall-measure}) ends its loop with the exact `engine/context/window-overflow` 413 Problem, and no inference request is made. An unknown window has no wall ({§tokenomics-window-unpollable-deliberate}).
+- §context-wall-measure **The wall measures the request that will be sent.** The estimate is the packet's weight translated by its calibration offset, `max(0, weight − offset)` ({§tokenomics-calibrated-readout}), and is never assumed to overestimate. A packet that fits by the estimate is assessed by the provider as the exact wire request ({§provider-capacity-admission}): an admission sends it; an exact refusal is the wall's verdict and ends the loop. A provider that can only estimate defers, and the upstream provider is then the capacity oracle: its refusal ends the loop with the provider's own 413.
 - §tokenomics-weight-stored-at-write **Curation weight, stored at write.** `entry_channels.weight` weighs the complete channel content. `log_entries.weight` weighs the complete canonical `LogBody` content before coordinate and packet presentation; persistence `tx`/`rx` envelopes contribute nothing merely by existing, and proposal settlement recomputes the value when the canonical result changes. Bodyless rows therefore weigh zero. The stored number is a stable content-depth measurement, not a provider-token prediction. `entry_channels.lines` is the channel's line count beside it, a stored generated column SQLite keeps on every write as the persisted mirror of {§logical-line-count} (a trailing newline terminates the last line; empty content has none), so a catalog lists extent without reading bodies.
 - §tokenomics-render-weight-budget **Packet curation budget.** `tokens` measures the *complete assembled packet* after section transforms and readout substitution, each rendered message (including {§emission-history}) and native attachments; it is not a sum of stored row weights ({§tokenomics-weight-stored-at-write}). Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns final values into those widths; final substitution is length-invariant and the displayed total equals the stored request weight. Receipt, FIND-item, pressure-inventory, total, and ceiling figures all use the same curation ruler. A `SUM` of stored content weights measures a different artifact and cannot substitute for packet render weight.
-- §tokenomics-calibrated-readout **The calibrated readout converts capacity, never content costs; one factor per loop.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
+- §tokenomics-calibrated-readout **The calibrated readout translates capacity by measured evidence, never extrapolating unmeasured content.** A sample is a settled emission response pairing its request's measured packet weight with the provider-reported prompt count, both positive. Calibration never changes stored weights, rendered receipt costs, or the immutable request history ({§tokenomics-agnostic-ruler}).
 
   | Fact | Rule |
   | --- | --- |
-  | The factor | a loop's first sample from the answering model fixes the conversion factor `reported / weight` for the rest of that loop; until then the loop's packets use that model's most recently fixed factor, from any loop or worker, and a model that has none uses 1; the budget therefore changes at most once in a loop, when its first response settles |
-  | The conversion | `floor(inputCapacity / factor)` converts provider capacity into curation units, the budget ({§context-budget}); the same factor converts the packet's weight into the wall's estimate ({§context-wall-measure}); zero means no whole curation unit fits, and unknown input capacity remains `null` |
-  | The packet | captures this allowance and its factor once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance |
+  | The offset | a loop's latest settled sample from the answering model fixes the additive offset `weight − reported` for its next packet; until the loop settles one of its own, its packets use that model's most recent sample from any loop or worker, and a model that has none uses `0` |
+  | The conversion | `max(0, inputCapacity + offset)` converts provider capacity into curation units, the budget ({§context-budget}), crediting only the tokens saved on the measured packet while budgeting unmeasured growth 1:1; `max(0, weight − offset)` converts the packet's weight into the wall's estimate ({§context-wall-measure}); zero means no room fits, and unknown input capacity remains `null` |
+  | The packet | captures this allowance and its offset once for its readout, pressure inventory, wall estimate, and persisted client gauge; later responses cannot change that packet's allowance |
 
 - §tokenomics-window-partition **The window partition: one capacity derivation, no service-side token budget.** The provider owns model limits, the configured output reservation, and each call's response grant. Its resolved `inputCapacity` supplies the physical denominator exposed to clients and the boundary conversion into curation units ({§tokenomics-calibrated-readout}). Core shapes context in curation units; provider request-shaped evidence alone admits or rejects physical I/O. Local and custom deployments tune context window, total output budget and optional reasoning subset at their owning layers.
 - §tokenomics-window-unpollable-deliberate **An unpollable window is deliberate: unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, there is no budget: the gauge carries `tokens` alone, every result arrives whole, and the provider remains the capacity oracle ({§provider-capacity-admission}). Core never invents a stand-in.
@@ -6235,7 +6231,7 @@ execute, enter model history, or become a later request's successful output.
   | 200 | Messages answered, results observed, held work settled |
   | 499 | Worker-scope or client cancellation |
   | 429 | Turn allowance exhausted |
-  | 413 | A result that does not fit ({§context-fit}), a packet over the budget ({§context-over-budget-row}: a row; the request still goes), a packet that cannot fit the window even as receipts ({§context-wall}), or an upstream provider's own refusal ({§context-wall-measure}) |
+  | 413 | A result that does not fit ({§context-fit}), a packet over the budget ({§context-over-budget-row}: a row; the request still goes), a packet that exceeds the window ({§context-wall}), or an upstream provider's own refusal ({§context-wall-measure}) |
   | 500 / 508 | Strike threshold or invalid-emission exhaustion / crossing strike caused by a cycle |
   | 504 | Loop timeout or exec-timeout restamp |
 
@@ -6465,7 +6461,6 @@ of section weights for the rendered request weight.
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | the model's own: complete; what it did not author: its first page ({§markerless-first-page}); then {§context-fit} |
 | the `reasoning` row | the optional reasoning preview under {§reasoning-row} |
-| a row the wall took | its size and address, no body and no native part ({§context-own-rows-fit}) |
 | bodyless row | heading and any facts; no coordinate lines; `tokens` includes any selected native part |
 
 §markerless-first-page **What the model did not ask for in size arrives as its first page.** A READ or FIND without a scope, a stream delivered when a command closes, a peer worker's message, an environment delta, an extension's body and a rejected emission shown back all arrive as their first page: `PLURNK_SERVICE_PREVIEW_LINES` lines and at most `PLURNK_SERVICE_PREVIEW_CHARS` characters, in the projection's own units — lines of text, bytes of a byte view ({§read-bytes}), results of a FIND — with one fact in one notation stating the page and the whole, `<1,100> of 4812 lines` (`range` on a retrieval, `preview` on a stored body, {§packet-extent-metadata}). No operation carries a page size of its own.
@@ -7290,7 +7285,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | code | status | condition |
 |---|---:|---|
 | `result-exceeds-budget` | 413 | A result exceeds the remaining log budget; detail names its size, delivered portion, and a smaller selection or curation ({§context-fit}). |
-| `window-overflow` | 413 | The packet cannot fit the model's window even as receipts ({§context-wall}). |
+| `window-overflow` | 413 | The packet exceeds the model's window ({§context-wall}). |
 | `packet-exceeds-budget` | 413 | Context exceeds budget; the curation mandate is the pinned sentence below ({§context-over-budget-row}). |
 | `loop-timeout` | 504 | The loop exhausted its active execution allowance. |
 | `strike-threshold` | 508 / 500 | Repetition crossed the strike threshold (508), or another strike source crossed it (500), under {§engine-rails}. |
@@ -7431,6 +7426,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
 | `not-configured` | 501 | No provider is configured for this worker. Recovery: Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as the service default; that provider's API key must be in the service's environment. |
+| `context-exceeds-model-budget` | 413 | Current context (*tokens* tokens) does not fit in *route* (budget: *budget* tokens). Recovery: Curate context below *budget* tokens or select a larger model. ({§worker-model-selection}) |
 | `model-worker-required` | 404 | No model worker exists for prompt injection (or to fork). |
 | `name-conflict` | 409 | The worker name is taken. Recovery: Choose another worker name. |
 | `offset-channel-required` | 400 | Recovery: Select the channel to read from the offset. |
@@ -7457,7 +7453,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
 | YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. | a continuing or parked model turn without a NOTE ({§continued-without-note}) |
 | Each directive in the notice table | a notice of the model's own output ({§notice-directive}) |
-| Context window overflow: the packet cannot fit the model's window even as receipts. | the wall ({§context-wall}) |
+| Context window overflow: the packet exceeds the model's window. | the wall ({§context-wall}) |
 | No recipient implements the requested interaction. | The worker's owner is not interactive or does not declare the required client tool ({§client-interaction-routing}). |
 | Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the worker's owner would not receive ({§owner-interaction-ring}) |
 | Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |

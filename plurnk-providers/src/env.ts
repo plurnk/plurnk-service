@@ -239,9 +239,11 @@ const resolveGeneration = (
             `${label} provider: PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}) must leave positive input capacity inside the context window (${contextWindow})`,
         );
     }
-    // {§provider-output-floor}: the floor resolves like the budget, under the same physical caps, and is
-    // never above the output budget — a floor the budget cannot hold clamps to the budget, never refuses.
-    const requestedFloor = floorSpec === null ? null : resolveTokenBudget(floorSpec, contextWindow);
+    // {§provider-output-floor}: a percentage floor resolves against the effective output ceiling
+    // (contextWindow capped by maxOutputTokens) and is never above the output budget — a floor the
+    // budget cannot hold clamps to the budget, never refuses.
+    const outputCeiling = contextWindow === null ? null : Math.min(...physicalCaps);
+    const requestedFloor = floorSpec === null ? null : resolveTokenBudget(floorSpec, outputCeiling);
     const outputFloor = requestedFloor === null
         ? null
         : Math.min(requestedFloor, ...physicalCaps, ...(outputBudget === null ? [] : [outputBudget]));

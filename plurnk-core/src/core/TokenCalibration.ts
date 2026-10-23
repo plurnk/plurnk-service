@@ -6,31 +6,46 @@ export interface CalibrationSample {
 }
 
 // {§tokenomics-calibrated-readout} — provider capacity crosses into the stable
-// curation ruler here. Content costs never cross in the opposite direction.
+// curation ruler here by the additive offset observed on the latest settled emission.
+// Content costs never cross in the opposite direction.
 export default class TokenCalibration {
-    // One sample fixes the factor; without one the conversion is 1:1.
-    static factor(sample: CalibrationSample | undefined): number {
-        if (sample === undefined) return 1;
+    // One sample fixes the additive offset (weight - reported); without one the offset is 0 (1:1).
+    static offset(sample: CalibrationSample | undefined): number {
+        if (sample === undefined) return 0;
         for (const [name, value] of Object.entries(sample)) {
             if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`calibration sample ${name} must be a positive safe integer`);
         }
-        return sample.reported / sample.weight;
+        return sample.weight - sample.reported;
     }
 
-    // The factor a packet of this loop converts with: the loop's own first sample from the model, else the
-    // model's most recently fixed one, else 1.
+    // The offset a packet of this loop converts with: the loop's own latest sample from the model, else the
+    // model's most recent sample across any loop or worker, else 0.
     static async forLoop(db: Db, model: string, loopId: number): Promise<number> {
         if (model.length === 0) throw new TypeError("calibration requires the model name the provider reports");
         const own = await db.engine_calibration_loop_sample.get<CalibrationSample>({ model, loop_id: loopId });
-        return TokenCalibration.factor(own ?? await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));
+        return TokenCalibration.offset(own ?? await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));
     }
 
-    static capacity(inputCapacity: number | null, factor = 1): number | null {
-        if (!Number.isFinite(factor) || factor <= 0) throw new TypeError("calibration must be a positive finite number");
+    // The model's most recent offset across any loop or worker, else 0.
+    static async forModel(db: Db, model: string): Promise<number> {
+        if (model.length === 0) throw new TypeError("calibration requires the model name the provider reports");
+        return TokenCalibration.offset(await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));
+    }
+
+    static capacity(inputCapacity: number | null, offset = 0): number | null {
+        if (!Number.isSafeInteger(offset)) throw new TypeError("calibration offset must be a safe integer");
         if (inputCapacity === null) return null;
         if (!Number.isSafeInteger(inputCapacity) || inputCapacity <= 0) throw new TypeError("input capacity must be a positive safe integer");
-        const capacity = Math.floor(inputCapacity / factor);
-        if (!Number.isSafeInteger(capacity) || capacity < 0) throw new TypeError("curation capacity must be a non-negative safe integer");
+        const capacity = Math.max(0, inputCapacity + offset);
+        if (!Number.isSafeInteger(capacity)) throw new TypeError("curation capacity must be a non-negative safe integer");
         return capacity;
+    }
+
+    static estimatedTokens(weight: number, offset = 0): number {
+        if (!Number.isSafeInteger(weight) || weight < 0) throw new TypeError("packet weight must be a non-negative safe integer");
+        if (!Number.isSafeInteger(offset)) throw new TypeError("calibration offset must be a safe integer");
+        const tokens = Math.max(0, weight - offset);
+        if (!Number.isSafeInteger(tokens)) throw new TypeError("estimated tokens must be a non-negative safe integer");
+        return tokens;
     }
 }

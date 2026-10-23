@@ -282,6 +282,7 @@ export class SqlRiteSync {
 	engine_emission_history: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
+	engine_worker_latest_packet: SqlRiteSyncPreparedStatements;
 	place_scope: SqlRiteSyncPreparedStatements;
 	place_workspace_mark: SqlRiteSyncPreparedStatements;
 	place_workspace_hide: SqlRiteSyncPreparedStatements;
@@ -594,6 +595,7 @@ export default class SqlRite {
 	engine_emission_history: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
+	engine_worker_latest_packet: SqlRitePreparedStatements;
 	place_scope: SqlRitePreparedStatements;
 	place_workspace_mark: SqlRitePreparedStatements;
 	place_workspace_hide: SqlRitePreparedStatements;

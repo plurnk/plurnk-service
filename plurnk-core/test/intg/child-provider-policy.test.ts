@@ -248,7 +248,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
             makeMockResponse("````SEND [200]\nobserved child failure\n````"),
         ],
     });
-    // {§context-wall} — a window whose wall cannot hold the inherited packet even as receipts.
+    // {§context-wall} — a window whose wall cannot hold the inherited packet.
     const child = new Mock({ contextWindow: 1537, responses: [] });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);

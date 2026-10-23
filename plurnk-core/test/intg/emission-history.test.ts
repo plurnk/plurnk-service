@@ -248,47 +248,6 @@ for (const [name, content, reasoning, expected] of [
     }));
 }
 
-for (const mode of ["latest", "all"]) test(`{§emission-history} {§context-own-rows-fit}: the wall omits ${mode} replay whole, the omitted turn's NOTEs return as rows, and the next request decides afresh`, async (t) => withHistory(mode, async () => {
-    const db = await openMigrated();
-    t.after(() => db.close());
-    const workspaceId = await insertWorkspace(db, "previous-wall");
-    const workerId = await insertWorker(db, workspaceId, null, "writer");
-    const loopId = await insertLoop(db, workerId, 1, "Retain these observations.");
-    const schemes = new SchemeRegistry();
-    const engine = new Engine({ db, schemes });
-    const body = Array.from({ length: 1500 }, (_, i) => `Durable observation ${i + 1}.`).join("\n");
-    const big = note(body);
-    const wide = new Mock({ contextWindow: 200000, responses: [say(`${big}\n\n${op("SEND", "Retained.")}`)] });
-    await engine.runTurn({ workspaceId, workerId, loopId, provider: wide, messages: [] });
-    const builder = new PacketBuilder({ db, schemes, executors: () => undefined });
-    const args = { workspaceId, workerId, loopId, currentTurnSeq: 3, provider: wide, initialMessages: [], gitStatus: null };
-    const full = await builder.buildRequestPacket(args);
-    const without = await builder.buildRequestPacket({ ...args, omitEmissionHistory: true });
-    assert.equal(PacketWire.sectionContent(full, "emission-history"), `${big}\n\n${op("SEND", "Retained.")}`);
-    assert.doesNotMatch(PacketWire.sectionContent(full, "log"), /Durable observation 1500\./u, "replayed, the NOTE's text is in the replay alone");
-    assert.match(PacketWire.sectionContent(without, "log"), /Durable observation 1500\./u, "not replayed, the NOTE's text is its row's");
-    // A NOTE's text is in the packet once, as replay or as row, so omitting the replay frees no room by itself:
-    // the omitted turn's NOTE returns as a bodied row, and the wall's shedding then takes it like any other.
-    const wall = full.weight - 1;
-    const small = note("New observation.");
-    const limited = new class extends Mock {
-        override get inputWall(): number { return wall; }
-    }({ contextWindow: 200000, responses: [say(`${small}\n\n${op("SEND", "New.")}`), say(op("SEND [200]", "Done."))] });
-    await engine.runTurn({ workspaceId, workerId, loopId, provider: limited, messages: [] });
-    const request = limited.received[0];
-    assert.equal(previousProgram(request), "", "over the wall, the replay is omitted whole");
-    assert.deepEqual(request.map(({ role }) => role), ["system", "user"], "whole-replay omission rejoins log and footer");
-    const log = chatMessageText(request[1]);
-    assert.match(log, /### log:\/\/\/1\/2\/\d+\/NOTE · \d+\n\{[^\n]*"size"/u, "the omitted turn's NOTE stands as a row, bodiless as a receipt when its body does not fit either ({§context-own-rows-fit})");
-    assert.doesNotMatch(log, /Durable observation 1500\./u, "the text is nowhere twice and nowhere cut: whole as a row, or a receipt");
-    assert.doesNotMatch(log, /\[REDACTED\]|preview|omitted/u, "no replay placeholder");
-    await engine.runTurn({ workspaceId, workerId, loopId, provider: limited, messages: [] });
-    assert.equal(previousProgram(limited.received[1]), "", "the older turn's NOTE now stands as a row in every packet, so the wall still omits the replay first, whatever the mode, and nothing is selectively redacted");
-    assert.match(chatMessageText(limited.received[1][1]), /### log:\/\/\/1\/2\/\d+\/NOTE · \d+\n\{[^\n]*"size"/u, "and the row is taken again as a receipt: each packet decides afresh");
-    const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, worker_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
-    assert.equal(source?.content, `${big}\n\n${op("SEND", "Retained.")}`, "omission never rewrites the source");
-}));
-
 for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never replays an exhausted rejected turn`, async (t) => withHistory(mode, async () => {
     const limit = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
     process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS = "1";
