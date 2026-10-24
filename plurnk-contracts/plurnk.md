@@ -1,7 +1,7 @@
 # Plurnk Operation Protocol
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.
+> YOU MUST ONLY emit fenced operation batches, with the parameters, pattern, and terse aside on the fenced operation line.
 
 ## Syntax
 
@@ -18,12 +18,12 @@ body?
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
-* COPY: Copy files, entries, streams, or text regions.
-* MOVE: Move files, entries, streams, or text regions.
+* COPY (source) <scope>? (destination) <scope>?: Copy files, entries, streams, or text regions (no body).
+* MOVE (source) <scope>? (destination) <scope>?: Move files, entries, streams, or text regions (no body).
 * KILL: Delete an entry, stop a process, or retire log items.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers or streams. You may include `[60]` to check in after 60 seconds. Not for awaiting user input.
+* WAIT: Yield to child workers or streams. You may include `[60]` to check in after 60 seconds.
 * SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
@@ -82,7 +82,7 @@ Describe the child's complete task in the body.
 ## `<scope|range>`
 
 > [!TIP]
-> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
+> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes.
 
 | form            | endpoint rule                  |
 |-----------------|--------------------------------|
@@ -116,11 +116,11 @@ Describe the child's complete task in the body.
 
 ## Editing
 
-```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
+```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo bar baz; the body replaces line 42 -->
 bar
 ```
 
-```EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 44 -->
+```EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 43 -->
 bar
 ```
 
