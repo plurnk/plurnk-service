@@ -23,6 +23,7 @@ import type { ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
 import { NO_GAUGE } from "../test/accounting-fixture.ts";
 import { JSONPatchError } from "json-p3";
+import { HttpAgent } from "./client.ts";
 
 const OWNER = "acp://operator/threads/tui";
 // The daemon's {§provider-accounting} projection of a Worker that has spent nothing: explicit zero.
@@ -295,4 +296,47 @@ test("{§acp-plurnk-metadata} actions: parse a forwardedProps request, project t
         detail: "The action was rejected.",
     };
     assert.deepEqual(actionRunResult("op.exec", { ok: false, problem }), { kind: "op.exec", ok: false, problem });
+});
+
+test("{§acp-client-types} detachActiveRun settles an open SSE stream and cancels its reader without RUN_ERROR", async () => {
+    let readerCancelled = false;
+    const snapshot = Promise.withResolvers<void>();
+    class Observer extends HttpAgent {
+        override connect(input: Parameters<HttpAgent["run"]>[0]) {
+            return super.run(input);
+        }
+    }
+    const agent = new Observer({
+        url: "http://127.0.0.1/acp/connect",
+        threadId: "observer",
+        fetch: async () => {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    controller.enqueue(encoder.encode([
+                        `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: "observer", runId: "r-1" })}\n\n`,
+                        `data: ${JSON.stringify({ type: "MESSAGES_SNAPSHOT", messages: [{ id: "m-1", role: "assistant", content: "ready" }] })}\n\n`,
+                    ].join("")));
+                },
+                cancel() {
+                    readerCancelled = true;
+                },
+            });
+            return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+        },
+    });
+    const events: string[] = [];
+    const runPromise = agent.connectAgent({}, {
+        onEvent: ({ event }) => {
+            events.push(event.type);
+            if (event.type === "MESSAGES_SNAPSHOT") snapshot.resolve();
+        },
+    });
+    await snapshot.promise;
+    assert.equal(agent.isRunning, true);
+    await agent.detachActiveRun();
+    await runPromise;
+    assert.equal(agent.isRunning, false);
+    assert.equal(readerCancelled, true);
+    assert.deepEqual(events, ["RUN_STARTED", "MESSAGES_SNAPSHOT"]);
 });

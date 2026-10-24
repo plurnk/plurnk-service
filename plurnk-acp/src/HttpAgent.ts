@@ -57,7 +57,17 @@ const stripNullSubagentRunId = <T extends object>(item: T): T => {
     return copy;
 };
 
-export const randomUUID = (): string => crypto.randomUUID();
+export const randomUUID = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+        return globalThis.crypto.randomUUID();
+    }
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+};
 
 export type ResumeResponse =
     | {
@@ -282,14 +292,57 @@ export interface RunEventObserver {
 }
 
 export class RunEventStream implements AsyncIterable<AcpEvent> {
-    readonly #factory: () => AsyncGenerator<AcpEvent>;
+    readonly #factory: (onCancel: (cb: () => void) => void) => AsyncGenerator<AcpEvent>;
 
-    constructor(factory: () => AsyncGenerator<AcpEvent>) {
+    constructor(factory: (onCancel: (cb: () => void) => void) => AsyncGenerator<AcpEvent>) {
         this.#factory = factory;
     }
 
     [Symbol.asyncIterator](): AsyncIterator<AcpEvent> {
-        return this.#factory();
+        const cancelCallbacks: Array<() => void> = [];
+        let cancelled = false;
+        let wakeCancel: (() => void) | undefined;
+        const cancelPromise = new Promise<IteratorResult<AcpEvent>>((resolve) => {
+            wakeCancel = () => resolve({ value: undefined, done: true });
+        });
+        const cancel = () => {
+            if (cancelled) return;
+            cancelled = true;
+            wakeCancel?.();
+            for (const cb of cancelCallbacks.splice(0)) {
+                try {
+                    cb();
+                } catch {
+                    // Ignore cleanup errors
+                }
+            }
+        };
+        const iterator = this.#factory((cb) => {
+            if (cancelled) {
+                try {
+                    cb();
+                } catch {
+                    // Ignore cleanup errors
+                }
+            } else {
+                cancelCallbacks.push(cb);
+            }
+        });
+        return {
+            next: () => {
+                if (cancelled) return Promise.resolve({ value: undefined, done: true });
+                return Promise.race([iterator.next(), cancelPromise]);
+            },
+            return: (value?: unknown) => {
+                cancel();
+                void iterator.return(value).catch(() => {});
+                return Promise.resolve({ value: undefined, done: true });
+            },
+            throw: (error?: unknown) => {
+                cancel();
+                return iterator.throw(error);
+            },
+        };
     }
 
     pipe(...operators: ReadonlyArray<(source: RunEventStream) => RunEventStream>): RunEventStream {
@@ -298,7 +351,7 @@ export class RunEventStream implements AsyncIterable<AcpEvent> {
 
     subscribe(observer: RunEventObserver): { unsubscribe: () => void } {
         let cancelled = false;
-        const iterator = this.#factory();
+        const iterator = this[Symbol.asyncIterator]();
         void (async () => {
             try {
                 for (;;) {
@@ -319,7 +372,7 @@ export class RunEventStream implements AsyncIterable<AcpEvent> {
         return {
             unsubscribe: () => {
                 cancelled = true;
-                void iterator.return(undefined).catch(() => {});
+                void iterator.return?.(undefined).catch(() => {});
             },
         };
     }
@@ -643,7 +696,7 @@ export class HttpAgent {
     }
 
     run(input: RunAgentInput): RunEventStream {
-        return new RunEventStream(async function* (this: HttpAgent): AsyncGenerator<AcpEvent> {
+        return new RunEventStream(async function* (this: HttpAgent, onCancel: (cb: () => void) => void): AsyncGenerator<AcpEvent> {
             const response = await this.fetch(this.url, this.requestInit(input));
             if (!response.ok) {
                 const contentType = response.headers.get("content-type") ?? "";
@@ -670,6 +723,12 @@ export class HttpAgent {
             let buffer = "";
             let pendingCr = false;
             let finishedReading = false;
+            onCancel(() => {
+                if (!finishedReading) {
+                    finishedReading = true;
+                    void reader.cancel().catch(() => {});
+                }
+            });
             const normalizeChunk = (raw: string): string => {
                 let s = raw;
                 if (pendingCr) {
@@ -813,8 +872,10 @@ export class HttpAgent {
             );
 
             let detached = false;
+            let activeIterator: AsyncIterator<AcpEvent> | undefined;
             this.#detachCancel = () => {
                 detached = true;
+                void activeIterator?.return?.(undefined);
             };
             let resolveCompletion: (() => void) | undefined;
             this.#activeCompletion = new Promise<void>((resolve) => {
@@ -827,10 +888,16 @@ export class HttpAgent {
 
             try {
                 const stream = isConnect ? this.connect(input) : this.run(input);
-                for await (const rawEvent of stream) {
-                    if (detached) break;
-                    const event = verify(rawEvent);
-                    await this.#applyEvent(event, input, subscribers, startedToolCalls, resolvedToolCalls);
+                activeIterator = stream[Symbol.asyncIterator]();
+                try {
+                    for (;;) {
+                        const { value: rawEvent, done } = await activeIterator.next();
+                        if (done || detached) break;
+                        const event = verify(rawEvent);
+                        await this.#applyEvent(event, input, subscribers, startedToolCalls, resolvedToolCalls);
+                    }
+                } finally {
+                    void activeIterator.return?.(undefined);
                 }
             } catch (err) {
                 this.isRunning = false;
