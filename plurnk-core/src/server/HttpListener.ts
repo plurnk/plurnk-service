@@ -3,13 +3,15 @@
 // a socket of their own (#641). Until the daemon admits it, after every module has started
 // ({§module-http-mounts}), every request is answered 503; after that each request goes to the
 // longest mounted prefix, or receives 404 when no mounted prefix claims it.
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { STATUS_CODES, createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
-import type { HttpHost, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
+import type { HttpHost, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
 
 interface Mount {
     readonly prefix: string;
-    readonly handler: HttpRouteHandler;
+    readonly handler?: HttpRouteHandler;
+    readonly upgrade?: HttpUpgradeHandler;
 }
 
 export default class HttpListener implements HttpHost {
@@ -22,6 +24,7 @@ export default class HttpListener implements HttpHost {
     private constructor(host: string) {
         this.#host = host;
         this.#server = createServer((req, res) => { void this.#dispatch(req, res); });
+        this.#server.on("upgrade", (req, socket, head) => { void this.#upgrade(req, socket, head); });
     }
 
     // {§startup-listener-admission} — a lost bind race rejects with the socket's own error, before
@@ -59,10 +62,24 @@ export default class HttpListener implements HttpHost {
 
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         if (!HttpListener.isPrefix(prefix)) throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
-        if (this.#mounts.some((mount) => mount.prefix === prefix)) {
+        const existing = this.#mounts.find((mount) => mount.prefix === prefix);
+        if (existing?.handler !== undefined) {
             throw new Error(`http listener: '${prefix}' is already mounted`);
         }
-        this.#mounts = [...this.#mounts, { prefix, handler }].toSorted((a, b) => b.prefix.length - a.prefix.length);
+        const entry: Mount = { prefix, handler, ...(existing?.upgrade === undefined ? {} : { upgrade: existing.upgrade }) };
+        this.#mounts = [...this.#mounts.filter((mount) => mount.prefix !== prefix), entry]
+            .toSorted((a, b) => b.prefix.length - a.prefix.length);
+    }
+
+    registerHttpUpgrade(prefix: string, upgrade: HttpUpgradeHandler): void {
+        if (!HttpListener.isPrefix(prefix)) throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
+        const existing = this.#mounts.find((mount) => mount.prefix === prefix);
+        if (existing?.upgrade !== undefined) {
+            throw new Error(`http listener: '${prefix}' upgrade is already mounted`);
+        }
+        const entry: Mount = { prefix, upgrade, ...(existing?.handler === undefined ? {} : { handler: existing.handler }) };
+        this.#mounts = [...this.#mounts.filter((mount) => mount.prefix !== prefix), entry]
+            .toSorted((a, b) => b.prefix.length - a.prefix.length);
     }
 
     // {§module-http-mounts} — the daemon admits the listener once every module has started, so
@@ -78,9 +95,10 @@ export default class HttpListener implements HttpHost {
         await this.#closing;
     }
 
-    #route(pathname: string): HttpRouteHandler | null {
-        for (const { prefix, handler } of this.#mounts) {
-            if (prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`)) return handler;
+    #mountFor(pathname: string): Mount | null {
+        for (const mount of this.#mounts) {
+            const { prefix } = mount;
+            if (prefix === "/" || pathname === prefix || pathname.startsWith(`${prefix}/`)) return mount;
         }
         return null;
     }
@@ -108,7 +126,7 @@ export default class HttpListener implements HttpHost {
             ));
             return;
         }
-        const handler = this.#route(pathname);
+        const handler = this.#mountFor(pathname)?.handler ?? null;
         if (handler === null) {
             HttpListener.#answer(res, Problems.create(
                 "http", "route-not-found", 404, "The requested HTTP route does not exist.",
@@ -133,8 +151,67 @@ export default class HttpListener implements HttpHost {
         }
     }
 
+    async #upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+        let pathname: string;
+        try {
+            pathname = new URL(req.url ?? "/", "http://listener").pathname;
+        } catch {
+            HttpListener.#answerUpgrade(socket, Problems.create(
+                "http", "request-target-invalid", 400, "The request target is not a URL the listener can route.",
+                { stage: "routing", retryable: false },
+            ));
+            return;
+        }
+        if (!this.#admitted) {
+            HttpListener.#answerUpgrade(socket, Problems.create(
+                "http",
+                "service-starting",
+                503,
+                "The PLURNK service owns this listener but has not admitted its client interface yet.",
+                { stage: "startup", retryable: true },
+            ));
+            return;
+        }
+        const handler = this.#mountFor(pathname)?.upgrade ?? null;
+        if (handler === null) {
+            HttpListener.#answerUpgrade(socket, Problems.create(
+                "http", "route-not-found", 404, "The requested HTTP route does not exist.",
+                { stage: "routing", retryable: false },
+            ));
+            return;
+        }
+        try {
+            await handler(req, socket, head);
+        } catch (cause) {
+            // {§http-host} A mounted route's failure ends its own request, never the daemon.
+            console.error(`HTTP upgrade failed: ${req.method ?? "GET"} ${pathname}:`, cause);
+            if (socket.writableEnded || socket.destroyed) return;
+            if ("bytesWritten" in socket && typeof socket.bytesWritten === "number" && socket.bytesWritten > 0) {
+                socket.destroy();
+                return;
+            }
+            HttpListener.#answerUpgrade(socket, Problems.create(
+                "http", "route-failed", 500, "The mounted route failed while answering the request.",
+                { stage: "route", retryable: false },
+            ));
+        }
+    }
+
     static #answer(res: ServerResponse, problem: ProblemDetails): void {
         res.writeHead(problem.status, { "content-type": "application/problem+json" });
         res.end(JSON.stringify(problem));
+    }
+
+    static #answerUpgrade(socket: Duplex, problem: ProblemDetails): void {
+        const body = JSON.stringify(problem);
+        const statusText = STATUS_CODES[problem.status] ?? "Error";
+        socket.end(
+            `HTTP/1.1 ${problem.status} ${statusText}\r\n` +
+            "Content-Type: application/problem+json\r\n" +
+            "Connection: close\r\n" +
+            `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+            "\r\n" +
+            body,
+        );
     }
 }

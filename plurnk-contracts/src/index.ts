@@ -55,6 +55,17 @@ export type { JsonReplacer } from "./JsonResult.ts";
 export { aguiConformanceReport } from "./AguiConformance.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
 export type { RequestHeaders } from "./HttpOrigin.ts";
+export { addressOf, withoutBodies } from "./LogRow.ts";
+export {
+    APPLICATION_NOTIFICATIONS,
+    isLogEntryNotification,
+    type ApplicationNotificationContract,
+    type LogEntryNotification,
+    type OutsideEventNotification,
+    type ProposalNotification,
+    type ReasoningEventNotification,
+    type TerminatedNotification,
+} from "./ApplicationNotifications.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
 // {§runtime-neutral-root} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export type * from "./Application.ts";

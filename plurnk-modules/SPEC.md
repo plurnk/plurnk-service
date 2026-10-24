@@ -36,7 +36,7 @@ type names only what the module uses.
 pathname prefixes ({§http-host}). The host claims every module's mounts before any module sets
 up: one prefix claimed twice fails boot naming both owners. The root `/` is optional and obeys
 the same ownership rule as any other prefix. At `start` a module mounts exactly its claims through
-`registerHttpRoute`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
+`registerHttpRoute` and/or `registerHttpUpgrade`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
 listener answers `503 service-starting` until every module has started, so readiness never
 depends on registration order; afterwards an unclaimed path answers `404 route-not-found`.
 A host without a listener has nothing to serve a mount on:

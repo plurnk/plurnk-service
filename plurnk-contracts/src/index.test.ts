@@ -11,6 +11,7 @@ test("{§contract-proposal-projection} ProposalProjection's op keywords are the 
 
 test("{§root-value-api} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
+        "APPLICATION_NOTIFICATIONS",
         "CapabilityAdmission",
         "EFFORTS",
         "INTERNAL_ROW_OPS",
@@ -61,12 +62,14 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "UNKNOWN_POSITION",
         "Validator",
         "WORKER_NAME",
+        "addressOf",
         "aguiConformanceReport",
         "errnoCode",
         "excerptOf",
         "formatJsonDocument",
         "isExecution",
         "isExecutionOp",
+        "isLogEntryNotification",
         "isPlurnkOp",
         "isRecord",
         "isSafeInteger",
@@ -74,6 +77,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "renderJsonResult",
         "requestOrigin",
         "selectWorkerLoop",
+        "withoutBodies",
         "writtenOp",
     ]);
 });

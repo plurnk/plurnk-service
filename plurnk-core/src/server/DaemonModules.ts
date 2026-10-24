@@ -2,7 +2,7 @@
 // their setup/start/stop/close phases, and the actions they register. Split out of Daemon, which keeps the
 // delegating seam entry points and the boot sequence that runs each phase in its place.
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, StartedModule } from "@plurnk/plurnk-modules";
-import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
+import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { Db } from "../core/Db.ts";
@@ -137,6 +137,14 @@ export default class DaemonModules {
         // {§module-http-mounts} — a module mounts exactly what it claimed.
         if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpRoute: no module declared '${prefix}' among its mounts`);
         this.#http.registerHttpRoute(prefix, handler);
+        this.#mounted.add(prefix);
+    }
+
+    registerHttpUpgrade(prefix: string, handler: HttpUpgradeHandler): void {
+        if (this.#http === null) throw new Error(`registerHttpUpgrade: this daemon has no HTTP listener to mount '${prefix}' on`);
+        // {§module-http-mounts} — a module mounts exactly what it claimed.
+        if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpUpgrade: no module declared '${prefix}' among its mounts`);
+        this.#http.registerHttpUpgrade(prefix, handler);
         this.#mounted.add(prefix);
     }
 

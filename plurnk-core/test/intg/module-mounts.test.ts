@@ -134,6 +134,16 @@ test("{§module-http-mounts} a module mounts exactly what it claimed", async (t)
     const unmounted = await fixture(t);
     unmounted.daemon.registerModule(serving(["/", "/promised"], ["/"]), "@acme/root");
     await assert.rejects(unmounted.daemon.start(), /module '@acme\/root' claimed HTTP mount '\/promised' but did not mount it at start/u);
+
+    const unclaimedUpgrade = await fixture(t);
+    unclaimedUpgrade.daemon.registerModule({
+        mounts: ["/ws"],
+        start: (port: ApplicationPort) => {
+            port.registerHttpUpgrade("/ws", (_req, socket) => { socket.end(); });
+            port.registerHttpUpgrade("/stray", (_req, socket) => { socket.end(); });
+        },
+    }, "@acme/ws");
+    await assert.rejects(unclaimedUpgrade.daemon.start(), /no module declared '\/stray' among its mounts/u);
 });
 
 test("{§module-http-mounts} the listener is admitted after every module started, whatever order they mounted in", async (t) => {

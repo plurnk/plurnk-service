@@ -130,6 +130,7 @@ const mockSeam = (operatorSecret: string | null = null) => {
         configurationNotices: () => [],
         // {§http-host} — the test host (../test/host.ts) mounts the module's routes on its own socket.
         registerHttpRoute: () => {},
+        registerHttpUpgrade: () => {},
         httpAddress: () => ({ host: "127.0.0.1", port: 0 }),
         listClientDisplayCapabilities: async () => [],
         listModuleActions: () => [],

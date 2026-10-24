@@ -33,9 +33,8 @@ import {
 } from "./types.ts";
 import { aggregateTokenUsage, tokenUsageFromAiSdkUsage, type ContentPart, type TokenUsage } from "@ag-ui/core";
 import { derivationActivity } from "./AguiPlus.ts";
-import { withoutBodies } from "./row-attrs.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { Validator, isRecord, isSafeInteger, lifecycleOfLoopStatus, type ApplicationInboxMessage, type ApplicationLoopPacket, type LogEntryWire } from "@plurnk/plurnk-contracts";
+import { Validator, addressOf, isRecord, isSafeInteger, lifecycleOfLoopStatus, withoutBodies, type ApplicationInboxMessage, type ApplicationLoopPacket, type LogEntryWire } from "@plurnk/plurnk-contracts";
 
 type ReplayMessage = AssistantMessage | ReasoningMessage | ToolMessage | UserMessage;
 // {§agui-body-reference} A receipt's facts only the model uses: the line anchors it edits by.
@@ -894,15 +893,7 @@ export default class Translator {
     // {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a
     // file target records, with its channel; null when the row named none.
     static addressOf(e: RowFacts): string | null {
-        const text = (value: unknown): string | null => typeof value === "string" ? value : null;
-        const pathname = text(e.pathname);
-        if (pathname === null) return null;
-        const fragment = text(e.fragment) === null ? "" : `#${text(e.fragment)}`;
-        const scheme = text(e.scheme);
-        if (scheme === null) return `${pathname}${fragment}`;
-        const port = typeof e.port === "number" ? `:${e.port}` : "";
-        const query = text(e.query) === null ? "" : `?${text(e.query)}`;
-        return `${scheme}://${text(e.hostname) ?? ""}${port}${pathname}${query}${fragment}`;
+        return addressOf(e);
     }
 
     // {§agui-plurnk-metadata} Speech holds the body; its heading's aside and its receipt have no field in a text message.

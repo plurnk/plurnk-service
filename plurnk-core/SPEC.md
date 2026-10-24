@@ -240,12 +240,12 @@ durable storage. Core owns the socket continuously; it answers 503 until daemon
 activation admits it after every module has started ({§module-http-mounts}), so
 early ownership introduces neither traffic nor a close/rebind race.
 
-§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): AG-UI mounts only `/agui`, A2A the well-known card and its endpoint path, on the same address.
+§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): AG-UI mounts only `/agui`, ACP `/acp`, and A2A the well-known card and its endpoint path, on the same address.
 
 | Routing | Rule |
 | --- | --- |
 | A prefix | an absolute pathname; it claims itself and the subtree beneath it, never a longer sibling name; `/` is the root and receives whatever nothing more specific claimed when a module mounts it |
-| A request | goes to the longest mounted prefix |
+| A request or upgrade | goes to the longest mounted prefix's corresponding handler (`registerHttpRoute` for HTTP requests, `registerHttpUpgrade` for HTTP `Upgrade` requests); a prefix without that handler never falls through to a shorter prefix |
 | No mounted handler | an admitted listener returns an HTTP `404 route-not-found` Problem; a root mount is not required |
 | A target it cannot parse | the listener answers `400 request-target-invalid` and routes nothing |
 | A failed handler | its request answers `500 route-failed`, or is cut where its response had begun; one already answered stands. The failure is reported with its request, and the listener serves on: a route's failure ends its own request, never the daemon |

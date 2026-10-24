@@ -1,5 +1,8 @@
-import type { ApplicationLoopPacket, JsonSchema } from "@plurnk/plurnk-contracts";
-import type { LogEntryNotification, OutsideEventNotification, ReasoningEventNotification, TerminatedNotification } from "./types.ts";
+import {
+    APPLICATION_NOTIFICATIONS,
+    type ApplicationNotificationContract,
+    type JsonSchema,
+} from "@plurnk/plurnk-contracts";
 
 // The public AG-UI+ wire registry. JSON Schema values are both the discovery
 // representation and the production admission contract; clients never maintain
@@ -13,11 +16,7 @@ export interface AguiActionContract {
     readonly outputSchema: JsonSchema;
 }
 
-export interface AguiNotificationContract<T = unknown> {
-    readonly payloadSchema: JsonSchema;
-    // The payload the schema generates: the type the table declares beside the schema, never a value the contract carries.
-    readonly payload?: T;
-}
+export type AguiNotificationContract<T = unknown> = ApplicationNotificationContract<T>;
 
 const id = (name: string): string => `https://schemas.plurnk.xyz/v0/${name}.json`;
 const ref = (name: string): JsonSchema => ({ $ref: id(name) });
@@ -48,7 +47,6 @@ const NONNEGATIVE = integer(0);
 const OPERATION_RESULT = ref("OperationResult");
 const MODEL_ROUTE = ref("ModelRoute");
 const EFFORT = ref("Effort");
-const PROVIDER_ACCOUNTING = { $ref: "https://schemas.plurnk.xyz/ProviderAccounting.json" };
 
 const workspace = object({
     id: POSITIVE,
@@ -198,117 +196,4 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     }, ["policy"]), capabilityProjection),
 } satisfies Readonly<Record<string, AguiActionContract>>);
 
-const notification = <T = unknown>(payloadSchema: JsonSchema): AguiNotificationContract<T> => Object.freeze({ payloadSchema });
-
-const streamCoordinate = {
-    loop_seq: NONNEGATIVE,
-    turn_seq: NONNEGATIVE,
-    sequence: NONNEGATIVE,
-};
-const streamBase = {
-    entryId: POSITIVE,
-    workerId: POSITIVE,
-    target: NONEMPTY,
-    scheme: NONEMPTY,
-    channel: NONEMPTY,
-    state: { enum: ["static", "active", "closed", "errored"] },
-    contentLength: NONNEGATIVE,
-    mimetype: NONEMPTY,
-    ...streamCoordinate,
-};
-const reasoningIdentity = {
-    workerId: POSITIVE,
-    loopId: POSITIVE,
-    turnId: POSITIVE,
-    loopSeq: POSITIVE,
-    turnSeq: POSITIVE,
-    modelCallId: POSITIVE,
-    requestSequence: POSITIVE,
-};
-
-export const AGUI_NOTIFICATIONS = Object.freeze({
-    "workspace/preparation": notification<{ preparation: unknown }>(object({
-        workspaceId: POSITIVE,
-        preparation: array(ref("FunctionalityPreparationActivity")),
-    }, ["workspaceId", "preparation"])),
-    "log/entry": notification<LogEntryNotification>(object({
-        entry: object({
-            id: POSITIVE,
-            worker_id: POSITIVE,
-            loop_id: POSITIVE,
-            op: nullable(string()),
-            origin: NONEMPTY,
-        }, ["id", "worker_id", "loop_id", "op", "origin"], true),
-    }, ["entry"])),
-    "loop/terminated": notification<TerminatedNotification>(object({
-        workerId: POSITIVE,
-        loopId: POSITIVE,
-        loopSeq: POSITIVE,
-        result: OPERATION_RESULT,
-        hitMaxTurns: { type: "boolean" },
-        turnIds: array(POSITIVE),
-        attributions: array(NONEMPTY),
-        usage: object({
-            accounting: PROVIDER_ACCOUNTING,
-            curationWeight: nullable(NONNEGATIVE),
-            curationBudget: nullable(NONNEGATIVE),
-            contextTokens: nullable(NONNEGATIVE),
-            contextCapacity: nullable(POSITIVE),
-            meta: { type: "object", additionalProperties: true },
-        }, ["accounting", "curationWeight", "curationBudget", "contextTokens", "contextCapacity", "meta"]),
-        // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
-        terminatedAt: POSITIVE,
-    }, ["workerId", "loopId", "loopSeq", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
-    "loop/packet": notification<ApplicationLoopPacket>(object({
-        workerId: POSITIVE,
-        loopId: POSITIVE,
-        loopSeq: POSITIVE,
-        packetCount: POSITIVE,
-        gauge: object({
-            curationWeight: nullable(NONNEGATIVE),
-            curationBudget: nullable(NONNEGATIVE),
-            contextTokens: nullable(NONNEGATIVE),
-            contextCapacity: nullable(POSITIVE),
-        }, ["curationWeight", "curationBudget", "contextTokens", "contextCapacity"]),
-    }, ["workerId", "loopId", "loopSeq", "packetCount", "gauge"])),
-    "loop/proposal": notification(ref("ProposalProjection")),
-    "loop/interaction": notification(ref("ClientInteractionProjection")),
-    "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({
-        workerId: nullable(POSITIVE),
-        loopId: NONNEGATIVE,
-        notice: ref("Notice"),
-    }, ["workerId", "loopId", "notice"])),
-    "reasoning/event": notification<ReasoningEventNotification>({
-        oneOf: [
-            object({
-                ...reasoningIdentity,
-                phase: { enum: ["start", "end"] },
-            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase"]),
-            object({
-                ...reasoningIdentity,
-                phase: { enum: ["content"] },
-                delta: NONEMPTY,
-            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase", "delta"]),
-        ],
-    }),
-    "outside/event": notification<OutsideEventNotification>(object({
-        workerId: POSITIVE,
-        loopId: POSITIVE,
-        turnId: POSITIVE,
-        coordinate: NONEMPTY,
-        text: NONEMPTY,
-        tokens: POSITIVE,
-    }, ["workerId", "loopId", "turnId", "coordinate", "text", "tokens"])),
-    "stream/event": notification(object(streamBase, ["entryId", "workerId", "target", "channel", "state", "contentLength"])),
-    "stream/concluded": notification(object({
-        entryId: POSITIVE,
-        workerId: POSITIVE,
-        target: NONEMPTY,
-        subscriptionId: POSITIVE,
-        result: OPERATION_RESULT,
-        scheme: NONEMPTY,
-        summary: string(),
-        wakeAction: { enum: ["skipped-aborted", "skipped-cancelled", "wake-pending", "no-op-active-loop", "no-loop"] },
-        ...streamCoordinate,
-    }, ["entryId", "workerId", "target", "subscriptionId", "result", "scheme", "summary", "wakeAction"])),
-} satisfies Readonly<Record<string, AguiNotificationContract>>);
+export const AGUI_NOTIFICATIONS = APPLICATION_NOTIFICATIONS;

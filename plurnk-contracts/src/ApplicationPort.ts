@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import type { FunctionalityPreparationActivity, ProviderAccounting, RollbackReport } from "./types.generated.ts";
 import type { ApplicationInboxMessage, ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type { ApplicationStream } from "./ApplicationStream.ts";
@@ -44,6 +45,9 @@ import type {
 /** {§http-host} One request on the daemon's listener, handed to the adapter that mounted its prefix. */
 export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 
+/** {§http-host} One upgrade request on the daemon's listener, handed to the adapter that mounted its prefix. */
+export type HttpUpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>;
+
 /**
  * {§http-host} The daemon's one HTTP listener, offered to exterior adapters. A daemon is one trust
  * domain on one address: core binds `PLURNK_HOST:PLURNK_PORT` before it admits durable state,
@@ -54,6 +58,7 @@ export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => vo
  */
 export interface HttpHost {
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void;
+    registerHttpUpgrade(prefix: string, handler: HttpUpgradeHandler): void;
     httpAddress(): { readonly host: string; readonly port: number };
 }
 

@@ -221,3 +221,124 @@ for (const [failure, row] of Object.entries(FAILING_ROUTES)) {
         } finally { await listener.close(); }
     });
 }
+
+const rawUpgrade = (port: number, target: string): Promise<{ status: string; body: string }> => new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => socket.write(
+        `GET ${target} HTTP/1.1\r\nHost: listener\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+    ));
+    let data = "";
+    socket.on("data", (chunk) => { data += chunk; });
+    socket.on("error", reject);
+    socket.on("close", () => {
+        const split = data.indexOf("\r\n\r\n");
+        if (split === -1) {
+            resolve({ status: "", body: data });
+            return;
+        }
+        resolve({ status: data.slice(0, split).split("\r\n")[0] ?? "", body: data.slice(split + 4) });
+    });
+});
+
+const acceptUpgrade = (label: string) => (_req: unknown, socket: { end(data: string): void }) => {
+    socket.end(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n${label}`);
+};
+
+test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission, route to the longest prefix, and never fall through a child prefix without an upgrade handler", async () => {
+    const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+    try {
+        const { port } = listener.httpAddress();
+        const before = await rawUpgrade(port, "/acp");
+        assert.match(before.status, /^HTTP\/1\.1 503 /u);
+        assert.deepEqual(JSON.parse(before.body), Problems.create(
+            "http",
+            "service-starting",
+            503,
+            "The PLURNK service owns this listener but has not admitted its client interface yet.",
+            { stage: "startup", retryable: true },
+        ));
+        listener.registerHttpUpgrade("/", acceptUpgrade("root-ws"));
+        listener.registerHttpRoute("/agui", reply("agui-http"));
+        listener.registerHttpRoute("/acp", reply("acp-http"));
+        listener.registerHttpUpgrade("/acp", acceptUpgrade("acp-ws"));
+        assert.throws(() => listener.registerHttpUpgrade("/acp", acceptUpgrade("again")), /upgrade is already mounted/u);
+        assert.throws(() => listener.registerHttpUpgrade("acp", acceptUpgrade("relative")), /absolute pathname prefix/u);
+        listener.admit();
+
+        assert.equal((await get(port, "/acp")).body, "acp-http");
+        const acpWs = await rawUpgrade(port, "/acp/ws?x=1");
+        assert.match(acpWs.status, /^HTTP\/1\.1 101 /u);
+        assert.equal(acpWs.body, "acp-ws");
+
+        const aguiWs = await rawUpgrade(port, "/agui");
+        assert.match(aguiWs.status, /^HTTP\/1\.1 404 /u, "a mounted prefix without an upgrade handler never falls through to root");
+        assert.deepEqual(JSON.parse(aguiWs.body), Problems.create(
+            "http", "route-not-found", 404, "The requested HTTP route does not exist.",
+            { stage: "routing", retryable: false },
+        ));
+
+        const rootWs = await rawUpgrade(port, "/elsewhere");
+        assert.match(rootWs.status, /^HTTP\/1\.1 101 /u);
+        assert.equal(rootWs.body, "root-ws");
+
+        const invalidWs = await rawUpgrade(port, "http://[::1");
+        assert.match(invalidWs.status, /^HTTP\/1\.1 400 /u);
+        assert.deepEqual(JSON.parse(invalidWs.body), Problems.create(
+            "http", "request-target-invalid", 400, "The request target is not a URL the listener can route.",
+            { stage: "routing", retryable: false },
+        ));
+    } finally { await listener.close(); }
+});
+
+const FAILING_UPGRADES = {
+    "rejects before answering": {
+        handler: async () => { throw new Error("upgrade failure"); },
+        answered: "problem",
+    },
+    "throws synchronously before answering": {
+        handler: () => { throw new Error("upgrade failure"); },
+        answered: "problem",
+    },
+    "rejects after its response began": {
+        handler: async (_req: unknown, socket: { write(chunk: string): void }) => {
+            socket.write("HTTP/1.1 101 Switching Protocols\r\n");
+            await new Promise((resolve) => setImmediate(resolve));
+            throw new Error("upgrade failure");
+        },
+        answered: "cut",
+    },
+    "rejects after answering": {
+        handler: async (_req: unknown, socket: { end(body: string): void }) => {
+            socket.end("HTTP/1.1 101 Switching Protocols\r\n\r\nwhole");
+            throw new Error("upgrade failure");
+        },
+        answered: "whole",
+    },
+} as const;
+for (const [failure, row] of Object.entries(FAILING_UPGRADES)) {
+    test(`{§http-host} an upgrade handler that ${failure} ends its own socket, is reported, and the listener serves on`, async (t) => {
+        const reported = t.mock.method(console, "error", () => undefined);
+        const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+        try {
+            const { port } = listener.httpAddress();
+            listener.registerHttpUpgrade("/failing", row.handler);
+            listener.registerHttpRoute("/", reply("root"));
+            listener.admit();
+            const response = await rawUpgrade(port, "/failing");
+            if (row.answered === "problem") {
+                assert.match(response.status, /^HTTP\/1\.1 500 /u);
+                assert.deepEqual(JSON.parse(response.body), Problems.create(
+                    "http", "route-failed", 500, "The mounted route failed while answering the request.",
+                    { stage: "route", retryable: false },
+                ));
+            } else if (row.answered === "cut") {
+                assert.equal(response.status, "");
+            } else {
+                assert.match(response.status, /^HTTP\/1\.1 101 /u);
+                assert.equal(response.body, "whole");
+            }
+            assert.ok(reported.mock.calls.some(({ arguments: [message] }) => String(message).startsWith("HTTP upgrade failed: GET /failing")),
+                "the failure is reported with its request");
+            assert.equal((await get(port, "/")).body, "root");
+        } finally { await listener.close(); }
+    });
+}

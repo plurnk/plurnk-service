@@ -8,9 +8,8 @@
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { withoutBodies } from "./row-attrs.ts";
 import type { JsonPatch, Interrupt, ResumeEntry } from "@ag-ui/core";
-import { isRecord, lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ApplicationStream, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { isRecord, lifecycleOfLoopStatus, withoutBodies, type LoopLifecycle, type ProviderAccounting, type ApplicationLoopProjection, type ApplicationWorkerProjection, type ApplicationInboxMessage, type ApplicationProviderAlias, type ApplicationStream, type ClientInteractionProjection, type ClientInteractionResolution, type FunctionalityPreparationActivity, type ModelRoute, type ProblemDetails, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → interrupt ──────────────────────────────────
 // {§agui-proposal-resolve} A gate is the operation awaiting its decision: the Portal presents its call, per Run, and the

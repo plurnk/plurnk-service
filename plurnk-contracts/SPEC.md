@@ -1505,9 +1505,9 @@ union.
 
 §runtime-neutral-root **The package root is runtime-neutral.** A browser type-checks it with DOM
 libraries and no Node globals: nothing it reaches names a Node module or global. The application port
-({§application-port}), whose HTTP host hands an adapter Node's request and response ({§http-host}), is
+({§application-port}), whose HTTP host hands an adapter Node's request, response and upgrade socket ({§http-host}), is
 the one Node-bound contract and its own types-only entry, `@plurnk/plurnk-contracts/port`, with
-`HttpHost` and `HttpRouteHandler`; the types it speaks stay in the root. A helper that reads a request
+`HttpHost`, `HttpRouteHandler` and `HttpUpgradeHandler`; the types it speaks stay in the root. A helper that reads a request
 takes only its headers (`RequestHeaders`), which a Node request satisfies. Lint checks the root's whole
 source graph under those settings (`tsconfig.browser.json`).
 
@@ -1529,10 +1529,10 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 | `WORKER_NAME`                                       | Authority minting predicate                                         | {§worker-name}                            |
 | `UNKNOWN_POSITION`                                  | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                        |
 
-The remaining values are small pure helpers over those contracts (`isExecution`, `writtenOp`,
+The remaining values are small pure helpers over those contracts (`isExecution`, `isLogEntryNotification`, `writtenOp`,
 `lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
-`aguiConformanceReport`, `requestOrigin` for {§http-request-origin}) and the closed name patterns
-and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`).
+`aguiConformanceReport`, `requestOrigin` for {§http-request-origin}, `withoutBodies`, `addressOf`) and the closed name patterns
+and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`, `APPLICATION_NOTIFICATIONS`).
 
 §parser-construction-boundary Parser construction components are internal rather
 than alternate consumer entry points:

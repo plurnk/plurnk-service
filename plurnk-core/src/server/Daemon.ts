@@ -58,7 +58,7 @@ import MessageResources from "../core/MessageResources.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
+import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plurnk/plurnk-contracts/port";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
@@ -1032,6 +1032,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // the modules' owner keeps the claims. {§module-action-registration}: a module's actions, registered, listed and invoked.
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         this.#modules.registerHttpRoute(prefix, handler);
+    }
+
+    registerHttpUpgrade(prefix: string, handler: HttpUpgradeHandler): void {
+        this.#modules.registerHttpUpgrade(prefix, handler);
     }
 
     httpAddress(): { readonly host: string; readonly port: number } {
