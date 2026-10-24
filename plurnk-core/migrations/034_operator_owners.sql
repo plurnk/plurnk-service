@@ -1,4 +1,5 @@
 -- MIGRATE: 34 operator owners
+-- Released in 4.3.3 and frozen ({§db-migrations}).
 -- {§worker-ownership} AG-UI owners are workspace-scoped (`agui://operator`), never per-principal or per-thread:
 -- any existing `agui://*/threads/*` owner or interaction recipient is unified onto `agui://operator`.
 INSERT INTO worker_owners (workspace_id, address, tools, interactive)

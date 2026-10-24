@@ -1,5 +1,11 @@
 # @plurnk/plurnk-models
 
+## 3.0.3
+
+### Patch Changes
+
+- Replace per-`(principal, threadId)` worker ownership with a single workspace-scoped operator owner (`agui://operator`), derive owner interactivity from the live union of attached AG-UI client Runs in the workspace, deliver proposal and `question` interrupts across every attached client Run with idempotent resolution convergence, and refresh the Models.dev snapshot to `@opencode-ai/models@0.0.114` (#1231).
+
 ## 3.0.2
 
 ### Patch Changes
