@@ -17,7 +17,7 @@ test("{§message-idempotency}: a client message's address is its idempotency key
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "keyed-messages", projectRoot: null });
         const { workerId } = await daemon.createWorker({ workspaceId, name: "keyed" });
-        const address = "agui://operator/threads/keyed/messages/m1";
+        const address = "acp://operator/threads/keyed/messages/m1";
         const refusal = async (attempt: Promise<unknown>): Promise<string | null> => {
             try { await attempt; return null; } catch (cause) {
                 const problem = Problems.fromError(cause);

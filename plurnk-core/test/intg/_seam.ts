@@ -1,6 +1,6 @@
 // Test-only JSON-RPC-shaped adapter over ApplicationPort. It is harness plumbing, not a
-// product protocol or AG-UI projection; client parsing remains AG-UI-owned.
-// {§methods} {§agui-op-parse}
+// product protocol or ACP projection; client parsing remains ACP-owned.
+// {§methods} {§acp-op-parse}
 // It holds the attached envelope, lazy model-worker binding, and workspace-filtered
 // notification fan-in that integration tests need. Its operations are one person's client
 // operations ({§connection-lifecycle}): they journal in the workspace's runtime worker,
@@ -21,7 +21,7 @@ export default class SeamSocket {
     #modelWorkerId: number | null = null;
     #closed = false;
     static readonly owner = "test://primary";
-    // A client names the worker its runs address ({§agui-thread-binding}). A run that names no worker
+    // A client names the worker its runs address ({§acp-thread-binding}). A run that names no worker
     // addresses this one, so every connection to a workspace shares it.
     static readonly worker = "main";
 

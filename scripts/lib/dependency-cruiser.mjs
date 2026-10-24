@@ -1,7 +1,7 @@
 // Runtime import-direction audit (#1053). On demand only: `npm run audit:direction`; never a gate.
 // Package classes by directory: core `plurnk-core`, frameworks `plurnk-<kind>`,
 // their extensions `plurnk-<kind>-<name>` ({§core-extension-composition}); the parser is imported only
-// where AGENTS.md declares (the service, plurnk-agui, plurnk-execs).
+// where AGENTS.md declares (the service, plurnk-acp, plurnk-execs).
 const FRAMEWORKS = "schemes|execs|mimetypes|providers";
 
 export default {
@@ -29,9 +29,9 @@ export default {
         },
         {
             name: "parser-only-where-declared",
-            comment: "the language is parsed by the service's execution path, plurnk-agui, plurnk-acp and plurnk-execs; nowhere else",
+            comment: "the language is parsed by the service's execution path, plurnk-acp and plurnk-execs; nowhere else",
             severity: "error",
-            from: { pathNot: "^plurnk-(core|agui|acp|execs|parser)/" },
+            from: { pathNot: "^plurnk-(core|acp|execs|parser)/" },
             to: { path: "^plurnk-parser/" },
         },
         {

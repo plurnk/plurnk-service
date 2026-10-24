@@ -467,7 +467,7 @@ test("{§a2a-hosted-credentials}: with a face on the authority the card declares
         [{}, 401, "ACCESS_TOKEN_REQUIRED", 'Bearer realm="plurnk"'],
         [{ authorization: "Bearer wrong" }, 401, "ACCESS_TOKEN_INVALID", 'Bearer realm="plurnk", error="invalid_token"'],
         [{ authorization: `Bearer ${daemon.credentials.issue({ kind: "refresh", subject: "agent", clientId: "agent", scopes: ["a2a"], family: "r", ttlMs: 60_000 }).token}` }, 401, "ACCESS_TOKEN_INVALID", 'Bearer realm="plurnk", error="invalid_token"'],
-        [{ authorization: `Bearer ${mint(["agui"])}` }, 403, "INSUFFICIENT_SCOPE", 'Bearer realm="plurnk", error="insufficient_scope", scope="a2a"'],
+        [{ authorization: `Bearer ${mint(["acp"])}` }, 403, "INSUFFICIENT_SCOPE", 'Bearer realm="plurnk", error="insufficient_scope", scope="a2a"'],
     ];
     for (const [headers, status, reason, challenge] of refusals) {
         const refused = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", ...headers } });

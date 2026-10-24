@@ -146,7 +146,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
 test("{§message-source-scheme} one source address identifies one immutable message per workspace", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
-    const address = "agui://operator/threads/shared/messages/m1";
+    const address = "acp://operator/threads/shared/messages/m1";
     const workspaces = await Promise.all(["first", "second"].map((name) => insertWorkspace(db, name)));
     for (const workspaceId of workspaces) {
         const workerId = await insertWorker(db, workspaceId);
@@ -157,7 +157,7 @@ test("{§message-source-scheme} one source address identifies one immutable mess
             /message address already accepted in this workspace/);
         const retained = await db.message_source_by_address.get<{ body: string }>({ workspace_id: workspaceId, path: address });
         assert.equal(retained?.body, "Accepted.");
-        const all = await db.message_source_resources.all({ workspace_id: workspaceId, scheme: "agui", target: address });
+        const all = await db.message_source_resources.all({ workspace_id: workspaceId, scheme: "acp", target: address });
         assert.equal(all.length, 1);
     }
 });

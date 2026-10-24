@@ -22,7 +22,7 @@ const consumer = () => {
         mounts: ["/consumer"],
         setup: (seam: Pick<ApplicationPort, "credentials">): void => {
             seen.facePublishedAtSetup = seam.credentials.face() !== null;
-            seen.secret = seam.credentials.registerClient({ id: "consumer", redirectPaths: [CALLBACK], scopes: ["agui"], stylesheetPath: STYLESHEET }).clientSecret;
+            seen.secret = seam.credentials.registerClient({ id: "consumer", redirectPaths: [CALLBACK], scopes: ["acp"], stylesheetPath: STYLESHEET }).clientSecret;
         },
         start: (port: ApplicationPort): void => {
             seen.issuerAtStart = port.credentials.face()!.issuer();
@@ -68,13 +68,13 @@ for (const order of ["the consumer set up first", "the client interface set up f
             const redirect = `${expected}${CALLBACK}`;
             const verifier = randomBytes(32).toString("base64url");
             const challenge = createHash("sha256").update(verifier).digest("base64url");
-            const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams({ client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", code_challenge: challenge, code_challenge_method: "S256" })}`);
+            const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams({ client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "acp", code_challenge: challenge, code_challenge_method: "S256" })}`);
             assert.ok((await page.text()).includes(`<link rel="stylesheet" href="${STYLESHEET}">`), "{§auth-oauth-documents}: the module's own stylesheet on the page it is signed in at");
             // The operator signs in at the authorization endpoint, which answers the consumer's client at once.
             const authorized = await fetch(`${base}/oauth/authorize`, {
                 method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },
                 body: new URLSearchParams({
-                    client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", state: "s",
+                    client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "acp", state: "s",
                     code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256",
                     password: "composed",
                 }).toString(),
@@ -96,7 +96,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
             const body = await exchanged.text();
             assert.equal(exchanged.status, 200, body);
             const claims = daemon.credentials.verify((JSON.parse(body) as { access_token: string }).access_token);
-            assert.deepEqual([claims?.kind, claims?.clientId, claims?.scopes], ["access", "consumer", ["agui"]]);
+            assert.deepEqual([claims?.kind, claims?.clientId, claims?.scopes], ["access", "consumer", ["acp"]]);
         });
     }
 }

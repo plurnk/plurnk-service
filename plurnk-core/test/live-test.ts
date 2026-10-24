@@ -33,7 +33,7 @@ export const liveTimeoutMs = (): number => {
 export const currentSpecimen = (): LiveSpecimen | undefined => running.getStore();
 
 // The active route's facts, instantiated once per test process and only when a specimen asks. The
-// harness is reached by a computed specifier so that this module, which the drivers and the AG-UI
+// harness is reached by a computed specifier so that this module, which the drivers and the ACP
 // lane import, stays outside the daemon's type graph.
 const HARNESS = new URL("./_live-harness.ts", import.meta.url).href;
 const facts = (): Promise<RouteFacts> => {

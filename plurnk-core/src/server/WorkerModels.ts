@@ -49,7 +49,7 @@ export const providerNotConfigured = (): OperationFailureError => new OperationF
 
 export default class WorkerModels {
     readonly #db: Db;
-    // The boot provider, whose input capacity the active alias reports ({§agui-provider-routes}).
+    // The boot provider, whose input capacity the active alias reports ({§acp-provider-routes}).
     readonly #provider: Provider | null;
     // {§notifications-worker-policy} Told of each write that changed a worker's stored policy.
     readonly #policyChanged: (workerId: number) => Promise<void>;
@@ -643,7 +643,7 @@ export default class WorkerModels {
         return {
             aliases: aliases.map((a) => {
                 const isActive = active === a.alias;
-                // {§agui-provider-routes} — the route a worker seeded from this alias gets: what it would read back.
+                // {§acp-provider-routes} — the route a worker seeded from this alias gets: what it would read back.
                 const effort = this.#configuredEffort(a);
                 return {
                     ...projectModelRoute(a, effort, "default"), alias: a.alias, active: isActive,

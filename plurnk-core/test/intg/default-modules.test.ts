@@ -68,13 +68,13 @@ test("{§functionality-discover-advertisement} each family's discover advertises
     }
 });
 
-test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at /agui", async (t) => {
+test("{§acp-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at /acp", async (t) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, http });
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/agui`, {
+    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/acp`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -83,7 +83,7 @@ test("{§agui-daemon-client} {§module-http-mounts} a bare daemon with a listene
         }),
     });
     assert.equal(response.status, 200);
-    // {§agui-plurnk-metadata} The Run finishes with the action's outcome as its result.
+    // {§acp-plurnk-metadata} The Run finishes with the action's outcome as its result.
     const finished = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
         .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { ok?: boolean } })
         .find(({ type }) => type === "RUN_FINISHED");

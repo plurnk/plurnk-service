@@ -394,7 +394,7 @@ test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's
             { id: 4, workspace_id: 1, name: "helper", origin: "model", parent_worker_id: null },
             { id: 6, workspace_id: 2, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
         ], "no client worker remains; a worker a client worker parented is a root worker; a workspace gains its runtime worker");
-        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "agui://operator", "the thread-scoped AG-UI owner collapses onto the workspace operator owner");
+        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "acp://operator", "the thread-scoped operator owner collapses onto the workspace ACP operator owner");
         assert.deepEqual(rows("SELECT id, worker_id, sequence, prompt_source FROM loops ORDER BY id"), [
             { id: 1, worker_id: 2, sequence: 1, prompt_source: null },
             { id: 2, worker_id: 2, sequence: 2, prompt_source: person },
@@ -443,17 +443,17 @@ test("{§worker-owner-creation}: upgrades retain workers and their loops, assign
         assert.deepEqual(after.prepare("SELECT workspace_id, address, tools, interactive FROM worker_owners ORDER BY workspace_id").all().map((row) => ({ ...row })),
             [1, 2].map((workspace_id) => ({ workspace_id, address: "_plurnk", tools: "[]", interactive: 0 })), "{§worker-ownership} nobody attends an upgraded owner");
         after.exec(`
-            INSERT INTO worker_owners (workspace_id, address, tools) VALUES (1, 'agui://owner', '["request_approval"]');
-            UPDATE workers SET owner = 'agui://owner' WHERE id = 1;
+            INSERT INTO worker_owners (workspace_id, address, tools) VALUES (1, 'acp://owner', '["request_approval"]');
+            UPDATE workers SET owner = 'acp://owner' WHERE id = 1;
             INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id) VALUES (4, 1, 'later', 'model', 1);
         `);
-        assert.equal(after.prepare("SELECT interactive FROM worker_owners WHERE address = 'agui://owner'").get()!.interactive, 0, "a client is not interactive until it says so");
-        after.exec("UPDATE worker_owners SET interactive = 1 WHERE address = 'agui://owner'");
+        assert.equal(after.prepare("SELECT interactive FROM worker_owners WHERE address = 'acp://owner'").get()!.interactive, 0, "a client is not interactive until it says so");
+        after.exec("UPDATE worker_owners SET interactive = 1 WHERE address = 'acp://owner'");
         assert.throws(() => after.exec("UPDATE worker_owners SET interactive = 1 WHERE address = '_plurnk'"), /CHECK constraint failed/, "the runtime owner is never interactive");
-        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "agui://owner");
+        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "acp://owner");
         assert.throws(() => after.exec("UPDATE workers SET owner = 'missing' WHERE id = 2"), /worker owner does not belong/);
-        assert.throws(() => after.exec("UPDATE workers SET owner = 'agui://owner' WHERE id = 3"), /worker owner does not belong/);
-        assert.throws(() => after.exec("DELETE FROM worker_owners WHERE address = 'agui://owner'"), /worker owner is still referenced/);
+        assert.throws(() => after.exec("UPDATE workers SET owner = 'acp://owner' WHERE id = 3"), /worker owner does not belong/);
+        assert.throws(() => after.exec("DELETE FROM worker_owners WHERE address = 'acp://owner'"), /worker owner is still referenced/);
         assert.throws(() => after.exec("INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES (2, 'wrong', 1)"), /worker owner or parent does not belong/);
         after.exec("DELETE FROM workspaces WHERE id = 1");
         assert.equal(after.prepare("SELECT count(*) AS n FROM worker_owners WHERE workspace_id = 1").get()!.n, 0);
@@ -675,7 +675,7 @@ test(`{§db-migrations} {§place-hiding}: a ${V4_0_0.release} database keeps eve
     } finally { after.close(); }
 });
 
-test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database collapses thread-scoped AG-UI owners onto the workspace operator owner`, async (t) => {
+test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database collapses historical operator owners onto the workspace ACP operator owner`, async (t) => {
     const path = await released(t, V4_3_0);
     const before = new DatabaseSync(path);
     try {
@@ -686,7 +686,7 @@ test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database colla
                 (1, '_plurnk', '[]', 0),
                 (1, 'agui://anonymous/threads/1%23user', '["request_approval","question"]', 1),
                 (1, 'agui://operator/threads/1%23child', '["request_approval"]', 0),
-                (1, 'acp://operator', '["request_approval"]', 1);
+                (1, 'acp://operator', '["request_approval"]', 0);
             INSERT INTO workers (id, workspace_id, name, origin, owner) VALUES
                 (1, 1, 'user', 'model', 'agui://anonymous/threads/1%23user'),
                 (2, 1, 'child', 'model', 'agui://operator/threads/1%23child'),
@@ -703,15 +703,14 @@ test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database colla
     try {
         assert.deepEqual(after.prepare("SELECT address, tools, interactive FROM worker_owners WHERE workspace_id = 1 ORDER BY address").all().map((row) => ({ ...row })), [
             { address: "_plurnk", tools: "[]", interactive: 0 },
-            { address: "acp://operator", tools: '["request_approval"]', interactive: 1 },
-            { address: "agui://operator", tools: '["request_approval","question"]', interactive: 1 },
+            { address: "acp://operator", tools: '["request_approval","question"]', interactive: 1 },
         ]);
         assert.deepEqual(after.prepare("SELECT id, owner FROM workers ORDER BY id").all().map((row) => ({ ...row })), [
-            { id: 1, owner: "agui://operator" },
-            { id: 2, owner: "agui://operator" },
+            { id: 1, owner: "acp://operator" },
+            { id: 2, owner: "acp://operator" },
             { id: 3, owner: "acp://operator" },
         ]);
-        assert.equal(after.prepare("SELECT recipient FROM client_interactions WHERE id = 1").get()!.recipient, "agui://operator");
+        assert.equal(after.prepare("SELECT recipient FROM client_interactions WHERE id = 1").get()!.recipient, "acp://operator");
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
 });

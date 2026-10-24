@@ -52,7 +52,7 @@ export const verifyConsumer = async (records, { directory, evidence, registry = 
         }
         const client = records.find(({ name }) => name === "@plurnk/plurnk");
         if (client !== undefined) {
-            // Reuse the client-owned CLI/AG-UI journeys against this installed graph.
+            // Reuse the client-owned CLI/ACP journeys against this installed graph.
             await output(process.execPath, [path.join(client.root, "scripts/test-composition.mjs"), "--installed", cwd], client.root);
         }
         if (evidence !== undefined) await cp(path.join(cwd, "package-lock.json"), evidence);

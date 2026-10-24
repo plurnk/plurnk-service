@@ -154,7 +154,7 @@ test("{§env-delta-child-activity} received messages remain local observations, 
             { source: null, body: "inspect the delegated evidence" },
             { source: "worker://parent", body: "An updated request from the parent." },
             { source: "worker://peer", body: "An unrelated peer's request." },
-            { source: "agui://operator/threads/child/messages/m1", body: "An external client's request." },
+            { source: "acp://operator/threads/child/messages/m1", body: "An external client's request." },
         ];
         for (const { source, body } of arrivals.slice(1)) {
             assert.ok(await engine.injectIntoLoop(childLoop, body, [], source!));

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-test("{§agui-first-party-client-conformance}: a missing explicit client fails instead of using the sibling", async (t) => {
+test("{§acp-first-party-client-conformance}: a missing explicit client fails instead of using the sibling", async (t) => {
     const fixture = await mkdtemp(join(tmpdir(), "plurnk-client-location-"));
     t.after(() => rm(fixture, { recursive: true, force: true }));
     const missing = join(fixture, "missing client");

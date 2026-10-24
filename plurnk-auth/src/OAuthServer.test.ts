@@ -78,7 +78,7 @@ const pkce = (): { verifier: string; challenge: string } => {
     return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
 };
 
-const admitted = (mod: Hosted, token: string, scope = "agui"): void => {
+const admitted = (mod: Hosted, token: string, scope = "acp"): void => {
     const claims = mod.credentials.verify(token);
     assert.ok(claims !== null && claims.kind === "access" && claims.scopes.includes(scope), `expected live access token for ${scope}`);
 };
@@ -127,10 +127,10 @@ test("{§auth-oauth-endpoints} discovery names the issuer's endpoints, grants an
             token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             code_challenge_methods_supported: ["S256"],
-            scopes_supported: ["agui", "a2a", "acp"],
+            scopes_supported: ["acp", "a2a"],
         });
         assert.deepEqual(await json(await fetch(`${mod.base}/.well-known/oauth-protected-resource`)), {
-            resource: mod.base, authorization_servers: [mod.base], scopes_supported: ["agui", "a2a", "acp"], bearer_methods_supported: ["header"], resource_name: "Plurnk",
+            resource: mod.base, authorization_servers: [mod.base], scopes_supported: ["acp", "a2a"], bearer_methods_supported: ["header"], resource_name: "Plurnk",
         });
         const preflight = await fetch(`${mod.base}/oauth/token`, { method: "OPTIONS" });
         assert.equal(preflight.status, 204);
@@ -154,8 +154,8 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
     try {
         for (const init of [
             { ...form({ grant_type: "client_credentials" }), headers: { "content-type": "application/x-www-form-urlencoded", ...basic("operator", "s3cret") } },
-            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "agui", resource: `${mod.base}/agui` }),
             form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "acp", resource: `${mod.base}/acp` }),
+            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "a2a", resource: `${mod.base}/a2a` }),
         ]) {
             const response = await fetch(`${mod.base}/oauth/token`, init);
             const text = await response.text();
@@ -165,7 +165,7 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
             assert.equal(body.token_type, "Bearer");
             assert.equal(body.expires_in, 1);
             const bodyText = requestBody(init);
-            const expectedScope = bodyText.includes("scope=agui") ? "agui" : bodyText.includes("scope=acp") ? "acp" : "agui a2a acp";
+            const expectedScope = bodyText.includes("scope=acp") ? "acp" : bodyText.includes("scope=a2a") ? "a2a" : "acp a2a";
             assert.equal(body.scope, expectedScope, "the operator holds every scope; a request may narrow");
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
             admitted(mod, body.access_token, expectedScope.split(" ")[0]);
@@ -197,7 +197,7 @@ test("{§auth-oauth-login} authorization code with PKCE: a registered public cli
         const { client_id } = await register(mod.base, redirect);
         assert.match(client_id, /^[A-Za-z0-9_-]{43}$/u);
         const { verifier, challenge } = pkce();
-        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "xyz&1", scope: "agui" };
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "xyz&1", scope: "acp" };
         const wrong = await signIn(mod.base, query, "wrong");
         assert.equal(wrong.status, 401);
         assert.match(await wrong.text(), /The password is wrong\./u);
@@ -222,7 +222,7 @@ test("{§auth-oauth-login} authorization code with PKCE: a registered public cli
         const grantedText = await granted.text();
         assert.equal(granted.status, 200, grantedText);
         const tokens = JSON.parse(grantedText) as { access_token: string; refresh_token: string; scope: string; expires_in: number };
-        assert.equal(tokens.scope, "agui");
+        assert.equal(tokens.scope, "acp");
         assert.ok(tokens.refresh_token.length > 0, "a code grant renews through a refresh token");
         admitted(mod, tokens.access_token);
         const twice = await code();
@@ -250,7 +250,7 @@ test("{§auth-oauth-login} a bad client or redirect is told to the person; a mal
             [{ response_type: "code" }, "invalid_request"],
             [{ response_type: "code", code_challenge: challenge, code_challenge_method: "plain" }, "invalid_request"],
             [{ response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "root" }, "invalid_scope"],
-            [{ response_type: "code", code_challenge: challenge, code_challenge_method: "S256", resource: "https://elsewhere.example/agui" }, "invalid_target"],
+            [{ response_type: "code", code_challenge: challenge, code_challenge_method: "S256", resource: "https://elsewhere.example/acp" }, "invalid_target"],
         ] as const) {
             const response = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({ client_id, redirect_uri: redirect, state: "s", ...query }).toString()}`, { redirect: "manual" });
             assert.equal(response.status, 302, JSON.stringify(query));
@@ -276,7 +276,7 @@ test("{§auth-oauth-tokens} a refresh token rotates on every use, narrows but ne
         const first = await json<{ access_token: string; refresh_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "authorization_code", client_id, code, redirect_uri: redirect, code_verifier: verifier })));
         const refresh = (token: string, extra: Record<string, string> = {}): Promise<Response> =>
             fetch(`${mod.base}/oauth/token`, form({ grant_type: "refresh_token", client_id, refresh_token: token, ...extra }));
-        assert.equal((await json(await refresh(first.refresh_token, { scope: "agui root" }))).error, "invalid_scope");
+        assert.equal((await json(await refresh(first.refresh_token, { scope: "acp root" }))).error, "invalid_scope");
         const second = await json<{ access_token: string; refresh_token: string }>(await refresh(first.refresh_token));
         assert.notEqual(second.refresh_token, first.refresh_token, "rotated");
         admitted(mod, first.access_token);
@@ -294,7 +294,7 @@ test("{§auth-oauth-tokens} a refresh token rotates on every use, narrows but ne
 });
 
 test("{§auth-oauth-revocation} revocation is by family and by the owning client; a stranger's revocation changes nothing; grants are independent", async () => {
-    const mod = await boot({ PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["agui"] }) });
+    const mod = await boot({ PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }) });
     try {
         const mintOperator = async (): Promise<string> => (await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })))).access_token;
         const one = await mintOperator();
@@ -378,13 +378,13 @@ const sessionOf = (response: Response): string => {
 test("{§auth-oauth-session} a browser is the operator only once it signs in: the sign-in sets the session, a module's own client is then authorized silently, and a session is never a bearer", async () => {
     let secret = "";
     const mod = await boot({}, {}, "s3cret", (credentials) => {
-        secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }).clientSecret;
+        secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] }).clientSecret;
     });
     try {
         const redirect = `${mod.base}/web/callback`;
         const client_id = "web";
         const { verifier, challenge } = pkce();
-        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "acp" };
         const before = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual" });
         assert.equal(before.status, 200, "a browser on the daemon's own host meets the sign-in form too");
         assert.match(await before.text(), /Sign in to Plurnk/u);
@@ -418,7 +418,7 @@ test("{§auth-oauth-session} a client elsewhere is shown consent: allowing with 
         const redirect = "http://127.0.0.1:4000/callback";
         const { client_id } = await register(mod.base, redirect);
         const { challenge } = pkce();
-        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "agui" };
+        const query = { client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state: "s", scope: "acp" };
         const signed = await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
         assert.equal(signed.status, 302, "signing in is the operator's own act and issues at once");
         const session = sessionOf(signed);
@@ -466,9 +466,9 @@ test("{§auth-oauth-session} no browser is the operator without the password: th
     for (const [env, heading, named] of [
         [{ PLURNK_PASS: "" }, /<h1><span role="img" aria-label="Warning">⚠<\/span> No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
     ] as const) {
-        const mod = await boot(env, {}, "s3cret", (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }); });
+        const mod = await boot(env, {}, "s3cret", (credentials) => { credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] }); });
         try {
-            const query = { client_id: "web", redirect_uri: `${mod.base}/web/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "agui" };
+            const query = { client_id: "web", redirect_uri: `${mod.base}/web/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "acp" };
             for (const attempt of [
                 () => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual" }),
                 () => fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "" }), redirect: "manual" }),
@@ -521,12 +521,12 @@ test("{§auth-oauth-documents} every document is a main article under a header h
 test("{§auth-oauth-documents} a module client's registered stylesheet replaces the standalone style on its pages; any other client, or none, gets the standalone page", async () => {
     for (const password of ["lovelace", ""]) {
         const mod = await boot({ PLURNK_PASS: password }, {}, "s3cret", (credentials) => {
-            credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"], stylesheetPath: "/web/assets/authority.css" });
-            credentials.registerClient({ id: "plain", redirectPaths: ["/plain/callback"], scopes: ["agui"] });
+            credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"], stylesheetPath: "/web/assets/authority.css" });
+            credentials.registerClient({ id: "plain", redirectPaths: ["/plain/callback"], scopes: ["acp"] });
         });
         try {
             const authorize = (client: string): Promise<Response> => fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
-                client_id: client, redirect_uri: `${mod.base}/${client}/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "agui",
+                client_id: client, redirect_uri: `${mod.base}/${client}/callback`, response_type: "code", code_challenge: pkce().challenge, code_challenge_method: "S256", scope: "acp",
             }).toString()}`, { redirect: "manual" });
             const styled = async (response: Response): Promise<boolean> => {
                 const html = await response.text();
@@ -547,7 +547,7 @@ test("{§auth-oauth-documents} a module client's registered stylesheet replaces 
 
 // {§auth-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):
 // the token-mediating backend of RFC 10017 §6.2 authenticates at the token endpoint and brings PKCE.
-const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly string[] = ["agui"]) => {
+const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly string[] = ["acp"]) => {
     let secret = "";
     const mod = await boot(env, {}, "s3cret", (credentials) => {
         secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes }).clientSecret;
@@ -556,7 +556,7 @@ const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly str
     let session = "";
     const authorize = async (extra: Record<string, string> = {}): Promise<{ readonly response: Response; readonly verifier: string; readonly cookie: string }> => {
         const { verifier, challenge } = pkce();
-        const query = { client_id: "web", redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s", ...extra };
+        const query = { client_id: "web", redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "acp", state: "s", ...extra };
         const response = session === ""
             ? await fetch(`${mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" })
             : await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${session}` } });
@@ -582,7 +582,7 @@ test("{§auth-oauth-clients} a module's own client authorizes with PKCE, exchang
         const grantedText = await granted.text();
         assert.equal(granted.status, 200, grantedText);
         const tokens = JSON.parse(grantedText) as { access_token: string; refresh_token: string; scope: string };
-        assert.equal(tokens.scope, "agui");
+        assert.equal(tokens.scope, "acp");
         admitted(mod, tokens.access_token);
         assert.equal(mod.credentials.verify(tokens.access_token)?.subject, "operator", "the token names the operator who authorized, never the module");
         assert.equal(mod.credentials.verify(tokens.access_token)?.clientId, "web");
@@ -627,7 +627,7 @@ test("{§auth-oauth-clients} a module's client is refused without its secret, wi
         }
         const bare = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({ client_id: "web", redirect_uri: redirect, response_type: "code", state: "s" }).toString()}`, { redirect: "manual" });
         assert.equal(new URL(bare.headers.get("location")!).searchParams.get("error"), "invalid_request", "PKCE is required of a confidential client too");
-        const own = await post({ grant_type: "client_credentials", scope: "agui" }, basic("web", secret()));
+        const own = await post({ grant_type: "client_credentials", scope: "acp" }, basic("web", secret()));
         assert.equal(own.status, 400);
         assert.deepEqual(await json(own), { error: "unauthorized_client", error_description: "A module's client obtains tokens through the operator's authorization." });
         const wide = await authorize({ scope: "a2a" });
@@ -642,7 +642,7 @@ test("{§credential-module-client} a module's redirect is its path on the issuer
         assert.ok((await local.code()).code, "answered at its path on the address the request reached");
         const { challenge } = pkce();
         const authorizeAt = (named: string, redirect_uri: string) => hosted(local.mod.base, `/oauth/authorize?${new URLSearchParams({
-            client_id: "web", redirect_uri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s",
+            client_id: "web", redirect_uri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "acp", state: "s",
         }).toString()}`, named);
         assert.equal((await authorizeAt("192.168.1.88:1066", "http://192.168.1.88:1066/web/callback")).status, 200, "a browser on the LAN is asked to sign in");
         assert.equal((await authorizeAt(new URL(local.mod.base).host, "http://192.168.1.88:1066/web/callback")).status, 400,
@@ -661,7 +661,7 @@ test("{§credential-module-client} a module's redirect is its path on the issuer
 
 const moduleSignIn = async (m: Awaited<ReturnType<typeof moduleBoot>>) => {
     const { verifier, challenge } = pkce();
-    const query = { client_id: "web", redirect_uri: m.redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", state: "s" };
+    const query = { client_id: "web", redirect_uri: m.redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "acp", state: "s" };
     const response = await fetch(`${m.mod.base}/oauth/authorize`, { ...form({ ...query, password: "lovelace" }), redirect: "manual" });
     if (response.status !== 302) assert.fail(`${response.status}: ${await response.text()}`);
     const cookie = sessionOf(response);
@@ -733,7 +733,7 @@ test("{§auth-oauth-session} only a module's grant joins the sign-in: a consente
         const { verifier, challenge } = pkce();
         const allowed = await fetch(`${base}/oauth/authorize`, {
             method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", cookie: `plurnk_session=${here.cookie}` },
-            body: new URLSearchParams({ client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "agui", consent: "allow" }).toString(),
+            body: new URLSearchParams({ client_id, redirect_uri: redirect, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "acp", consent: "allow" }).toString(),
         });
         if (allowed.status !== 302) assert.fail(`${allowed.status}: ${await allowed.text()}`);
         const terminal = await json<{ access_token: string }>(await fetch(`${base}/oauth/token`,
@@ -769,10 +769,10 @@ test("{§auth-oauth-session} silence is for a module's own client: a registered 
 });
 
 test("{§auth-oauth-clients} a declared client may not take a module client's id, and a module client's scope must be one this server issues", async () => {
-    await assert.rejects(boot({ PLURNK_AUTH_CLIENT_web: JSON.stringify({ secret: "x", scopes: ["agui"] }) }, {}, "s3cret", (credentials) => {
-        credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] });
+    await assert.rejects(boot({ PLURNK_AUTH_CLIENT_web: JSON.stringify({ secret: "x", scopes: ["acp"] }) }, {}, "s3cret", (credentials) => {
+        credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] });
     }), /PLURNK_AUTH_CLIENT_web: 'web' is the id of a module's own client/u);
-    const { mod, authorize } = await moduleBoot({}, ["agui", "elsewhere"]);
+    const { mod, authorize } = await moduleBoot({}, ["acp", "elsewhere"]);
     const complaints: unknown[] = [];
     const error = console.error;
     console.error = (...args: unknown[]): void => { complaints.push(args); };

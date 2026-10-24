@@ -2,8 +2,8 @@
 // exercise the in-tree Daemon class directly; nothing else catches rot in the
 // entrypoint (config cascade, env→arg mapping, signal handlers, the dynamic
 // provider load path, the startup-line stdout format clients may parse). This test
-// spawns the actual entry, waits for the one AG-UI+ client listener
-// ({§agui-daemon-client}), probes it over HTTP, and ensures clean SIGTERM shutdown.
+// spawns the actual entry, waits for the one ACP client listener
+// ({§acp-daemon-client}), probes it over HTTP, and ensures clean SIGTERM shutdown.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -74,7 +74,7 @@ const bootDaemon = (
             XDG_DATA_HOME: join(dir, ".local", "share"),
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
+            PLURNK_PORT: "0",      // the ACP surface — THE listener; OS picks a free port
             // {§credential-authority} — these witnesses drive the listener anonymously; the shipped
             // posture is witnessed by the installed-service probe with the daemon's minted secret.
             PLURNK_AUTH: "0",
@@ -100,7 +100,7 @@ const bootDaemon = (
 
         child.stdout?.on("data", (chunk: Buffer) => {
             stdoutBuf += chunk.toString("utf8");
-            const match = stdoutBuf.match(/plurnk-service agui=(http:\/\/\S+) /u);
+            const match = stdoutBuf.match(/plurnk-service acp=(http:\/\/\S+) /u);
             if (match !== null && !settled) {
                 settled = true;
                 clearTimeout(timer);
@@ -109,7 +109,7 @@ const bootDaemon = (
                 const address = new URL(match[1]);
                 if (Number(address.port) === 0) {
                     child.kill("SIGKILL");
-                    rejectPromise(new Error(`banner agui= port unbound (configured-port leak): ${stdoutBuf}`));
+                    rejectPromise(new Error(`banner acp= port unbound (configured-port leak): ${stdoutBuf}`));
                     return;
                 }
                 resolvePromise({ child, host: address.hostname, port: Number(address.port), url: address.href, tmpdir: dir });
@@ -164,7 +164,7 @@ const action = async (
             type?: string;
             result?: { ok?: boolean; result?: unknown; problem?: unknown };
         });
-    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
     const outcome = frames.find(({ type }) => type === "RUN_FINISHED")?.result;
     assert.equal(outcome?.ok, true, `action ${kind} failed: ${JSON.stringify(outcome?.problem)}`);
     return outcome?.result;
@@ -234,13 +234,13 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
     return result;
 };
 
-test("{§agui-daemon-client} bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
+test("{§acp-daemon-client} bin: spawns, the ACP listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon();
     try {
-        assert.equal(new URL(booted.url).pathname, "/agui");
+        assert.equal(new URL(booted.url).pathname, "/acp");
         const res = await fetch(booted.url, { signal: AbortSignal.timeout(5000) });
-        assert.equal(res.status, 404, "GET is not an AG-UI run");
-        assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/agui/http/route-not-found");
+        assert.equal(res.status, 404, "GET is not an ACP run");
+        assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
         const root = await fetch(new URL("/", booted.url));
         assert.equal(root.status, 404);
         assert.equal((await root.json() as { type: string }).type, "https://problems.plurnk.xyz/http/route-not-found");
@@ -254,7 +254,7 @@ test("{§agui-daemon-client} bin: spawns, the AG-UI listener answers HTTP on its
 test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process teardown", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon(async () => ({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "100" }));
     const pending = request({
-        host: booted.host, port: booted.port, method: "POST", path: "/agui",
+        host: booted.host, port: booted.port, method: "POST", path: "/acp",
         headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
     });
     const disconnected = new Promise<Error>((settle) => pending.on("error", settle));
@@ -280,7 +280,7 @@ test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process 
     }
 });
 
-test("{§agui-daemon-client} bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
+test("{§acp-daemon-client} bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -325,7 +325,7 @@ test("{§agui-daemon-client} bin: persisted and attached workspaces stay cold un
     }
 });
 
-test("{§agui-daemon-client} bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
+test("{§acp-daemon-client} bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
     let startMarker = "";
     const booted = await bootDaemon(async ({ dir, dbPath }) => {
         const db = await openMigrated(dbPath);
@@ -458,7 +458,7 @@ test("{§startup-admission-order} bin: a failed DB open names the path and any s
     }
 });
 
-test("{§agui-daemon-client} bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
+test("{§acp-daemon-client} bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-port-admission-"));
     const dataDir = join(dir, "data");
     const dbPath = join(dataDir, "plurnk.db");

@@ -84,7 +84,7 @@ export const evaluateOrientation = (record, digest) => {
             pass: includesEveryGroup(lower, [
                 ["daemon", "service"],
                 ["grammar", "dsl"],
-                ["client", "ag-ui", "agui"],
+                ["client", "acp"],
                 ["monorepo", "topology", "repository", "repositories"],
                 ["goal", "stabil", "housekeeping", "acceptance"],
                 ["forge"],
@@ -96,7 +96,7 @@ export const evaluateOrientation = (record, digest) => {
                 required: [
                     "daemon/service",
                     "grammar/DSL",
-                    "client/AG-UI",
+                    "client/ACP",
                     "repository topology",
                     "current-work goal or its unavailable forge evidence",
                     "missing or contradictory context",

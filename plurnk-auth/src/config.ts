@@ -1,8 +1,8 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
-/** {§auth-oauth-authority} The resources a credential of this daemon may name: the AG-UI interface, the A2A exposure, and the ACP interface. */
-export const SCOPES: readonly string[] = Object.freeze(["agui", "a2a", "acp"]);
+/** {§auth-oauth-authority} The resources a credential of this daemon may name: the ACP interface and the A2A exposure. */
+export const SCOPES: readonly string[] = Object.freeze(["acp", "a2a"]);
 
 /** {§auth-oauth-clients} A confidential client the operator declared: its secret and the scopes it may hold. */
 export interface DeclaredClient {

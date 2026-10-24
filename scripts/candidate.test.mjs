@@ -151,7 +151,7 @@ test("{§candidate-launcher} candidate reaps its daemon when the client is termi
         child.once("exit", (code, signal) => accept({ code, signal }));
     });
 
-    const address = stderr.match(/agui=(http:\/\/127\.0\.0\.1:\d+\/agui)/)?.[1];
+    const address = stderr.match(/acp=(http:\/\/127\.0\.0\.1:\d+\/acp)/)?.[1];
     assert.ok(address !== undefined, `the daemon published its address\n${stderr}`);
     assert.deepEqual(result, { code: 1, signal: null }, `the client signal remains a visible failure\n${stderr}`);
     assert.match(stderr, /client terminated by SIGTERM/, "the failure preserves the client signal");

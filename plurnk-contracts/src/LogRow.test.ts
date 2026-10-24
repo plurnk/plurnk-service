@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { addressOf, withoutBodies } from "./LogRow.ts";
 
-test("{§agui-plurnk-metadata} withoutBodies strips body-bearing attributes and preserves metadata", () => {
+test("{§acp-plurnk-metadata} withoutBodies strips body-bearing attributes and preserves metadata", () => {
     assert.deepEqual(
         withoutBodies({
             kind: "edit",
@@ -19,7 +19,7 @@ test("{§agui-plurnk-metadata} withoutBodies strips body-bearing attributes and 
     );
 });
 
-test("{§agui-plurnk-metadata} addressOf formats scheme URIs, file paths, and null when absent", () => {
+test("{§acp-plurnk-metadata} addressOf formats scheme URIs, file paths, and null when absent", () => {
     assert.equal(
         addressOf({ scheme: "https", hostname: "example.com", port: 8443, pathname: "/a", query: "b=1", fragment: "top" }),
         "https://example.com:8443/a?b=1#top",

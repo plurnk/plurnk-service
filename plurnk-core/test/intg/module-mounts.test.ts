@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as AuthModule } from "@plurnk/plurnk-auth";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import { Module as AcpModule } from "@plurnk/plurnk-acp";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
@@ -31,7 +31,7 @@ const fixture = async (t: TestContext, client: Parameters<Daemon["registerModule
     const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
     // {§module-discovery} — registering its package's name holds the client interface out of
     // discovery, so each test composes its own client interface.
-    daemon.registerModule(client, "@plurnk/plurnk-agui");
+    daemon.registerModule(client, "@plurnk/plurnk-acp");
     t.after(async () => {
         await daemon.stop();
         await http.close();
@@ -62,16 +62,16 @@ test("{§module-http-mounts} a daemon with a listener needs no root owner", asyn
     assert.equal((await get("/missing")).status, 404);
 });
 
-test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", async (t) => {
-    const client = AguiModule.create();
-    assert.deepEqual(client.mounts, ["/agui"]);
+test("{§acp-run-endpoint} ACP serves /acp without occupying the root", async (t) => {
+    const client = AcpModule.create();
+    assert.deepEqual(client.mounts, ["/acp"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
     const input = JSON.stringify({
         threadId: "routing", runId: "discover", state: {}, messages: [], tools: [], context: [],
         forwardedProps: { plurnk: { action: { kind: "discover" } } },
     });
-    for (const path of ["/", "/agui"]) {
+    for (const path of ["/", "/acp"]) {
         const response = await fetch(`http://127.0.0.1:${port}${path}`, {
             method: "POST", headers: { "content-type": "application/json" }, body: input,
         });
@@ -84,17 +84,17 @@ test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", asyn
             assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
             const frames = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
                 .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { kind?: string } });
-            // {§agui-plurnk-metadata} The Run finishes with the action's outcome as its result.
+            // {§acp-plurnk-metadata} The Run finishes with the action's outcome as its result.
             assert.equal(frames.find(({ type }) => type === "RUN_FINISHED")?.result?.kind, "discover");
         }
     }
     assert.equal((await get("/")).status, 404);
 });
 
-test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authorization server's paths beside /agui, never the root", async (t) => {
+test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authorization server's paths beside /acp, never the root", async (t) => {
     const auth = AuthModule.create({ auth: true });
     assert.deepEqual(auth.mounts, ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
-    const client = AguiModule.create();
+    const client = AcpModule.create();
     const { daemon, get, port } = await fixture(t, client);
     daemon.registerModule(auth, "@plurnk/plurnk-auth");
     await daemon.start();
@@ -103,23 +103,20 @@ test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authoriza
     assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the address the request reached");
     assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}`);
     assert.equal((await get("/")).status, 404);
-    const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    assert.equal(refused.status, 401);
-    assert.match(refused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
     const acpRefused = await fetch(`http://127.0.0.1:${port}/acp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     assert.equal(acpRefused.status, 401);
     assert.match(acpRefused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
 });
 
-test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {
-    const { daemon, get } = await fixture(t, AguiModule.create());
+test("{§module-http-mounts} an independent root module coexists with ACP", async (t) => {
+    const { daemon, get } = await fixture(t, AcpModule.create());
     daemon.registerModule(serving(["/"]), "@acme/web");
     await daemon.start();
     assert.deepEqual(await get("/"), { status: 200, body: "/" });
     assert.deepEqual(await get("/page"), { status: 200, body: "/" });
-    const agui = await get("/agui");
-    assert.equal(agui.status, 404, "GET is not an AG-UI run");
-    assert.equal(JSON.parse(agui.body).type, "https://problems.plurnk.xyz/agui/http/route-not-found");
+    const acp = await get("/acp");
+    assert.equal(acp.status, 404, "GET is not an ACP run");
+    assert.equal(JSON.parse(acp.body).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
 });
 
 test("{§module-http-mounts} a declared mount that is not an absolute pathname prefix names its module", async (t) => {

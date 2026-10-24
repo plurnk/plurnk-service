@@ -13,7 +13,7 @@ if (mode === "exit") {
 const server = createServer(async (request, response) => {
     if (mode === "bad-http") {
         response.writeHead(200, { "content-type": "text/plain" });
-        response.end("not AG-UI");
+        response.end("not ACP");
         return;
     }
     if (request.url === "/oauth/token") {
@@ -26,8 +26,8 @@ const server = createServer(async (request, response) => {
             && request.headers.authorization === basic
             && request.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")
             && form.get("grant_type") === "client_credentials"
-            && form.get("scope") === "agui"
-            && form.get("resource") === `http://${request.headers.host}/agui`;
+            && form.get("scope") === "acp"
+            && form.get("resource") === `http://${request.headers.host}/acp`;
         response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
         response.end(JSON.stringify(!accepted ? { error: "invalid_client" }
             : mode === "bad-token" ? { token_type: "Bearer" }
@@ -40,12 +40,12 @@ const server = createServer(async (request, response) => {
             "www-authenticate": mode === "bad-challenge" ? "Basic realm=\"fixture\""
                 : `Bearer realm="plurnk", resource_metadata="http://${request.headers.host}/.well-known/oauth-protected-resource"`,
         });
-        response.end(JSON.stringify({ type: "https://problems.plurnk.xyz/agui/http/bearer-token-required" }));
+        response.end(JSON.stringify({ type: "https://problems.plurnk.xyz/acp/http/bearer-token-required" }));
         return;
     }
     response.writeHead(404, { "content-type": "application/problem+json" });
-    response.end(JSON.stringify({ type: request.url === "/agui"
-        ? "https://problems.plurnk.xyz/agui/http/route-not-found"
+    response.end(JSON.stringify({ type: request.url === "/acp"
+        ? "https://problems.plurnk.xyz/acp/http/route-not-found"
         : "https://problems.plurnk.xyz/http/route-not-found" }));
 });
 
@@ -69,4 +69,4 @@ process.once("SIGINT", stop);
 const address = server.address();
 if (address === null || typeof address === "string") throw new Error("fixture did not bind TCP");
 process.stderr.write(`plurnk-service: @plurnk/plurnk-service@${version} fixture fixture-path\n`);
-process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port}/agui db="fixture" route="no model"\n`);
+process.stdout.write(`plurnk-service acp=http://${process.env.PLURNK_HOST}:${address.port}/acp db="fixture" route="no model"\n`);

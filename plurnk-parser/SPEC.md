@@ -12,7 +12,7 @@ on contracts for the AST and wire types, the schemas, `PathSyntax`,
 depends on nothing here.
 
 §parser-consumers **Who imports the parser.** The service's execution path (core,
-agui, execs) imports its parser surfaces from this package.
+acp, execs) imports its parser surfaces from this package.
 `@plurnk/plurnk-contracts` exports neither and declares no parser dependency, so a
 client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
 

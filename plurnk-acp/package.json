@@ -1,49 +1,24 @@
 {
     "name": "@plurnk/plurnk-acp",
     "version": "1.0.0",
-    "description": "ACP v2 WebSocket and Streamable HTTP interface for the PLURNK daemon",
-    "keywords": [
-        "plurnk",
-        "acp",
-        "agent-client-protocol",
-        "websocket",
-        "json-rpc"
-    ],
-    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-acp#readme",
-    "bugs": {
-        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
-    },
+    "description": "ACP v2 HTTP, SSE, and WebSocket interface for the PLURNK daemon",
+    "type": "module",
+    "license": "MIT",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/plurnk/plurnk-service.git",
         "directory": "plurnk-acp"
-    },
-    "engines": {
-        "node": ">=26"
-    },
-    "license": "MIT",
-    "author": "@wikitopian",
-    "type": "module",
-    "dependencies": {
-        "@plurnk/plurnk-contracts": "^6.0.0",
-        "@plurnk/plurnk-meta": "^2.1.0",
-        "@plurnk/plurnk-parser": "^4.2.0"
-    },
-    "peerDependencies": {
-        "@plurnk/plurnk-modules": "^4.0.0",
-        "@plurnk/plurnk-schemes": "^3.0.0"
-    },
-    "devDependencies": {
-        "@plurnk/plurnk-providers": "^5.0.0"
-    },
-    "publishConfig": {
-        "access": "public"
     },
     "exports": {
         ".": {
             "plurnk-dev": "./src/index.ts",
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
+        },
+        "./client": {
+            "plurnk-dev": "./src/client.ts",
+            "types": "./dist/client.d.ts",
+            "default": "./dist/client.js"
         },
         "./module": {
             "plurnk-dev": "./src/daemon-module.ts",
@@ -52,24 +27,61 @@
         },
         "./package.json": "./package.json"
     },
-    "plurnk": {
-        "kind": "module",
-        "module": "./module"
-    },
     "files": [
-        ".env.defaults",
         "dist/**/*",
+        ".env.defaults",
         "README.md",
         "SPEC.md"
     ],
+    "engines": {
+        "node": ">=26"
+    },
     "scripts": {
-        "test": "npm run test:lint && npm run test:unit",
-        "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "test:lint": "tsc --noEmit && tsc --noEmit -p tsconfig.browser.json",
+        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} src/*.test.ts",
+        "test:intg": "export PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ) PLURNK_TEST_LANE=acp; node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/intg/*.test.ts && node ../scripts/reclaim-green-run.mjs acp",
+        "prepublishOnly": "npm test",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:clean && npm run build:dist",
-        "prepack": "npm run build",
-        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+        "prepack": "npm run build"
+    },
+    "devDependencies": {
+        "@plurnk/plurnk-providers": "^5.0.0",
+        "json-p3": "^3.0.1"
+    },
+    "keywords": [
+        "plurnk",
+        "acp",
+        "agent-client-protocol",
+        "agent",
+        "transport",
+        "sse",
+        "websocket",
+        "json-rpc",
+        "human-in-the-loop"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-acp#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "author": "@wikitopian",
+    "peerDependencies": {
+        "@plurnk/plurnk-modules": "^4.0.0",
+        "@plurnk/plurnk-schemes": "^3.0.0"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@opentelemetry/api": "^1.9.1",
+        "@plurnk/plurnk-contracts": "^6.0.0",
+        "@plurnk/plurnk-meta": "^2.1.0",
+        "@plurnk/plurnk-parser": "^4.2.0"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
     }
 }

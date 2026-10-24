@@ -7,7 +7,7 @@ import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
-const owner: WorkerOwner = { address: "agui://operator", tools: ["request_approval", "question"], interactive: true };
+const owner: WorkerOwner = { address: "acp://operator", tools: ["request_approval", "question"], interactive: true };
 
 test("{§worker-owner-creation}: every worker has a durable runtime owner before client attachment", async () => {
     await withDaemon(null, async (_db, daemon) => {
@@ -112,7 +112,7 @@ test("{§worker-owner-resolution}: only the recorded owner resolves a proposal, 
             assert.deepEqual((await daemon.pendingProposals(workspaceId))[0]?.disposition, { decision: "review" },
                 "a later capability declaration cannot hide or reinterpret an outstanding review");
             await assert.rejects(daemon.resolveProposal(proposal.logEntryId, { decision: "accept" }, {
-                workspaceId, address: "agui://somebody-else",
+                workspaceId, address: "acp://somebody-else",
             }), (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/owner-mismatch"));
             assert.equal((await daemon.pendingProposals(workspaceId)).length, 1, "an unrelated sender does not consume the gate");
             await daemon.resolveProposal(proposal.logEntryId, { decision: "accept" }, { workspaceId, address: owner.address });

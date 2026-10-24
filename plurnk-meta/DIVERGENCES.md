@@ -18,7 +18,7 @@ Interoperability:
 
 - PLURNK hosts current MCP servers through `@plurnk/plurnk-mcp`, exposing
   their tools and resources through the ordinary operation language.
-- Clients use AG-UI.
+- Clients use ACP.
 - Provider adapters use established model APIs.
 
 This difference is justified only if whole-product evaluations demonstrate an
@@ -32,13 +32,12 @@ scheme supports one.
 
 This provides one address form for project content, worker state, execution
 results, and external resources. The internal representation does not alter
-MCP, AG-UI, or provider wire protocols.
+MCP, ACP, or provider wire protocols.
 
-## AG-UI management extensions
+## ACP management extensions
 
-AG-UI defines agent Runs but not all workspace-management operations PLURNK
-requires. Management actions therefore use AG-UI's extension fields and custom
-events on the same authenticated endpoint.
+ACP defines agent Runs and JSON-RPC sessions, and management actions use ACP's
+extension fields and custom events on the same authenticated endpoint.
 
-These extensions must remain optional to generic AG-UI consumers. If AG-UI
+These extensions must remain optional to generic ACP consumers. If ACP
 standardizes equivalent management operations, PLURNK should adopt them.

@@ -1196,7 +1196,7 @@ test("{§notifications-workspace-created} workspace/created notification broadca
     });
 });
 test("{§methods-event-subscribe} the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process", async () => {
-    // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
+    // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-acp)
     // subscribes here and owns its client fan-out; core has no transport connections.
     await withDaemon(null, async (_db, daemon, addr) => {
         const received: Array<{ workspaceId: number | null; method: string; params: unknown }> = [];
@@ -1368,7 +1368,7 @@ test("{§methods-op-mirror} the client-interface seam — dispatchClientAction r
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
             const emitted = entries.filter((e) => e.method === "log/entry");
-            assert.ok(emitted.length >= 2, "each dispatched client op emitted a log/entry on the event source (agui fans out to its own clients)");
+            assert.ok(emitted.length >= 2, "each dispatched client op emitted a log/entry on the event source (acp fans out to its own clients)");
         } finally { ws.close(); }
     });
 });

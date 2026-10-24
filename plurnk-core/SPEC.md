@@ -53,8 +53,8 @@ flowchart LR
     K --> L["Loop<br/>queued-to-terminal work"]
     L --> T["Turn<br/>one admitted scheduling unit"]
     T --> O["Op<br/>one statement / action row"]
-    H["AG-UI thread<br/>names a worker"] -. resolves to .-> K
-    R["AG-UI Run<br/>client stream envelope"] -. binds to .-> L
+    H["ACP thread<br/>names a worker"] -. resolves to .-> K
+    R["ACP Run<br/>client stream envelope"] -. binds to .-> L
     R -. or executes .-> A["Management action<br/>no core loop required"]
 ```
 
@@ -70,8 +70,8 @@ flowchart LR
 | **statement**     | Model/core            | A parsed op: the `PlurnkStatement` AST from `@plurnk/plurnk-contracts`. |
 | **action**        | Core                  | One executed op. Execution normally produces a `log_entries` row at `log:///<L>/<T>/<S>/<op>`; an engine rail may instead record an `op='error'` row ({§operation-results}). A source artifact carries no fabricated operation. |
 | **dispatch**      | Core                  | Routing a statement to its scheme's op handler. |
-| **AG-UI Run**     | AG-UI protocol        | A client request/stream envelope identified by the client's `runId`. A message or resume AG-UI Run binds to one core loop; a management-action AG-UI Run may complete without creating a core loop. |
-| **AG-UI thread**  | AG-UI protocol        | Message history identity. Within an explicitly selected workspace, `threadId` resolves to one model worker. |
+| **ACP Run**       | ACP protocol          | A client request/stream envelope identified by the client's `runId`. A message or resume ACP Run binds to one core loop; a management-action ACP Run may complete without creating a core loop. |
+| **ACP thread**    | ACP protocol          | Message history identity. Within an explicitly selected workspace, `threadId` resolves to one model worker. |
 
 ### Storage terms
 
@@ -114,7 +114,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service and workspace layers compose without granting authority. |
 | **approval owner**           | One durable, workspace-scoped recipient for a worker's approval requests ({§worker-ownership}). |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition selects owner review or automatic settlement ({§proposal-disposition}). |
-| **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§agui-proposal-resolve}). |
+| **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§acp-proposal-resolve}). |
 
 ### §packet-terms Packet terms
 
@@ -133,7 +133,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | --- | --- |
 | {§observability-boundary} | Observability boundary |
 | {§observability-genai-conventions} | GenAI convention projection. |
-| {§service-worker-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover AG-UI, A2A, MCP,… |
+| {§service-worker-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover ACP, A2A, MCP,… |
 | {§service-package-exports} | Package export surface |
 | {§startup-admission} | Startup admission |
 | {§service-runtime-floor} | Before any other module of the `plurnk-service` executable evaluates, it compares the running Node.js with… |
@@ -159,13 +159,13 @@ package map. The default installed composition is specified in {§bundled-set}.
 
 ### §observability-boundary Observability boundary
 
-OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages and the daemon itself depend on the OTel API only; the `@plurnk/plurnk-otel` module, discovered like every other, constructs the explicitly configured trace and metric providers ({§otel-module}). A process without the module, unconfigured or standards-valid disabled loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
+OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on ACP. Reusable packages and the daemon itself depend on the OTel API only; the `@plurnk/plurnk-otel` module, discovered like every other, constructs the explicitly configured trace and metric providers ({§otel-module}). A process without the module, unconfigured or standards-valid disabled loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
 
 Configuration is the standard `OTEL_*` environment, read and documented by the module ({§otel-module}); an unknown exporter name is that module's contained configuration ({§otel-contained}). Direct draft semantic-convention use is excluded. Exporter failure cannot change product results or client lifecycle. Telemetry shutdown is the module's `stop` under {§module-shutdown-order}; daemon and database teardown remain independent reverse-ownership phases, every phase runs, and aggregate failure preserves every cause.
 
 | Recorded | Rule |
 | --- | --- |
-| HTTP spans | carry only an AG-UI-owned bounded route class, never an input pathname or query |
+| HTTP spans | carry only an ACP-owned bounded route class, never an input pathname or query |
 | Spans otherwise | carry high-cardinality identifiers; metric labels stay low-cardinality |
 | Never by default | prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads, as attributes or metric values |
 
@@ -192,14 +192,14 @@ The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps 
 owners. Capability-specific behavior remains with the owning plug point.
 
 §service-worker-composition The service launcher composes no module: it and the live/demo
-workspace helper both discover AG-UI, A2A, MCP, Schedule and command hooks ({§module-discovery}). The
+workspace helper both discover ACP, A2A, MCP, Schedule and command hooks ({§module-discovery}). The
 management families and readable reference documents are
 present even with no enabled definitions. Workspace capability policy controls every actor's
 surface; registering a family does not enable its definitions. The real-model
 profile ({§operator-config-real-model-profile}) leaves ambient MCP attachments and
 service schedules disabled by default; specimens may add their own through the
 ordinary management surface. The one listener is the launcher's ({§http-host}); the helper binds
-none, so its daemon leaves out AG-UI ({§module-http-mounts}).
+none, so its daemon leaves out ACP ({§module-http-mounts}).
 
 ### §service-package-exports Package export surface
 
@@ -209,7 +209,7 @@ none, so its daemon leaves out AG-UI ({§module-http-mounts}).
 | `@plurnk/plurnk-service/evidence`     | Canonical evidence reader consumed by the separate report package ({§digest-evidence-reader}). |
 | `@plurnk/plurnk-service/package.json` | Supported package metadata surface. |
 
-These are the package's only export paths. Clients use AG-UI; a new library contract belongs in its
+These are the package's only export paths. Clients use ACP; a new library contract belongs in its
 owning package or an explicitly specified subpath.
 
 ### §startup-admission Startup admission
@@ -240,7 +240,7 @@ durable storage. Core owns the socket continuously; it answers 503 until daemon
 activation admits it after every module has started ({§module-http-mounts}), so
 early ownership introduces neither traffic nor a close/rebind race.
 
-§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): AG-UI mounts only `/agui`, ACP `/acp`, and A2A the well-known card and its endpoint path, on the same address.
+§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): ACP mounts `/acp`, and A2A the well-known card and its endpoint path, on the same address.
 
 | Routing | Rule |
 | --- | --- |
@@ -264,7 +264,7 @@ a front the daemon cannot see, such as a TLS proxy. No request is refused for th
 §credential-authority **The daemon is one credential authority.** Every credential presented to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials` authority on the application port ({§application-port}): an opaque random token held in memory with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its subject, its client, its scopes, its family and its expiry.
 
 - A restart revokes every credential. Revocation is by family, so an access token and the refresh token that renews it fall together; a refresh token is consumed once, and a second presentation revokes its family and says so.
-- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§agui-http-authorization}), and the authorization server issues through it ({§auth-oauth}).
+- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§acp-http-authorization}), and the authorization server issues through it ({§auth-oauth}).
 - Credentials the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
 The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is never inferred from what else is set:
@@ -306,8 +306,8 @@ later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
 §startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
-the service prints exactly one line, `plurnk-service agui=<url> db=<json string> route=<json string>`:
-the URL includes `/agui` and brackets an IPv6 host, and the database path and the route (the active model route or
+the service prints exactly one line, `plurnk-service acp=<url> db=<json string> route=<json string>`:
+the URL includes `/acp` and brackets an IPv6 host, and the database path and the route (the active model route or
 `no model`, or `invalid model configuration`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
 the URL as a URL and the strings as JSON; nothing else the service prints on stdout before it has
 that prefix. Before the line the listener answers `503 service-starting`; after it,
@@ -3589,7 +3589,7 @@ accounting and model-visible failure evidence remain separately owned by
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
   targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
   delivery evidence, never log visibility or the mere existence of a later SEND.
-- §outside-text **Text outside the operations is annotation beside them, and an empty turn without them.** The spans {§response-text} supplies are read with the turn's fenced operations. It has no address: there is no `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and {§response-text} alone owns which bytes are operations, quotations or outside text. Clients receive an outside source once through `outside/event` ({§notifications-outside-event}, {§agui-outside-text}); FORK snapshots the source with the turn's others; the digest names its weight.
+- §outside-text **Text outside the operations is annotation beside them, and an empty turn without them.** The spans {§response-text} supplies are read with the turn's fenced operations. It has no address: there is no `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and {§response-text} alone owns which bytes are operations, quotations or outside text. Clients receive an outside source once through `outside/event` ({§notifications-outside-event}, {§acp-outside-text}); FORK snapshots the source with the turn's others; the digest names its weight.
 
   | Turn | The spans become |
   | --- | --- |
@@ -4112,7 +4112,7 @@ filter those explicit bindings or create a second approval path.
 
 **Resolution arrives through one lifecycle:**
 
-- **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
+- **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; ACP uses standard resume entries ({§acp-proposal-resolve}).
 - **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
 - §proposal-timeout-cancels **Timeout is OPT-IN; an empty deadline WAITS** - an empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `loop.cancel`, worker `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
 
@@ -4388,7 +4388,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 |---|---|
 | §db-schema-baseline Baseline | Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`, `002_workers`, `003_loops`, `004_inference`, `005_entries`, `006_log`, `007_subscriptions`, `008_interactions` — each one `MIGRATE` block whose version is the file's numeric prefix. They create the shape 1.21.1 shipped: tables, indexes, views, the constraint triggers that are a table's invariants (guards that only `RAISE`), and a view's `INSTEAD OF` write path. No migration holds an `INIT` block or a trigger that writes a row. |
 | §db-migrations Migrations | A released version is frozen: only its comments may change. Every shape change is one new file at the next version, applied by sqlrite above the database's `PRAGMA user_version`, ascending, each in its own transaction with its version bump. A fresh database takes the same path as an existing one. Each migration carries upgrade coverage: `test/intg/schema-baseline.test.ts` pins the released shape's fingerprint and migrates a released database, asserting its rows survive. A process trigger's change needs no migration: its `INIT` block re-declares it on the next open ({§db-process-triggers}). Foreign keys stay enforced. Prefer column changes or guard-trigger replacement; rebuilding a referenced table requires copying its complete referencing subgraph first and replacing children before parents, with retained-row and foreign-key coverage. Dropping a parent alone would cascade away its children. |
-| §validation-topology Validation topology: where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` and `subscriptions_result_contract_update` hold the settled-result rule as one text, `011_settled`). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-agui's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
+| §validation-topology Validation topology: where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` and `subscriptions_result_contract_update` hold the settled-result rule as one text, `011_settled`). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-acp's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
 | Open failure | A missing table or column after migration means the file's shape disagrees with its version: a database from a newer release, or one from an unreleased development build. The daemon refuses to open it and names both remedies. |
 | §db-process-triggers Processes beside their owners | A trigger that writes rows — a cascade, a capture, an ambient event, a publication cursor, a landed curation — is a process, not shape. It is declared as an `-- INIT: <trigger name>` block in the `.sql` file beside the statements that fire it (`ambient.sql` for the ambient feed, `LoopLifecycle.sql`, `Turn.sql`, `Engine.sql` for model calls, `_entry-crud.sql`, `Log.sql`, `ChannelWrite.sql`), as `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER`, so the definition is current on every open of a database whose shape is current. `MIGRATE` always precedes `INIT` and `INIT` runs on the writer only, so a process may reference any table regardless of file order and never runs on the read pool. `test/intg/schema-composition.test.ts` fails on a baseline trigger that writes, an `INIT` trigger that only guards, a block not named after its trigger or not dropping first, and a live trigger set that differs from the declared set after a first and a second open. |
 | §db-fk-indexes Foreign-key indexes | Every foreign-key column a delete, cascade, or parent replacement can check carries an index (partial where the column is nullable), and no registry statement's plan scans a growing table: `test/intg/schema-query-plans.test.ts` runs `EXPLAIN QUERY PLAN` over every `-- PREP` statement against the baseline and fails on a `SCAN` of a growing table, except statements that read a whole table by design (digest, startup recovery, whole-workspace listings, scheduled-loop claims). An index claim is a plan, never a grep of index names. |
@@ -4769,7 +4769,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§auth-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
+| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§auth-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_ACP_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
@@ -4956,7 +4956,7 @@ Core implements the contracts-owned {§application-port} and hosts the module
 contract published in `@plurnk/plurnk-modules` ({§module-contract}). It owns the one
 listener modules mount on ({§http-host}), but no public action-name catalog or generic
 string-dispatched method registry. A
-client-interface module such as `plurnk-agui` owns its public protocol, action
+client-interface module such as `plurnk-acp` owns its public protocol, action
 names, request validation, discovery result, and event projection.
 
 ### §module-lifecycle Module lifecycle and setup seam
@@ -5637,7 +5637,7 @@ Core's behavior behind them.
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no worker, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§workspace-name}, showing a hidden one ({§place-hiding}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Exactly one selector returns an existing workspace's client envelope, minting and activating nothing. Names are literal lookups, including previously admitted names. An absolute project root selects its folder-derived default name ({§workspace-name}), not a workspace by its stored folder. An absent target is `404 workspace-not-found`; ambiguous or absent selectors are `400 identity-invalid`. It retains no caller or transport binding state. |
-| §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
+| §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§acp-owner-activation}). |
 | §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims a model worker and its model descendants under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
@@ -6523,7 +6523,7 @@ producers notify the same settlement path after durable execution; reply wake-up
 §message-short-identity **The model addresses a message by its short name.** Every message carries
 `message://<worker>/<key>` (`key_path`), the form the worker docs teach, and that is what the packet
 shows in Open Messages and in an arrival row's `resource`. A client's own identity for the same
-message — an AG-UI message UUID, an A2A address — stays the durable `path` that correlation,
+message — an ACP message UUID, an A2A address — stays the durable `path` that correlation,
 delivery and reply accounting use, and remains addressable in its own scheme; the short form is an
 additional alias. Answering either reaches the same message.
 
@@ -6532,7 +6532,7 @@ additional alias. Answering either reaches the same message.
 | Arrival | `source` |
 | --- | --- |
 | Native WORK, FORK, and directed worker SEND | `worker://<sender>`, derived from the authenticated sender worker ID |
-| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the AG-UI module names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://` |
+| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the ACP module names the client's message under `acp://` ({§acp-run-source}), the inbound A2A adapter under `a2a://` |
 | Absent | the operator |
 
 The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers.
@@ -6593,7 +6593,7 @@ retain distinct contracts and lifetimes.
   engine-internal faults crash and never mint model-facing rows.
 - **Asynchronous work does not weaken the contract.** A stream-producing operation returns its initial `102` after acquisition. At conclusion the subscription stores the exact universal terminal result; `stream/concluded` carries it unchanged; the next ambient terminal READ merges it with the stream payload and preserves its Problem instance, assigning the committed `log:///.../READ` URI only when absent. Timeouts and service cancellations replace the complete terminal result with a new valid 504/499 Problem—they never mutate a status while retaining a contradictory Problem.
 - **Self-explaining rows.** A problem `title` names the stable class and `detail` states the occurrence-specific cause. Producer-known operands belong in factual extensions. `stage` appears only when neighboring stages imply different recovery; `recovery` states one generally valid next action; `retryable` is true only when the producer recommends automatically retrying the identical request. Unknown recovery or retryability is omitted rather than guessed. General workflow teaching stays in the packet rather than being duplicated into every failure. The runtime-neutral writing contract is owned by `@plurnk/plurnk-contracts`.
-- **Exact Problems cross durable and external boundaries.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, AG-UI, clients, digests, and benchmark records preserve the originating Problem object. The model packet alone derives `{§problem-projection}` without mutating that object. An adapter may add a missing durable `instance`, never replace an existing one; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, or a scheduler projection. A failed boundary without a valid Problem is a contract violation and fails hard.
+- **Exact Problems cross durable and external boundaries.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, ACP, clients, digests, and benchmark records preserve the originating Problem object. The model packet alone derives `{§problem-projection}` without mutating that object. An adapter may add a missing durable `instance`, never replace an existing one; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, or a scheduler projection. A failed boundary without a valid Problem is a contract violation and fails hard.
 - **Caught diagnostics are bounded.** Core-owned Problems may include a bounded preview of a caught runtime diagnostic when it states the occurrence-specific cause. `PLURNK_SERVICE_ERROR_DETAIL_LIMIT` owns that model-facing character bound; complete errors remain in daemon diagnostics. Input validation and stable contract failures do not spend this allowance on implementation text.
 - §notice-drain-on-read **Notices** - the few observations that are not log rows render one callout each under their distinct `## Notices` section ({§notice-callout}), never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; event Notices appear on at most one packet. Parking preserves pending notices for that loop's next packet; another loop cannot consume them. Terminal cleanup, including cancellation while parked, discards undelivered notices. This buffer is process-local, not restart-persistent. Stateful derivation progress and provider availability coalesce in the buffer, so clients observe every checkpoint live while a later model packet receives only the current state under ordinary level filtering.
 - §rail-accounting-private **Rail accounting is private.** Visibility is owned by {§engine-rails}: the model sees concrete failures from admitted turns, never rejected emissions, attempt counts, the strike streak, or cycle detection. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.
@@ -6640,7 +6640,7 @@ retain distinct contracts and lifetimes.
 
 §operation-result-no-error-scheme **There is no error scheme.** Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, independently curatable and exactly READable while active. The `errors` section surfaces a derived pointer to each. Rejected emissions stay in the forensic model-call and admission relations. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
 
-§notice-event-notify **Notices notify the client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
+§notice-event-notify **Notices notify the client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. ACP projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
 §loop-status-notice **The loop status notice carries lifecycle and its observation deadline together.**
 `notice/event` carries `{ workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, loopSeq, waitUntil, packetCount, claimedAt } }`:

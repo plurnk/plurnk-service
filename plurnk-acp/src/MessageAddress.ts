@@ -1,11 +1,21 @@
-const ADDRESS = /^acp:\/\/[^/]+\/sessions\/([^/]*)\/messages\/([^/]+)$/u;
+import type { RunAgentInput, UserMessage } from "./types.ts";
 
-/** {§acp-daemon-module} Message identity belongs to the ACP session, not a transient request. */
+const ADDRESS = /^acp:\/\/[^/]+\/(?:threads|sessions)\/([^/]*)\/messages\/([^/]+)$/u;
+
+/** {§acp-run-source}: message identity belongs to the thread, not its transport run. */
 export default class MessageAddress {
-    /** {§acp-daemon-module} The operator's approval and interaction address in every workspace. */
+    /** {§acp-worker-owner}: the operator's approval and interaction address in every workspace. */
     static readonly OWNER = "acp://operator";
 
     static submission(
+        { threadId, runId }: Pick<RunAgentInput, "threadId" | "runId">,
+        message: UserMessage,
+    ): { source: string; messageAddress: string; envelope: Readonly<Record<string, unknown>> } {
+        const address = MessageAddress.render(threadId, message.id);
+        return { source: address, messageAddress: address, envelope: { threadId, runId, message } };
+    }
+
+    static sessionSubmission(
         sessionId: string,
         messageId: string,
         prompt: string,
@@ -14,15 +24,15 @@ export default class MessageAddress {
         return { source: address, messageAddress: address, envelope: { sessionId, messageId, prompt } };
     }
 
-    static render(sessionId: string, messageId: string): string {
-        return `${MessageAddress.OWNER}/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`;
+    static render(threadId: string, messageId: string): string {
+        return `${MessageAddress.OWNER}/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}`;
     }
 
-    /** The message id of an address on this session. */
-    static messageId(address: unknown, sessionId: string): string | null {
+    /** The message id of an address on this thread. */
+    static messageId(address: unknown, threadId: string): string | null {
         if (typeof address !== "string") return null;
         const match = ADDRESS.exec(address);
-        if (match === null || match[1] !== encodeURIComponent(sessionId)) return null;
+        if (match === null || match[1] !== encodeURIComponent(threadId)) return null;
         try { return decodeURIComponent(match[2]); } catch { return null; }
     }
 }

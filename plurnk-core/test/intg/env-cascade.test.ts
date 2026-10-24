@@ -97,7 +97,7 @@ const migratedPath = (result: { code: number | null; stdout: string; stderr: str
     return match[1];
 };
 
-// {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+// {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
 const outcomeOf = <Outcome>(events: ReadonlyArray<{ type?: string; result?: Outcome }>): Outcome | undefined =>
     events.find(({ type }) => type === "RUN_FINISHED")?.result;
 
@@ -435,7 +435,7 @@ for (const built of [false, true]) {
         const result = outcomeOf(events) as { ok: boolean; result: { actions: object } };
         assert.equal(result.ok, true);
         assert.ok("providers.list" in result.result.actions, "model selection remains discoverable without a working default model");
-        // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
+        // {§acp-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
         // worker creates it, and inheriting the child model needs no model.
         const created = await fetch(daemon.url, {
             method: "POST", headers: { "content-type": "application/json" },
@@ -452,7 +452,7 @@ for (const built of [false, true]) {
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                // {§agui-sync} A client attaches to the worker it owns, as the terminal client does.
+                // {§acp-sync} A client attaches to the worker it owns, as the terminal client does.
                 forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, control: true } },
             }),
         });
@@ -505,7 +505,7 @@ for (const built of [false, true]) {
                     result?: { ok: boolean; result: unknown; problem?: { status: number; key?: string } };
                 });
         };
-        // {§agui-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
+        // {§acp-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
         // worker creates it, and inheriting the child model resolves no provider.
         const created = await request({ action: { kind: "worker.child.set", selector: null } });
         assert.equal(outcomeOf(created)?.ok, true, JSON.stringify(created));

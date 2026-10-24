@@ -36,7 +36,7 @@ const setup = async (
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const url = `http://127.0.0.1:${http.httpAddress().port}/agui`;
+    const url = `http://127.0.0.1:${http.httpAddress().port}/acp`;
     const post = async (
         workspace: string, action?: Record<string, unknown>, prompt?: string, onEvent?: (event: Event) => void,
     ): Promise<Event[]> => {
@@ -65,12 +65,12 @@ const setup = async (
                 onEvent?.(event);
             }
         }
-        assert.equal(pending.trim(), "", "the AG-UI response ends on a complete frame");
+        assert.equal(pending.trim(), "", "the ACP response ends on a complete frame");
         return events;
     };
     const action = async (workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<ActionResult> => {
         const events = await post(workspace, { kind, ...params });
-        // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+        // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
         const result = events.find((event) => event.type === "RUN_FINISHED")?.result;
         assert.ok(result, `no action result for ${kind}: ${JSON.stringify(events)}`);
         return result as ActionResult;
@@ -78,7 +78,7 @@ const setup = async (
     return { provider, post, action, hostPaths };
 };
 
-test("{§mcp-preparation-diagnostics}: AG-UI exposes the same unavailable preparation evidence through Functionality list", { timeout: 20000 }, async (t) => {
+test("{§mcp-preparation-diagnostics}: ACP exposes the same unavailable preparation evidence through Functionality list", { timeout: 20000 }, async (t) => {
     const { action, provider } = await setup(t, { broken: stdioEntry("preparation-failure.mjs", {
         FIXTURE_SECRET: "${FIXTURE_SECRET}",
     }) }, [], { FIXTURE_SECRET: "fixture-private-value" });
@@ -107,7 +107,7 @@ test("{§mcp-preparation-diagnostics}: AG-UI exposes the same unavailable prepar
     assert.equal(provider.received.length, 0);
 });
 
-test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
+test("{§mcp-management-actions}: ACP completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "completion", version: "1.0.0" });
         server.registerPrompt("summarize", { argsSchema: z.object({
@@ -145,7 +145,7 @@ test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource
 });
 
 for (const busy of [false, true]) {
-test(`{§oauth-continuation}: AG-UI accepts authorization in an ${busy ? "active" : "idle"} workspace and publishes its tools safely`, { timeout: 20000 }, async (t) => {
+test(`{§oauth-continuation}: ACP accepts authorization in an ${busy ? "active" : "idle"} workspace and publishes its tools safely`, { timeout: 20000 }, async (t) => {
     let origin = "";
     let authorization: URL | undefined;
     let exchanges = 0;
@@ -312,7 +312,7 @@ const applicationServer = async (t: TestContext, rejectGrant = false) => {
     };
 };
 
-test("{§oauth-client-credentials}: AG-UI application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
+test("{§oauth-client-credentials}: ACP application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
     const served = await applicationServer(t);
     const authorization = { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" };
     const { action, post, provider } = await setup(t, { fixture: { ...httpEntry(served.url), authorization } }, [
@@ -350,7 +350,7 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
 });
 
 for (const mode of ["rejected grant", "wrong issuer"] as const) {
-    test(`{§oauth-client-credentials}: AG-UI ${mode} fails atomically without publishing or echoing credentials`, { timeout: 20000 }, async (t) => {
+    test(`{§oauth-client-credentials}: ACP ${mode} fails atomically without publishing or echoing credentials`, { timeout: 20000 }, async (t) => {
         const served = await applicationServer(t, mode === "rejected grant");
         const { action, provider } = await setup(t, { fixture: {
             ...httpEntry(served.url),
@@ -377,7 +377,7 @@ for (const mode of ["rejected grant", "wrong issuer"] as const) {
     });
 }
 
-test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-UI while the owning tool remains pending", { timeout: 20000 }, async (t) => {
+test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches ACP while the owning tool remains pending", { timeout: 20000 }, async (t) => {
     const finish = Promise.withResolvers<void>();
     t.after(() => finish.resolve());
     const served = await serveMcpHttp(t, createMcpHandler(() => {

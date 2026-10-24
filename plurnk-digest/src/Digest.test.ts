@@ -96,7 +96,7 @@ test("{§digest-capacity-evidence}: a loop that concluded under a binding budget
         Digest.run({ dbPath, digestDir, openEvidence: () => ({
             rows: () => ({
                 workspaces: [{ id: 1, name: "/testbed" }],
-                workers: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "agui://operator" }],
+                workers: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "acp://operator" }],
                 loops: [{ id: 1, worker_id: 1, sequence: 1, status: 200, prompt: "Fix it.", terminated_by: "model", terminal_result: null, claimed_at: "2026-10-12T00:00:00Z", terminated_at: "2026-10-12T00:01:00Z" }],
                 turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model" as const, kind: "operation" as const, status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0 as const, has_reasoning: 0 as const, finish_reason: null, model: null, meta: null, program: null, outside: null, packetEchoes: 0 }],
                 inferenceCalls: [], modelCalls: [], turnAttempts: [], providerRequests: [], logEntries, editRows: [], emissionRows: [],

@@ -1,4 +1,4 @@
-// {§agui-first-party-client-conformance} — pack the platform and terminal
+// {§acp-first-party-client-conformance} — pack the platform and terminal
 // client into an empty consumer, then exercise the installed one-shot CLI,
 // and interactive TUI against one daemon release. The shared
 // conformance corpus owns protocol semantics; this gate owns composed product
@@ -25,7 +25,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run test:client-conformance
-Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§agui-first-party-client-conformance}).
+Packs the platform and the terminal client into an empty consumer and exercises the installed one-shot CLI and interactive TUI against one daemon ({§acp-first-party-client-conformance}).
 Reads: PLURNK_CLIENT_CHECKOUT (default ../plurnk) and this checkout's built packages, packed as they stand: run npm run build first (the drill builds once, before its phases).
 Writes: a sandbox under the test artifact home; exit 1 on a failed journey.
 `);
@@ -65,7 +65,7 @@ const project = join(temp, "project");
 // {§credential-authority} {§auth-oauth-clients} — the daemon under test authenticates (the shipped
 // PLURNK_AUTH=1) with a configured operator secret, the posture of a tool on another host or under
 // another user: every client exchanges it for access tokens through its own env cascade, and this
-// harness drives AguiTransport directly with the same value.
+// harness drives AcpTransport directly with the same value.
 const operatorSecret = randomBytes(32).toString("base64url");
 const seededToken = async () => operatorSecret;
 const workspace = "cross-client-conformance";
@@ -262,7 +262,7 @@ try {
         XDG_CONFIG_HOME: join(home, ".config"),
         PLURNK_HOST: "127.0.0.1",
         PLURNK_PORT: String(port),
-        PLURNK_AGUI_URL: "",
+        PLURNK_ACP_URL: "",
         PLURNK_SECRET: operatorSecret,
         NO_COLOR: "1",
     };
@@ -329,7 +329,7 @@ try {
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
-    // accounting and the gauge's model. With an empty tree ({§agui-status-descendants}),
+    // accounting and the gauge's model. With an empty tree ({§acp-status-descendants}),
     // the client omits the ant and the gate light. The lifecycle glyph stands alone, and the place (workspace,
     // loop, turn, worker) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
@@ -375,20 +375,20 @@ try {
     }
     process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
 
-    const { AguiTransport } = await import(pathToFileURL(join(
+    const { AcpTransport } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
     )).href);
-    const { actionViaAgui } = await import(pathToFileURL(join(
-        install, "node_modules", "@plurnk", "plurnk", "dist", "agui.js",
+    const { actionViaAcp } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "acp.js",
     )).href);
     // {§auth-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
     const { default: Credential } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
     )).href);
-    const aguiToken = await seededToken();
-    const credential = () => ({ aguiUrl: `http://127.0.0.1:${port}/agui`, credential: new Credential(aguiToken) });
+    const acpToken = await seededToken();
+    const credential = () => ({ acpUrl: `http://127.0.0.1:${port}/acp`, credential: new Credential(acpToken) });
     // One access token for a raw request, minted the way the client mints its own.
-    const bearer = async () => (await new Credential(aguiToken).headers(`http://127.0.0.1:${port}/agui`)).authorization;
+    const bearer = async () => (await new Credential(acpToken).headers(`http://127.0.0.1:${port}/acp`)).authorization;
 
     // {§subscription-finalization}: a real failed SQLite commit, with no production fault-injection seam.
     const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
@@ -407,10 +407,10 @@ try {
         if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
-        const recoveryWorkspace = await actionViaAgui(credential(), {
+        const recoveryWorkspace = await actionViaAcp(credential(), {
             threadId: "bootstrap", kind: "workspace.attach", params: { name: "installed-recovery" },
         });
-        const retained = await new AguiTransport(credential(), { workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
+        const retained = await new AcpTransport(credential(), { workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
             .rpc("entry.read", { target: `sh://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
@@ -446,16 +446,16 @@ try {
 
     fixture.assertComplete();
 
-    const sharedWorkspace = await actionViaAgui(credential(), {
+    const sharedWorkspace = await actionViaAcp(credential(), {
         threadId: "bootstrap", kind: "workspace.create", params: { name: workspace },
     });
     const binding = { workspaceId: sharedWorkspace.id, worker: "user" };
-    const terminal = new AguiTransport(credential(), binding);
+    const terminal = new AcpTransport(credential(), binding);
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
     const discovery = await terminal.rpc("discover");
-    const manifest = JSON.parse(await readFile(join(terminalRoot, "conformance/agui-client.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(terminalRoot, "conformance/acp-client.json"), "utf8"));
     const problems = [
         drift("actions", Object.keys(manifest.actions).toSorted(), Object.keys(discovery.actions).toSorted()),
         drift("notifications", Object.keys(manifest.notifications).toSorted(), Object.keys(discovery.notifications).toSorted()),
@@ -485,7 +485,7 @@ try {
         }
     }
 
-    const observer = new AguiTransport(
+    const observer = new AcpTransport(
         credential(),
         { workspaceId: sharedWorkspace.id, worker: "independent-observer" },
     );
@@ -506,8 +506,8 @@ try {
 
     await daemon.stop();
     daemon = await boot();
-    // The read takes the perspective of the worker the CLI journey created ({§agui-action-binding}).
-    const persistedFiles = new AguiTransport(
+    // The read takes the perspective of the worker the CLI journey created ({§acp-action-binding}).
+    const persistedFiles = new AcpTransport(
         credential(),
         { workspaceId: fileRecord.workspace.id, worker: "File_Worker" },
     );
@@ -517,7 +517,7 @@ try {
         throw new Error(`installed file projection did not survive reconstruction: ${JSON.stringify(persistedFile)}`);
     }
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
-    const afterRestart = new AguiTransport(
+    const afterRestart = new AcpTransport(
         credential(),
         binding,
     );
@@ -537,7 +537,7 @@ try {
     await daemon.stop();
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({
-        host: "127.0.0.1", port, method: "POST", path: "/agui",
+        host: "127.0.0.1", port, method: "POST", path: "/acp",
         headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: await bearer() },
     });
     const disconnected = new Promise((accept) => unfinished.on("error", accept));

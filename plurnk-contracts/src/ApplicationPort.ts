@@ -141,7 +141,7 @@ export interface ApplicationPort extends HttpHost {
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;
-    /** {§agui-provider-routes} Each alias is the route a worker seeded from it gets, its configured effort included. */
+    /** {§acp-provider-routes} Each alias is the route a worker seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
     createWorkspace(args: {

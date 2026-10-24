@@ -6,10 +6,10 @@
 | Tag | Promise |
 | --- | --- |
 | {§contract-representations} | JSON Schema is authoritative for shared data shapes. |
-| {§agui-discovery-contract} | `AguiDiscovery` is the complete installed AG-UI+ surface at one instant. |
-| {§agui-action-schema-enforcement} | The JSON Schema values in {§agui-discovery-contract} are executable boundary contracts, not prose or hints. |
-| {§agui-client-conformance} | `AguiClientConformance` is a language-neutral JSON document accounting for every action and notification in… |
-| {§agui-conformance-kit} | `AguiConformanceKit` is the one versioned, language-neutral corpus of raw SSE boundary specimens and AG-UI… |
+| {§acp-discovery-contract} | `AcpDiscovery` is the complete installed ACP+ surface at one instant. |
+| {§acp-action-schema-enforcement} | The JSON Schema values in {§acp-discovery-contract} are executable boundary contracts, not prose or hints. |
+| {§acp-client-conformance} | `AcpClientConformance` is a language-neutral JSON document accounting for every action and notification in… |
+| {§acp-conformance-kit} | `AcpConformanceKit` is the one versioned, language-neutral corpus of raw SSE boundary specimens and ACP… |
 | {§json-result-rendering} | `renderJsonResult` renders compact aggregate operation rows. |
 | {§json-document-presentation} | Generated JSON documents use two-space indentation. |
 <!-- /map -->
@@ -33,7 +33,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
 | Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
 | Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
-| AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
+| ACP discovery, client accounting, and shared conformance specimens             | `AcpDiscovery`, `AcpClientConformance`, `AcpConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Model language reference                                                        | `plurnk.md` in the package                          |
@@ -43,30 +43,30 @@ generated from the schemas; ANTLR is authoritative for accepted model-language
 syntax. An operator's own GBNF is carried verbatim to a llama-server route by
 the providers package.
 
-§agui-discovery-contract `AguiDiscovery` is the complete installed AG-UI+
+§acp-discovery-contract `AcpDiscovery` is the complete installed ACP+
 surface at one instant. `schemaVersion` identifies its discovery shape;
 `actions` maps each unique public name to exactly one `scope`, `inputSchema`,
 and `outputSchema`; `notifications` maps each unique event-family name to one
 `payloadSchema`; and `display` carries {§client-display-capabilities} without
-another presentation mechanism. The AG-UI owner supplies the built-in registry;
+another presentation mechanism. The ACP owner supplies the built-in registry;
 an extension contributes the same schema-bearing action descriptor through its
 core module registration rather than creating a second action type.
 
-§agui-action-schema-enforcement The JSON Schema values in
-{§agui-discovery-contract} are executable boundary contracts, not prose or
-hints. The AG-UI boundary rejects an action input before dispatch when it does
+§acp-action-schema-enforcement The JSON Schema values in
+{§acp-discovery-contract} are executable boundary contracts, not prose or
+hints. The ACP boundary rejects an action input before dispatch when it does
 not satisfy the advertised `inputSchema`, rejects an owner's successful output
 when it does not satisfy `outputSchema`, and validates a known notification
-before projecting it to AG-UI. Schemas are discovery values owned by their
+before projecting it to ACP. Schemas are discovery values owned by their
 registrants; validation must not annotate or otherwise mutate them.
 Input Problems retain the structured validation `issues` and name the failing
 instance locations and constraints in `detail`. Parent aggregate errors are
 omitted from that prose when their specific child errors are available; input
 objects are never echoed wholesale or interpreted as intent.
 
-§agui-client-conformance `AguiClientConformance` is a language-neutral JSON
+§acp-client-conformance `AcpClientConformance` is a language-neutral JSON
 document accounting for every action and notification in one
-{§agui-discovery-contract}. Each name is classified as `native` (dedicated
+{§acp-discovery-contract}. Each name is classified as `native` (dedicated
 client behavior), `generic` (lossless protocol support without dedicated UI),
 or `unsupported` with an explicit reason, and cites nonempty verification
 evidence. Each disposition declares the exact verification dimensions its
@@ -79,8 +79,8 @@ visibly. The contracts-owned report procedure resolves every cited evidence
 path and emits one record per member with its posture and verified dimensions;
 a stale or fictional citation fails the report.
 
-§agui-conformance-kit `AguiConformanceKit` is the one versioned,
-language-neutral corpus of raw SSE boundary specimens and AG-UI lifecycle
+§acp-conformance-kit `AcpConformanceKit` is the one versioned,
+language-neutral corpus of raw SSE boundary specimens and ACP lifecycle
 sequences used by every client transport. Its JSON resource is test input, not
 a third protocol implementation: each client feeds the same chunks and events
 through its production parser and projection seam, then verifies the declared
@@ -1531,7 +1531,7 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 
 The remaining values are small pure helpers over those contracts (`isExecution`, `isLogEntryNotification`, `writtenOp`,
 `lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
-`aguiConformanceReport`, `requestOrigin` for {§http-request-origin}, `withoutBodies`, `addressOf`) and the closed name patterns
+`acpConformanceReport`, `requestOrigin` for {§http-request-origin}, `withoutBodies`, `addressOf`) and the closed name patterns
 and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`, `APPLICATION_NOTIFICATIONS`).
 
 §parser-construction-boundary Parser construction components are internal rather
@@ -1794,7 +1794,7 @@ authority, and optional local `cardPath`, `headers`, and bearer
 
 `ApplicationPort` is the single transport-neutral TypeScript contract through
 which an exterior adapter drives and observes the Plurnk application. Core
-implements it; AG-UI, A2A, and other interface modules consume it from
+implements it; ACP, A2A, and other interface modules consume it from
 `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}). The port
 contains typed application calls and a scoped event subscription, not wire
 route names, protocol framing, persistence access, or adapter-specific methods.
@@ -1834,14 +1834,14 @@ Core validates the resolution, retains the arrival, then resumes the operation.
 lifecycle words every client renders, shared by the status gauge and the worker
 directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; any other status is a
 concluded loop's: below 400 `completed`; 499 `cancelled`, a loop stopped without failing
-({§agui-run-outcome}); any other of 400 or more `failed` (413 budget, 429 turn ceiling, 500 fail,
+({§acp-run-outcome}); any other of 400 or more `failed` (413 budget, 429 turn ceiling, 500 fail,
 504 execution timeout, 508 runaway). `lifecycleOfLoopStatus`
 in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §list-excerpt **A list shows a message by its excerpt.** The excerpt is the message's first line holding anything but
 blanks (spaces, tabs and line ends), cut to at most N characters, a character never cut in two, with blanks trimmed from
 its end; `continued` says whether anything but blanks follows. `excerptOf` in `@plurnk/plurnk-contracts` is that rule's one
-owner, for a loop's opening in a worker's loop list ({§agui-worker-loops}) and a worker's latest finished reply
+owner, for a loop's opening in a worker's loop list ({§acp-worker-loops}) and a worker's latest finished reply
 ({§worker-finished-reply}).
 
 §application-worker-overview **The worker overview is the places in a scope with what waits there.** A place is a

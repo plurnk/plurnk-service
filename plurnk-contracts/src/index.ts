@@ -30,9 +30,9 @@ export {
     InvalidRollbackReportError,
     InvalidModelReadinessError,
     InvalidModelRouteError,
-    InvalidAguiClientConformanceError,
-    InvalidAguiConformanceKitError,
-    InvalidAguiDiscoveryError,
+    InvalidAcpClientConformanceError,
+    InvalidAcpConformanceKitError,
+    InvalidAcpDiscoveryError,
     InvalidJsonSchemaInstanceError,
     InvalidParsedPathError,
     InvalidPlurnkStatementError,
@@ -52,7 +52,7 @@ export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
-export { aguiConformanceReport } from "./AguiConformance.ts";
+export { acpConformanceReport } from "./AcpConformance.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
 export type { RequestHeaders } from "./HttpOrigin.ts";
 export { addressOf, withoutBodies } from "./LogRow.ts";
@@ -66,7 +66,7 @@ export {
     type ReasoningEventNotification,
     type TerminatedNotification,
 } from "./ApplicationNotifications.ts";
-export type { AguiConformanceRow } from "./AguiConformance.ts";
+export type { AcpConformanceRow } from "./AcpConformance.ts";
 // {§runtime-neutral-root} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";

@@ -256,7 +256,7 @@ export default class Service {
             // {§module-discovery} — the service composes no module: the daemon discovers every one,
             // and the socket never closes or rebinds between admission and readiness.
             await daemon.start();
-            const aguiAddr = listener.httpAddress();
+            const acpAddr = listener.httpAddress();
             for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);
             // {§credential-authority} — the posture, and where a tool running as the operator finds the secret.
             process.stderr.write(daemon.credentials.operatorSecret === null
@@ -273,8 +273,8 @@ export default class Service {
             }
             const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
             // {§startup-readiness-line} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
-            const aguiUrl = `http://${isIPv6(aguiAddr.host) ? `[${aguiAddr.host}]` : aguiAddr.host}:${aguiAddr.port}/agui`;
-            process.stdout.write(`plurnk-service agui=${aguiUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
+            const acpUrl = `http://${isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host}:${acpAddr.port}/acp`;
+            process.stdout.write(`plurnk-service acp=${acpUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
 
             const shutdown = (): void => {
                 teardown.request(

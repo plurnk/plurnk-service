@@ -8,7 +8,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run test:live [-- --specimen "<exact specimen name>"]   (from plurnk-core)
-Drives every live specimen of the daemon, the client interface and the providers through a real model, or one specimen by its exact name ({§tier-census}); the names are the test titles under plurnk-core/test/live, plurnk-agui/test/live and plurnk-providers/test/live.
+Drives every live specimen of the daemon, the client interface and the providers through a real model, or one specimen by its exact name ({§tier-census}); the names are the test titles under plurnk-core/test/live, plurnk-acp/test/live and plurnk-providers/test/live.
 Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
 Writes: <benchmark home>/tier-live-<stamp>/ with census.md and each worker's evidence.
 `);
@@ -17,7 +17,7 @@ const workspace = resolve(import.meta.dirname, "..");
 // Every package's live specimens: the daemon's, the client interface's and the providers' rails.
 const liveDirectories = [
     resolve(workspace, "test/live"),
-    resolve(workspace, "../plurnk-agui/test/live"),
+    resolve(workspace, "../plurnk-acp/test/live"),
     resolve(workspace, "../plurnk-providers/test/live"),
 ];
 

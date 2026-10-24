@@ -1,4 +1,4 @@
-// {§agui-plurnk-metadata} A row's attributes that hold a body: a file write's text before and after, its diff and its edit
+// {§acp-plurnk-metadata} A row's attributes that hold a body: a file write's text before and after, its diff and its edit
 // receipt, which its result holds, and a statement's body, which its call's arguments hold.
 const BODY_ATTRS: ReadonlySet<string> = new Set([
     "original",
@@ -10,12 +10,12 @@ const BODY_ATTRS: ReadonlySet<string> = new Set([
     "inputBody",
 ]);
 
-/** {§agui-plurnk-metadata} A row's attributes without the bodies they hold, on every part and projection that carries them. */
+/** {§acp-plurnk-metadata} A row's attributes without the bodies they hold, on every part and projection that carries them. */
 export const withoutBodies = (attrs: Readonly<Record<string, unknown>>): Record<string, unknown> =>
     Object.fromEntries(Object.entries(attrs).filter(([key]) => !BODY_ATTRS.has(key)));
 
 /**
- * {§agui-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a
+ * {§acp-plurnk-metadata} The address a row recorded: `scheme://host[:port]path[?query][#fragment]`, or the bare path a
  * file target records, with its channel; null when the row named none.
  */
 export const addressOf = (row: {

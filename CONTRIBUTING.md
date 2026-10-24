@@ -176,7 +176,7 @@ it is not a release gate.
   - a clean service checkout.
 - **Verdict** (`scripts/lib/orientation-verdict.mjs`): the report must be terminal and
   must have inspected the repository, including a READ. It must cover the service,
-  the contracts, the client and AG-UI, the repository topology, current work (or the
+  the contracts, the client and ACP, the repository topology, current work (or the
   forge's unavailability) and its own gaps.
 - **Evidence**: each preserved run claims `benchmarks/run<N>-orientation/` with the
   prompt, the client and service logs, `phases.json`, `verdict.json`, `plurnk.db`, and

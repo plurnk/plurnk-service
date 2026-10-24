@@ -5,7 +5,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Translator } from "@plurnk/plurnk-agui";
+import { Translator } from "@plurnk/plurnk-acp";
 import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -180,7 +180,7 @@ Branch-only decision.
         assert.equal((await clientDispatch(`\`\`\`\`KILL (${target})\`\`\`\``)).status, 403);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
-        const snapshot = new Translator({ origin: "http://agui.test", workspaceId, threadId: "history", runId: "reattach" }).replay(journal)
+        const snapshot = new Translator({ origin: "http://acp.test", workspaceId, threadId: "history", runId: "reattach" }).replay(journal)
             .find(({ type }) => type === "MESSAGES_SNAPSHOT");
         assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
         assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map((message) => "content" in message ? message.content : null), [original]);

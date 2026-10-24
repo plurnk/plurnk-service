@@ -233,7 +233,7 @@ export type ApplicationLoopAdmission = OperationResult & {
     readonly turnSeq?: number;
 };
 
-/** {§agui-provider-routes} A declared alias as the route a worker seeded from it gets, its configured effort included. */
+/** {§acp-provider-routes} A declared alias as the route a worker seeded from it gets, its configured effort included. */
 export type ApplicationProviderAlias = ModelRoute & {
     readonly alias: string;
     readonly active: boolean;

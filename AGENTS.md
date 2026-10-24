@@ -6,7 +6,7 @@ documents it names — and `scripts/agents-map.test.mjs` keeps every command and
 true ({§agents-map}). How to run a thing is the thing's own `--help`, never a paragraph here.
 
 This repository is an npm workspace containing the daemon (`plurnk-core`, published as
-`@plurnk/plurnk-service`), the contracts and grammar authority, the AG-UI server module, and the
+`@plurnk/plurnk-service`), the contracts and grammar authority, the ACP server module, and the
 extensions included in the default installation. The terminal client is a separate repository,
 `../plurnk` beside this one.
 
@@ -43,7 +43,7 @@ extensions included in the default installation. The terminal client is a separa
   `git push --no-verify github origin/main:refs/heads/main` ({§release-mirror}).
 - **The client is part of the gate.** The drill's last phase boots the built service and checks the
   terminal client checkout (`../plurnk`, or `PLURNK_CLIENT_CHECKOUT`) against it
-  ({§agui-first-party-client-conformance}): land a client change before the service push that depends
+  ({§acp-first-party-client-conformance}): land a client change before the service push that depends
   on it; never leave that checkout half-edited while a gate runs; a type a service change moves or
   removes must leave the client compiling both against this checkout's packed packages and against its
   published dependencies. Its scripted model (`scripts/fixtures/client-journey-model.mjs`) asserts
@@ -62,14 +62,12 @@ extensions included in the default installation. The terminal client is a separa
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
 - `plurnk-parser` owns the ANTLR grammars and the parser that implements that
-  language. Its importers are the service's execution path, `plurnk-agui` and
-  `plurnk-acp` (`parseStatements`, for client-authored blocks) and `plurnk-execs`
+  language. Its importers are the service's execution path, `plurnk-acp`
+  (`parseStatements`, for client-authored blocks) and `plurnk-execs`
   (`parseStatements` and `frame`, for runtime invocation and teaching examples);
   no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
-- `plurnk-agui` owns the external AG-UI client protocol and translates between AG-UI
-  and daemon operations.
 - `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between
   ACP v2 and daemon operations.
 - `plurnk-modules` owns the daemon module contract: the lifecycle a module

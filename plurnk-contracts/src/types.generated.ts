@@ -72,10 +72,10 @@ export type Dimensions = [("admission" | "projection" | "framing" | "success" | 
 export type Evidence = [string, ...(string)[]]
 
 /**
- * One client's exhaustive, evidence-bearing disposition for an installed AG-UI discovery surface.
+ * One client's exhaustive, evidence-bearing disposition for an installed ACP discovery surface.
  */
 
-export interface AguiClientConformance {
+export interface AcpClientConformance {
 schemaVersion: 1
 client: string
 actions: {
@@ -89,10 +89,10 @@ notifications: {
 export type Name = string
 
 /**
- * Language-neutral raw SSE and AG-UI lifecycle specimens consumed by every Plurnk client.
+ * Language-neutral raw SSE and ACP lifecycle specimens consumed by every Plurnk client.
  */
 
-export interface AguiConformanceKit {
+export interface AcpConformanceKit {
 schemaVersion: 1
 /**
  * @minItems 1
@@ -149,10 +149,10 @@ status?: number
 export type ClientDisplayCapabilities = (SchemeDisplayCapability | MimetypeDisplayCapability)[]
 
 /**
- * The complete installed AG-UI+ management and notification surface. Action and notification names are object keys so identity has one representation.
+ * The complete installed ACP management and notification surface. Action and notification names are object keys so identity has one representation.
  */
 
-export interface AguiDiscovery {
+export interface AcpDiscovery {
 schemaVersion: 1
 actions: {
 [k: string]: Action

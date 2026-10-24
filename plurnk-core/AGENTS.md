@@ -15,7 +15,7 @@ Core owns:
 - workspaces, workers, loops, turns, and log entries;
 - packet assembly and model-loop orchestration;
 - operation dispatch and proposal lifecycle;
-- the internal API used by `plurnk-agui`.
+- the internal API used by `plurnk-acp`.
 
 Core does not own provider transports, content-type behavior, external
 executors, or client rendering. Add those capabilities to the appropriate
@@ -72,7 +72,7 @@ PLURNK_SERVICE_FILES_ITEMS=0 node --conditions=plurnk-dev --import=./test/setup.
   released versions are frozen.
 - Put shared wire and model-language shapes in `plurnk-contracts`, and
   persistence-only types in core.
-- Keep AG-UI transport and event translation in `plurnk-agui`.
+- Keep ACP transport and event translation in `plurnk-acp`.
 - Validate external input once at its owning boundary.
 - Test lifecycle changes through a complete loop, including terminal and
   failure states.

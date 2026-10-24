@@ -1,0 +1,716 @@
+{
+    "schemaVersion": 1,
+    "transport": [
+        {
+            "name": "comments-crlf-split-multiline",
+            "chunks": [
+                ": heartbeat\r\nid: ignored\r\ndata: {\"type\":\"CUSTOM\",\r\ndata: \"name\":\"plurnk.notice\",\"value\":{\"source\":\"engine\",\"kind\":\"fixture\",\"level\":\"info\"}}\r",
+                "\n\r\n"
+            ],
+            "eof": false,
+            "expect": {
+                "events": [
+                    {
+                        "type": "CUSTOM",
+                        "name": "plurnk.notice",
+                        "value": { "source": "engine", "kind": "fixture", "level": "info" }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "split-frame-and-eof-dispatch",
+            "chunks": [
+                "data: {\"type\":\"RUN_STARTED\",\"threadId\":\"fixture\",\"runId\":\"run",
+                "\"}\n\ndata: {\"type\":\"RUN_FINISHED\",\"threadId\":\"fixture\",\"runId\":\"run\",\"outcome\":{\"type\":\"success\"}}"
+            ],
+            "eof": true,
+            "expect": {
+                "events": [
+                    { "type": "RUN_STARTED", "threadId": "fixture", "runId": "run" },
+                    {
+                        "type": "RUN_FINISHED",
+                        "threadId": "fixture",
+                        "runId": "run",
+                        "outcome": { "type": "success" }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "malformed-json",
+            "chunks": ["data: not-json\n\n"],
+            "eof": false,
+            "expect": { "error": "invalid-json" }
+        },
+        {
+            "name": "cr-only-lines",
+            "chunks": [
+                ": comment\rdata: {\"type\":\"RUN_STARTED\",\"threadId\":\"fixture\",\"runId\":\"cr\"}\r\r: tail\n"
+            ],
+            "eof": false,
+            "expect": {
+                "events": [
+                    { "type": "RUN_STARTED", "threadId": "fixture", "runId": "cr" }
+                ]
+            }
+        }
+    ],
+    "lifecycles": [
+        {
+            "name": "ordinary-run",
+            "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "run" },
+                {
+                    "type": "STATE_SNAPSHOT",
+                    "snapshot": {
+                        "plurnk": {
+                            "workspace": {
+                                "id": 1,
+                                "name": "fixture",
+                                "projectRoot": null,
+                                "projectLabel": null,
+                                "preparation": [],
+                                "activity": null
+                            },
+                            "status": {
+                                "lifecycle": "idle",
+                                "model": null,
+                                "loopId": null,
+                                "loopSeq": null,
+                                "packetCount": 0,
+                                "waitUntil": null,
+                                "claimedAt": null,
+                                "terminatedAt": null,
+                                "descendants": [],
+                                "inbox": [],
+                                "streams": [],
+                                "spend": { "requests": 0, "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "knownUsage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0", "knownCostUsd": "0" }
+                            }
+                        },
+                        "budget": {}
+                    }
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/workspace/preparation", "value": [
+                            { "family": "mcp", "alias": "search", "phase": "preparing", "since": "2026-09-29T00:00:00.000Z" }
+                        ] }
+                    ]
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/workspace/preparation", "value": [] },
+                        { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "running" },
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/loopSeq", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/packetCount", "value": 1 }
+                    ]
+                },
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "1/1/1",
+                    "toolCallName": "NOTE",
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
+                },
+                { "type": "TOOL_CALL_ARGS", "toolCallId": "1/1/1", "delta": "{\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":\"Work.\"}" },
+                { "type": "TOOL_CALL_END", "toolCallId": "1/1/1" },
+                {
+                    "type": "TOOL_CALL_RESULT",
+                    "toolCallId": "1/1/1",
+                    "messageId": "1/1/1/result",
+                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}"
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "completed" },
+                        { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
+                        { "op": "replace", "path": "/plurnk/status/loopSeq", "value": 1 }
+                    ]
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "run",
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "loopSeq": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["log/entry", "loop/packet", "loop/terminated", "workspace/preparation"],
+                "status": 200
+            }
+        },
+        {
+            "name": "action-success",
+            "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "action" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "action",
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "workspace.list",
+                        "ok": true,
+                        "result": { "workspaces": [] }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "action": { "kind": "workspace.list", "ok": true }
+            }
+        },
+        {
+            "name": "action-problem",
+            "events": [
+                { "type": "RUN_STARTED", "threadId": "fixture", "runId": "action-problem" },
+                {
+                    "type": "STATE_SNAPSHOT",
+                    "snapshot": {
+                        "plurnk": {
+                            "workspace": {
+                                "id": 1,
+                                "name": "fixture",
+                                "projectRoot": null,
+                                "projectLabel": null,
+                                "preparation": [],
+                                "activity": null
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "action-problem",
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "workspace.rename",
+                        "ok": false,
+                        "problem": {
+                            "type": "https://problems.plurnk.xyz/daemon/workspace/name-conflict",
+                            "title": "Name conflict",
+                            "status": 409,
+                            "detail": "The workspace name is already in use."
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "action": { "kind": "workspace.rename", "ok": false, "status": 409 }
+            }
+        },
+        {
+            "name": "loop-injection",
+            "events": [
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "inject",
+                    "outcome": { "type": "success" },
+                    "result": {
+                        "kind": "loop.inject",
+                        "ok": true,
+                        "result": {
+                            "status": 100,
+                            "action": "injected_next_turn",
+                            "loopId": 9,
+                            "turnSeq": 2
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": [],
+                "status": 100,
+                "action": { "kind": "loop.inject", "ok": true, "status": 100 }
+            }
+        },
+        {
+            "name": "proposal-interrupt",
+            "events": [
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "1/2/3",
+                    "toolCallName": "sh",
+                    "metadata": {
+                        "plurnk": {
+                            "id": 42,
+                            "coordinate": "1/2/3",
+                            "worker": 7,
+                            "origin": "model",
+                            "op": "sh",
+                            "source": null,
+                            "address": null,
+                            "signal": null,
+                            "status": 202,
+                            "attrs": { "runtime": "sh" },
+                            "state": "proposed"
+                        }
+                    }
+                },
+                {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": "1/2/3",
+                    "delta": "{\"runtime\":\"sh\",\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":\"printf ok\"}"
+                },
+                { "type": "TOOL_CALL_END", "toolCallId": "1/2/3" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "proposal",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "6f1c0a52-0b7e-4a39-9d55-2f0c7a1e9b13",
+                                "reason": "tool_call",
+                                "message": "Review the requested action.",
+                                "toolCallId": "1/2/3",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "decision": { "type": "string", "enum": ["accept", "reject", "cancel"] },
+                                        "body": { "type": "string" },
+                                        "outcome": { "type": "string" }
+                                    },
+                                    "required": ["decision"]
+                                },
+                                "metadata": {
+                                    "plurnk": {
+                                        "proposal": {
+                                            "logEntryId": 42,
+                                            "workerId": 7,
+                                            "worker": "main",
+                                            "loopId": 3,
+                                            "turnId": 5,
+                                            "coordinate": "1/2/3",
+                                            "op": "sh",
+                                            "target": { "scheme": "sh", "authority": null, "pathname": "" },
+                                            "body": "printf ok",
+                                            "attrs": { "runtime": "sh" },
+                                            "owner": "acp://operator",
+                                            "disposition": { "decision": "review" }
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/proposal"],
+                "interrupt": "proposal"
+            }
+        },
+        {
+            "name": "proposal-interrupt-without-call",
+            "events": [
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "proposal-without-call",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "0d4e7b18-93a2-4c61-8f0e-5b2a9c7d1e46",
+                                "reason": "tool_call",
+                                "message": "Review the requested action.",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "decision": { "type": "string", "enum": ["accept", "reject", "cancel"] },
+                                        "body": { "type": "string" },
+                                        "outcome": { "type": "string" }
+                                    },
+                                    "required": ["decision"]
+                                },
+                                "expiresAt": "2026-10-16T12:00:00.000Z",
+                                "metadata": {
+                                    "plurnk": {
+                                        "proposal": {
+                                            "logEntryId": 43,
+                                            "workerId": 9,
+                                            "worker": "background",
+                                            "loopId": 4,
+                                            "turnId": 6,
+                                            "coordinate": "1/1/2",
+                                            "op": "EDIT",
+                                            "target": { "scheme": "file", "authority": null, "pathname": "notes.md" },
+                                            "body": "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-before\n+after",
+                                            "attrs": {},
+                                            "owner": "acp://operator",
+                                            "disposition": { "decision": "review" },
+                                            "expiresAt": "2026-10-16T12:00:00.000Z"
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/proposal"],
+                "interrupt": "proposal"
+            }
+        },
+        {
+            "name": "interaction-interrupt",
+            "events": [
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "int:43",
+                    "toolCallName": "request_user_input"
+                },
+                {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": "int:43",
+                    "delta": "{\"question\":\"Proceed?\"}"
+                },
+                { "type": "TOOL_CALL_END", "toolCallId": "int:43" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "interaction",
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": "int:43",
+                                "reason": "tool_call",
+                                "toolCallId": "int:43",
+                                "message": "Answer the question.",
+                                "responseSchema": {
+                                    "type": "object",
+                                    "required": ["answer"],
+                                    "properties": { "answer": { "type": "string" } }
+                                }
+                            }
+                        ]
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "interrupt",
+                "families": ["loop/interaction"],
+                "interrupt": "interaction"
+            }
+        },
+        {
+            "name": "reasoning-stream",
+            "events": [
+                {
+                    "type": "REASONING_START",
+                    "messageId": "model-call-11/request-1/reasoning"
+                },
+                {
+                    "type": "REASONING_MESSAGE_START",
+                    "messageId": "model-call-11/request-1/reasoning",
+                    "role": "reasoning",
+                    "metadata": { "plurnk": { "coordinate": "1/2" } }
+                },
+                {
+                    "type": "REASONING_MESSAGE_CONTENT",
+                    "messageId": "model-call-11/request-1/reasoning",
+                    "delta": "checked "
+                },
+                {
+                    "type": "REASONING_MESSAGE_CONTENT",
+                    "messageId": "model-call-11/request-1/reasoning",
+                    "delta": "the evidence"
+                },
+                {
+                    "type": "REASONING_MESSAGE_END",
+                    "messageId": "model-call-11/request-1/reasoning"
+                },
+                {
+                    "type": "REASONING_END",
+                    "messageId": "model-call-11/request-1/reasoning"
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "reasoning",
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "loopSeq": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["reasoning/event", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "outside-text",
+            "events": [
+                { "type": "STEP_STARTED", "stepName": "turn-1" },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.outside",
+                    "value": { "coordinate": "worker-1-1", "text": "Thinking out loud.", "tokens": 9 }
+                },
+                { "type": "STEP_FINISHED", "stepName": "turn-1" },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "outside",
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "loopSeq": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["outside/event", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "notice-and-stream",
+            "events": [
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.notice",
+                    "value": { "source": "engine", "kind": "fixture", "level": "info" }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.stream",
+                    "value": {
+                        "entryId": 8,
+                        "workerId": 7,
+                        "target": "sh:///1/1/8",
+                        "scheme": "sh",
+                        "channel": "stdout",
+                        "state": "active",
+                        "contentLength": 4
+                    }
+                },
+                {
+                    "type": "CUSTOM",
+                    "name": "plurnk.stream",
+                    "value": {
+                        "entryId": 8,
+                        "workerId": 7,
+                        "target": "sh:///1/1/8",
+                        "subscriptionId": 3,
+                        "scheme": "sh",
+                        "result": { "status": 200 },
+                        "summary": "completed",
+                        "wakeAction": "no-loop"
+                    }
+                },
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "stream",
+                    "outcome": { "type": "success" },
+                    "result": { "status": 200 },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "loopSeq": 1,
+                                "result": { "status": 200 },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["notice/event", "stream/event", "stream/concluded", "loop/terminated"],
+                "status": 200
+            }
+        },
+        {
+            "name": "problem-run",
+            "events": [
+                {
+                    "type": "RUN_ERROR",
+                    "message": "The fixture deliberately conflicts.",
+                    "code": "https://problems.plurnk.xyz/fixture/conflict",
+                    "metadata": {
+                        "plurnk": {
+                            "problem": {
+                                "type": "https://problems.plurnk.xyz/fixture/conflict",
+                                "title": "Fixture conflict",
+                                "status": 409,
+                                "detail": "The fixture deliberately conflicts."
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "error",
+                "families": ["problem/event"],
+                "status": 409
+            }
+        },
+        {
+            "name": "cancelled-run",
+            "events": [
+                {
+                    "type": "RUN_FINISHED",
+                    "threadId": "fixture",
+                    "runId": "cancel",
+                    "outcome": { "type": "cancelled" },
+                    "metadata": {
+                        "plurnk": {
+                            "terminal": {
+                                "workspaceId": 1,
+                                "workerId": 7,
+                                "loopId": 1,
+                                "loopSeq": 1,
+                                "result": {
+                                    "status": 499,
+                                    "problem": {
+                                        "type": "https://problems.plurnk.xyz/lifecycle/cancel/loop-cancelled",
+                                        "title": "Loop cancelled",
+                                        "status": 499,
+                                        "detail": "The loop was cancelled."
+                                    }
+                                },
+                                "hitMaxTurns": false,
+                                "turnIds": [1],
+                                "attributions": [],
+                                "usage": {
+                                    "accounting": { "requests": [], "usage": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "inputTokenDetails": { "noCacheTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0 }, "outputTokenDetails": { "textTokens": 0, "reasoningTokens": 0 } }, "costUsd": "0" },
+                                    "curationWeight": null,
+                                    "curationBudget": null,
+                                    "contextTokens": null,
+                                    "contextCapacity": null,
+                                    "meta": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "expect": {
+                "completion": "success",
+                "families": ["loop/terminated"],
+                "status": 499
+            }
+        },
+        {
+            "name": "dead-stream",
+            "events": [
+                {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": "1/1/1",
+                    "toolCallName": "NOTE",
+                    "metadata": { "plurnk": { "id": 1, "coordinate": "1/1/1", "worker": 7, "origin": "model", "op": "NOTE", "source": null, "address": null, "signal": null, "status": 200, "attrs": {} } }
+                },
+                { "type": "TOOL_CALL_ARGS", "toolCallId": "1/1/1", "delta": "{\"aside\":null,\"target\":null,\"metadata\":null,\"lineMarker\":null,\"body\":null}" },
+                { "type": "TOOL_CALL_END", "toolCallId": "1/1/1" },
+                {
+                    "type": "TOOL_CALL_RESULT",
+                    "toolCallId": "1/1/1",
+                    "messageId": "1/1/1/result",
+                    "content": "{\"status\":200,\"resource\":\"note://fixture/1/1/1\"}"
+                }
+            ],
+            "expect": {
+                "completion": "dead-stream",
+                "families": ["log/entry"],
+                "status": 502
+            }
+        }
+    ]
+}

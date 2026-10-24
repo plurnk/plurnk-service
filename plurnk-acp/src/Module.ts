@@ -1,8 +1,26 @@
-// {§acp-daemon-module} The daemon's ACP v2 client interface, a discovered module: it claims
-// `/acp` on the daemon's one listener ({§module-http-mounts}), mounts HTTP and WebSocket upgrade
+// {§acp-daemon-client} {§acp-daemon-module} The daemon's ACP v2 client interface, a discovered module: it claims
+// `/acp` on the daemon's one listener ({§module-http-mounts}), mounts HTTP, SSE, and WebSocket upgrade
 // handlers at start, and owns no socket of its own.
+//
+// This is the single external client interface:
+//   POST /acp — a Run or JSON-RPC 2.0 call; POST /acp/connect — an observer that also waits while idle;
+//   WS /acp — bidirectional JSON-RPC 2.0 session transport.
+//   A worker streams SSE or session updates. HITL is terminate-resume on Run streams (and server->client
+//   requests on WebSocket sessions): a stopped-world presents the call it gates (the operation's own,
+//   or a client interaction's) and finishes with an ACP interrupt outcome (the loop stays paused in-engine);
+//   the next ACP Run's standard resume entries resolve the durable gate and continue the exact loop.
+//   Reads ride STATE_SNAPSHOT on RUN_STARTED; there are no side-channel action
+//   or proposal-resolution endpoints.
+// A thread resolves to a model worker through {§acp-thread-binding}; core retains
+// opaque external references, while this adapter interprets qualified addresses.
+
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
+import Portal, { type PortalPort } from "./Portal.ts";
+import Overview from "./Overview.ts";
+import { descendantsState, inboxState, spendState, statusState, actionRunResult, type ActionRequest, type ActionOutcome, type AcpWorkerGauge } from "./AcpPlus.ts";
+import { EventType, type AcpEvent, type RunAgentInput } from "./types.ts";
+import { ENTRY_ROUTE, HISTORY_ROUTE, acpRouteTemplate, observed } from "./observe.ts";
 import {
     APPLICATION_NOTIFICATIONS,
     Problems,
@@ -13,8 +31,11 @@ import {
     isSafeInteger,
     lifecycleOfLoopStatus,
     requestOrigin,
+    selectWorkerLoop,
     withoutBodies,
+    type AcpDiscovery,
     type ApplicationNotificationContract,
+    type ClientEnvelope,
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ExecStatement,
@@ -27,85 +48,90 @@ import {
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import type { DaemonModule } from "@plurnk/plurnk-modules";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
+import { ACP_BUILTIN_ACTIONS, ACP_NOTIFICATIONS, type AcpActionContract } from "./AcpSurface.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
+import { HttpProblemError, actionFailure } from "./action-results.ts";
+import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
+import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
+import RunHandler, { forwardedRefusal, type RunPort, type WorkerBinding } from "./RunHandler.ts";
+import ThreadAddress from "./ThreadAddress.ts";
 import MessageAddress from "./MessageAddress.ts";
-import SessionAddress, { HttpProblemError, acpProblem } from "./SessionAddress.ts";
-import Translator, { type AcpSessionUpdate } from "./Translator.ts";
+import SessionAddress, { acpProblem } from "./SessionAddress.ts";
+import SessionTranslator, { type AcpSessionUpdate } from "./SessionTranslator.ts";
 import WebSocketConnection from "./WebSocketConnection.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { MessageScheme } from "@plurnk/plurnk-schemes";
+import type { SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
+import type { DaemonModule } from "@plurnk/plurnk-modules";
 
 export type { ModuleOptions } from "./config.ts";
 
-export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
+// The creation fields a Run forwards, typed as the daemon's creation contract types them; the daemon judges their sense.
+const forwardedProjectRoot = (value: unknown): string | null => {
+    if (typeof value !== "string" && value !== null) throw forwardedRefusal("projectRoot", "a string or null");
+    return value;
+};
+const forwardedSettings = (value: unknown): string | Readonly<Record<string, unknown>> => {
+    if (typeof value !== "string" && !isRecord(value)) throw forwardedRefusal("settings", "a string or an object");
+    return value;
+};
 
+// {§module-seam-slices} — the start seam: the calls the module makes itself, and each
+// collaborator's slice.
 export type AcpPort = Pick<
     ApplicationPort,
     | "attachWorkspace"
-    | "cancelDrain"
-    | "claimWorkerOwner"
     | "configurationNotices"
+    | "credentials"
     | "createWorker"
     | "createWorkspace"
-    | "credentials"
-    | "dispatchClientAction"
-    | "ensureWorkerReference"
-    | "executorTags"
-    | "forkWorker"
+    | "workerAccounting"
+    | "workerGauge"
     | "httpAddress"
     | "invokeModuleAction"
     | "listClientDisplayCapabilities"
-    | "listModels"
     | "listModuleActions"
-    | "listPrompts"
-    | "listProviders"
     | "listWorkerLoops"
     | "listWorkers"
     | "listWorkspaces"
-    | "pendingClientInteractions"
-    | "pendingProposals"
-    | "readEntry"
     | "readEntryChannel"
     | "readInbox"
-    | "readLog"
     | "readStreams"
     | "readWorker"
-    | "readWorkerEffort"
-    | "readWorkerModel"
     | "readWorkerOverview"
     | "readWorkerReference"
-    | "readWorkspaceCapabilities"
+    | "ensureWorkerReference"
+    | "readWorkerModel"
     | "registerHttpRoute"
-    | "registerHttpUpgrade"
-    | "registerWorkerOwner"
-    | "renameWorkspace"
-    | "resolveClientInteraction"
-    | "resolveProposal"
-    | "rollback"
-    | "runLoop"
-    | "setWorkerEffort"
-    | "setWorkerHidden"
-    | "setWorkerModel"
-    | "setWorkerSpawnModel"
-    | "setWorkspaceCapabilities"
-    | "setWorkspaceHidden"
-    | "shareWorkspace"
-    | "subscribeToEvents"
-    | "workerAccounting"
-    | "workerGauge"
     | "workspaceDerivationStatus"
     | "workspacePreparationStatus"
->;
+> & Partial<Pick<ApplicationPort, "registerHttpUpgrade">> & PortalPort & BuiltinActionsPort & RunPort;
 
-const ACP_SCOPE = "acp";
+const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void => {
+    res.writeHead(problem.status, { "content-type": "application/problem+json" });
+    res.end(JSON.stringify(problem));
+};
+
+type ActionExecutor = (
+    params: Readonly<Record<string, unknown>>,
+    input: RunAgentInput,
+    env: ClientEnvelope | null,
+    boundWorkerId: number | undefined,
+    onLoop: OperationLoopListener | undefined,
+) => Promise<ActionOutcome>;
+
+interface RegisteredAction extends AcpActionContract {
+    readonly execute: ActionExecutor;
+}
+
+export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
 
 interface BoundSession {
     readonly sessionId: string;
     readonly workspaceId: number;
     readonly workerId: number;
     readonly workerName: string;
-    readonly translator: Translator;
+    readonly translator: SessionTranslator;
 }
 
 interface PendingRpcGate {
@@ -132,42 +158,121 @@ interface LoopWaiter {
     readonly reject: (problem: ProblemDetails) => void;
 }
 
-const credentialRevokedProblem = (): ProblemDetails =>
-    acpProblem("credential-revoked", 401, "The credential authorizing this connection was revoked.", {
-        stage: "authentication",
-        retryable: false,
-    });
-
-const serviceStoppingProblem = (): ProblemDetails =>
-    acpProblem("service-stopping", 503, "The PLURNK service is stopping.", {
-        stage: "shutdown",
-        retryable: true,
-    });
+// {§acp-action-binding} The actions addressed to the thread's worker: those that set its durable
+// policy create it, the rest require it, and those that take an explicit `workerId` require it only
+// without one. A workspace action that would act on nothing in a workspace it created attaches only.
+const WORKER_CREATING_ACTIONS: ReadonlySet<string> = new Set([
+    "worker.model.set",
+    "worker.child.set",
+    "worker.effort.set",
+    "worker.env.add",
+    "worker.env.replace",
+]);
+const WORKER_ACTIONS: ReadonlySet<string> = new Set(["loop.inject", "loop.cancel", "run.fork", "worker.model.get", "worker.effort.get"]);
+const WORKER_NAMING_ACTIONS: ReadonlySet<string> = new Set([
+    "log.read", "entry.read", "workspace.prompts", "workspace.rollback", "worker.loops", "worker.hidden.set",
+]);
+const WORKSPACE_ATTACHING_ACTIONS: ReadonlySet<string> = new Set(["workspace.hidden.set"]);
 
 export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
+    // {§module-http-mounts} — the client protocol owns its own prefix.
     readonly mounts: readonly string[] = Object.freeze(["/acp"]);
-    readonly #opts: ResolvedModuleOptions;
     #seam!: AcpPort;
     #listener!: AcpSetupSeam["httpAddress"];
+    readonly #opts: ResolvedModuleOptions;
+    #portal!: Portal;
     #offEvents: (() => void) | null = null;
     #offRevoked: (() => void) | null = null;
+    #workspaceEnvelopes = new Map<string, ClientEnvelope>();
+    #threadWorkers = new Map<string, Promise<number>>();
+    #workspaceAcquisitions = new Map<string, Promise<void>>();
+    #actions = new Map<string, RegisteredAction>();
     readonly #peers = new Set<AcpPeer>();
     readonly #loopWaiters = new Set<LoopWaiter>();
-    readonly #work = new Set<Promise<unknown>>();
     #nextServerRequestId = 1;
     #activated = false;
     #stopped = false;
+    // {§acp-shutdown} The requests this module admitted and the work they and its Runs started: each may reach core
+    // until it settles.
+    readonly #work = new Set<Promise<unknown>>();
+    readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), namedWorkspace: this.#namedWorkspace.bind(this), threadWorker: this.#threadWorker.bind(this), requireWorkspace: Module.#requireWorkspace, excerptChars: () => this.#opts.excerptChars });
+    // {§acp-overview} The worker overview's observations.
+    readonly #overview = new Overview({
+        seam: () => this.#seam,
+        bounds: () => ({ limit: this.#opts.overviewWorkers, excerptChars: this.#opts.excerptChars, heartbeatMs: this.#opts.heartbeatMs }),
+        track: this.#track.bind(this),
+    });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#origin(req), track: this.#track.bind(this), overview: () => this.#overview });
 
-    private constructor(opts: ModuleOptions = {}) {
+    private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
     }
 
+    // {§http-request-origin} — the authority's issuer when published, else the origin the request
+    // reached this daemon at, else, with no request in hand, the listener's own.
+    #origin(req: RequestHeaders = { headers: {} }): string {
+        return this.#seam.credentials.face()?.issuer(req) ?? requestOrigin(req, this.#listener());
+    }
+
+    // {§acp-configuration} — the module reads its settings from the assembled environment;
+    // explicit options override them.
     static create(opts: ModuleOptions = {}): Module {
         return new Module(opts);
     }
 
-    #origin(req: RequestHeaders = { headers: {} }): string {
-        return this.#seam.credentials.face()?.issuer(req) ?? requestOrigin(req, this.#listener());
+    #registerActions(): void {
+        for (const [name, contract] of Object.entries(ACP_BUILTIN_ACTIONS)) {
+            this.#actions.set(name, {
+                ...contract,
+                execute: (params, input, env, boundWorkerId, onLoop) =>
+                    this.#builtins.executeBuiltin(name, params, input, env, boundWorkerId, onLoop),
+            });
+        }
+        for (const descriptor of this.#seam.listModuleActions()) {
+            const { name, scope, inputSchema, outputSchema } = descriptor;
+            if (this.#actions.has(name)) throw new Error(`ACP action '${name}' is registered more than once`);
+            if (scope !== "daemon" && scope !== "workspace" && scope !== "worker") {
+                throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
+            }
+            this.#actions.set(name, {
+                scope,
+                inputSchema,
+                outputSchema,
+                execute: async (params, _input, env, boundWorkerId) => {
+                    if (scope === "daemon") {
+                        return {
+                            ok: true,
+                            result: await this.#seam.invokeModuleAction(name, params, { scope }),
+                        };
+                    }
+                    const { workspaceId } = Module.#requireWorkspace(name, env);
+                    if (scope === "workspace") {
+                        return {
+                            ok: true,
+                            result: await this.#seam.invokeModuleAction(name, params, { scope, workspaceId }),
+                        };
+                    }
+                    if (boundWorkerId === undefined) throw new Error(`worker action '${name}' reached execution without its worker`);
+                    return {
+                        ok: true,
+                        result: await this.#seam.invokeModuleAction(name, params, { scope, workspaceId, workerId: boundWorkerId }),
+                    };
+                },
+            });
+        }
+    }
+
+    // {§acp-action-binding} An action the module does not register, or whose input its schema refuses, binds
+    // nothing and creates nothing: like a daemon one, it is answered on the control path.
+    #requiresWorkspace({ kind, params }: ActionRequest): boolean {
+        const action = this.#actions.get(kind);
+        return action !== undefined && action.scope !== "daemon"
+            && Validator.validateJsonSchemaInstance(action.inputSchema, params).valid;
+    }
+
+    static #requireWorkspace(kind: string, env: ClientEnvelope | null): ClientEnvelope {
+        if (env === null) throw new Error(`action '${kind}' operates within a workspace, but none is bound`);
+        return env;
     }
 
     async setup(seam: AcpSetupSeam): Promise<void> {
@@ -175,18 +280,26 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         this.#listener = () => seam.httpAddress();
     }
 
+    // {§acp-listener-admission} — the host admits traffic after every module has started.
     async start(seam: AcpPort): Promise<void> {
         if (this.#stopped) throw new Error("plurnk-acp: stopped module cannot be activated");
         if (this.#activated) throw new Error("plurnk-acp: module already activated");
+        seam.registerHttpRoute("/acp", (req, res) => this.#route(req, res));
+        seam.registerHttpUpgrade?.("/acp", (req, socket, head) => this.#track(this.#handleUpgrade(req, socket, head)));
         this.#seam = seam;
         this.#listener = () => seam.httpAddress();
-        seam.registerHttpRoute("/acp", (req, res) => this.#track(this.#handleHttp(req, res)));
-        seam.registerHttpUpgrade("/acp", (req, socket, head) => this.#track(this.#handleUpgrade(req, socket, head)));
+        this.#registerActions();
+        this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars }, this.#track.bind(this));
+        this.#portal.start();
+        this.#overview.start();
         this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
             this.#onDaemonEvent(workspaceId, method, params);
         });
+        // {§acp-oauth-revocation} — a revoked family's open Runs end; their loops continue.
         this.#offRevoked = seam.credentials.onRevoked((family) => {
             const problem = credentialRevokedProblem();
+            this.#portal.failFamily(family, runErrorEvents(problem));
+            this.#overview.failFamily(family, runErrorEvents(problem));
             for (const peer of [...this.#peers]) {
                 if (peer.family === family) {
                     peer.closeWithProblem(problem);
@@ -201,28 +314,552 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         this.#stopped = true;
     }
 
+    // {§acp-shutdown} Every remaining Run ends, then what the module admitted settles: after close the host releases the
+    // database, so nothing the module started reaches core afterward.
     async close(): Promise<void> {
         this.stop();
         if (!this.#activated) return;
         this.#activated = false;
         this.#offEvents?.();
         this.#offRevoked?.();
-        const problem = serviceStoppingProblem();
+        const stopping = serviceStoppingProblem();
+        this.#portal.stop();
+        this.#overview.stop(runErrorEvents(stopping));
         for (const waiter of [...this.#loopWaiters]) {
             this.#loopWaiters.delete(waiter);
-            waiter.reject(problem);
+            waiter.reject(stopping);
         }
         for (const peer of [...this.#peers]) {
             this.#peers.delete(peer);
-            peer.closeWithProblem(problem);
+            peer.closeWithProblem(stopping);
         }
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
     }
 
-    #track<T>(promise: Promise<T>): Promise<T> {
-        this.#work.add(promise);
-        void promise.finally(() => this.#work.delete(promise));
-        return promise;
+    #track<T>(work: Promise<T>): Promise<T> {
+        this.#work.add(work);
+        const settled = (): void => { this.#work.delete(work); };
+        void work.then(settled, settled);
+        return work;
+    }
+
+    // {§acp-http-authorization} — bearer admission for the ACP resource (RFC 6750 §3).
+    #admit(req: IncomingMessage, issuer: string, allowQueryToken = false):
+        | { readonly ok: true; readonly family: string }
+        | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string } {
+        const header = req.headers.authorization;
+        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${issuer}/.well-known/oauth-protected-resource"`;
+        let presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
+        if (presented === null && allowQueryToken) {
+            const url = new URL(req.url ?? "/acp", "http://listener");
+            const queryToken = url.searchParams.get("access_token");
+            if (queryToken !== null) presented = /^Bearer(?:\s+(.*))?$/iu.exec(`Bearer ${queryToken}`);
+        }
+        if (presented === null) {
+            return {
+                ok: false,
+                challenge: challenge(""),
+                problem: httpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
+                    stage: "authorization", recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.", retryable: false,
+                }),
+            };
+        }
+        const token = (presented[1] ?? "").trim();
+        const claims = this.#seam.credentials.verify(token);
+        if (claims === null || claims.kind !== "access") {
+            return {
+                ok: false,
+                challenge: challenge(', error="invalid_token", error_description="The access token is unknown, expired or revoked."'),
+                problem: httpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
+                    stage: "authorization", recovery: "Obtain a new access token from this daemon's token endpoint.", retryable: false,
+                }),
+            };
+        }
+        if (!claims.scopes.includes("acp")) {
+            return {
+                ok: false,
+                challenge: challenge(', error="insufficient_scope", scope="acp"'),
+                problem: httpProblem("bearer-scope-insufficient", 403, "The access token does not carry the scope acp.", {
+                    stage: "authorization", scope: "acp", recovery: "Obtain an access token with the scope acp.", retryable: false,
+                }),
+            };
+        }
+        return { ok: true, family: claims.family };
+    }
+
+    async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.#stopped) {
+            writeHttpProblem(res, serviceStoppingProblem());
+            return;
+        }
+        return this.#track(observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.
+            "acp.http",
+            { route: acpRouteTemplate(req.method, req.url) },
+            (): Promise<void> => this.#routeSettled(req, res),
+        ));
+    }
+
+    async #routeSettled(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        try {
+            // {§acp-cors} — which pages may read a reply is the panel's; none at all when it says nothing.
+            if (this.#opts.allowOrigin.length > 0) {
+                res.setHeader("access-control-allow-origin", this.#opts.allowOrigin);
+                res.setHeader("access-control-allow-headers", "content-type, authorization");
+            }
+            if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
+            // The perimeter ({§acp-http-authorization}): bearer admission before any body read.
+            let family: string | null = null;
+            const face = this.#seam.credentials.face();
+            if (face !== null) {
+                const admission = this.#admit(req, face.issuer(req));
+                if (!admission.ok) {
+                    res.setHeader("www-authenticate", admission.challenge);
+                    writeHttpProblem(res, admission.problem);
+                    return;
+                }
+                ({ family } = admission);
+            }
+            if (req.method === "POST" && req.url === "/acp") {
+                let decoded: unknown;
+                try {
+                    decoded = JSON.parse(await Module.#body(req));
+                } catch {
+                    throw new HttpProblemError(httpProblem(
+                        "invalid-json",
+                        400,
+                        "The request body is not valid JSON.",
+                        { stage: "request-validation", retryable: false },
+                    ));
+                }
+                if (isRecord(decoded) && decoded.jsonrpc === "2.0" && typeof decoded.method === "string") {
+                    return await this.#handleRpcHttp(req, res, decoded, family);
+                }
+                return await this.#runs.runDecoded(req, res, decoded, false, family);
+            }
+            if (req.method === "POST" && req.url === "/acp/connect") return await this.#runs.run(req, res, true, family);
+            const entry = req.method === "GET" && req.url !== undefined ? ENTRY_ROUTE.exec(req.url) : null;
+            if (entry !== null) return await this.#entry(res, entry);
+            if (req.method === "GET" && (req.url === "/acp/entry" || req.url?.startsWith("/acp/entry?") === true)) {
+                return await this.#queryEntry(req, res);
+            }
+            const history = req.method === "GET" && req.url !== undefined ? HISTORY_ROUTE.exec(req.url) : null;
+            if (history !== null) return await this.#historyPage(req, res, history);
+            writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
+                method: req.method ?? null,
+                path: req.url ?? null,
+                stage: "routing",
+                retryable: false,
+            }));
+        } catch (err) {
+            const exactProblem = Problems.fromError(err);
+            if (exactProblem === null) {
+                console.error("ACP request failed:", err);
+            }
+            const problem = exactProblem ?? httpProblem(
+                "request-failed",
+                500,
+                "The ACP request failed unexpectedly.",
+                {
+                    stage: "request",
+                    retryable: false,
+                },
+            );
+            if (!res.headersSent) {
+                writeHttpProblem(res, problem);
+                return;
+            }
+            // {§acp-http-failure} The SSE is already open, so a JSON body is
+            // invisible to the event parser. Preserve a contract Problem exactly when
+            // one exists; unexpected exceptions become one generic boundary failure.
+            for (const event of runErrorEvents(problem)) {
+                res.write(`data: ${JSON.stringify(event)}\n\n`);
+            }
+            res.end();
+        }
+    }
+
+    // {§acp-entry-route} An address at this daemon: the channel it selects, read from the worker's perspective as a client
+    // entry read reads it ({§methods-entry-channel-read}), answered as its media type. The perimeter has admitted the
+    // request; the daemon refuses a worker outside the workspace.
+    async #entry(res: ServerResponse, [, workspace, worker, rawQuery]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId] = [workspace, worker].map(Number);
+        const target = new URLSearchParams(rawQuery ?? "").get("target");
+        if (target === null || target.length === 0) {
+            writeHttpProblem(res, httpProblem("entry-target-required", 400, "The request names no address in `target`.", {
+                workspaceId, workerId, stage: "request-validation", recovery: "Request `?target=<address>`, the address percent-encoded.", retryable: false,
+            }));
+            return;
+        }
+        const read = await this.#seam.readEntryChannel({ workspaceId, workerId, target });
+        if (read.entry === null) {
+            writeHttpProblem(res, read.problem);
+            return;
+        }
+        for (const { content, mimetype } of Object.values(read.entry.channels)) {
+            res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
+            res.end(content);
+        }
+    }
+
+    async #queryEntry(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const url = new URL(req.url ?? "/acp/entry", "http://listener");
+        const workspaceId = Number(url.searchParams.get("workspaceId") ?? "");
+        const workerId = Number(url.searchParams.get("workerId") ?? "");
+        const target = url.searchParams.get("target") ?? "";
+        if (!isSafeInteger(workspaceId) || workspaceId < 1 || !isSafeInteger(workerId) || workerId < 1 || target.length === 0) {
+            writeHttpProblem(res, httpProblem("entry-query-invalid", 400, "workspaceId, workerId and target are required to read an entry channel.", {
+                stage: "request-validation",
+                retryable: false,
+            }));
+            return;
+        }
+        const read = await this.#seam.readEntryChannel({ workspaceId, workerId, target });
+        if (read.entry === null) {
+            writeHttpProblem(res, read.problem);
+            return;
+        }
+        for (const { content, mimetype } of Object.values(read.entry.channels)) {
+            res.writeHead(200, { "content-type": `${mimetype}; charset=utf-8`, "cache-control": "no-store" });
+            res.end(content);
+            return;
+        }
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+        res.end("");
+    }
+
+    // {§acp-history-page} A page of a worker's history, as the view its link names holds it: the loop before the cursor,
+    // or the newest when it names none. The perimeter has admitted the request; the daemon refuses a worker outside the
+    // workspace.
+    async #historyPage(req: IncomingMessage, res: ServerResponse, [, workspace, worker, rawQuery]: RegExpExecArray): Promise<void> {
+        const [workspaceId, workerId] = [workspace, worker].map(Number);
+        const query = new URLSearchParams(rawQuery ?? "");
+        const threadId = query.get("thread");
+        if (threadId === null || threadId.length === 0) {
+            writeHttpProblem(res, httpProblem("history-thread-required", 400, "A history page names the thread whose view it holds.", {
+                workspaceId, workerId, stage: "request-validation", recovery: "Follow the `older` link a snapshot or page carries.", retryable: false,
+            }));
+            return;
+        }
+        // {§acp-loop-page} A loop by its number, in place of a cursor.
+        const loop = query.get("loop");
+        if (loop !== null && (!/^[1-9]\d*$/u.test(loop) || query.get("before") !== null)) {
+            writeHttpProblem(res, httpProblem("history-loop-invalid", 400, "A loop page names one loop by its number, and no cursor.", {
+                workspaceId, workerId, loop, before: query.get("before"), stage: "request-validation", recovery: "Name the loop's number as `loop`, or follow an `older` link.", retryable: false,
+            }));
+            return;
+        }
+        // The daemon refuses a worker outside the workspace as it reads the worker's log.
+        const entries = await this.#runs.history(workspaceId, workerId);
+        const view = {
+            workspaceId, workerId, threadId, origin: this.#origin(req), replyThreads: await this.#runs.replyThreads(workspaceId, workerId, threadId),
+            descendants: query.get("descendants") === "true", reasoningByLink: query.get("reasoning") === "link",
+        };
+        const history = (descendant: number) => this.#runs.history(workspaceId, descendant);
+        const page = loop === null ? await this.#portal.page(view, query.get("before"), entries, history) : await this.#portal.loopPage(view, Number(loop), entries, history);
+        if (page === null && loop !== null) {
+            writeHttpProblem(res, httpProblem("history-loop-not-found", 404, "This conversation holds no loop by that number.", {
+                workspaceId, workerId, loop: Number(loop), stage: "routing", recovery: "List the worker's loops with `worker.loops`.", retryable: false,
+            }));
+            return;
+        }
+        if (page === null) {
+            writeHttpProblem(res, httpProblem("history-cursor-not-found", 404, "No message of this conversation holds the page's cursor.", {
+                workspaceId, workerId, before: query.get("before"), stage: "routing", recovery: "Follow the `older` link a snapshot or page carries.", retryable: false,
+            }));
+            return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(JSON.stringify(page));
+    }
+
+    // {§acp-thread-binding} Opaque references, qualified IDs, and explicit workspace selection.
+    async #envelope(threadId: string, forwarded?: Record<string, unknown>, options: { readonly create?: boolean; readonly worker?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null) return { env: await this.#seam.attachWorkspace(qualified), reattached: true };
+        const workspace = forwarded?.workspace;
+        if (workspace === undefined) {
+            const reference = { namespace: "acp", reference: threadId };
+            const binding = options.worker === true
+                ? await this.#seam.ensureWorkerReference(reference)
+                : await this.#seam.readWorkerReference(reference);
+            if (binding === null) throw new HttpProblemError(httpProblem("thread-not-found", 404,
+                "The thread has no conversation.", { threadId, stage: "request-validation", retryable: false }));
+            return { env: await this.#seam.attachWorkspace(binding), reattached: true };
+        }
+        if (typeof workspace !== "string" || workspace.length === 0) {
+            throw new HttpProblemError(httpProblem(
+                "workspace-required",
+                400,
+                "forwardedProps.plurnk.workspace must name a workspace.",
+                {
+                    stage: "request-validation",
+                    recovery: "Provide a non-empty workspace name.",
+                    retryable: false,
+                },
+            ));
+        }
+        return await this.#namedWorkspace(workspace, forwarded, options);
+    }
+
+    // {§acp-thread-binding} Workspace labels are selected literally, never parsed as thread addresses.
+    async #namedWorkspace(workspace: string, forwarded?: Readonly<Record<string, unknown>>, options: { readonly create?: boolean } = {}): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const cached = await this.#currentEnvelope(workspace);
+        if (cached !== undefined) return { env: cached, reattached: true };
+        const previous = this.#workspaceAcquisitions.get(workspace);
+        const acquisition = Promise.withResolvers<void>();
+        this.#workspaceAcquisitions.set(workspace, acquisition.promise);
+        try {
+            await previous;
+            const acquired = await this.#currentEnvelope(workspace);
+            if (acquired !== undefined) return { env: acquired, reattached: true };
+            const result = await this.#openWorkspace(workspace, forwarded, options);
+            this.#workspaceEnvelopes.set(workspace, result.env);
+            return result;
+        } finally {
+            acquisition.resolve();
+            if (this.#workspaceAcquisitions.get(workspace) === acquisition.promise) this.#workspaceAcquisitions.delete(workspace);
+        }
+    }
+
+    // {§acp-thread-binding} A rename retires name selection; stable thread addresses do not use this cache.
+    async #currentEnvelope(workspace: string): Promise<ClientEnvelope | undefined> {
+        const cached = this.#workspaceEnvelopes.get(workspace);
+        if (cached === undefined) return undefined;
+        const current = (await this.#seam.listWorkspaces()).find(({ id }) => id === cached.workspaceId);
+        if (current?.name === workspace) return cached;
+        this.#workspaceEnvelopes.delete(workspace);
+        return undefined;
+    }
+
+    async #openWorkspace(workspace: string, forwarded: Readonly<Record<string, unknown>> | undefined, options: { readonly create?: boolean }): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const known = (await this.#seam.listWorkspaces()).find((s) => s.name === workspace);
+        let env: ClientEnvelope;
+        let reattached = false;
+        if (known !== undefined) {
+            env = await this.#seam.attachWorkspace({ workspaceId: known.id });
+            reattached = true;
+        } else if (options.create === false) {
+            // {§acp-action-binding} — a Run that attaches only addresses a workspace that exists; a name that
+            // does not is the client's error, never a workspace minted on its behalf.
+            throw new HttpProblemError(httpProblem(
+                "workspace-not-found",
+                404,
+                `No workspace named ${JSON.stringify(workspace)} exists.`,
+                {
+                    stage: "request-validation",
+                    workspace,
+                    recovery: "Name the existing workspace in forwardedProps.plurnk.workspace, or create it with workspace.create or a message Run.",
+                    retryable: false,
+                },
+            ));
+        } else {
+            const opts = forwarded ?? {};
+            env = await this.#seam.createWorkspace({
+                name: workspace,
+                ...(Object.hasOwn(opts, "projectRoot") ? { projectRoot: forwardedProjectRoot(opts.projectRoot) } : {}),
+                ...(Object.hasOwn(opts, "settings") ? { settings: forwardedSettings(opts.settings) } : {}),
+            });
+        }
+        return { env, reattached };
+    }
+
+    // {§acp-thread-binding} {§acp-action-binding} — the threadId names its worker by its immutable name,
+    // never compared with the workspace's; only an act addressed to the worker creates it, and every other
+    // binding requires it. Cached per workspace identity and threadId: worker names are immutable, so a
+    // binding never rots. Durable capability changes use workspace.capabilities.set; approval ownership is
+    // durable in Core.
+    async #boundWorker(threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>): Promise<number> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified === null && forwarded?.workspace === undefined) {
+            const reference = await this.#seam.readWorkerReference({ namespace: "acp", reference: threadId });
+            if (reference === null || reference.workspaceId !== env.workspaceId) throw new Error("Thread reference is absent from its resolved workspace.");
+            return reference.workerId;
+        }
+        const workerName = qualified?.workerName ?? threadId;
+        const key = JSON.stringify([env.workspaceId, workerName]);
+        const cached = this.#threadWorkers.get(key);
+        if (cached !== undefined) return await cached;
+        if (binding === "required") {
+            const id = await this.#modelWorker(workerName, env.workspaceId);
+            if (id === undefined) {
+                throw new HttpProblemError(httpProblem("worker-not-found", 404,
+                    `No model worker named ${JSON.stringify(workerName)} exists in workspace ${JSON.stringify(env.workspaceName)}.`, {
+                        stage: "request-validation", workspace: env.workspaceName, worker: threadId,
+                        recovery: "Name an existing model worker, or create one by sending it a message.", retryable: false,
+                    }));
+            }
+            this.#threadWorkers.set(key, Promise.resolve(id));
+            return id;
+        }
+        const pending = (async () => await this.#modelWorker(workerName, env.workspaceId)
+            ?? (await this.#seam.createWorker({ workspaceId: env.workspaceId, name: workerName })).workerId)();
+        this.#threadWorkers.set(key, pending);
+        try { return await pending; }
+        catch (cause) {
+            this.#threadWorkers.delete(key);
+            throw cause;
+        }
+    }
+
+    // {§acp-thread-binding} The model worker the thread resolves to, when it exists; reading creates nothing. It is
+    // also the worker a person's client operation acts for ({§actor-boundary-client-operations}).
+    async #threadWorker(threadId: string, workspaceId: number, forwarded?: Record<string, unknown>): Promise<number | undefined> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null && qualified.workspaceId !== workspaceId) return undefined;
+        if (qualified === null && forwarded?.workspace === undefined) {
+            const reference = await this.#seam.readWorkerReference({ namespace: "acp", reference: threadId });
+            return reference?.workspaceId === workspaceId ? reference.workerId : undefined;
+        }
+        return this.#modelWorker(qualified?.workerName ?? threadId, workspaceId);
+    }
+
+    async #modelWorker(name: string, workspaceId: number): Promise<number | undefined> {
+        const worker = await this.#seam.readWorker({ workspaceId, identity: { name } });
+        return worker?.origin === "model" ? worker.id : undefined;
+    }
+
+    // {§acp-run-input} Resolve retained identity without creating a conversation or claiming its owner.
+    async #conversation(threadId: string, forwarded?: Record<string, unknown>): Promise<{ workspaceId: number; workerId: number } | null> {
+        const qualified = ThreadAddress.parse(threadId);
+        if (qualified !== null) {
+            const workerId = await this.#threadWorker(threadId, qualified.workspaceId, forwarded);
+            return workerId === undefined ? null : { workspaceId: qualified.workspaceId, workerId };
+        }
+        const workspaceName = forwarded?.workspace;
+        if (workspaceName === undefined) return this.#seam.readWorkerReference({ namespace: "acp", reference: threadId });
+        if (typeof workspaceName !== "string") return null;
+        const workspace = (await this.#seam.listWorkspaces()).find(({ name }) => name === workspaceName);
+        if (workspace === undefined) return null;
+        const workerId = await this.#threadWorker(threadId, workspace.id, forwarded);
+        return workerId === undefined ? null : { workspaceId: workspace.id, workerId };
+    }
+
+    // {§acp-action-binding} — what an action binds of the thread's worker. Reached only for a registered
+    // action whose input its schema admits: any other is answered on the control path.
+    #actionBinding({ kind, params }: ActionRequest): WorkerBinding {
+        const action = this.#actions.get(kind)!;
+        if (WORKER_CREATING_ACTIONS.has(kind)) return "create";
+        if (WORKER_NAMING_ACTIONS.has(kind)) return typeof params.workerId === "number" ? "attach" : "required";
+        if (WORKER_ACTIONS.has(kind)) return "required";
+        if (WORKSPACE_ATTACHING_ACTIONS.has(kind)) return "attach";
+        return action.scope === "worker" ? "required" : "none";
+    }
+
+    async #workerGauge(workspaceId: number, workerId: number, threadId: string): Promise<AcpWorkerGauge> {
+        const [{ model }, loops, workers, proposals, interactions, inbox, streams, budget] = await Promise.all([
+            this.#seam.readWorkerModel({ workspaceId, workerId }),
+            this.#seam.listWorkerLoops({ workspaceId, workerId }),
+            this.#seam.listWorkers(workspaceId),
+            this.#seam.pendingProposals(workspaceId),
+            this.#seam.pendingClientInteractions(workspaceId),
+            this.#seam.readInbox({ workspaceId, workerId }),
+            this.#seam.readStreams({ workspaceId, workerId }),
+            this.#seam.workerGauge({ workspaceId, workerId }),
+        ]);
+        const loop = selectWorkerLoop(loops);
+        const spend = await this.#seam.workerAccounting({ workspaceId, workerId });
+        const descendants = descendantsState(workerId, workers, [...proposals, ...interactions]);
+        return { status: statusState(model, loop, spendState(spend), descendants, inboxState(inbox, threadId), streams), budget };
+    }
+
+    // A control-plane ACP Run: no workspace bound. Open the SSE, execute the daemon verb, answer on
+    // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
+    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
+        const emit = (e: AcpEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
+        emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
+        if (action.kind === "discover") {
+            for (const notice of this.#seam.configurationNotices()) {
+                emit({ type: EventType.CUSTOM, name: "plurnk.notice", value: notice });
+            }
+        }
+        const outcome = await this.#action(action, input, null, undefined, undefined)
+            .catch((err: unknown): ActionOutcome => {
+                console.error(`ACP action '${action.kind}' failed:`, err);
+                const problem = Problems.fromError(err);
+                return problem === null
+                    ? actionFailure("action-failed", "The action failed unexpectedly.", 500)
+                    : { ok: false, problem };
+            });
+        emit({ type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" }, result: actionRunResult(action.kind, outcome) });
+        res.end();
+    }
+
+    // Discovery is a projection of the executable registry, not a second inventory.
+    async #capabilities(): Promise<AcpDiscovery> {
+        const actions = Object.fromEntries([...this.#actions].map(([name, action]) => [
+            name,
+            {
+                scope: action.scope,
+                inputSchema: action.inputSchema,
+                outputSchema: action.outputSchema,
+            },
+        ]));
+        const display = Validator.assertClientDisplayCapabilities(
+            await this.#seam.listClientDisplayCapabilities(),
+        );
+        return Validator.assertAcpDiscovery({
+            schemaVersion: 1,
+            actions,
+            notifications: ACP_NOTIFICATIONS,
+            display,
+        });
+    }
+
+    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, onLoop: OperationLoopListener | undefined): Promise<ActionOutcome> {
+        const action = this.#actions.get(a.kind);
+        if (action === undefined) {
+            return actionFailure(
+                "unknown-action",
+                `Action '${a.kind}' is not registered.`,
+                404,
+                {
+                    requestedAction: a.kind,
+                    recovery: "Use an action advertised by discover.",
+                },
+            );
+        }
+        const admitted = Validator.validateJsonSchemaInstance(action.inputSchema, a.params);
+        if (!admitted.valid) {
+            const details = admitted.errors
+                .filter((error) => !admitted.errors.some((other) => other.keywordLocation.startsWith(`${error.keywordLocation}/`)))
+                .map(({ instanceLocation, error }) => `${instanceLocation}: ${error}`)
+                .join(" ");
+            return actionFailure(
+                "invalid-action-parameters",
+                `Action '${a.kind}' rejected parameters. ${details}`,
+                400,
+                {
+                    issues: admitted.errors,
+                },
+            );
+        }
+        try {
+            if (action.scope !== "daemon") Module.#requireWorkspace(a.kind, env);
+            const outcome = await action.execute(a.params, input, env, boundWorkerId, onLoop);
+            if (!outcome.ok) return outcome;
+            const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
+            if (!projected.valid) {
+                throw new Error(
+                    `ACP action '${a.kind}' produced output outside its advertised schema: ${JSON.stringify(projected.errors)}`,
+                );
+            }
+            return outcome;
+        } catch (err) {
+            const problem = Problems.fromError(err);
+            if (problem !== null) return { ok: false, problem };
+            console.error(`ACP action '${a.kind}' failed:`, err);
+            return actionFailure("action-failed", "The action failed unexpectedly.", 500);
+        }
+    }
+
+    static #body(req: IncomingMessage): Promise<string> {
+        return new Promise((resolve, reject) => {
+            let data = "";
+            req.on("data", (c: Buffer) => { data += c.toString(); });
+            req.on("end", () => resolve(data));
+            req.on("error", reject);
+        });
     }
 
     #corsHeaders(): Record<string, string> {
@@ -232,67 +869,6 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
             "access-control-allow-headers": "authorization, content-type, accept",
             "access-control-allow-methods": "GET, POST, OPTIONS",
         };
-    }
-
-    #authorize(
-        req: IncomingMessage,
-        allowQueryToken: boolean = false,
-    ): { ok: true; family: string | null } | { ok: false; problem: ProblemDetails; wwwAuthenticate: string } {
-        const face = this.#seam.credentials.face();
-        if (face === null) return { ok: true, family: null };
-        const origin = face.issuer(req);
-        const resourceMetadata = `${origin}/.well-known/oauth-protected-resource`;
-        let token: string | null = null;
-        const authHeader = req.headers.authorization;
-        if (typeof authHeader === "string") {
-            const match = /^Bearer\s+(\S+)$/iu.exec(authHeader.trim());
-            if (match !== null) token = match[1]!;
-        }
-        if (token === null && allowQueryToken) {
-            const url = new URL(req.url ?? "/acp", "http://listener");
-            token = url.searchParams.get("access_token");
-        }
-        if (token === null) {
-            return {
-                ok: false,
-                problem: acpProblem("unauthorized", 401, "A valid Bearer access token is required.", {
-                    stage: "authentication",
-                    retryable: false,
-                }),
-                wwwAuthenticate: `Bearer realm="plurnk", resource_metadata="${resourceMetadata}"`,
-            };
-        }
-        const claims = this.#seam.credentials.verify(token);
-        if (claims === null || claims.kind !== "access") {
-            return {
-                ok: false,
-                problem: acpProblem("unauthorized", 401, "The Bearer access token is invalid, expired or revoked.", {
-                    stage: "authentication",
-                    retryable: false,
-                }),
-                wwwAuthenticate: `Bearer error="invalid_token", realm="plurnk", resource_metadata="${resourceMetadata}"`,
-            };
-        }
-        if (!claims.scopes.includes(ACP_SCOPE)) {
-            return {
-                ok: false,
-                problem: acpProblem("insufficient-scope", 403, `The Bearer token does not grant the '${ACP_SCOPE}' scope.`, {
-                    stage: "authorization",
-                    retryable: false,
-                }),
-                wwwAuthenticate: `Bearer error="insufficient_scope", scope="${ACP_SCOPE}", resource_metadata="${resourceMetadata}"`,
-            };
-        }
-        return { ok: true, family: claims.family };
-    }
-
-    #writeProblem(res: ServerResponse, problem: ProblemDetails, extraHeaders: Readonly<Record<string, string>> = {}): void {
-        res.writeHead(problem.status, {
-            ...this.#corsHeaders(),
-            ...extraHeaders,
-            "content-type": "application/problem+json",
-        });
-        res.end(JSON.stringify(problem));
     }
 
     static #writeSocketProblem(socket: Duplex, problem: ProblemDetails, extraHeaders: Readonly<Record<string, string>> = {}): void {
@@ -315,23 +891,28 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         }
         const url = new URL(req.url ?? "/acp", "http://listener");
         if (url.pathname !== "/acp") {
-            Module.#writeSocketProblem(socket, acpProblem("route-not-found", 404, "The requested ACP route does not exist.", {
+            Module.#writeSocketProblem(socket, httpProblem("route-not-found", 404, "The requested ACP route does not exist.", {
                 stage: "routing",
                 retryable: false,
             }));
             return;
         }
-        const auth = this.#authorize(req, true);
-        if (!auth.ok) {
-            Module.#writeSocketProblem(socket, auth.problem, { "WWW-Authenticate": auth.wwwAuthenticate });
-            return;
+        let family: string | null = null;
+        const face = this.#seam.credentials.face();
+        if (face !== null) {
+            const admission = this.#admit(req, face.issuer(req), true);
+            if (!admission.ok) {
+                Module.#writeSocketProblem(socket, admission.problem, { "WWW-Authenticate": admission.challenge });
+                return;
+            }
+            ({ family } = admission);
         }
         const origin = this.#origin(req);
         const sessions = new Map<string, BoundSession>();
         const pendingGates = new Map<string | number, PendingRpcGate>();
         let ws: WebSocketConnection | null = null;
         const peer: AcpPeer = {
-            family: auth.family,
+            family,
             origin,
             sessions,
             pendingGates,
@@ -360,7 +941,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
             },
         }, this.#corsHeaders());
         if (ws === null) {
-            Module.#writeSocketProblem(socket, acpProblem("invalid-json", 400, "Invalid WebSocket upgrade handshake.", {
+            Module.#writeSocketProblem(socket, httpProblem("invalid-json", 400, "Invalid WebSocket upgrade handshake.", {
                 stage: "transport",
                 retryable: false,
             }));
@@ -389,7 +970,6 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
             }));
             return;
         }
-        // Check if this is a client->server response to a server->client gate request (`session/request_permission` or `_plurnk/question`).
         if (typeof parsed.method !== "string" && (typeof parsed.id === "string" || typeof parsed.id === "number")) {
             const gate = peer.pendingGates.get(parsed.id);
             if (gate !== undefined) {
@@ -431,116 +1011,9 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         }
     }
 
-    async #handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.#stopped) {
-            this.#writeProblem(res, serviceStoppingProblem());
-            return;
-        }
-        const url = new URL(req.url ?? "/acp", "http://listener");
-        if (req.method === "OPTIONS") {
-            res.writeHead(204, this.#corsHeaders());
-            res.end();
-            return;
-        }
-        if (url.pathname === "/acp/entry") {
-            if (req.method !== "GET") {
-                this.#writeProblem(res, acpProblem("method-not-allowed", 405, "Only GET is supported on /acp/entry.", {
-                    stage: "routing",
-                    retryable: false,
-                }));
-                return;
-            }
-            const auth = this.#authorize(req, false);
-            if (!auth.ok) {
-                this.#writeProblem(res, auth.problem, { "www-authenticate": auth.wwwAuthenticate });
-                return;
-            }
-            const workspaceId = Number(url.searchParams.get("workspaceId") ?? "");
-            const workerId = Number(url.searchParams.get("workerId") ?? "");
-            const target = url.searchParams.get("target") ?? "";
-            if (!isSafeInteger(workspaceId) || workspaceId < 1 || !isSafeInteger(workerId) || workerId < 1 || target.length === 0) {
-                this.#writeProblem(res, acpProblem("entry-query-invalid", 400, "workspaceId, workerId and target are required to read an entry channel.", {
-                    stage: "request-validation",
-                    retryable: false,
-                }));
-                return;
-            }
-            try {
-                const read = await this.#seam.readEntryChannel({ workspaceId, workerId, target });
-                if (read.entry === null) {
-                    this.#writeProblem(res, read.problem);
-                    return;
-                }
-                for (const { content, mimetype } of Object.values(read.entry.channels)) {
-                    res.writeHead(200, {
-                        ...this.#corsHeaders(),
-                        "content-type": `${mimetype}; charset=utf-8`,
-                        "cache-control": "no-store",
-                    });
-                    res.end(content);
-                    return;
-                }
-                res.writeHead(200, {
-                    ...this.#corsHeaders(),
-                    "content-type": "text/plain; charset=utf-8",
-                });
-                res.end("");
-            } catch (err) {
-                const problem = Problems.fromError(err) ?? acpProblem("action-failed", 500, "Failed to read entry channel.", { stage: "execution", retryable: false });
-                this.#writeProblem(res, problem);
-            }
-            return;
-        }
-        if (url.pathname !== "/acp") {
-            this.#writeProblem(res, acpProblem("route-not-found", 404, "The requested ACP route does not exist.", {
-                stage: "routing",
-                retryable: false,
-            }));
-            return;
-        }
-        if (req.method !== "POST") {
-            this.#writeProblem(res, acpProblem("method-not-allowed", 405, "Use POST or WebSocket upgrade on /acp.", {
-                stage: "routing",
-                retryable: false,
-            }));
-            return;
-        }
-        const auth = this.#authorize(req, false);
-        if (!auth.ok) {
-            this.#writeProblem(res, auth.problem, { "www-authenticate": auth.wwwAuthenticate });
-            return;
-        }
-        const contentType = req.headers["content-type"] ?? "";
-        if (!contentType.toLowerCase().includes("application/json")) {
-            this.#writeProblem(res, acpProblem("unsupported-media-type", 415, "POST /acp requires application/json.", {
-                stage: "request-validation",
-                retryable: false,
-            }));
-            return;
-        }
-        let rawBody = "";
-        for await (const chunk of req) {
-            rawBody += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-        }
-        let body: unknown;
-        try {
-            body = JSON.parse(rawBody);
-        } catch {
-            this.#writeProblem(res, acpProblem("invalid-json", 400, "The request body is not valid JSON.", {
-                stage: "request-validation",
-                retryable: false,
-            }));
-            return;
-        }
-        if (!isRecord(body) || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
-            this.#writeProblem(res, acpProblem("invalid-json", 400, "The request body is not a JSON-RPC 2.0 request.", {
-                stage: "request-validation",
-                retryable: false,
-            }));
-            return;
-        }
+    async #handleRpcHttp(req: IncomingMessage, res: ServerResponse, body: Readonly<Record<string, unknown>>, family: string | null): Promise<void> {
         const id = typeof body.id === "string" || typeof body.id === "number" ? body.id : null;
-        const method = body.method;
+        const method = typeof body.method === "string" ? body.method : "";
         const params = isRecord(body.params) ? body.params : {};
         const wantsSse = (req.headers.accept ?? "").includes("text/event-stream")
             && (method === "session/prompt" || method === "session/load" || method === "session/resume");
@@ -566,7 +1039,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         }
 
         const peer: AcpPeer = {
-            family: auth.family,
+            family,
             origin,
             sessions,
             pendingGates,
@@ -712,7 +1185,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                 workspaceId: qualified.workspaceId,
                 workerId: worker.id,
                 workerName: worker.name,
-                translator: new Translator({
+                translator: new SessionTranslator({
                     sessionId: SessionAddress.format(qualified.workspaceId, worker.name),
                     workspaceId: qualified.workspaceId,
                     workerId: worker.id,
@@ -742,7 +1215,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
             workspaceId: ref.workspaceId,
             workerId: ref.workerId,
             workerName,
-            translator: new Translator({
+            translator: new SessionTranslator({
                 sessionId,
                 workspaceId: ref.workspaceId,
                 workerId: ref.workerId,
@@ -866,7 +1339,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                         type: "oauth2",
                         issuer,
                         metadataUrl: `${issuer}/.well-known/oauth-authorization-server`,
-                        scope: ACP_SCOPE,
+                        scope: "acp",
                     }],
                 };
             }
@@ -938,7 +1411,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                     workspaceId: workspace.workspaceId,
                     workerId,
                     workerName,
-                    translator: new Translator({
+                    translator: new SessionTranslator({
                         sessionId,
                         workspaceId: workspace.workspaceId,
                         workerId,
@@ -986,7 +1459,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                 const beforeLoopSeq = typeof params.beforeLoopSeq === "number" && isSafeInteger(params.beforeLoopSeq)
                     ? params.beforeLoopSeq
                     : undefined;
-                const replayed = Translator.replay(bound.translator, entries, inbox, {
+                const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
                     historyLoops: this.#opts.historyLoops,
                     ...(beforeLoopSeq === undefined ? {} : { beforeLoopSeq }),
                 });
@@ -1105,7 +1578,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                 const messageId = typeof params.messageId === "string" && params.messageId.length > 0
                     ? params.messageId
                     : crypto.randomUUID();
-                const submission = MessageAddress.submission(bound.sessionId, messageId, promptText);
+                const submission = MessageAddress.sessionSubmission(bound.sessionId, messageId, promptText);
                 const admission = await this.#seam.runLoop({
                     workspaceId: bound.workspaceId,
                     workerId: bound.workerId,
@@ -1302,7 +1775,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                 const workerId = typeof params.workerId === "number" && isSafeInteger(params.workerId) && params.workerId > 0
                     ? params.workerId
                     : bound?.workerId;
-                return await this.#executeAction(kind, actionParams, workspaceId, workerId);
+                return await this.#executeRpcAction(kind, actionParams, workspaceId, workerId);
             }
             default:
                 throw new HttpProblemError(acpProblem(
@@ -1314,7 +1787,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
         }
     }
 
-    async #executeAction(
+    async #executeRpcAction(
         kind: string,
         p: Readonly<Record<string, unknown>>,
         workspaceId?: number,
@@ -1571,7 +2044,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
                 toolCall: {
                     toolCallId: String(proposal.logEntryId),
                     title: `${proposal.op} (${targetText})`,
-                    kind: Translator.toolKindOf(proposal.op, null),
+                    kind: SessionTranslator.toolKindOf(proposal.op, null),
                     status: "pending",
                     rawInput: { body: proposal.body, target: proposal.target },
                     _meta: { plurnk: { proposal: leanProposal } },
@@ -1612,7 +2085,7 @@ export default class Module implements DaemonModule<AcpSetupSeam, AcpPort> {
     }
 
     #onDaemonEvent(workspaceId: number | null, method: string, params: unknown): void {
-        if (workspaceId === null) return;
+        if (workspaceId === null || (this.#peers.size === 0 && this.#loopWaiters.size === 0)) return;
         const contracts: Readonly<Record<string, ApplicationNotificationContract>> = APPLICATION_NOTIFICATIONS;
         const contract = contracts[method];
         if (contract !== undefined) {

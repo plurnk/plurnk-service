@@ -1,5 +1,5 @@
 // {§mcp-model-projection} {§tier-census} — current third-party stdio and Streamable HTTP servers
-// compose through the assembled daemon and its AG-UI listener: a scripted model, real servers. The
+// compose through the assembled daemon and its ACP listener: a scripted model, real servers. The
 // specimen names what it needs of the host (npx, the registry that serves the stdio server, the
 // remote HTTP server) and skips by name when one does not answer.
 import assert from "node:assert/strict";
@@ -14,7 +14,7 @@ import { bindListener } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 import { httpEntry, mcpFixture } from "../intg/_mcp-config.ts";
-import { actionResult, packet, PacketCapturingMock, post, runInput } from "../intg/_agui-run.ts";
+import { actionResult, packet, PacketCapturingMock, post, runInput } from "../intg/_acp-run.ts";
 
 const GOJI = "https://mcp.goji.agency/mcp";
 const KUBERNETES_SERVER = "kubernetes-mcp-server@0.0.66";

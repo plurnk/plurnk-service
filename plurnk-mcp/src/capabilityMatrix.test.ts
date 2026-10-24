@@ -61,8 +61,8 @@ test("{§mcp-capability-matrix} supported rows cite accountable evidence and adv
         }
         if (row.interactive && row.advertised !== "never") {
             assert.ok(
-                row.evidence.some((citation) => citation.includes("AguiPlus") || citation.includes("plurnk-agui")),
-                `interactive advertised row '${row.id}' lacks AG-UI layer evidence`,
+                row.evidence.some((citation) => citation.includes("AcpPlus") || citation.includes("plurnk-acp")),
+                `interactive advertised row '${row.id}' lacks ACP layer evidence`,
             );
         }
     }

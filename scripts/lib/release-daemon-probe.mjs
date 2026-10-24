@@ -49,7 +49,7 @@ const identityVersion = (stderr, packageName) => {
 };
 
 const startupAddress = (stdout) => {
-    const match = stdout.match(/(?:^|\n)plurnk-service agui=(http:\/\/[^\s]+)/);
+    const match = stdout.match(/(?:^|\n)plurnk-service acp=(http:\/\/[^\s]+)/);
     return match?.[1] ?? null;
 };
 
@@ -58,8 +58,8 @@ const listenerProblem = async (response, status, type) => {
         throw new Error(`installed daemon listener returned ${response.status} ${response.headers.get("content-type") ?? "without content type"}; expected ${status} application/problem+json`);
     }
     const problem = await response.json();
-    if (problem?.type !== `https://problems.plurnk.xyz/agui/http/${type}`) {
-        throw new Error(`installed daemon listener did not return the AG-UI ${type} Problem`);
+    if (problem?.type !== `https://problems.plurnk.xyz/acp/http/${type}`) {
+        throw new Error(`installed daemon listener did not return the ACP ${type} Problem`);
     }
 };
 
@@ -145,7 +145,7 @@ export const probeInstalledDaemon = async ({
         if (child.exitCode !== null || child.signalCode !== null) {
             throw new Error(`installed daemon exited before its listener probe (${child.exitCode ?? child.signalCode})`);
         }
-        // {§agui-http-authorization} {§auth-oauth-clients}: the probe exercises the
+        // {§acp-http-authorization} {§auth-oauth-clients}: the probe exercises the
         // shipped authentication posture with its own credential, never the operator's.
         const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
         await listenerProblem(response, 401, "bearer-token-required");
@@ -157,7 +157,7 @@ export const probeInstalledDaemon = async ({
         const tokenResponse = await fetch(new URL("/oauth/token", url), {
             method: "POST",
             headers: { authorization: `Basic ${Buffer.from(`operator:${secret}`).toString("base64")}` },
-            body: new URLSearchParams({ grant_type: "client_credentials", scope: "agui", resource: url.href }),
+            body: new URLSearchParams({ grant_type: "client_credentials", scope: "acp", resource: url.href }),
             redirect: "error",
             signal: AbortSignal.timeout(timeoutMs),
         });

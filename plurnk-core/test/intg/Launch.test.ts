@@ -50,7 +50,7 @@ test("{§daemon-launch} {§state-root}: a private daemon publishes its address, 
     let first: LaunchedDaemon | undefined;
     try {
         first = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: root, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
-        assert.match(first.url, /^http:\/\/127\.0\.0\.1:\d+\/agui$/u);
+        assert.match(first.url, /^http:\/\/127\.0\.0\.1:\d+\/acp$/u);
         assert.equal(first.host, "127.0.0.1");
         assert.ok(first.port > 0);
         assert.equal(first.dbPath, join(root, "data", "plurnk", "plurnk.db"), "the database lives under the state root, never under XDG_DATA_HOME");
@@ -157,7 +157,7 @@ test("{§startup-readiness-line}: an IPv6 host is bracketed in the published URL
     try {
         const daemon = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: join(home, "private"), host: "::1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
         try {
-            assert.match(daemon.url, /^http:\/\/\[::1\]:\d+\/agui$/u);
+            assert.match(daemon.url, /^http:\/\/\[::1\]:\d+\/acp$/u);
             assert.equal(daemon.host, "[::1]");
             assert.ok(daemon.port > 0);
             const response = await fetch(daemon.url);
@@ -189,7 +189,7 @@ test("{§daemon-launch}: a shared daemon logs to its file, is released at readin
         await writeFile(launcher, [
             `import Launch from ${JSON.stringify(pathToFileURL(resolve(here, "../../src/launch/Launch.ts")).href)};`,
             `const daemon = await Launch.start(${JSON.stringify(options)});`,
-            "process.stdout.write(JSON.stringify({ pid: daemon.child.pid, url: daemon.url, dbPath: daemon.dbPath, sawLine: daemon.stdout().includes('plurnk-service agui=') }));",
+            "process.stdout.write(JSON.stringify({ pid: daemon.child.pid, url: daemon.url, dbPath: daemon.dbPath, sawLine: daemon.stdout().includes('plurnk-service acp=') }));",
         ].join("\n"));
         const run = spawn(process.execPath, [...CONDITION_ARGS, launcher], { stdio: ["ignore", "pipe", "pipe"] });
         let out = "";

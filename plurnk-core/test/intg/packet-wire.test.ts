@@ -1915,8 +1915,8 @@ test("{§tokenomics-agnostic-ruler} structured mutation receipts bypass a second
 
 test("{§message-projection} {§context-fit}: an arrival that landed renders whole; one that did not fit renders as its size", () => {
     const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
-    const landed = { coordinate: "1/1/1", op: "SEND", origin: "_plurnk", source: "agui://operator/threads/t/messages/m1", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } };
-    const unfit = { ...landed, coordinate: "1/1/2", source: "agui://operator/threads/t/messages/m2", attrs: { kind: "message", unfit: { lines: 80, tokens: 1000 } }, initial_folded: [[1, -1]] };
+    const landed = { coordinate: "1/1/1", op: "SEND", origin: "_plurnk", source: "acp://operator/threads/t/messages/m1", attrs: { kind: "message" }, status: 200, tx: { body: { raw: content } }, rx: { status: 200 } };
+    const unfit = { ...landed, coordinate: "1/1/2", source: "acp://operator/threads/t/messages/m2", attrs: { kind: "message", unfit: { lines: 80, tokens: 1000 } }, initial_folded: [[1, -1]] };
     const [whole, folded] = parseLogRecords(PacketWire.renderLog([landed, unfit], tok));
     assert.match(String(whole.body), /80:prompt 80/, "the arrival that fit is shown whole");
     assert.equal(whole.preview, undefined);

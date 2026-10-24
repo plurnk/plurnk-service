@@ -2,7 +2,7 @@
 
 The [Model Context Protocol](https://modelcontextprotocol.io/) host module for
 [Plurnk](https://github.com/plurnk/plurnk-service). It projects configured MCP servers
-through Plurnk's executor, resource, proposal, entry, Problem, lifecycle, and AG-UI contracts.
+through Plurnk's executor, resource, proposal, entry, Problem, lifecycle, and ACP contracts.
 
 The module's own wire authority is protocol revision `2026-07-28`
 ({§mcp-authority}). Connection setup negotiates-and-degrades: a server that
@@ -88,7 +88,7 @@ MCP is one family of workspace Functionality, managed with the verbs every famil
 definition and enabled state. Use `disable` to suppress an inherited server.
 MCP management neither installs nor deletes plugins or configuration files.
 
-An AG-UI client sends each as the ordinary management action under
+An ACP client sends each as the ordinary management action under
 `forwardedProps.plurnk.action`, and the Run's `RUN_FINISHED.result` reports the result or
 exact RFC 9457 Problem Details:
 
@@ -178,7 +178,7 @@ text/byte view. Listing the resource alone does not attach it.
 
 Current pagination, cache hints, unified subscriptions, progress,
 cancellation, multi-round-trip input, elicitation, and negotiated Tasks remain
-inside the owning operation. Client input uses the standard AG-UI interrupt and
+inside the owning operation. Client input uses the standard ACP interrupt and
 resume lifecycle; protocol continuation state is never exposed to the model or
 client.
 
@@ -225,6 +225,6 @@ PLURNK_MODEL=<selector> npm run test:live -- --specimen "live mcp: current third
 
 The package gate runs the exact current SDK and official conformance
 requirements. The live specimen composes representative current stdio and
-Streamable HTTP servers through the assembled daemon and AG-UI product with a
+Streamable HTTP servers through the assembled daemon and ACP product with a
 scripted model; it runs in every live tier whose host has `npx`, the npm
 registry and the remote server, and skips by name otherwise.

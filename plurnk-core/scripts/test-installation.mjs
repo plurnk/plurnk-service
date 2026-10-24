@@ -176,8 +176,8 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve extensions package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS", "PLURNK_AGUI_ALLOW_ORIGIN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS",
-        "PLURNK_AGUI_HISTORY_LOOPS", "PLURNK_AGUI_HISTORY_PAGE_CHARS", "PLURNK_AGUI_EXCERPT_CHARS", "PLURNK_AGUI_OVERVIEW_WORKERS"]) delete childEnv[key];
+    for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS", "PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
+        "PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_WORKERS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
         if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
     }
@@ -190,7 +190,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);
     child.stdout.on("data", (c) => {
         stdout += c;
-        const address = stdout.match(/plurnk-service agui=(http:\/\/\S+)/u)?.[1];
+        const address = stdout.match(/plurnk-service acp=(http:\/\/\S+)/u)?.[1];
         if (address === undefined || listening) return;
         listening = true;
         if (probe === undefined) {
@@ -224,7 +224,7 @@ const accessToken = async (address, secret) => {
         const response = await fetch(`${origin}/oauth/token`, {
             method: "POST",
             headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ grant_type: "client_credentials", client_id: "operator", client_secret: secret, scope: "agui" }).toString(),
+            body: new URLSearchParams({ grant_type: "client_credentials", client_id: "operator", client_secret: secret, scope: "acp" }).toString(),
         });
         const body = await response.json();
         if (!response.ok || typeof body.access_token !== "string") throw new Error(`the installed daemon refused the seeded secret: ${JSON.stringify(body)}`);
@@ -233,7 +233,7 @@ const accessToken = async (address, secret) => {
     return accessTokens.get(key);
 };
 
-const aguiRun = async (address, plurnk, extra = {}) => {
+const acpRun = async (address, plurnk, extra = {}) => {
     const secret = seededSecret();
     const response = await fetch(address, {
         method: "POST",
@@ -261,12 +261,12 @@ const aguiRun = async (address, plurnk, extra = {}) => {
     return { response, body, events };
 };
 
-const aguiAction = async (address, kind, params = {}, workspace) => {
-    const { response, body, events } = await aguiRun(address, {
+const acpAction = async (address, kind, params = {}, workspace) => {
+    const { response, body, events } = await acpRun(address, {
         ...(workspace === undefined ? {} : { workspace }),
         action: { kind, ...params },
     });
-    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
     const outcome = events.find((event) => event.type === "RUN_FINISHED")?.result;
     if (!response.ok || outcome?.ok !== true) {
         throw new Error(`packed ${kind} failed (${response.status}): ${body}`);
@@ -476,7 +476,7 @@ ok(
     "plurnk-meta ships Plurnk's own skill, not a bundled third-party discovery skill",
 );
 
-// Drive the installed daemon through its real AG-UI boundary, then inspect its
+// Drive the installed daemon through its real ACP boundary, then inspect its
 // durable address space. This composes the packed bundle, standard project
 // location, workspace bootstrap, and skill materializer without a provider.
 const packedSkillProject = resolve(sandbox, "packed-skill-project");
@@ -504,47 +504,47 @@ writeFileSync(packedSkillScript, [
 ].join("\n"));
 const packedSkillDb = resolve(sandbox, "packed-skills.db");
 const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, async (address) => {
-    const primary = await aguiAction(address, "workspace.create", { projectRoot: packedSkillProject });
-    await aguiAction(address, "workspace.create", { name: "packed-dormant-two" });
-    await aguiAction(address, "workspace.create", { name: "packed-dormant-three" });
-    const anchorWorkspace = await aguiAction(address, "workspace.create", { name: "packed-anchor-range" });
+    const primary = await acpAction(address, "workspace.create", { projectRoot: packedSkillProject });
+    await acpAction(address, "workspace.create", { name: "packed-dormant-two" });
+    await acpAction(address, "workspace.create", { name: "packed-dormant-three" });
+    const anchorWorkspace = await acpAction(address, "workspace.create", { name: "packed-anchor-range" });
     const sourceTarget = "worker:///installed.py";
-    await aguiAction(address, "op.parse", {
+    await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${sourceTarget})
 def target():
     return 1
 \`\`\`\``,
     }, anchorWorkspace.name);
-    const sourceLookup = (await aguiAction(address, "op.parse", {
+    const sourceLookup = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${sourceTarget}) //function_definition\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
-    const sourceRead = (await aguiAction(address, "op.parse", {
+    const sourceRead = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const anchorTarget = "worker:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
-    await aguiAction(address, "op.parse", {
+    await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${anchorTarget})
 ${anchorContent}
 \`\`\`\``,
     }, anchorWorkspace.name);
-    const anchoredRead = (await aguiAction(address, "op.parse", {
+    const anchoredRead = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
-    const applied = await aguiAction(address, "op.parse", {
+    const applied = await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${anchorTarget}) <${one},${two}>\`\`\`\``,
     }, anchorWorkspace.name);
-    const landed = (await aguiAction(address, "op.parse", {
+    const landed = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
-    const rejected = await aguiAction(address, "op.parse", {
+    const rejected = await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>
 replacement
 \`\`\`\``,
     }, anchorWorkspace.name);
-    const unchanged = (await aguiAction(address, "op.parse", {
+    const unchanged = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     return {
@@ -562,7 +562,7 @@ replacement
 });
 ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
-    "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
+    "the packed ACP workspace bootstrap accepts a conventional project skill without a provider",
 );
 // {§read-find-normalization}: an authored READ is never rewritten into a FIND — a matcher
 // selects the region and the READ renders it. The survey of paths is FIND, and only FIND.
@@ -576,7 +576,7 @@ const packedSourceWorks = skillBoot.probeResult?.sourceLookup?.status === 200
         && skillBoot.code === 0 && skillBoot.signal === null;
 ok(
     packedSourceWorks,
-    "the packed daemon finds a Python definition by XPath, READs its region through AG-UI, and shuts down cleanly",
+    "the packed daemon finds a Python definition by XPath, READs its region through ACP, and shuts down cleanly",
 );
 if (!packedSourceWorks) console.error({ sourceLookup: skillBoot.probeResult?.sourceLookup, sourceRead: skillBoot.probeResult?.sourceRead, code: skillBoot.code, signal: skillBoot.signal, stderr: skillBoot.stderr });
 const packedAnchorProbe = skillBoot.probeResult?.anchors;
@@ -587,7 +587,7 @@ const packedAnchorProjectionWorks = packedAnchorProbe?.applied?.[0]?.status === 
         && packedAnchorProbe?.unchanged === "three\nfour\nfive\nsix\nseven\neight";
 ok(
     packedAnchorProjectionWorks,
-    "the packed AG-UI path applies two-anchor ranges and attributes malformed coordinates exactly",
+    "the packed ACP path applies two-anchor ranges and attributes malformed coordinates exactly",
 );
 const dormantWorkspaceId = skillBoot.probeResult?.primary?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
@@ -626,34 +626,34 @@ const dormantMcpEnv = {
 };
 const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const before = markerCount(mcpStartMarker);
-    const attached = await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
+    const attached = await acpAction(address, "workspace.attach", { id: dormantWorkspaceId });
     const afterFirstAttach = markerCount(mcpStartMarker);
-    await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
+    await acpAction(address, "workspace.attach", { id: dormantWorkspaceId });
     const afterSecondAttach = markerCount(mcpStartMarker);
-    const coldList = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const coldList = await acpAction(address, "workspace.mcp.list", {}, attached.name);
     const afterInspection = markerCount(mcpStartMarker);
-    await aguiAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
+    await acpAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
     const afterDemand = markerCount(mcpStartMarker);
-    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
-    await aguiAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
-    const skillCatalog = (await aguiAction(address, "op.parse", {
+    const listed = await acpAction(address, "workspace.mcp.list", {}, attached.name);
+    await acpAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
+    const skillCatalog = (await acpAction(address, "op.parse", {
         text: "````FIND (skill://*/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
-    const skillRead = (await aguiAction(address, "op.parse", {
+    const skillRead = (await acpAction(address, "op.parse", {
         text: "````READ (skill://inspect/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
     const ownSkillReads = [];
     for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
-        ownSkillReads.push((await aguiAction(address, "op.parse", {
+        ownSkillReads.push((await acpAction(address, "op.parse", {
             text: `\`\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\`\``,
         }, attached.name)).results[0]);
     }
-    await aguiAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
-    const disabledSkillRead = (await aguiAction(address, "op.parse", {
+    await acpAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
+    const disabledSkillRead = (await acpAction(address, "op.parse", {
         text: "````READ (skill://plurnk/.env.defaults) <1,-1>````",
     }, attached.name)).results[0];
-    await aguiAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
-    const executed = await aguiRun(address, {
+    await acpAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
+    const executed = await acpRun(address, {
         workspace: attached.name,
         action: {
             kind: "op.parse",
@@ -662,7 +662,7 @@ raw stdin
 \`\`\`\``,
         },
     });
-    // {§agui-client-operation}: a person's explicit operation is their decision, not an approval request.
+    // {§acp-client-operation}: a person's explicit operation is their decision, not an approval request.
     const terminal = executed.events.find((event) => event.type === "RUN_FINISHED");
     const completed = terminal?.result;
     if (!executed.response.ok || terminal?.outcome?.type !== "success" || completed?.ok !== true
@@ -743,7 +743,7 @@ ok(
 );
 ok(
     dormantBoot.probeResult?.disabledSkillRead?.status === 404,
-    "ordinary Worker skill disablement withdraws the built-in reference from the installed AG-UI path",
+    "ordinary Worker skill disablement withdraws the built-in reference from the installed ACP path",
 );
 ok(
     dormantBoot.probeResult?.skillRead?.status === 200
@@ -776,7 +776,7 @@ ok(
 const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
 });
-ok(boot.listening === true, "{§agui-daemon-client}: `start` boots the daemon with its AG-UI+ listener");
+ok(boot.listening === true, "{§acp-daemon-client}: `start` boots the daemon with its ACP+ listener");
 // {§operator-config-shipped-defaults}: a fresh install resolves no model and names
 // the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
@@ -792,14 +792,14 @@ ok(
 const searchBoot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "fulltext.db"),
 }, async (address) => {
-    const workspace = await aguiAction(address, "workspace.create", { name: "installed-fulltext" });
-    await aguiAction(address, "op.parse", {
+    const workspace = await acpAction(address, "workspace.create", { name: "installed-fulltext" });
+    await acpAction(address, "op.parse", {
         text: "````EDIT (worker:///search.md)\nA reliable connection supports native search.\n````",
     }, workspace.name);
-    const found = await aguiAction(address, "op.parse", {
+    const found = await acpAction(address, "op.parse", {
         text: "````FIND (worker:///*.md) ~\"reliable connection\"````",
     }, workspace.name);
-    const locations = await aguiAction(address, "op.parse", {
+    const locations = await acpAction(address, "op.parse", {
         text: "````FIND (worker:///search.md) ~\"reliable connection\"````",
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
@@ -813,23 +813,23 @@ ok(
     "the packed daemon serves FTS5 resources and exact source matches without a model",
 );
 
-const aguiDefaultsPath = resolve(mods, "@plurnk", "plurnk-agui", ".env.defaults");
-const aguiDefaults = readFileSync(aguiDefaultsPath, "utf8");
+const acpDefaultsPath = resolve(mods, "@plurnk", "plurnk-acp", ".env.defaults");
+const acpDefaults = readFileSync(acpDefaultsPath, "utf8");
 try {
     writeFileSync(
-        aguiDefaultsPath,
-        aguiDefaults.replace(/^PLURNK_AGUI_HEARTBEAT_MS=.*$/m, "PLURNK_AGUI_HEARTBEAT_MS=invalid"),
+        acpDefaultsPath,
+        acpDefaults.replace(/^PLURNK_ACP_HEARTBEAT_MS=.*$/m, "PLURNK_ACP_HEARTBEAT_MS=invalid"),
     );
-    const invalidAguiFloor = await bootStart({
-        PLURNK_SERVICE_DB_PATH: resolve(sandbox, "invalid-agui-floor.db"),
+    const invalidAcpFloor = await bootStart({
+        PLURNK_SERVICE_DB_PATH: resolve(sandbox, "invalid-acp-floor.db"),
     });
     ok(
-        invalidAguiFloor.listening === false
-            && /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/.test(invalidAguiFloor.stderr),
-        "the packed AG-UI default reaches its owning validator before the listener binds",
+        invalidAcpFloor.listening === false
+            && /PLURNK_ACP_HEARTBEAT_MS must be a safe integer/.test(invalidAcpFloor.stderr),
+        "the packed ACP default reaches its owning validator before the listener binds",
     );
 } finally {
-    writeFileSync(aguiDefaultsPath, aguiDefaults);
+    writeFileSync(acpDefaultsPath, acpDefaults);
 }
 
 process.stdout.write("-- executor inventory --\n");

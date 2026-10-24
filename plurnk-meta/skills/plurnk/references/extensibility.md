@@ -18,7 +18,7 @@ before it cannot do:
 - **An MCP server** when X has an API the model calls as tools. A server X already
   publishes needs only its definition.
 - **A plugin** when skills and MCP servers install together, or travel to other agents.
-- **A client** when X drives Plurnk from outside: an application through AG-UI, an
+- **A client** when X drives Plurnk from outside: an application through ACP, an
   agent through A2A.
 - **A hook** when X hears about Plurnk's lifecycle events and answers nothing.
 - **An extension** only when the model needs something new inside the daemon that
@@ -48,7 +48,7 @@ the daemon starts.
 
 | Surface | Shape | Code in the daemon |
 | --- | --- | --- |
-| Application | an AG-UI client: `POST /agui` with `RunAgentInput` on the daemon's listener (`PLURNK_PORT`) returns an event stream | none |
+| Application | an ACP client: `POST /acp` with `RunAgentInput` or JSON-RPC 2.0 on the daemon's listener (`PLURNK_PORT`) | none |
 | Agent | an A2A client of the exposure that `PLURNK_A2A_EXPOSE` mounts | none |
 | Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none |
 | Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon |

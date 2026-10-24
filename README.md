@@ -20,8 +20,8 @@ This repository owns the daemon, language contracts, and bundled extensions.
 
 ```mermaid
 flowchart LR
-    clients["Clients"] <--> agui["AG-UI"]
-    agui <--> core["plurnk-service"]
+    clients["Clients"] <--> acp["ACP"]
+    acp <--> core["plurnk-service"]
     core <--> providers["Model providers"]
     extensions["Scheme / executor / mimetype extensions"] --> core
     modules["Daemon modules"] --> core
@@ -54,7 +54,7 @@ The Plurnk skill exposes the same guides and catalog to the model on demand.
 |---|---|
 | Model-facing language | [plurnk.md](plurnk-contracts/plurnk.md) |
 | Model routes and provider settings | [Providers](plurnk-providers/README.md) |
-| Client protocol | [AG-UI](plurnk-agui/README.md) |
+| Client protocol | [ACP](plurnk-acp/README.md) |
 | External tools and web search | [MCP](plurnk-mcp/README.md) |
 | HTTP resources | [HTTP scheme](plurnk-schemes-http/README.md) |
 | Scheduled messages | [Schedule](plurnk-schedule/README.md) |

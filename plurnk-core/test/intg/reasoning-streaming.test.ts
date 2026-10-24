@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
-import { Translator } from "@plurnk/plurnk-agui";
+import { Translator } from "@plurnk/plurnk-acp";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { HARNESS_WAIT_MS, waitFor } from "./_rpc.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
-test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI before the reasoning copy exists", async () => {
+test("{§notifications-reasoning-event}: provider SSE reaches standard ACP before the reasoning copy exists", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "streaming-reasoning");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Report the finding.");
-        const translator = new Translator({ origin: "http://agui.test", workspaceId, threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
+        const translator = new Translator({ origin: "http://acp.test", workspaceId, threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
         const events: ReturnType<Translator["reasoning"]> = [];
         const ready = Promise.withResolvers<void>();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), reasoningEventNotify(_workspace, payload) {
@@ -38,7 +38,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         const run = engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         // The completion is held until the finally below, so reasoning that arrives at all arrived before it; the bound
         // only keeps a hang from outliving the test.
-        const timer = setTimeout(() => ready.reject(new Error("AG-UI reasoning was withheld until completion")), HARNESS_WAIT_MS);
+        const timer = setTimeout(() => ready.reject(new Error("ACP reasoning was withheld until completion")), HARNESS_WAIT_MS);
         try {
             await ready.promise;
             assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), [], "the live signal cannot originate from a not-yet-created copy");

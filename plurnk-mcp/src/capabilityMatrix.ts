@@ -42,7 +42,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-authority}", "{§mcp-core-matrix}", "plurnk-core intg 'AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
+        evidence: ["{§mcp-authority}", "{§mcp-core-matrix}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
         note: "Modern peers use server/discover; older peers use the SDK's negotiated initialization surface. No extension wire is imposed on an older peer.",
     },
     {
@@ -54,7 +54,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-tool-presentation}", "plurnk-core intg 'AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-tool-presentation}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "One operator-filtered exact Registry snapshot; only enabled names are routed. Immediate and Task results share host-composed output-schema success/rejection and tool-error coverage; malformed success is not accepted evidence or a replay instruction.",
     },
     {
@@ -139,7 +139,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpExecutor 'MCP progress and cancellation remain on the owning execution lifecycle over stdio'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
-        note: "Projected onto the owning Plurnk operation. Real daemon/AG-UI coverage holds the tool open until progress is observed, then verifies only terminal settlement resumes inference.",
+        note: "Projected onto the owning Plurnk operation. Real daemon/ACP coverage holds the tool open until progress is observed, then verifies only terminal settlement resumes inference.",
     },
     {
         id: "cancellation",
@@ -186,7 +186,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk/test/tui/mcp-elicitation.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk/test/tui/mcp-elicitation.test.ts"],
         note: "Modes form and url advertised; routed through Plurnk's client-owned interaction lifecycle. Built terminal coverage exercises batch accept/decline, cancellation, invalid-response correction, URL presentation, and successive MRTR rounds against a real SDK server.",
     },
     {
@@ -222,7 +222,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
+        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
         note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner; handles are in-process per {§tasks-lifetime}.",
     },
     {
@@ -235,7 +235,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§oauth-client-credentials}", "{§mcp-conformance}", "plurnk-mcp HttpTransport '{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections'", "plurnk-mcp/test/intg/conformance.test.ts", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
-        note: "Application principals; conditional advertisement. Real AG-UI/daemon/model coverage verifies symbolic workspace credentials, resource/scope/issuer binding, token re-acquisition, grant rejection without publication or credential leakage, and no tool replay. JWT arms declined.",
+        note: "Application principals; conditional advertisement. Real ACP/daemon/model coverage verifies symbolic workspace credentials, resource/scope/issuer binding, token re-acquisition, grant rejection without publication or credential leakage, and no tool replay. JWT arms declined.",
     },
     {
         id: "extension-roots",
@@ -367,7 +367,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "deferred",
         composed: false,
         evidence: ["{§mcp-apps-exclusion}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/271"],
-        note: "Excluded for the current client set ({§mcp-apps-exclusion}); re-evaluate only with a sandbox-capable client and a standard AG-UI projection, per-client-advertised.",
+        note: "Excluded for the current client set ({§mcp-apps-exclusion}); re-evaluate only with a sandbox-capable client and a standard ACP projection, per-client-advertised.",
     },
     {
         id: "extension-skills",

@@ -130,7 +130,7 @@ MCP adds no second scheduler or client-disconnect policy.
 
 | Boundary | Behaviour |
 |---|---|
-| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§agui-sync}). |
+| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§acp-sync}). |
 | Client hangup | Inherits the owning client's cancellation or observer-detachment semantics; MCP does not change them. |
 | Graceful shutdown | Aborts and settles owned work before closing its protocol connection ({§mcp-connection-shutdown}). |
 | Restart after owner loss | No Task resume or automatic tool replay; core reconciles the interrupted operation and its durable evidence. |
@@ -776,7 +776,7 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client
-interrupt durability and AG-UI presentation. Reattachment re-surfaces input
+interrupt durability and ACP presentation. Reattachment re-surfaces input
 only while its originating operation remains live. MRTR round
 limits, request timeout, cancellation, and Task terminal state are one
 operation lifecycle; none becomes a hidden retry loop.
@@ -879,14 +879,14 @@ render third-party HTML/JavaScript, enforce CSP and `_meta.ui` permissions,
 mediate a `postMessage` JSON-RPC `ui/` dialect, proxy app-initiated tool
 calls with consent, and own teardown. No Plurnk client can enforce that
 sandbox today (the terminal cannot), the daemon is not a second
-application platform, and AG-UI has no standard Apps projection — inventing
+application platform, and ACP has no standard Apps projection — inventing
 a private event stream to carry Apps is rejected. Compact tool summaries and
 invocations derive only from name, description, title, and input schema,
 without `_meta.ui`. The on-demand raw tool catalog preserves `_meta` as inert
 data: no UI resource is fetched or preloaded, permissions are not granted,
 and reading a definition does not activate an App. The capability matrix keeps the extension
 non-advertised ({§mcp-capability-matrix}). Re-evaluate only when a
-sandbox-capable client exists and a standard AG-UI projection is agreed;
+sandbox-capable client exists and a standard ACP projection is agreed;
 even then the capability would be per-client-advertised, never daemon-wide.
 
 ## §mcp-skills-deferral Skills extension adoption boundary

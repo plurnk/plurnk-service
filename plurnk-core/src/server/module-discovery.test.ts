@@ -80,12 +80,12 @@ test("{§module-discovery}: the trust gate skips a non-allowlisted declaration",
 test("{§module-discovery}: a package registered explicitly is never also discovered, nor imported", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
-        await packageOf(root, "@plurnk/plurnk-agui", {
+        await packageOf(root, "@plurnk/plurnk-acp", {
             plurnk: { kind: "module", module: "./module" },
         }, "throw new Error('an explicitly registered package must not be imported');");
         const { modules, configurationErrors } = await discoverDaemonModules({
-            packageDirs: [{ dir: join(root, "node_modules", "@plurnk/plurnk-agui"), name: "@plurnk/plurnk-agui" }],
-            registered: new Set(["@plurnk/plurnk-agui"]),
+            packageDirs: [{ dir: join(root, "node_modules", "@plurnk/plurnk-acp"), name: "@plurnk/plurnk-acp" }],
+            registered: new Set(["@plurnk/plurnk-acp"]),
         });
         assert.equal(modules.length, 0, "the explicit registration wins");
         assert.deepEqual(configurationErrors, []);

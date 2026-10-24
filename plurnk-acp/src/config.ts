@@ -15,9 +15,13 @@ export interface ResolvedModuleOptions {
     readonly allowOrigin: string;
     readonly maxTurns?: number;
     readonly heartbeatMs: number;
+    /** {§acp-history-window} The bound worker's newest loops a snapshot holds. */
     readonly historyLoops: number;
+    /** {§acp-history-window} The most characters one snapshot, page or live delta serializes to. */
     readonly historyPageChars: number;
+    /** {§list-excerpt} The most characters of a message's excerpt a list carries. */
     readonly excerptChars: number;
+    /** {§acp-overview} The places one overview holds beside those waiting on a gate. */
     readonly overviewWorkers: number;
 }
 
@@ -52,12 +56,12 @@ export const resolveModuleOptions = (options: ModuleOptions = {}): ResolvedModul
     const env = options.env === undefined ? process.env : options.env;
     const number = (option: "historyLoops" | "historyPageChars" | "excerptChars" | "overviewWorkers", key: string, minimum: number): number =>
         safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
-    const maxTurns = options.maxTurns === undefined
-        ? environmentMaxTurns(env.PLURNK_ACP_MAX_TURNS)
-        : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1);
     return {
+        // {§acp-cors} — the panel states the origin; only its own empty value sends no CORS header.
         allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_ACP_ALLOW_ORIGIN"),
-        ...(maxTurns === undefined ? {} : { maxTurns }),
+        maxTurns: options.maxTurns === undefined
+            ? environmentMaxTurns(env.PLURNK_ACP_MAX_TURNS)
+            : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1),
         heartbeatMs: safeInteger(
             options.heartbeatMs === undefined ? env.PLURNK_ACP_HEARTBEAT_MS : options.heartbeatMs,
             options.heartbeatMs === undefined ? "PLURNK_ACP_HEARTBEAT_MS" : "ModuleOptions.heartbeatMs",

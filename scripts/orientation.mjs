@@ -180,9 +180,9 @@ try {
     daemon.stderr.on("data", (chunk) => appendFileSync(daemonErr, chunk));
 
     const address = await new Promise((accept, reject) => {
-        const publishTimer = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
+        const publishTimer = setTimeout(() => reject(new Error("daemon did not publish its ACP address within 30 seconds")), 30_000);
         const inspect = () => {
-            const match = startup.match(/agui=(http:\/\/\S+)/);
+            const match = startup.match(/acp=(http:\/\/\S+)/);
             if (match === null) return;
             clearTimeout(publishTimer);
             accept(new URL(match[1]));
@@ -211,7 +211,7 @@ try {
             ...process.env,
             PLURNK_HOST: address.hostname,
             PLURNK_PORT: address.port,
-            PLURNK_AGUI_URL: address.href,
+            PLURNK_ACP_URL: address.href,
         },
     });
     phases.push({ label: "client", command: client.command, cwd: client.cwd, status: client.status, wallMs: client.wallMs });

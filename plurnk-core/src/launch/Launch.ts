@@ -72,7 +72,7 @@ type Ended = { code: number | null; signal: NodeJS.Signals | null };
 
 // {§startup-readiness-line} — the one line the daemon prints when it is ready: a URL, then the
 // database path and the route as JSON strings, so a path or route with spaces parses exactly.
-export const READINESS_LINE = /^plurnk-service agui=(\S+) db=("(?:[^"\\]|\\.)*") route=("(?:[^"\\]|\\.)*")$/mu;
+export const READINESS_LINE = /^plurnk-service acp=(\S+) db=("(?:[^"\\]|\\.)*") route=("(?:[^"\\]|\\.)*")$/mu;
 
 // A JSON string literal the readiness pattern admitted, as the daemon printed it.
 const quoted = (literal: string): string => {

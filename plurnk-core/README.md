@@ -1,8 +1,8 @@
 # plurnk-service
 
 The PLURNK daemon: persistent agent state, model loops, packet assembly, and
-operation dispatch. Its client surface is AG-UI over HTTP/SSE through
-`@plurnk/plurnk-agui`. The user-facing CLI lives in
+operation dispatch. Its client surface is ACP over HTTP/SSE and WebSocket through
+`@plurnk/plurnk-acp`. The user-facing CLI lives in
 [plurnk](https://github.com/plurnk/plurnk).
 
 See [installation and configuration](INSTALL.md), including the packaged
@@ -25,8 +25,8 @@ Workspace = shared resources, configuration, and an optional project folder. Wor
 
 ## Integration
 
-Clients use AG-UI management actions and AG-UI Run streams exposed by
-`@plurnk/plurnk-agui`. Core supplies an in-process daemon seam; it does not open
+Clients use ACP management actions and ACP Run streams exposed by
+`@plurnk/plurnk-acp`. Core supplies an in-process daemon seam; it does not open
 a second client transport.
 
 `models.list` locally lists catalog routes, configuration readiness, and each
@@ -56,7 +56,7 @@ configuration guide.**
 Protect durable history with a [consistent database backup](./INSTALL.md#backup-and-restore).
 The `share` command exports diagnostic reports, not a restorable database.
 
-Clients use AG-UI; extension authors use the owning framework packages.
+Clients use ACP; extension authors use the owning framework packages.
 Programmatic forensic use imports [`@plurnk/plurnk-digest`](../plurnk-digest/README.md)
 with the canonical reader from `@plurnk/plurnk-service/evidence`.
 The digest requires a new or empty output directory, separate from its input

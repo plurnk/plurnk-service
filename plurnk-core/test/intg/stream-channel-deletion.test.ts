@@ -36,7 +36,7 @@ for (const shape of RESPONSES) {
         const schemes = new SchemeRegistry();
         schemes.register("https", new Http());
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        await engine.injectIntoLoop(loopId, "Probe the endpoint.", [], "agui://operator/threads/probe/messages/question");
+        await engine.injectIntoLoop(loopId, "Probe the endpoint.", [], "acp://operator/threads/probe/messages/question");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             response(frame("SEND (https://93.184.216.34/mcp)", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}")),
             response(frame("SEND [200]", "Probed.")),

@@ -52,7 +52,7 @@ const setup = async (
     const { port } = http.httpAddress();
     const workspace = "mcp-interaction-composition";
     const post = async (additions: Record<string, unknown> = {}): Promise<Event[]> => {
-        const response = await fetch(`http://127.0.0.1:${port}/agui`, {
+        const response = await fetch(`http://127.0.0.1:${port}/acp`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -105,7 +105,7 @@ const interaction = (events: readonly Event[], keys: readonly string[]): Interru
 const rediscovered = (events: readonly Event[], keys: readonly string[], previous: Interrupt): Interrupt => {
     const current = interaction(events, keys);
     assert.notEqual(current.id, previous.id, "rediscovery has its own interrupt continuation");
-    assert.deepEqual({ ...current, id: previous.id }, previous, "a new AG-UI Run re-presents the same pending operation");
+    assert.deepEqual({ ...current, id: previous.id }, previous, "a new ACP Run re-presents the same pending operation");
     return current;
 };
 
@@ -121,7 +121,7 @@ const completed = (events: readonly Event[], provider: Mock, expected: RegExp): 
 };
 
 for (const cancel of [false, true]) {
-    test(`{§mcp-host-composition}: AG-UI batch elicitation ${cancel ? "cancellation" : "accept/decline"} survives reconnect`, { timeout: 20_000 }, async (t) => {
+    test(`{§mcp-host-composition}: ACP batch elicitation ${cancel ? "cancellation" : "accept/decline"} survives reconnect`, { timeout: 20_000 }, async (t) => {
         const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
         const first = interaction(await start(), ["profile", "approval"]);
         assert.equal(provider.received.length, 1);
@@ -139,7 +139,7 @@ for (const cancel of [false, true]) {
     });
 }
 
-test("{§mcp-host-composition}: AG-UI URL elicitation preserves its browser action and returns to the server", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition}: ACP URL elicitation preserves its browser action and returns to the server", { timeout: 20_000 }, async (t) => {
     const { provider, post, start } = await setup(t, '````fixture (url)\n{}\n````');
     const events = await start();
     const pending = interaction(events, ["authorize"]);
@@ -151,7 +151,7 @@ test("{§mcp-host-composition}: AG-UI URL elicitation preserves its browser acti
     } }] }), provider, /accept/u);
 });
 
-test("{§mcp-host-composition}: two MRTR rounds stay on the originating operation across AG-UI Runs", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition}: two MRTR rounds stay on the originating operation across ACP Runs", { timeout: 20_000 }, async (t) => {
     const { provider, post, start, reconnect } = await setup(t, '````fixture (round-trip)\n{}\n````');
     const first = interaction(await start(), ["name"]);
     const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
@@ -168,7 +168,7 @@ test("{§mcp-host-composition}: two MRTR rounds stay on the originating operatio
     } }] }), provider, /Ada confirmed/u);
 });
 
-test("{§mcp-host-composition}: a schema-invalid AG-UI answer preserves the pending MCP request for correction", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition}: a schema-invalid ACP answer preserves the pending MCP request for correction", { timeout: 20_000 }, async (t) => {
     const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
     const pending = interaction(await start(), ["profile", "approval"]);
     const invalid = await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
@@ -189,7 +189,7 @@ for (const { path, key, expected } of [
     { path: "resources/fixture%3A%2F%2Fguarded", key: "read", expected: /read:accept/u },
     { path: "prompts/guarded?topic=MCP", key: "prompt", expected: /MCP:accept/u },
 ]) {
-    test(`{§mcp-host-composition}: a ${key} READ completes its elicitation through AG-UI`, { timeout: 20_000 }, async (t) => {
+    test(`{§mcp-host-composition}: a ${key} READ completes its elicitation through ACP`, { timeout: 20_000 }, async (t) => {
         const { provider, post, start } = await setup(t, `\`\`\`\`READ (fixture:///${path}) <1,-1>\`\`\`\``);
         const pending = interaction(await start(), [key]);
         completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
@@ -198,7 +198,7 @@ for (const { path, key, expected } of [
     });
 }
 
-test("{§mcp-host-composition}: a standard Task completes the same operation through AG-UI", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition}: a standard Task completes the same operation through ACP", { timeout: 20_000 }, async (t) => {
     const { provider, start } = await setup(t, '````fixture (stdio-defer)\n{"topic":"MCP"}\n````', {
         fixture: stdioEntry("task-server.mjs"),
     });
@@ -227,7 +227,7 @@ test("{§mcp-host-composition}: fixture teardown settles an unanswered Task befo
     assert.equal(provider?.received.length, 1, "teardown never starts another inference");
 });
 
-test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI before the terminal notification wakes inference", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition}: HTTP MRTR and Task input return through ACP before the terminal notification wakes inference", { timeout: 20_000 }, async (t) => {
     let owner: Daemon | undefined;
     t.after(() => owner?.stop());
     const fixture = taskHandler();
@@ -368,7 +368,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
         workspace: "mcp-interaction-composition", projectRoot: null, action: { kind, alias: "fixture" },
     } } });
     const rejected = await mutate("workspace.mcp.disable");
-    // {§agui-plurnk-metadata} An action Run finishes with the action's outcome as its result.
+    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
     const outcome = rejected.find((event) => event.type === "RUN_FINISHED")?.result as {
         ok: boolean; problem?: { status: number; type: string };
     };

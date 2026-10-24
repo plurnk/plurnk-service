@@ -38,8 +38,8 @@ test("{§tier-census} the live catalog contains every registered specimen exactl
     assert.ok(names.includes("live a2a: the upstream TCK's HTTP+JSON requirement tiers find only the ruled divergences in the assembled daemon"));
     assert.ok(names.includes("live client: the terminal client's real-model TUI tier passes against this service"));
     assert.ok(names.includes("live llama-server honors PLURNK's request-scoped reasoning allowance"));
-    assert.ok(names.includes("live: the official AG-UI client accepts the complete model response stream"));
-    assert.ok(names.includes("live: discovery and model response traverse the in-process AG-UI module"));
+    assert.ok(names.includes("live: the ACP client accepts the complete model response stream"));
+    assert.ok(names.includes("live: discovery and model response traverse the in-process ACP module"));
     assert.ok(names.includes("live: full-text READ answers from the selected source lines"));
     assert.ok(names.includes("live: structural edits preserve neighboring source text"));
     assert.ok(names.includes("live: cancellation settles an active model request"));

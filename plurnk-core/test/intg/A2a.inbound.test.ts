@@ -111,7 +111,7 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
     const http = await bindListener();
     const daemon = hostedDaemon({ db, provider, http });
     const { workspaceId, workspaceName } = await daemon.createWorkspace({ name: "a2a-owned-parent", projectRoot: null });
-    const owner = { address: "agui://operator", tools: ["request_approval", "question"], interactive: true };
+    const owner = { address: "acp://operator", tools: ["request_approval", "question"], interactive: true };
     await daemon.registerWorkerOwner(workspaceId, owner);
     const parent = await daemon.createWorker({ workspaceId, name: "operator", owner: owner.address });
     daemon.registerModule(A2aExposure.init({
@@ -451,7 +451,7 @@ test("{§a2a-worker-ownership}: restart retains Tasks while a changed parent app
         name: `a2a-restart-${crypto.randomUUID()}`,
         projectRoot: null,
     });
-    const owner = { address: "agui://supervisor", tools: ["request_approval"], interactive: true };
+    const owner = { address: "acp://supervisor", tools: ["request_approval"], interactive: true };
     await daemon.registerWorkerOwner(workspace.workspaceId, owner);
     const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "supervisor", owner: owner.address });
     let firstListener: A2aExposure | null = null;

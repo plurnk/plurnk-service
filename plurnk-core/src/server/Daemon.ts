@@ -141,7 +141,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
-    // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
+    // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
     readonly #workerModels: WorkerModels;
@@ -747,7 +747,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
         return await WorkerOverview.read(this.#db, {
             workspaceId, limit, excerptChars, projectLabel: (projectRoot) => this.#projectLabel(projectRoot),
-            // {§agui-status-descendants} The gates the status tree counts: the pending proposals and client interactions.
+            // {§acp-status-descendants} The gates the status tree counts: the pending proposals and client interactions.
             pending: async (id) => [...await this.#engine.pendingProposals(id), ...await this.#engine.pendingClientInteractions(id)],
         });
     }
@@ -1447,7 +1447,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     return;
                 }
                 // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
-                // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
+                // here (plurnk-acp renders to ACP+). Each subscriber owns its own fan-out; core just emits.
                 // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
                 // is each subscriber's edge concern; the seam hands (workspaceId, method, params) raw.
                 this.#emitTo(target.workspaceId, method, params);

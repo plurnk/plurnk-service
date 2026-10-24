@@ -33,7 +33,7 @@ test("{§worker-finished-reply} {§application-worker-overview} a worker's lates
         const provider = new Mock({ contextWindow: 100_000, responses: turns });
         for (const _turn of turns) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
     };
-    const ask = async (sequence: number, source = `agui://operator/threads/alice/messages/q${sequence}`) => {
+    const ask = async (sequence: number, source = `acp://operator/threads/alice/messages/q${sequence}`) => {
         const loopId = await insertLoop(db, alice, sequence);
         await engine.injectIntoLoop(loopId, `Question ${sequence}.`, [], source);
         return loopId;
@@ -56,7 +56,7 @@ test("{§worker-finished-reply} {§application-worker-overview} a worker's lates
     const empty = await replyOf(alice);
     assert.deepEqual([empty?.completion, empty?.excerpt, empty?.continued], [200, "", false],
         "an empty completion is the latest finished reply, and speech that completed nothing never replaces it");
-    await run(alice, await ask(5), said(frame("SEND (agui://operator/threads/alice/messages/missing) [200]", "Lost.")));
+    await run(alice, await ask(5), said(frame("SEND (acp://operator/threads/alice/messages/missing) [200]", "Lost.")));
     assert.equal((await replyOf(alice))?.id, empty?.id, "a failed delivery finishes nothing");
     // {§message-abandonment}: a message another worker sent, left open by a loop that ended.
     const abandoned = await ask(6, "worker://boss");
@@ -85,7 +85,7 @@ test("{§worker-finished-reply} {§application-worker-overview} a worker's lates
     assert.deepEqual(daemon.workers.filter(({ name }) => name === "alice").map(({ workspaceId: owner }) => owner).toSorted((a, b) => a - b), [workspaceId, other].toSorted((a, b) => a - b),
         "a same-named worker in another workspace is a place of its own");
     assert.equal((await read(workspaceId, 1)).omitted, 2, "the bound counts what it leaves out");
-    // {§agui-status-descendants} The gates a place waits on, as the status tree counts them: such a place is held past the bound.
+    // {§acp-status-descendants} The gates a place waits on, as the status tree counts them: such a place is held past the bound.
     const twinId = twin?.id ?? 0;
     const gated = await WorkerOverview.read(db, { workspaceId, limit: 1, excerptChars: 12, projectLabel: () => null,
         pending: async () => [{ workerId: twinId }, { workerId: twinId }] });

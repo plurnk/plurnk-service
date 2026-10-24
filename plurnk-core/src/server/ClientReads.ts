@@ -312,7 +312,7 @@ export default class ClientReads {
     // ownership-verified against the workspace (a workspace reads only its own workers — the model worker included,
     // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate, newest first,
     // and `beforeId` pages back through older rows ({§methods-log-read}). Core owns the
-    // journal + the invariant; the module shapes the entries into AG-UI messages at its edge.
+    // journal + the invariant; the module shapes the entries into ACP messages at its edge.
     async readLog(args: {
         workspaceId: number; workerId: number;
         loopId?: number; turnId?: number; sinceId?: number; beforeId?: number; limit?: number;

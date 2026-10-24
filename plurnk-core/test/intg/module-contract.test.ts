@@ -37,7 +37,7 @@ export default () => {
 
 const PACKAGE = "@acme/witness-package";
 // {§module-discovery} — registering a package's name holds that package out of discovery.
-const CLIENT_INTERFACE = "@plurnk/plurnk-agui";
+const CLIENT_INTERFACE = "@plurnk/plurnk-acp";
 const BUNDLE = "witness-bundle";
 let root = "";
 let nodeModules = "";
@@ -139,7 +139,7 @@ test("{§module-http-mounts} a daemon without a listener leaves out every module
     assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
     assert.deepEqual(
         daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(([a], [b]) => String(a).localeCompare(String(b))),
-        [["module:@acme/witness-package", "info"], ["module:@plurnk/plurnk-acp", "info"], [`module:${CLIENT_INTERFACE}`, "info"]],
+        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"]],
     );
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });

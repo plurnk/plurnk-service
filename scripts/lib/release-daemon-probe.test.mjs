@@ -40,7 +40,7 @@ test("{§release-candidate-graph} release probe authenticates its child-owned ep
             PLURNK_RELEASE_PROBE_CLEANUP: cleanup,
         });
         assert.notEqual(new URL(result.address).port, String(address.port), "operator/stale port input cannot select the probe listener");
-        assert.equal(new URL(result.address).pathname, "/agui", "the full protocol endpoint is retained");
+        assert.equal(new URL(result.address).pathname, "/acp", "the full protocol endpoint is retained");
         await access(cleanup);
     } finally {
         await new Promise((resolve) => stale.close(resolve));
@@ -54,7 +54,7 @@ for (const [mode, failure] of [
     ["token-fails", /token exchange returned 401/u],
     ["bad-token", /token exchange did not return a Bearer access token/u],
     ["invalid-access", /listener returned 401 .*expected 404/u],
-]) test(`{§agui-http-authorization} release probe rejects ${mode} without bypassing authentication`, async () => {
+]) test(`{§acp-http-authorization} release probe rejects ${mode} without bypassing authentication`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-auth-"));
     const cleanup = join(dir, "closed");
     try {
@@ -126,7 +126,7 @@ test("{§release-candidate-graph} release probe preserves a spawn failure instea
     );
 });
 
-test("{§release-candidate-graph} release probe rejects a non-AG-UI responder and still reaps the child", async () => {
+test("{§release-candidate-graph} release probe rejects a non-ACP responder and still reaps the child", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-release-probe-http-"));
     const cleanup = join(dir, "closed");
     try {

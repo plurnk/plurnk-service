@@ -13,7 +13,7 @@ Boundary adapters implement their owning standards rather than restate them.
 
 ```mermaid
 flowchart LR
-    AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · OTel<br/>RFC 3986 · WHATWG URL<br/>IANA media types"]
+    ACP["ACP Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · OTel<br/>RFC 3986 · WHATWG URL<br/>IANA media types"]
     MCP["MCP Specification"] --- PLURNK
     SKILLS["Agent Skills Specification"] --- PLURNK
     PLUGINS["Agent Plugins Specification"] --- PLURNK
@@ -52,8 +52,8 @@ flowchart LR
     schedule["Schedule family<br/>recurring worker messages"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
-    core --> agui["plurnk-agui<br/>client interface"]
-    agui --> clients["Terminal client<br/>CLI · TUI"]
+    core --> acp["plurnk-acp<br/>client interface"]
+    acp --> clients["Terminal client<br/>CLI · TUI"]
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
@@ -80,14 +80,13 @@ package; this root document does not restate their teaching.
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
 | OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
-| External HTTP/SSE AG-UI client protocol | `@plurnk/plurnk-agui` | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md) |
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
 | A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
 | Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md); core supplies canonical evidence interpretation. |
-| CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
+| CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume ACP; they do not own daemon scheduling or persisted truth.                                           |
 
 The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes no runtime version or
 update-advertising action: protocol compatibility and any version negotiation belong to the
@@ -156,7 +155,7 @@ links each kind's contract.
 flowchart TD
     Q{{"Which way does it point?"}}
     Q -->|"X watches plurnk"| H["hook: the operator's command, one event on stdin"]
-    Q -->|"X drives plurnk"| F["client of a face: AG-UI for applications, A2A for agents"]
+    Q -->|"X drives plurnk"| F["client of a face: ACP for applications, A2A for agents"]
     Q -->|"plurnk uses X"| U{{"data or code?"}}
     U -->|data| D["definition: skill, MCP server, A2A agent, member rule, env entry, schedule rule"]
     U -->|code| E["extension: exec, scheme, mimetype, provider, http-materializer, module"]
@@ -193,7 +192,7 @@ Vocabulary follows the standard of its audience.
 | Layer | Rule |
 | --- | --- |
 | Operator, wire, storage | Use the applicable industry term. Provider quantities follow the OpenAI vocabulary where it is standard: `contextWindow`, `reasoning`, `completion`, `finish_reason`, and usage nouns. |
-| Core lifecycle | Use the exact Workspace → Worker → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An AG-UI Run or thread is always protocol-qualified. |
+| Core lifecycle | Use the exact Workspace → Worker → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An ACP Run or thread is always protocol-qualified. |
 | Model-facing packet | Use the model's training distribution: operations mirror HTTP and shell, while log records use ordinary Markdown headings, strict JSON metadata, and text coordinates. Renaming this vocabulary to internal API terminology would discard useful resonance for a standard the model never sees. |
 
 | PLURNK-native term | Why it is its own |
@@ -219,7 +218,7 @@ One word per concept, defined here.
 | module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
 | family | Core's shared manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
-| face | A module role that serves a protocol: AG-UI, inbound A2A, ACP | |
+| face | A module role that serves a protocol: ACP, inbound A2A | |
 | hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |
 | organ | A subsystem that is not an extension point | |
 | capability | The admission policy's word, and what it admits | A package or framework |
@@ -351,7 +350,7 @@ re-validation ({§validation-topology}).
 
 ```mermaid
 flowchart LR
-    clients["Thin clients"] <-->|AG-UI over HTTP / SSE| daemon["One @plurnk/plurnk-service process<br/><br/>AG-UI · core · daemon modules<br/>provider and capability adapters"]
+    clients["Thin clients"] <-->|ACP over HTTP / SSE / WebSocket| daemon["One @plurnk/plurnk-service process<br/><br/>ACP · core · daemon modules<br/>provider and capability adapters"]
     agents["Remote agents"] <-->|A2A HTTP+JSON| daemon
     daemon <-->|Provider protocols| endpoints["Local or remote model endpoints"]
     daemon <-->|Filesystem / Git| project["Project filesystem + Git"]
@@ -360,7 +359,7 @@ flowchart LR
 
 `@plurnk/plurnk-service` is the only long-running platform process. Extension
 packages, modules included, run inside it; a package boundary is not a security boundary.
-AG-UI owns client transport, while clients own presentation and explicit user
+ACP owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
 `{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server
 attachments are workspace Functionality; their tools and resources join
@@ -371,15 +370,15 @@ the ordinary executor, scheme, proposal, entry, and client-action paths.
 ```mermaid
 sequenceDiagram
     participant Client
-    participant AGUI as AG-UI
+    participant ACP as ACP
     participant Core
     participant Store as SQLite
     participant Provider
     participant Contracts
     participant Owner as Operation owner
 
-    Client->>AGUI: user prompt
-    AGUI->>Core: ApplicationPort call
+    Client->>ACP: user prompt
+    ACP->>Core: ApplicationPort call
     Core->>Store: persist accepted input and loop state
     Core->>Provider: rendered packet and generation context
     Provider-->>Core: normalized response and usage evidence
@@ -391,12 +390,12 @@ sequenceDiagram
         Core->>Store: commit result and durable evidence
     end
     Core->>Store: commit turn and loop state
-    Core-->>AGUI: lifecycle, proposal/interaction, result, and terminal events
-    AGUI-->>Client: protocol projection
+    Core-->>ACP: lifecycle, proposal/interaction, result, and terminal events
+    ACP-->>Client: protocol projection
 ```
 
 Core owns packet assembly at `{§packet-assembly}` and durable result handling at
-`{§operation-results}`. Provider, capability, and AG-UI details remain in their
+`{§operation-results}`. Provider, capability, and ACP details remain in their
 own specifications. Approval routes through the worker's durable owner
 ({§worker-ownership}), independently of messages and connections. Core's server
 policy may settle proposals automatically. Clarification goes to the same owner, but

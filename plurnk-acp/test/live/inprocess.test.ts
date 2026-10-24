@@ -1,0 +1,85 @@
+// {§acp-daemon-client} The go-live smoke: the in-process client interface, discovered by the
+// daemon and mounted at /acp on its listener, drives
+// a real model worker through the shared live runner.
+
+import { liveTest as test } from "../../../plurnk-core/test/live-test.ts";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { EventType, type AcpEvent } from "../../src/types.ts";
+import { bindListener, SERVICE } from "../intg/_helpers.ts";
+
+test("live: discovery and model response traverse the in-process ACP module", async (t) => {
+    const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
+    serverProposals(t, "accept");
+    const { liveProvider, liveRun } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+
+    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live worker's.
+    const run = await liveRun("live-acp-inprocess");
+    const db = await openMigrated(run.dbPath);
+    const provider = await liveProvider();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http, hostPaths: run.hostPaths });
+    const sandbox = await mkdtemp(join(tmpdir(), "acp-inproc-"));
+
+    // The daemon discovers the module, starts it on the application port, and admits its listener.
+    await daemon.start();
+    const addr = http.httpAddress();
+
+    try {
+        // {§acp-http-authorization} — an access token the daemon's own authority issued; under the
+        // gate profile's PLURNK_AUTH=0 the listener ignores it and admits anonymously.
+        const token = daemon.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["acp"], family: "live", ttlMs: 600_000 }).token;
+        const res = await fetch(`http://${addr.host}:${addr.port}/acp`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({
+                threadId: "inproc-smoke",
+                runId: "run-1",
+                state: {},
+                messages: [{ id: "message-1", role: "user", content: "Reply with exactly one short sentence: say pong." }],
+                tools: [],
+                context: [],
+                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, maxTurns: 6 } },
+            }),
+        });
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get("content-type") ?? "", /text\/event-stream/);
+
+        const events: AcpEvent[] = [];
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let sep;
+            while ((sep = buf.indexOf("\n\n")) !== -1) {
+                const frame = buf.slice(0, sep);
+                buf = buf.slice(sep + 2);
+                if (frame.startsWith("data: ")) events.push(JSON.parse(frame.slice(6)) as AcpEvent);
+            }
+        }
+
+        const types = events.map((e) => e.type);
+        assert.equal(types[0], "RUN_STARTED", "the worker opens");
+        assert.equal(types[1], "STATE_SNAPSHOT", "reads ride STATE on connect (ACP+)");
+        const snap = events[1] as { snapshot: { plurnk: { providers: Array<{ active: boolean }> } } };
+        assert.ok(snap.snapshot.plurnk.providers.some((p) => p.active), "the active provider is in STATE");
+        assert.ok(types.includes(EventType.TEXT_MESSAGE_CONTENT), "the model's reply rendered as assistant speech");
+        const speech = events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => (e as { delta: string }).delta).join("");
+        assert.match(speech, /pong/i, "the reply answers the prompt");
+        assert.equal(types[types.length - 1], "RUN_FINISHED", "the worker closes clean");
+    } finally {
+        await daemon.stop();
+        await http.close();
+        await db.close();
+        run.finish();
+        await rm(sandbox, { recursive: true, force: true });
+    }
+});

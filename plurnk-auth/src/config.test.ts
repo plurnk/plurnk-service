@@ -21,7 +21,7 @@ test("[{§auth-configuration}] plurnk-auth consumes and validates its package-ow
         clients: {},
         allowOrigin: "*",
     });
-    assert.deepEqual(SCOPES, ["agui", "a2a", "acp"]);
+    assert.deepEqual(SCOPES, ["acp", "a2a"]);
 });
 
 test("[{§auth-configuration}] explicit in-process options override the assembled environment", () => {
@@ -31,14 +31,14 @@ test("[{§auth-configuration}] explicit in-process options override the assemble
         password: "lovelace",
         accessTtlSec: 60,
         refreshTtlSec: 120,
-        clients: { agent: { secret: "s", scopes: ["agui"] } },
+        clients: { agent: { secret: "s", scopes: ["acp"] } },
         allowOrigin: "https://portal.example",
         env: {
             ...floor,
             PLURNK_AUTH: "0",
             PLURNK_AUTH_ISSUER: "http://127.0.0.1:1",
             PLURNK_PASS: "env-password",
-            PLURNK_AUTH_CLIENT_other: JSON.stringify({ secret: "o", scopes: ["agui"] }),
+            PLURNK_AUTH_CLIENT_other: JSON.stringify({ secret: "o", scopes: ["acp"] }),
         },
     });
     assert.deepEqual(resolved, {
@@ -47,7 +47,7 @@ test("[{§auth-configuration}] explicit in-process options override the assemble
         password: "lovelace",
         accessTtlSec: 60,
         refreshTtlSec: 120,
-        clients: { agent: { secret: "s", scopes: ["agui"] } },
+        clients: { agent: { secret: "s", scopes: ["acp"] } },
         allowOrigin: "https://portal.example",
     });
     assert.equal(resolveModuleOptions({ auth: false, env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, false, "an explicit posture overrides the environment's");
@@ -57,7 +57,7 @@ test("[{§credential-authority}] the posture is PLURNK_AUTH alone, never inferre
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1" } }).authenticates, true);
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "1", PLURNK_PASS: "" } }).authenticates, true, "on without a password");
     assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_PASS: "pw" } }).authenticates, false, "a password does not switch it on");
-    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["agui"] }) } }).authenticates, false, "a declared client does not switch it on");
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "0", PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "s", scopes: ["acp"] }) } }).authenticates, false, "a declared client does not switch it on");
     assert.throws(() => resolveModuleOptions({ env: { ...floor, PLURNK_AUTH: "yes" } }), /PLURNK_AUTH must be 0 or 1/u);
     assert.throws(() => resolveModuleOptions({ auth: "1" as unknown as boolean, env: floor }), /ModuleOptions.auth must be a boolean/u);
 });
@@ -65,19 +65,19 @@ test("[{§credential-authority}] the posture is PLURNK_AUTH alone, never inferre
 test("[{§auth-oauth-clients}] every PLURNK_AUTH_CLIENT_<id> line declares one confidential client, validated at the owner", () => {
     const declared = resolveModuleOptions({ env: {
         ...floor,
-        PLURNK_AUTH_CLIENT_researcher: JSON.stringify({ secret: "r-secret", scopes: ["agui", "agui"] }),
-        "PLURNK_AUTH_CLIENT_web.lane-2": JSON.stringify({ secret: "w", scopes: ["acp"] }),
+        PLURNK_AUTH_CLIENT_researcher: JSON.stringify({ secret: "r-secret", scopes: ["acp", "acp"] }),
+        "PLURNK_AUTH_CLIENT_web.lane-2": JSON.stringify({ secret: "w", scopes: ["a2a"] }),
     } }).clients;
-    assert.deepEqual(declared, { "researcher": { secret: "r-secret", scopes: ["agui"] }, "web.lane-2": { secret: "w", scopes: ["acp"] } });
+    assert.deepEqual(declared, { "researcher": { secret: "r-secret", scopes: ["acp"] }, "web.lane-2": { secret: "w", scopes: ["a2a"] } });
     const resolve = (key: string, value: string) => () => resolveModuleOptions({ env: { ...floor, [key]: value } });
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "not json"), /PLURNK_AUTH_CLIENT_bad must be a JSON object/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "[]"), /must be a JSON object/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ scopes: ["agui"] })), /needs a non-empty "secret"/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["agui","a2a","acp"\]/u);
+    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ scopes: ["acp"] })), /needs a non-empty "secret"/u);
+    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["acp","a2a"\]/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s", scopes: ["root"] })), /needs "scopes"/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_operator", JSON.stringify({ secret: "s", scopes: ["agui"] })), /"operator" is the operator's own client/u);
-    assert.throws(() => resolveModuleOptions({ clients: { operator: { secret: "s", scopes: ["agui"] } }, env: floor }), /"operator" is not a client id/u);
-    assert.throws(() => resolveModuleOptions({ clients: { "no spaces": { secret: "s", scopes: ["agui"] } }, env: floor }), /"no spaces" is not a client id/u);
+    assert.throws(resolve("PLURNK_AUTH_CLIENT_operator", JSON.stringify({ secret: "s", scopes: ["acp"] })), /"operator" is the operator's own client/u);
+    assert.throws(() => resolveModuleOptions({ clients: { operator: { secret: "s", scopes: ["acp"] } }, env: floor }), /"operator" is not a client id/u);
+    assert.throws(() => resolveModuleOptions({ clients: { "no spaces": { secret: "s", scopes: ["acp"] } }, env: floor }), /"no spaces" is not a client id/u);
 });
 
 test("[{§auth-configuration}] missing and malformed configuration fails at the owner", () => {

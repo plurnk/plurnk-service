@@ -41,7 +41,7 @@ test("{§operator-config-shipped-defaults} the template ships no double policy, 
     // trust gate and the members Functionality family, which core itself implements). HOST and
     // PORT are shared with every client, so contracts declares them
     // ({§operator-config-shared-keys}). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
-    // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
+    // MIMETYPES/ACP/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
     const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_MEMBERS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
@@ -88,7 +88,7 @@ test("{§operator-config-shipped-defaults} under the shipped policy wiring, the 
 test("{§operator-config-shared-keys} a key the daemon and its clients both read is declared by contracts, and only there", async () => {
     const contracts = await readFile(new URL("../../../plurnk-contracts/.env.defaults", import.meta.url), "utf8");
     const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1], match[2]]));
-    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_AGUI_URL", "PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS"]);
+    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_ACP_URL", "PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS"]);
     assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
     // {§credential-authority} — authenticated with nothing set: the secret line teaches, and the daemon mints.
     assert.equal(declared.get("PLURNK_AUTH"), "1", "authenticated unless the operator says otherwise");

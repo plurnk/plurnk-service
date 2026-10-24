@@ -1,36 +1,78 @@
-import assert from "node:assert/strict";
 import test from "node:test";
+import assert from "node:assert/strict";
 import { resolveModuleOptions } from "./config.ts";
 
-test("{§acp-configuration} resolveModuleOptions reads PLURNK_ACP_* from the assembled floor and accepts explicit overrides", () => {
-    const resolved = resolveModuleOptions();
-    assert.equal(resolved.allowOrigin, "*");
-    assert.equal(resolved.maxTurns, undefined);
-    assert.equal(resolved.heartbeatMs, 15000);
-    assert.equal(resolved.historyLoops, 2);
-    assert.equal(resolved.historyPageChars, 2000000);
-    assert.equal(resolved.excerptChars, 240);
-    assert.equal(resolved.overviewWorkers, 200);
+const floor: NodeJS.ProcessEnv = {
+    PLURNK_ACP_ALLOW_ORIGIN: "*",
+    PLURNK_ACP_MAX_TURNS: "",
+    PLURNK_ACP_HEARTBEAT_MS: "15000",
+    PLURNK_ACP_HISTORY_LOOPS: "2",
+    PLURNK_ACP_HISTORY_PAGE_CHARS: "2000000",
+    PLURNK_ACP_EXCERPT_CHARS: "240",
+    PLURNK_ACP_OVERVIEW_WORKERS: "200",
+};
 
-    const overridden = resolveModuleOptions({
-        allowOrigin: "https://client.example",
-        maxTurns: 10,
-        heartbeatMs: 0,
-        historyLoops: 4,
-        historyPageChars: 4096,
-        excerptChars: 80,
-        overviewWorkers: 25,
+test("[{§acp-configuration}] ACP consumes and validates its package-owned environment", () => {
+    assert.deepEqual(resolveModuleOptions({ env: floor }), {
+        allowOrigin: "*",
+        maxTurns: undefined,
+        heartbeatMs: 15000,
+        historyLoops: 2,
+        historyPageChars: 2000000,
+        excerptChars: 240,
+        overviewWorkers: 200,
     });
-    assert.deepEqual(overridden, {
-        allowOrigin: "https://client.example",
-        maxTurns: 10,
-        heartbeatMs: 0,
-        historyLoops: 4,
-        historyPageChars: 4096,
-        excerptChars: 80,
-        overviewWorkers: 25,
-    });
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_ACP_MAX_TURNS: "-1" } }).maxTurns, -1);
+    assert.equal(resolveModuleOptions({ env: { ...floor, PLURNK_ACP_MAX_TURNS: "0" } }).maxTurns, 0);
+});
 
-    assert.throws(() => resolveModuleOptions({ env: {} }), /PLURNK_ACP_ALLOW_ORIGIN is missing/u);
-    assert.throws(() => resolveModuleOptions({ historyLoops: 0 }), /ModuleOptions\.historyLoops must be a safe integer/u);
+test("[{§acp-configuration}] explicit in-process options override the assembled environment", () => {
+    const resolved = resolveModuleOptions({
+        allowOrigin: "https://portal.example",
+        maxTurns: 3,
+        heartbeatMs: 0,
+        env: {
+            ...floor,
+            PLURNK_ACP_MAX_TURNS: "7",
+            PLURNK_ACP_HEARTBEAT_MS: "25",
+        },
+    });
+    assert.deepEqual(resolved, {
+        allowOrigin: "https://portal.example",
+        maxTurns: 3,
+        heartbeatMs: 0,
+        historyLoops: 2,
+        historyPageChars: 2000000,
+        excerptChars: 240,
+        overviewWorkers: 200,
+    });
+});
+
+test("[{§acp-configuration}] missing and malformed configuration fails at the owner", () => {
+    const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ env });
+    // {§operator-config-only-home} — an absent key is a broken floor, never a silently open listener.
+    const env = { ...floor };
+    delete env.PLURNK_ACP_ALLOW_ORIGIN;
+    assert.throws(() => resolve(env), /PLURNK_ACP_ALLOW_ORIGIN is missing from the assembled environment floor/u);
+    for (const key of ["PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_WORKERS"]) {
+        assert.throws(() => resolve({ ...floor, [key]: "0" }), new RegExp(`${key} must be a safe integer from 1`, "u"));
+        assert.throws(() => resolve({ ...floor, [key]: "" }), new RegExp(`${key} must be a safe integer`, "u"));
+    }
+    assert.throws(() => resolve({ ...floor, PLURNK_ACP_HEARTBEAT_MS: "many" }), /PLURNK_ACP_HEARTBEAT_MS must be a safe integer/);
+    assert.throws(() => resolve({ ...floor, PLURNK_ACP_HEARTBEAT_MS: "-1" }), /from 0 through 2147483647/);
+    assert.throws(() => resolve({ ...floor, PLURNK_ACP_HEARTBEAT_MS: "2147483648" }), /from 0 through 2147483647/);
+    assert.throws(
+        () => resolve({ ...floor, PLURNK_ACP_MAX_TURNS: "-2" }),
+        /PLURNK_ACP_MAX_TURNS must be a safe integer from -1 through 9007199254740991/,
+    );
+    assert.throws(
+        () => resolveModuleOptions({ heartbeatMs: null as unknown as number, env: floor }),
+        /ModuleOptions.heartbeatMs must be a safe integer/,
+        "an invalid explicit option fails instead of falling through to the environment",
+    );
+    assert.throws(
+        () => resolveModuleOptions({ maxTurns: "" as unknown as number, env: floor }),
+        /ModuleOptions.maxTurns must be a safe integer/,
+        "only an empty environment value means no module turn default",
+    );
 });

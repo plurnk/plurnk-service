@@ -7,7 +7,7 @@
         "agent",
         "llm",
         "daemon",
-        "agui",
+        "acp",
         "sqlite",
         "harness"
     ],
@@ -84,7 +84,6 @@
         "@plurnk/plurnk-a2a": "4.0.2",
         "@plurnk/plurnk-acp": "1.0.0",
         "@plurnk/plurnk-auth": "1.0.0",
-        "@plurnk/plurnk-agui": "5.0.2",
         "@plurnk/plurnk-contracts": "6.0.1",
         "@plurnk/plurnk-parser": "4.2.2",
         "@plurnk/plurnk-schedule": "3.0.5",

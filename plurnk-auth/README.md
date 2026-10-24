@@ -17,8 +17,8 @@ authorization server on the daemon's listener ({§auth-oauth-endpoints}):
 - `GET` / `POST /oauth/session` (browser session inspection and sign-out)
 
 When `PLURNK_AUTH=0`, the module claims no HTTP mounts and publishes no face.
-Every protocol face (`@plurnk/plurnk-agui`, `@plurnk/plurnk-a2a`,
-`@plurnk/plurnk-acp`) verifies bearer credentials against the shared
-`CredentialAuthority` independently of how tokens are issued.
+Every protocol face (`@plurnk/plurnk-acp`, `@plurnk/plurnk-a2a`) verifies bearer
+credentials against the shared `CredentialAuthority` independently of how tokens
+are issued.
 
 See [`SPEC.md`](./SPEC.md) for the complete specification.

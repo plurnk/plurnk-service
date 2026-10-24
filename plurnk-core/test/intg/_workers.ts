@@ -1,5 +1,5 @@
 // Integration harness: the model worker a test names. The first call creates it ({§methods-worker-create});
-// every later call with that name reads the same worker, as a client's thread does ({§agui-thread-binding}).
+// every later call with that name reads the same worker, as a client's thread does ({§acp-thread-binding}).
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { Db } from "../../src/core/Db.ts";

@@ -46,14 +46,14 @@ test("{§http-host} the longest mounted prefix wins, a prefix claims only its ow
     try {
         const { port } = listener.httpAddress();
         listener.registerHttpRoute("/", reply("root"));
-        listener.registerHttpRoute("/agui", reply("agui"));
+        listener.registerHttpRoute("/acp", reply("acp"));
         listener.registerHttpRoute("/.well-known/agent-card.json", reply("card"));
         listener.registerHttpRoute("/a2a", reply("a2a"));
         listener.admit();
         assert.equal((await get(port, "/")).body, "root");
-        assert.equal((await get(port, "/agui")).body, "agui");
-        assert.equal((await get(port, "/agui/run?x=1")).body, "agui");
-        assert.equal((await get(port, "/aguix")).body, "root", "a sibling name that merely starts with the prefix is not under it");
+        assert.equal((await get(port, "/acp")).body, "acp");
+        assert.equal((await get(port, "/acp/run?x=1")).body, "acp");
+        assert.equal((await get(port, "/acpx")).body, "root", "a sibling name that merely starts with the prefix is not under it");
         assert.equal((await get(port, "/.well-known/agent-card.json")).body, "card");
         assert.equal((await get(port, "/.well-known/other")).body, "root");
         assert.equal((await get(port, "/a2a/message:send")).body, "a2a");
@@ -64,11 +64,11 @@ test("{§http-host} the longest mounted prefix wins, a prefix claims only its ow
 test("{§http-host} a mount is an absolute pathname prefix, and each prefix is mounted once", async () => {
     const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
     try {
-        listener.registerHttpRoute("/agui", reply("agui"));
-        assert.throws(() => listener.registerHttpRoute("/agui", reply("again")), /already mounted/u);
-        assert.throws(() => listener.registerHttpRoute("agui", reply("relative")), /absolute pathname prefix/u);
-        assert.throws(() => listener.registerHttpRoute("/agui/", reply("trailing")), /absolute pathname prefix/u);
-        assert.throws(() => listener.registerHttpRoute("/agui?x", reply("query")), /absolute pathname prefix/u);
+        listener.registerHttpRoute("/acp", reply("acp"));
+        assert.throws(() => listener.registerHttpRoute("/acp", reply("again")), /already mounted/u);
+        assert.throws(() => listener.registerHttpRoute("acp", reply("relative")), /absolute pathname prefix/u);
+        assert.throws(() => listener.registerHttpRoute("/acp/", reply("trailing")), /absolute pathname prefix/u);
+        assert.throws(() => listener.registerHttpRoute("/acp?x", reply("query")), /absolute pathname prefix/u);
     } finally { await listener.close(); }
 });
 
@@ -76,11 +76,11 @@ test("{§http-host} an admitted listener without a root mount serves claimed pat
     const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
     try {
         const { port } = listener.httpAddress();
-        listener.registerHttpRoute("/agui", reply("agui"));
+        listener.registerHttpRoute("/acp", reply("acp"));
         listener.admit();
-        assert.equal((await get(port, "/agui")).body, "agui");
-        assert.equal((await get(port, "/agui/child")).body, "agui");
-        for (const pathname of ["/", "/aguix", "/elsewhere"]) {
+        assert.equal((await get(port, "/acp")).body, "acp");
+        assert.equal((await get(port, "/acp/child")).body, "acp");
+        for (const pathname of ["/", "/acpx", "/elsewhere"]) {
             for (const method of ["GET", "POST", "OPTIONS"]) {
                 const response = await fetch(`http://127.0.0.1:${port}${pathname}`, { method });
                 assert.equal(response.status, 404, `${method} ${pathname}`);
@@ -257,7 +257,7 @@ test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission,
             { stage: "startup", retryable: true },
         ));
         listener.registerHttpUpgrade("/", acceptUpgrade("root-ws"));
-        listener.registerHttpRoute("/agui", reply("agui-http"));
+        listener.registerHttpRoute("/a2a", reply("a2a-http"));
         listener.registerHttpRoute("/acp", reply("acp-http"));
         listener.registerHttpUpgrade("/acp", acceptUpgrade("acp-ws"));
         assert.throws(() => listener.registerHttpUpgrade("/acp", acceptUpgrade("again")), /upgrade is already mounted/u);
@@ -269,9 +269,9 @@ test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission,
         assert.match(acpWs.status, /^HTTP\/1\.1 101 /u);
         assert.equal(acpWs.body, "acp-ws");
 
-        const aguiWs = await rawUpgrade(port, "/agui");
-        assert.match(aguiWs.status, /^HTTP\/1\.1 404 /u, "a mounted prefix without an upgrade handler never falls through to root");
-        assert.deepEqual(JSON.parse(aguiWs.body), Problems.create(
+        const a2aWs = await rawUpgrade(port, "/a2a");
+        assert.match(a2aWs.status, /^HTTP\/1\.1 404 /u, "a mounted prefix without an upgrade handler never falls through to root");
+        assert.deepEqual(JSON.parse(a2aWs.body), Problems.create(
             "http", "route-not-found", 404, "The requested HTTP route does not exist.",
             { stage: "routing", retryable: false },
         ));

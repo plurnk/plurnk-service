@@ -3,7 +3,7 @@ import test from "node:test";
 import Credentials from "./Credentials.ts";
 
 const claims = (overrides: Partial<Parameters<Credentials["issue"]>[0]> = {}): Parameters<Credentials["issue"]>[0] => ({
-    kind: "access", subject: "operator", clientId: "operator", scopes: ["agui"], family: "grant-1", ttlMs: 1_000, ...overrides,
+    kind: "access", subject: "operator", clientId: "operator", scopes: ["acp"], family: "grant-1", ttlMs: 1_000, ...overrides,
 });
 
 test("{§credential-authority} an issued credential verifies until it expires, and a stranger never does", () => {
@@ -13,7 +13,7 @@ test("{§credential-authority} an issued credential verifies until it expires, a
     assert.equal(issued.expiresAt, 2_000);
     assert.match(issued.token, /^[A-Za-z0-9_-]{43}$/u, "an opaque random token, never a claim encoding");
     assert.deepEqual(authority.verify(issued.token), {
-        kind: "access", subject: "operator", clientId: "operator", scopes: ["agui"], family: "grant-1", expiresAt: 2_000,
+        kind: "access", subject: "operator", clientId: "operator", scopes: ["acp"], family: "grant-1", expiresAt: 2_000,
     });
     assert.equal(authority.verify("not-a-token"), null);
     now = 2_000;
@@ -109,14 +109,14 @@ test("{§credential-authority} a minted secret is written beside the database, 0
 test("{§credential-sessions} a subject's live browser sign-ins are listed by family, oldest first, with their clients and never a token", () => {
     let now = 1_000;
     const authority = new Credentials({ now: () => now });
-    const signIn = { kind: "session", subject: "operator", clientId: "browser", scopes: ["agui"] } as const;
+    const signIn = { kind: "session", subject: "operator", clientId: "browser", scopes: ["acp"] } as const;
     const cookie = authority.issue({ ...signIn, family: "first", ttlMs: 10_000 });
-    const access = authority.issue({ kind: "access", subject: "operator", clientId: "web", scopes: ["agui"], family: "first", ttlMs: 1_000 });
+    const access = authority.issue({ kind: "access", subject: "operator", clientId: "web", scopes: ["acp"], family: "first", ttlMs: 1_000 });
     authority.issue({ ...signIn, clientId: "web", family: "first", ttlMs: 20_000 });
     now = 2_000;
     authority.issue({ ...signIn, family: "second", ttlMs: 5_000 });
     // Neither is a sign-in of the operator's: a grant holding no session credential, and another subject's.
-    authority.issue({ kind: "access", subject: "operator", clientId: "terminal", scopes: ["agui"], family: "grant", ttlMs: 5_000 });
+    authority.issue({ kind: "access", subject: "operator", clientId: "terminal", scopes: ["acp"], family: "grant", ttlMs: 5_000 });
     authority.issue({ ...signIn, subject: "someone", family: "theirs", ttlMs: 5_000 });
 
     const listed = authority.sessions("operator");
@@ -141,24 +141,24 @@ test("{§credential-sessions} a subject's live browser sign-ins are listed by fa
 
 test("{§credential-module-client} a module registers its own confidential client once: the secret is minted here, told to the registrant alone and checked here", () => {
     const authority = new Credentials();
-    const web = authority.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui", "agui"] });
+    const web = authority.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp", "acp"] });
     assert.equal(web.clientId, "web");
     assert.match(web.clientSecret, /^[A-Za-z0-9_-]{43}$/u);
-    assert.deepEqual(authority.client("web"), { id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] }, "what others may know: never the secret, and no origin");
+    assert.deepEqual(authority.client("web"), { id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] }, "what others may know: never the secret, and no origin");
     assert.ok(Object.isFrozen(authority.client("web")) && Object.isFrozen(authority.client("web")!.redirectPaths));
     assert.equal(authority.client("nobody"), null);
     assert.equal(authority.authenticateClient("web", web.clientSecret), true);
     assert.equal(authority.authenticateClient("web", `${web.clientSecret}x`), false);
     assert.equal(authority.authenticateClient("web", ""), false);
     assert.equal(authority.authenticateClient("nobody", web.clientSecret), false);
-    assert.throws(() => authority.registerClient({ id: "web", redirectPaths: ["/other"], scopes: ["agui"] }), /already has a module client 'web'/u);
-    const other = new Credentials().registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["agui"] });
+    assert.throws(() => authority.registerClient({ id: "web", redirectPaths: ["/other"], scopes: ["acp"] }), /already has a module client 'web'/u);
+    const other = new Credentials().registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] });
     assert.notEqual(other.clientSecret, web.clientSecret, "every boot mints its own");
 });
 
 test("{§credential-module-client} a module client's registration is refused when its id, its redirect paths or its scopes are malformed", () => {
     const authority = new Credentials();
-    const good = { id: "web", redirectPaths: ["/web/callback", "/"], scopes: ["agui"] };
+    const good = { id: "web", redirectPaths: ["/web/callback", "/"], scopes: ["acp"] };
     for (const id of ["", "operator", "no spaces", "sl/ash"]) assert.throws(() => authority.registerClient({ ...good, id }), /module client id/u, JSON.stringify(id));
     // An origin is never the module's to state, and the path is the one a URL carries, unrewritten.
     for (const redirectPaths of [

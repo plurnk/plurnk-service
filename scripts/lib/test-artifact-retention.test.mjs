@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { benchmarksRoot, testArtifactDirectory, testArtifactPath, tierRunPath } from "./test-artifacts.ts";
 
 const root = new URL("../../", import.meta.url);
-const LANES = ["plurnk-core", "plurnk-agui", "plurnk-schedule"];
+const LANES = ["plurnk-core", "plurnk-acp", "plurnk-schedule"];
 
 test("{§test-artifact-retention} a run's databases live under the one artifact home, never in the checkout", (t) => {
     const prior = process.env.PLURNK_BENCHMARKS;
@@ -54,7 +54,7 @@ test("{§test-artifact-retention} each lane's run is one directory, stamped once
     process.env.PLURNK_TEST_RUN = "20260920T000000Z";
     const first = testArtifactPath("core");
     assert.equal(testArtifactPath("core"), first, "the same stamp resolves to the same directory");
-    assert.notEqual(testArtifactPath("agui"), first, "lanes do not share a directory");
+    assert.notEqual(testArtifactPath("acp"), first, "lanes do not share a directory");
     assert.ok(first.endsWith("intg-core-20260920T000000Z"), first);
 
     // A bare `node --test <file>` is not a special case with its own rules — it is simply

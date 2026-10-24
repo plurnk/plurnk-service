@@ -53,7 +53,7 @@ export const launch = (
         }, 90_000);
         child.stdout?.on("data", (chunk: Buffer) => {
             stdout += chunk.toString("utf8");
-            if (counted || !/plurnk-service agui=http:\/\//.test(stdout)) return;
+            if (counted || !/plurnk-service acp=http:\/\//.test(stdout)) return;
             counted = true;
             void (async () => {
                 // The count is read from procfs where there is one; a host without it reports none.

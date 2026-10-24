@@ -90,7 +90,7 @@ export const renderAuthorizationDocument = (document: AuthorizationDocument, sty
  * values, for a consumer whose production CSS pruning must keep the selectors they use.
  */
 export const authorizationDocumentSpecimens = (): readonly string[] => {
-    const request: AuthorizationRequest = { client: "client", scopes: ["agui"], hidden: { client_id: "client", state: "state" } };
+    const request: AuthorizationRequest = { client: "client", scopes: ["acp"], hidden: { client_id: "client", state: "state" } };
     return [
         AuthorizationDocuments.signIn(request, null),
         AuthorizationDocuments.signIn(request, "The password is wrong."),

@@ -22,7 +22,7 @@ import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type
 import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
 import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
 import workerOwnerSchema from "../schema/WorkerOwner.json" with { type: "json" };
-import type { WorkerOwner, A2AAgentDefinition as A2aAgentDefinition, RollbackReport, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import type { WorkerOwner, A2AAgentDefinition as A2aAgentDefinition, RollbackReport, AcpClientConformance, AcpConformanceKit, AcpDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -47,9 +47,9 @@ import mcpOAuthBeginResultSchema from "../schema/McpOAuthBeginResult.json" with 
 import functionalityPreparationActivitySchema from "../schema/FunctionalityPreparationActivity.json" with { type: "json" };
 import modelReadinessSchema from "../schema/ModelReadiness.json" with { type: "json" };
 import modelRouteSchema from "../schema/ModelRoute.json" with { type: "json" };
-import aguiDiscoverySchema from "../schema/AguiDiscovery.json" with { type: "json" };
-import aguiClientConformanceSchema from "../schema/AguiClientConformance.json" with { type: "json" };
-import aguiConformanceKitSchema from "../schema/AguiConformanceKit.json" with { type: "json" };
+import acpDiscoverySchema from "../schema/AcpDiscovery.json" with { type: "json" };
+import acpClientConformanceSchema from "../schema/AcpClientConformance.json" with { type: "json" };
+import acpConformanceKitSchema from "../schema/AcpConformanceKit.json" with { type: "json" };
 import providerAccountingSchema from "../schema/ProviderAccounting.json" with { type: "json" };
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
@@ -85,9 +85,9 @@ export class InvalidFunctionalityMutationResultError extends TypeError {}
 export class InvalidRollbackReportError extends TypeError {}
 export class InvalidModelReadinessError extends TypeError {}
 export class InvalidModelRouteError extends TypeError {}
-export class InvalidAguiDiscoveryError extends TypeError {}
-export class InvalidAguiClientConformanceError extends TypeError {}
-export class InvalidAguiConformanceKitError extends TypeError {}
+export class InvalidAcpDiscoveryError extends TypeError {}
+export class InvalidAcpClientConformanceError extends TypeError {}
+export class InvalidAcpConformanceKitError extends TypeError {}
 export class InvalidJsonSchemaInstanceError extends TypeError {}
 export class InvalidParsedPathError extends TypeError {}
 export class InvalidPlurnkStatementError extends TypeError {}
@@ -170,12 +170,12 @@ export default class Validator {
         modelRouteSchema,
         [effortSchema],
     );
-    static #aguiDiscovery = Validator.#withRefs(
-        aguiDiscoverySchema,
+    static #acpDiscovery = Validator.#withRefs(
+        acpDiscoverySchema,
         [clientDisplayCapabilitiesSchema],
     );
-    static #aguiClientConformance = Validator.#compile(aguiClientConformanceSchema);
-    static #aguiConformanceKit = Validator.#compile(aguiConformanceKitSchema);
+    static #acpClientConformance = Validator.#compile(acpClientConformanceSchema);
+    static #acpConformanceKit = Validator.#compile(acpConformanceKitSchema);
     static #jsonSchemaValidators = new WeakMap<JsonSchema, CfValidator>();
     static #publicSchemas = [
         applicationOperationEventSchema,
@@ -187,9 +187,9 @@ export default class Validator {
         matcherBodySchema,
         sendBodySchema,
         resourceSelectionSchema,
-        aguiDiscoverySchema,
-        aguiClientConformanceSchema,
-        aguiConformanceKitSchema,
+        acpDiscoverySchema,
+        acpClientConformanceSchema,
+        acpConformanceKitSchema,
         clientDisplayCapabilitiesSchema,
         clientInteractionProjectionSchema,
         clientInteractionRequestSchema,
@@ -471,16 +471,16 @@ export default class Validator {
         return Validator.#validate(Validator.#modelRoute, value);
     }
 
-    static validateAguiDiscovery(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#aguiDiscovery, value);
+    static validateAcpDiscovery(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#acpDiscovery, value);
     }
 
-    static validateAguiClientConformance(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#aguiClientConformance, value);
+    static validateAcpClientConformance(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#acpClientConformance, value);
     }
 
-    static validateAguiConformanceKit(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#aguiConformanceKit, value);
+    static validateAcpConformanceKit(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#acpConformanceKit, value);
     }
 
     static validateJsonSchemaInstance(schema: JsonSchema, value: unknown): ValidationResult {
@@ -801,25 +801,25 @@ export default class Validator {
         return value;
     }
 
-    static assertAguiDiscovery(value: unknown): AguiDiscovery {
-        const result = Validator.validateAguiDiscovery(value);
-        if (!Validator.#accepted<AguiDiscovery>(value, result)) {
-            throw new InvalidAguiDiscoveryError(
-                `invalid AG-UI discovery manifest: ${JSON.stringify(result.errors)}`,
+    static assertAcpDiscovery(value: unknown): AcpDiscovery {
+        const result = Validator.validateAcpDiscovery(value);
+        if (!Validator.#accepted<AcpDiscovery>(value, result)) {
+            throw new InvalidAcpDiscoveryError(
+                `invalid ACP discovery manifest: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;
     }
 
-    static assertAguiClientConformance(
+    static assertAcpClientConformance(
         discoveryValue: unknown,
         conformanceValue: unknown,
-    ): AguiClientConformance {
-        const discovery = Validator.assertAguiDiscovery(discoveryValue);
-        const result = Validator.validateAguiClientConformance(conformanceValue);
-        if (!Validator.#accepted<AguiClientConformance>(conformanceValue, result)) {
-            throw new InvalidAguiClientConformanceError(
-                `invalid AG-UI client conformance: ${JSON.stringify(result.errors)}`,
+    ): AcpClientConformance {
+        const discovery = Validator.assertAcpDiscovery(discoveryValue);
+        const result = Validator.validateAcpClientConformance(conformanceValue);
+        if (!Validator.#accepted<AcpClientConformance>(conformanceValue, result)) {
+            throw new InvalidAcpClientConformanceError(
+                `invalid ACP client conformance: ${JSON.stringify(result.errors)}`,
             );
         }
         const conformance = conformanceValue;
@@ -836,8 +836,8 @@ export default class Validator {
         };
         const mismatches = [...mismatch("actions"), ...mismatch("notifications")];
         if (mismatches.length > 0) {
-            throw new InvalidAguiClientConformanceError(
-                `AG-UI client conformance does not account for the installed surface: ${mismatches.join(", ")}`,
+            throw new InvalidAcpClientConformanceError(
+                `ACP client conformance does not account for the installed surface: ${mismatches.join(", ")}`,
             );
         }
         const missingDimensions: string[] = [];
@@ -859,26 +859,26 @@ export default class Validator {
             }
         }
         if (missingDimensions.length > 0) {
-            throw new InvalidAguiClientConformanceError(
-                `AG-UI client conformance omits required dimensions: ${missingDimensions.join(", ")}`,
+            throw new InvalidAcpClientConformanceError(
+                `ACP client conformance omits required dimensions: ${missingDimensions.join(", ")}`,
             );
         }
         return conformance;
     }
 
-    static assertAguiConformanceKit(value: unknown): AguiConformanceKit {
-        const result = Validator.validateAguiConformanceKit(value);
-        if (!Validator.#accepted<AguiConformanceKit>(value, result)) {
-            throw new InvalidAguiConformanceKitError(
-                `invalid AG-UI conformance kit: ${JSON.stringify(result.errors)}`,
+    static assertAcpConformanceKit(value: unknown): AcpConformanceKit {
+        const result = Validator.validateAcpConformanceKit(value);
+        if (!Validator.#accepted<AcpConformanceKit>(value, result)) {
+            throw new InvalidAcpConformanceKitError(
+                `invalid ACP conformance kit: ${JSON.stringify(result.errors)}`,
             );
         }
         const kit = value;
         for (const specimens of [kit.transport, kit.lifecycles]) {
             const names = specimens.map(({ name }) => name);
             if (new Set(names).size !== names.length) {
-                throw new InvalidAguiConformanceKitError(
-                    "AG-UI conformance specimen names must be unique within their family",
+                throw new InvalidAcpConformanceKitError(
+                    "ACP conformance specimen names must be unique within their family",
                 );
             }
         }
