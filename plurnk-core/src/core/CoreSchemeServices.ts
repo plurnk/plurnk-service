@@ -1,4 +1,5 @@
 import type { Db } from "./Db.ts";
+import type HostPaths from "./HostPaths.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
@@ -45,6 +46,7 @@ export interface CoreSchemeServices {
         signal?: AbortSignal,
     ) => Promise<ClientInteractionResolution>;
     readonly liveSubscriptions: LiveSubscriptions;
+    readonly hostPaths?: HostPaths;
 }
 
 export interface CoreSchemeAdapter {
@@ -91,7 +93,11 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
     }
 
     protected coreContext(ctx: CoreSchemeCallContext): PlurnkSchemeContext {
-        if ("db" in ctx) return ctx;
+        if ("db" in ctx) {
+            return ctx.hostPaths === undefined && this.#services?.hostPaths !== undefined
+                ? { ...ctx, hostPaths: this.#services.hostPaths }
+                : ctx;
+        }
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
         const client = SchemeCtxImpl.clientOf(ctx);
@@ -99,6 +105,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         const ambientMembers = SchemeCtxImpl.ambientMembersOf(ctx);
         return {
             db: services.db,
+            ...(services.hostPaths === undefined ? {} : { hostPaths: services.hostPaths }),
             workspaceId: ctx.workspaceId,
             workerId: ctx.workerId,
             loopId: ctx.loopId,

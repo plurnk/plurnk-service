@@ -3,6 +3,7 @@
 // daemon orchestration and the bundled adapters that own core lifecycle state.
 
 import type { Db } from "./Db.ts";
+import type HostPaths from "./HostPaths.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type ResourceBindings from "./ResourceBindings.ts";
@@ -49,6 +50,7 @@ export interface AmbientMembers {
 
 export interface PlurnkSchemeContext {
     readonly db: Db;
+    readonly hostPaths?: HostPaths;
     readonly ambientMembers?: AmbientMembers;
     readonly workspaceId: number;
     readonly workerId: number;

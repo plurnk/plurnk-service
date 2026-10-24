@@ -125,3 +125,31 @@ test("{§host-path-layout} expands only explicit Plurnk ~/ overrides", () => {
     assert.equal(paths.expandUserPath("~/custom/plurnk.db"), "/home/ada/custom/plurnk.db");
     assert.equal(paths.expandUserPath("./plurnk.db"), "./plurnk.db");
 });
+
+test("{§host-path-layout} {§exec-env-scoped} projectEnvironment replaces ambient HOME and XDG roots with the daemon's resolved layout", () => {
+    const isolated = new HostPaths({ env: {}, home: "/tmp/isolated/home" });
+    const projected = isolated.projectEnvironment({
+        HOME: "/home/operator",
+        XDG_CONFIG_HOME: "/home/operator/.config",
+        XDG_DATA_HOME: "relative/invalid",
+        XDG_RUNTIME_DIR: "/run/user/1000",
+        PATH: "/usr/bin",
+    });
+    assert.equal(projected.HOME, "/tmp/isolated/home");
+    assert.equal(projected.XDG_CONFIG_HOME, "/tmp/isolated/home/.config");
+    assert.equal(projected.XDG_DATA_HOME, "/tmp/isolated/home/.local/share");
+    assert.equal(projected.XDG_STATE_HOME, undefined, "unset XDG roots stay unset when the layout uses default XDG subtrees");
+    assert.equal(projected.XDG_RUNTIME_DIR, undefined, "an absent runtimeHome strips any ambient XDG_RUNTIME_DIR");
+    assert.equal(projected.PATH, "/usr/bin");
+
+    const stateRooted = new HostPaths({
+        home: "/home/example",
+        env: { PLURNK_SERVICE_STATE_ROOT: "/tmp/private-daemon" },
+    });
+    const rootedEnv = stateRooted.projectEnvironment({ HOME: "/home/operator" });
+    assert.equal(rootedEnv.HOME, "/home/example");
+    assert.equal(rootedEnv.XDG_DATA_HOME, "/tmp/private-daemon/data");
+    assert.equal(rootedEnv.XDG_STATE_HOME, "/tmp/private-daemon/state");
+    assert.equal(rootedEnv.XDG_CACHE_HOME, "/tmp/private-daemon/cache");
+    assert.equal(rootedEnv.XDG_RUNTIME_DIR, "/tmp/private-daemon/runtime");
+});

@@ -15,6 +15,7 @@ import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurn
 import { MetadataOptions, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
+import type HostPaths from "../core/HostPaths.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
@@ -80,10 +81,12 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     };
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
+    readonly #hostPaths: HostPaths | undefined;
 
-    constructor(defaults: () => Promise<readonly EnvDefaultsFile[]>, scheme?: RuntimeSchemeFacet) {
+    constructor(defaults: () => Promise<readonly EnvDefaultsFile[]>, scheme?: RuntimeSchemeFacet, hostPaths?: HostPaths) {
         this.#defaults = defaults;
         this.scheme = scheme;
+        this.#hostPaths = hostPaths;
     }
 
     // Service origin: every ambient name the operator's ceiling admits, exactly as a
@@ -94,7 +97,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     // anything admitted is already readable by any command the Worker runs. Withholding it here
     // would be theatre, and would make `list` lie about the environment its commands see.
     async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
-        return Object.entries(ExecEnv.scoped())
+        return Object.entries(ExecEnv.scoped(process.env, this.#hostPaths))
             .map(([alias, value]) => ({
                 alias, definition: { value: value ?? "" }, enabled: true,
                 provenance: { kind: "environment", source: alias },
@@ -153,9 +156,13 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         return undefined;
     }
 
-    static defaultsReader(projectRoot: string, installedNodeModules: string): () => Promise<readonly EnvDefaultsFile[]> {
+    static defaultsReader(projectRoot: string, installedNodeModules: string, hostPaths?: HostPaths): () => Promise<readonly EnvDefaultsFile[]> {
         let cached: readonly EnvDefaultsFile[] | undefined;
-        return async () => cached ??= (await EnvDefaults.collect(projectRoot, installedNodeModules)).files;
+        return async () => cached ??= (await EnvDefaults.collect(
+            projectRoot,
+            installedNodeModules,
+            hostPaths === undefined ? {} : { hostPaths },
+        )).files;
     }
 
     // {§workspace-env} Apply one persisted layer and record the provenance beside its values.
@@ -202,10 +209,10 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     }
 
     // {§workspace-env} Both execution and capability startup read these same persisted layers.
-    static async workspace(db: Db, workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
+    static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
-        return (ambient = ExecEnv.scoped()) => this.compose(ambient, state, {}, "workspace");
+        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose(ambient, state, {}, "workspace");
     }
 
     static async resolve(
@@ -213,10 +220,11 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         workspaceId: number,
         workerId?: number,
         modifier: Readonly<Record<string, string>> = {},
-        ambient: NodeJS.ProcessEnv = ExecEnv.scoped(),
+        ambient?: NodeJS.ProcessEnv,
+        hostPaths?: HostPaths,
     ): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const empty = { version: 1, definitions: {} };
-        const shared = (await this.workspace(db, workspaceId))(ambient);
+        const shared = (await this.workspace(db, workspaceId, hostPaths))(ambient ?? ExecEnv.scoped(process.env, hostPaths));
         const worker = workerId === undefined ? undefined : await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
         const result = this.compose(shared.env, worker === undefined ? empty : JSON.parse(worker.state), modifier);
         return { env: result.env, record: { ...shared.record, ...Object.fromEntries(Object.entries(result.record).filter(([, item]) => item.source !== "host")) } };

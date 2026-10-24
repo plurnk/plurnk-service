@@ -232,16 +232,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // environment, writes go through the family's own admission at the Worker's layer. The runtime
         // worker keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
         this.#functionality.register(new EnvFunctionality(
-            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
+            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath, this.#hostPaths),
             new EnvScheme(
-                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId),
+                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId, {}, undefined, this.#hostPaths),
                 (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
                 async (workspaceId, workerId) => (await this.#db.runtime_worker_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === workerId
                     ? "workspace" : "worker",
             ),
+            this.#hostPaths,
         ));
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
+            hostPaths: this.#hostPaths,
             // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
             // are workspace-wide across concurrent models, so they remain
             // model-independent. Request-shaped token facts stay provider-owned.
@@ -1061,7 +1063,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
-        const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId);
+        const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
         return (ambient) => snapshot(ambient).env;
     }
 
@@ -1086,12 +1088,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§mcp-launch-environment}
     operatorEnvironment(): NodeJS.ProcessEnv {
-        return ExecEnv.withoutOwnSecrets();
+        return ExecEnv.withoutOwnSecrets(process.env, this.#hostPaths);
     }
 
     async readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         await this.#assertWorkerOwned(workspaceId, workerId);
-        const shared = await EnvFunctionality.workspace(this.#db, workspaceId);
+        const shared = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
         const row = await this.#db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
         return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
@@ -1129,7 +1131,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
-        await this.#configuration.capture("execution", () => Exec.validateConfiguration());
+        await this.#configuration.capture("execution", () => Exec.validateConfiguration(this.#hostPaths));
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;

@@ -104,7 +104,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
         assert.equal(launched?.reference, "operator", "an operator variable outside the model's command ceiling reaches the server");
         assert.equal(launched?.bound, null, "a provider credential is not inherited implicitly");
         assert.equal(launched?.plurnk, null, "nor does any of plurnk's own settings");
-        assert.equal(launched?.home, process.env.HOME ?? null);
+        assert.equal(launched?.home, hostPaths.home);
         assert.equal(launched?.witness, null, "the server launched before the workspace defined its value");
         await daemon.invokeModuleAction("worker.env.add", { alias: "ENV_WITNESS", definition: { value: "private" } }, { scope: "worker", workspaceId, workerId });
         await daemon.invokeModuleAction("worker.env.add", { alias: "WORKER_ONLY", definition: { value: "private" } }, { scope: "worker", workspaceId, workerId });

@@ -7,11 +7,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Daemon from "../../src/server/Daemon.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
-import { execStmt } from "./_dsl.ts";
+import { execStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -233,6 +235,63 @@ test(
             const state = await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: "@plurnk/plurnk-service" });
             assert.doesNotMatch(state!.state, /RUN_ONLY/u, "a fence's environment never enters the registry");
         } finally {
+            await db.close();
+            if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+            else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+        }
+    },
+);
+
+// {§host-path-layout} {§exec-env-scoped} — when a daemon runs with an isolated HostPaths, its
+// subprocesses, env:///READ, and operatorEnvironment() all see the daemon's resolved HOME rather
+// than leaking into the operator's ambient process.env.HOME (#1224).
+test(
+    "{§host-path-layout} {§exec-env-scoped} a daemon with an isolated HostPaths projects its HOME into subprocesses, env:///HOME, and operatorEnvironment",
+    async () => {
+        const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME";
+        const isolatedHome = `/tmp/plurnk-isolated-home-${crypto.randomUUID()}`;
+        const hostPaths = new HostPaths({ home: isolatedHome, env: {} });
+        const db = await openMigrated();
+        const daemon = new Daemon({ db, hostPaths });
+        await daemon.start();
+        try {
+            assert.equal(daemon.operatorEnvironment().HOME, isolatedHome, "module launch base carries the daemon's isolated HOME");
+            const { workspaceId } = await daemon.createWorkspace({ name: `isolated-home-${crypto.randomUUID()}` });
+            await daemon.activateWorkspace({ workspaceId });
+            const { workerId } = await daemon.createWorker({ workspaceId });
+            const workerEnv = (await daemon.readWorkerEnvironment(workspaceId, workerId))();
+            assert.equal(workerEnv.HOME, isolatedHome, "worker environment resolves HOME to the daemon's HostPaths.home");
+
+            const loopId = await insertLoop(db, workerId, 1, "isolated home");
+            const turnId = await insertTurn(db, loopId, 1, 102);
+
+            const envRead = await daemon.engine.dispatch({
+                statement: readStmt(urlPath("env", "/HOME")),
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            });
+            assert.equal(envRead.status, 200);
+            assert.equal(envRead.content, isolatedHome, "READ (env:///HOME) matches the daemon's isolated HOME");
+
+            const idDeferred = deferred<number>();
+            const dispatchPromise = daemon.engine.dispatch({
+                statement: execStmt(null, 'printf "%s" "$HOME"'),
+                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+            daemon.engine.resolveProposal(logEntryId, { decision: "accept" });
+            await dispatchPromise;
+            const exec = daemon.schemes.get("exec") as Exec;
+            await exec.idle();
+
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const stdout = (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
+            assert.equal(stdout, isolatedHome, "subprocess $HOME resolves to the daemon's isolated HostPaths.home");
+        } finally {
+            await daemon.stop();
             await db.close();
             if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
             else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;

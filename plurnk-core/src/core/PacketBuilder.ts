@@ -2,6 +2,7 @@ import WorkerOwners from "./WorkerOwners.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
+import type HostPaths from "./HostPaths.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -131,18 +132,21 @@ export default class PacketBuilder {
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
     #capabilities: CapabilityResolver;
+    readonly #hostPaths: HostPaths | undefined;
     // {§functionality-documents} — family-generated documents of a Worker's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
 
-    constructor({ db, schemes, executors }: {
+    constructor({ db, schemes, executors, hostPaths }: {
         db: Db;
         schemes: SchemeRegistry;
         executors: () => ExecutorRegistry | undefined;
+        hostPaths?: HostPaths;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#executors = executors;
+        this.#hostPaths = hostPaths;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
     }
 
@@ -225,8 +229,8 @@ export default class PacketBuilder {
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
-        const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
-        const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
+        const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
+        const systemPolicy = await readSystemPolicy(this.#hostPaths); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker:///_plurnk/AGENTS.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +

@@ -38,8 +38,12 @@ export default class HostPaths {
     readonly plurnkPluginsDir: string;
     readonly globalPluginsDir: string;
 
-    constructor({ env = process.env, home = homedir() }: HostPathsOptions = {}) {
-        this.home = resolve(home);
+    readonly #explicitHome: boolean;
+
+    constructor({ env = process.env, home }: HostPathsOptions = {}) {
+        const envHome = env.HOME !== undefined && isAbsolute(env.HOME) ? env.HOME : undefined;
+        this.#explicitHome = home !== undefined || envHome !== undefined;
+        this.home = resolve(home ?? envHome ?? homedir());
         const invalid: XdgVariable[] = [];
         const base = (name: XdgVariable, fallback: string): string => {
             const value = env[name];
@@ -148,5 +152,28 @@ export default class HostPaths {
     expandUserPath(value: string): string {
         if (value === "~") return this.home;
         return value.startsWith("~/") ? resolve(this.home, value.slice(2)) : value;
+    }
+
+    // {§host-path-layout} {§exec-env-scoped} — project the daemon's resolved home and XDG roots
+    // onto an ambient environment before ceiling or module-launch filtering, so subprocesses
+    // inherit this daemon's host layout rather than an ambient HOME or XDG root it replaced.
+    projectEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+        const out: NodeJS.ProcessEnv = { ...env };
+        if (this.#explicitHome || out.HOME !== undefined) out.HOME = this.home;
+        if (out.XDG_CONFIG_HOME !== undefined || this.configHome !== resolve(this.home, ".config")) {
+            out.XDG_CONFIG_HOME = this.configHome;
+        }
+        if (out.XDG_DATA_HOME !== undefined || this.dataHome !== resolve(this.home, ".local", "share")) {
+            out.XDG_DATA_HOME = this.dataHome;
+        }
+        if (out.XDG_STATE_HOME !== undefined || this.stateHome !== resolve(this.home, ".local", "state")) {
+            out.XDG_STATE_HOME = this.stateHome;
+        }
+        if (out.XDG_CACHE_HOME !== undefined || this.cacheHome !== resolve(this.home, ".cache")) {
+            out.XDG_CACHE_HOME = this.cacheHome;
+        }
+        if (this.runtimeHome !== null) out.XDG_RUNTIME_DIR = this.runtimeHome;
+        else delete out.XDG_RUNTIME_DIR;
+        return out;
     }
 }

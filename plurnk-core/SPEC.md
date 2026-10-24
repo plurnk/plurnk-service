@@ -4040,7 +4040,7 @@ environment; the executor spawns with the environment it is handed ({§workspace
 
 | Input | Admission |
 |---|---|
-| Ambient host values | `PLURNK_SERVICE_EXEC_ENV_INHERIT` admits exact names or one trailing-`*` prefix glob; `_EXCLUDE` removes names with the same syntax. An empty inherit list admits nothing. |
+| Ambient host values | `PLURNK_SERVICE_EXEC_ENV_INHERIT` admits exact names or one trailing-`*` prefix glob; `_EXCLUDE` removes names with the same syntax. An empty inherit list admits nothing. Before filtering, the daemon projects its resolved `HOME` and XDG roots ({§host-path-layout}, {§state-root}) onto the ambient environment so admitted paths match the daemon's own layout. |
 | Reserved names | `PLURNK_*` and provider credential names from the model catalog or `PLURNK_PROVIDERS_PROVIDER_<ID>_API_KEY_ENV` are excluded from the ambient base regardless of those selectors. |
 | Workspace and worker entries | Explicit non-reserved values and masks compose at spawn under {§env-functionality}. Reserved names are refused at admission. |
 | Invocation `env` | Explicit non-reserved values override the composed environment under {§env-option}; the same reserved-name refusal applies. |
@@ -4611,7 +4611,11 @@ language definition.
 
 On XDG-compatible hosts, artifact semantics select the default location. An
 unset or empty base variable uses the XDG default; a relative value is invalid
-and is ignored rather than resolved against the working directory.
+and is ignored rather than resolved against the working directory. When the
+daemon projects an ambient environment for subprocess or module launches
+({§exec-env-scoped}, {§mcp-launch-environment}), its resolved `HOME` and XDG
+base directories replace any ambient values they supersede, and an absent
+`XDG_RUNTIME_DIR` is omitted.
 
 | Class | Base | Plurnk member |
 |---|---|---|

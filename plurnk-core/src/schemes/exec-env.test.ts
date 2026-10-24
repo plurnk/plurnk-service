@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import HostPaths from "../core/HostPaths.ts";
 import ExecEnv from "./exec-env.ts";
 
 // The shipped ceiling, as declared in plurnk-core/.env.defaults. Held here as a literal so a
@@ -93,4 +94,29 @@ test("{§exec-env-scoped} ExecEnv.scoped passes the declared subprocess floors t
     });
     assert.deepEqual(scoped, { PATH: "/usr/bin", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", CI: "1" },
         "a floor that the ceiling does not name would never reach the spawn that wants it");
+});
+
+test("{§exec-env-scoped} {§host-path-layout} ExecEnv.scoped and ExecEnv.withoutOwnSecrets project the daemon's HostPaths before filtering", () => {
+    const hostPaths = new HostPaths({
+        home: "/tmp/isolated-home",
+        env: { PLURNK_SERVICE_STATE_ROOT: "/tmp/isolated-state" },
+    });
+    const ambient = {
+        PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,HOME,XDG_*",
+        PATH: "/usr/bin",
+        HOME: "/home/operator",
+        XDG_CONFIG_HOME: "/home/operator/.config",
+        OPENAI_API_KEY: "sk-secret",
+    };
+    const scoped = ExecEnv.scoped(ambient, hostPaths);
+    assert.equal(scoped.HOME, "/tmp/isolated-home");
+    assert.equal(scoped.XDG_CONFIG_HOME, "/tmp/isolated-home/.config");
+    assert.equal(scoped.XDG_DATA_HOME, "/tmp/isolated-state/data");
+    assert.equal(scoped.OPENAI_API_KEY, undefined);
+
+    const moduleBase = ExecEnv.withoutOwnSecrets(ambient, hostPaths);
+    assert.equal(moduleBase.HOME, "/tmp/isolated-home");
+    assert.equal(moduleBase.XDG_CONFIG_HOME, "/tmp/isolated-home/.config");
+    assert.equal(moduleBase.XDG_RUNTIME_DIR, "/tmp/isolated-state/runtime");
+    assert.equal(moduleBase.OPENAI_API_KEY, undefined);
 });

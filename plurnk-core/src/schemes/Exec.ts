@@ -33,6 +33,7 @@ import Results, { OperationFailureError, type SchemeResult, type SchemeResultBas
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
+import type HostPaths from "../core/HostPaths.ts";
 import ExecScratch from "./ExecScratch.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
@@ -85,10 +86,10 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 export type { WebFetch } from "./exec-entry-sink.ts";
 
 export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
-    static validateConfiguration(): void {
+    static validateConfiguration(hostPaths?: HostPaths): void {
         readExecConcurrency();
         ExecutionInput.configuredTimeout();
-        ExecScratch.directory();
+        ExecScratch.directory(process.env, hostPaths);
     }
 
     // The record goes on the output the spawn produces ({§execution-output-identity}) — the log row
@@ -140,8 +141,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         };
     }
 
-    #sourceScratch(): ExecScratch {
-        return this.#scratch ??= new ExecScratch();
+    #sourceScratch(hostPaths?: HostPaths): ExecScratch {
+        return this.#scratch ??= new ExecScratch(process.env, hostPaths);
     }
 
     #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
@@ -529,7 +530,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // where its executor must be able to read it; a directory the daemon cannot create or
         // write refuses here, never mid-run.
         if (resourceSource !== null && execTarget !== null) {
-            const scratch = this.#sourceScratch();
+            const scratch = this.#sourceScratch(core.hostPaths);
             const unavailable = await scratch.unavailable();
             if (unavailable !== null) {
                 return Exec.#refuse(
@@ -859,7 +860,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             );
         }
         if (source.nativePath !== null) return { target: source.nativePath, tempPath: null };
-        const tempPath = this.#sourceScratch().path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
+        const tempPath = this.#sourceScratch(core.hostPaths).path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
         await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
         return { target: tempPath, tempPath };
     }
@@ -1075,7 +1076,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // A cancellation may land while the environment resolves; a listener added to an
             // already-aborted signal never fires, so the run never receives a dead signal.
             const composed = signal.aborted ? null
-                : await EnvFunctionality.resolve(db, ctx.workspaceId, ctx.workerId, EnvFunctionality.modifier(metadata));
+                : await EnvFunctionality.resolve(
+                    db,
+                    ctx.workspaceId,
+                    ctx.workerId,
+                    EnvFunctionality.modifier(metadata),
+                    undefined,
+                    ctx.hostPaths,
+                );
             if (composed !== null) await Exec.#recordEnv(db, entryId, composed.record);
             if (composed === null || signal.aborted) {
                 result = cancelled();

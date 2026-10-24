@@ -1,6 +1,7 @@
 // {§exec-env-scoped} Ambient admission and ordinary env-name reservation.
 // Explicit capability bindings belong to their module ({§mcp-launch-environment}).
 import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
+import type HostPaths from "../core/HostPaths.ts";
 
 export default class ExecEnv {
     // A name, or one trailing-`*` prefix glob (`LC_*`). Exact names are the common case;
@@ -19,10 +20,11 @@ export default class ExecEnv {
 
     // {§mcp-launch-environment} Module-owned launches start with this ambient base,
     // not the model-command ceiling; their explicit bindings are a separate input.
-    static withoutOwnSecrets(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-        const providerKeys = ExecEnv.#ownSecretNames(env);
+    static withoutOwnSecrets(env: NodeJS.ProcessEnv = process.env, hostPaths?: HostPaths): NodeJS.ProcessEnv {
+        const source = hostPaths === undefined ? env : hostPaths.projectEnvironment(env);
+        const providerKeys = ExecEnv.#ownSecretNames(source);
         const out: NodeJS.ProcessEnv = {};
-        for (const [key, value] of Object.entries(env)) {
+        for (const [key, value] of Object.entries(source)) {
             if (key.startsWith("PLURNK_") || providerKeys.has(key)) continue;
             out[key] = value;
         }
@@ -53,12 +55,13 @@ export default class ExecEnv {
     // Read at call time (not memoized) so a secret set into process.env after boot is
     // still scoped out of the next spawn, and so an operator's policy edit takes effect
     // on the next spawn rather than the next restart.
-    static scoped(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-        const inherit = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_INHERIT);
-        const exclude = ExecEnv.#list(env.PLURNK_SERVICE_EXEC_ENV_EXCLUDE);
-        const providerKeys = ExecEnv.#ownSecretNames(env);
+    static scoped(env: NodeJS.ProcessEnv = process.env, hostPaths?: HostPaths): NodeJS.ProcessEnv {
+        const source = hostPaths === undefined ? env : hostPaths.projectEnvironment(env);
+        const inherit = ExecEnv.#list(source.PLURNK_SERVICE_EXEC_ENV_INHERIT);
+        const exclude = ExecEnv.#list(source.PLURNK_SERVICE_EXEC_ENV_EXCLUDE);
+        const providerKeys = ExecEnv.#ownSecretNames(source);
         const out: NodeJS.ProcessEnv = {};
-        for (const [key, value] of Object.entries(env)) {
+        for (const [key, value] of Object.entries(source)) {
             // The ceiling. An empty INHERIT admits nothing from the host: the allowlist is
             // declared in `.env.defaults`, so an empty one is an operator who cleared it,
             // not an unconfigured install.

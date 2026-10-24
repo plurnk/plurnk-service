@@ -4,6 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
+import type HostPaths from "./HostPaths.ts";
 import SearchIndex from "../schemes/_search-index.ts";
 import GitMembership from "./git-membership.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -253,7 +254,7 @@ export default class Engine {
     readonly #loopDriver: LoopDriver;
 
     // The daemon's callbacks arrive flat and travel as one bundle ({§engine-notifications}).
-    constructor({ db, lifecycle, schemes, mimetypes, withWorkspaceTurn, workspaceTurnStarting, weigh, ...notify }: {
+    constructor({ db, lifecycle, schemes, mimetypes, withWorkspaceTurn, workspaceTurnStarting, weigh, hostPaths, ...notify }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -261,6 +262,7 @@ export default class Engine {
         withWorkspaceTurn?: WithWorkspaceTurn;
         workspaceTurnStarting?: WorkspaceTurnStarting;
         weigh?: (text: string) => number;
+        hostPaths?: HostPaths;
     } & EngineNotifications) {
         this.#db = db;
         this.#lifecycle = lifecycle ?? new LoopLifecycle(db);
@@ -287,7 +289,8 @@ export default class Engine {
         this.#packets = new PacketBuilder({
             db,
             schemes,
-            executors });
+            executors,
+            ...(hostPaths === undefined ? {} : { hostPaths }) });
         this.#interactions = new ClientInteractions(db);
         const entryAddresses = new EntryAddressBinding();
         this.#proposals = new ProposalLifecycle({
@@ -341,7 +344,8 @@ export default class Engine {
             capabilityDenial: (statement, ctx) => this.#dispatcher.capabilityDenial(statement, ctx),
             referenceVisibility: (ctx) => this.#dispatcher.referenceVisibility(ctx),
             requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
-            liveSubscriptions: this.#liveSubscriptions });
+            liveSubscriptions: this.#liveSubscriptions,
+            ...(hostPaths === undefined ? {} : { hostPaths }) });
         this.#loopDriver = new LoopDriver({ loopSignals: this.#loopSignals, db: this.#db, lifecycle: this.#lifecycle, schemes: this.#schemes, notices: this.#notices, strikes: this.#strikes, withWorkspaceTurn: this.#withWorkspaceTurn, workspaceTurnStarting: this.#workspaceTurnStarting, runTurn: this.runTurn.bind(this) });
     }
 

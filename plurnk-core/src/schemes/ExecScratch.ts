@@ -10,8 +10,8 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 export default class ExecScratch {
     static readonly KNOB = "PLURNK_SERVICE_EXEC_SCRATCH";
 
-    static directory(env: NodeJS.ProcessEnv = process.env): string {
-        const paths = new HostPaths({ env });
+    static directory(env: NodeJS.ProcessEnv = process.env, hostPaths?: HostPaths): string {
+        const paths = hostPaths ?? new HostPaths({ env });
         const configured = env[ExecScratch.KNOB];
         if (configured === undefined || configured.length === 0) return paths.runtimeDir ?? tmpdir();
         const expanded = paths.expandUserPath(configured);
@@ -21,8 +21,8 @@ export default class ExecScratch {
 
     readonly #directory: string;
 
-    constructor(env: NodeJS.ProcessEnv = process.env) {
-        this.#directory = ExecScratch.directory(env);
+    constructor(env: NodeJS.ProcessEnv = process.env, hostPaths?: HostPaths) {
+        this.#directory = ExecScratch.directory(env, hostPaths);
     }
 
     get directory(): string {
