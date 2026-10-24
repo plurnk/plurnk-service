@@ -9,22 +9,25 @@ import { host } from "../test/host.ts";
 import Translator from "./Translator.ts";
 import MessageAddress from "./MessageAddress.ts";
 import { AGUI_BUILTIN_ACTIONS } from "./AguiSurface.ts";
-import type {
-    ApplicationActionContext,
-    ClientInteractionProjection,
-    LogEntryWire,
-    ProblemDetails,
-    ProposalProjection,
-    ProposalResolution,
-    WorkerOwner,
+import {
+    Problems,
+    Validator,
+    isExecution,
+    requestOrigin,
+    type ApplicationActionContext,
+    type ClientInteractionProjection,
+    type LogEntryWire,
+    type ProblemDetails,
+    type ProposalProjection,
+    type ProposalResolution,
+    type WorkerOwner,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
-// {§credential-authority} — the daemon's own authority on the mock seam; the module issues through it.
+// {§credential-authority} — the daemon's own authority on the mock seam; the module verifies through it.
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 const FLOOR = {
-    PLURNK_AUTH: "0", PLURNK_PASS: "", PLURNK_AGUI_ISSUER: "",
-    PLURNK_AGUI_ACCESS_TTL_SEC: "3600", PLURNK_AGUI_REFRESH_TTL_SEC: "2592000",
+    PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_MAX_TURNS: "", PLURNK_AGUI_HEARTBEAT_MS: "0",
     PLURNK_AGUI_HISTORY_LOOPS: "2", PLURNK_AGUI_HISTORY_PAGE_CHARS: "2000000", PLURNK_AGUI_EXCERPT_CHARS: "240", PLURNK_AGUI_OVERVIEW_WORKERS: "200",
 };
 
@@ -36,7 +39,6 @@ type Replayed = { id: string; role: string; content?: unknown; toolCalls?: Reado
 const transcript = (messages: readonly Replayed[] | undefined): Array<Record<string, unknown>> => (messages ?? []).map(({ id, role, content, toolCalls }) =>
     toolCalls === undefined ? { id, role, content } : { id, role, calls: toolCalls.map(({ function: { name } }) => name) });
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Problems, Validator, isExecution } from "@plurnk/plurnk-contracts";
 import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
 import { ORIGIN, packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
@@ -114,8 +116,9 @@ const mockSeam = (operatorSecret: string | null = null) => {
     // A workspace the fixture creates exists from then on under the name it was created with, as the daemon's does.
     const workspaces = new Set<string>();
     const workspace = (name: string) => ({ workspaceId: 3, workspaceName: name, projectRoot: null, projectLabel: null });
+    const credentials = new Credentials({ operatorSecret });
     const seam: ApplicationPort = {
-        credentials: new Credentials({ operatorSecret }),
+        credentials,
         activateWorkspace: async ({ workspaceId }) => { activations.push(workspaceId); },
         registerWorkerOwner: async (_workspaceId, owner) => { owners.set(owner.address, owner); },
         claimWorkerOwner: async ({ owner }) => {
@@ -245,6 +248,9 @@ const mockSeam = (operatorSecret: string | null = null) => {
             return { effort: "adaptive", source: "explicit", supportedEfforts: ["off", "adaptive", "high"] };
         },
     };
+    if (operatorSecret !== null) {
+        credentials.publish({ issuer: (req) => requestOrigin(req ?? { headers: {} }, seam.httpAddress()) });
+    }
     const finish = (workspaceId: number | null, workerId: number) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
         workerId,
         loopId: 9,
@@ -3293,7 +3299,7 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
     const { seam } = mockSeam("expected");
     const cors = async (allowOrigin: string): Promise<{ origin: string | null; headers: string | null; preflight: number }> => {
         const mod = await host(seam, {
-            env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
+            env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
         });
         try {
             const base = `http://127.0.0.1:${mod.address().port}/agui`;
@@ -3314,32 +3320,61 @@ test("{§agui-cors} the panel states which pages may read a reply, and its empty
     assert.deepEqual(await cors(""), { origin: null, headers: null, preflight: 204 }, "no page reads a reply");
 });
 
-test("{§credential-authority} PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
+test("{§credential-authority} {§agui-http-authorization} PLURNK-owned HTTP failures use application/problem+json with stable Problems and RFC 6750 challenges", async () => {
     const { seam } = mockSeam("expected");
     const mod = await host(seam, {
         env: {
             ...FLOOR,
-            PLURNK_AUTH: "1",
             PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
     });
     const base = `http://127.0.0.1:${mod.address().port}`;
-    const access = await mintAccess(mod.address().port, { id: "operator", secret: "expected" });
-    const problem = async (path: string, init: RequestInit): Promise<Record<string, unknown>> => {
+    seam.httpAddress = () => mod.address();
+    const access = seam.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["agui"], family: "f1", ttlMs: 60_000 }).token;
+    const problem = async (path: string, init: RequestInit): Promise<{ body: Record<string, unknown>; challenge: string }> => {
         const response = await fetch(`${base}${path}`, init);
         assert.equal(response.headers.get("content-type"), "application/problem+json");
         const body = await response.json() as Record<string, unknown>;
         assert.equal(body.status, response.status);
-        return body;
+        return { body, challenge: response.headers.get("www-authenticate") ?? "" };
     };
     try {
-        const unauthorized = await problem("/agui", { method: "POST", body: "{}" });
+        const metadata = `resource_metadata="${base}/.well-known/oauth-protected-resource"`;
+        const { body: unauthorized, challenge: missingChallenge } = await problem("/agui", { method: "POST", body: "{}" });
         assert.equal(unauthorized.type, "https://problems.plurnk.xyz/agui/http/bearer-token-required");
         assert.equal(unauthorized.status, 401);
         assert.equal(unauthorized.stage, "authorization");
+        assert.equal(missingChallenge, `Bearer realm="plurnk", ${metadata}`);
 
-        const invalidJson = await problem("/agui", {
+        const { body: invalidToken, challenge: invalidChallenge } = await problem("/agui", {
+            method: "POST",
+            headers: { authorization: "Bearer not-a-token" },
+            body: "{}"
+        });
+        assert.equal(invalidToken.type, "https://problems.plurnk.xyz/agui/http/bearer-token-invalid");
+        assert.equal(invalidToken.status, 401);
+        assert.equal(invalidChallenge, `Bearer realm="plurnk", error="invalid_token", error_description="The access token is unknown, expired or revoked.", ${metadata}`);
+
+        const refresh = seam.credentials.issue({ kind: "refresh", subject: "operator", clientId: "operator", scopes: ["agui"], family: "f2", ttlMs: 60_000 }).token;
+        const { body: refreshRejected } = await problem("/agui", {
+            method: "POST",
+            headers: { authorization: `Bearer ${refresh}` },
+            body: "{}"
+        });
+        assert.equal(refreshRejected.type, "https://problems.plurnk.xyz/agui/http/bearer-token-invalid");
+
+        const wrongScope = seam.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["a2a"], family: "f3", ttlMs: 60_000 }).token;
+        const { body: insufficient, challenge: scopeChallenge } = await problem("/agui", {
+            method: "POST",
+            headers: { authorization: `Bearer ${wrongScope}` },
+            body: "{}"
+        });
+        assert.equal(insufficient.type, "https://problems.plurnk.xyz/agui/http/bearer-scope-insufficient");
+        assert.equal(insufficient.status, 403);
+        assert.equal(scopeChallenge, `Bearer realm="plurnk", error="insufficient_scope", scope="agui", ${metadata}`);
+
+        const { body: invalidJson } = await problem("/agui", {
             method: "POST",
             headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
             body: "{",
@@ -3348,7 +3383,7 @@ test("{§credential-authority} PLURNK-owned HTTP failures use application/proble
         assert.equal(invalidJson.status, 400);
         assert.equal(invalidJson.stage, "request-validation");
 
-        const invalidInput = await problem("/agui", {
+        const { body: invalidInput } = await problem("/agui", {
             method: "POST",
             headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
             body: "{}",
@@ -3356,7 +3391,7 @@ test("{§credential-authority} PLURNK-owned HTTP failures use application/proble
         assert.equal(invalidInput.type, "https://problems.plurnk.xyz/agui/http/invalid-run-input");
         assert.ok(Array.isArray(invalidInput.issues));
 
-        const missingRoute = await problem("/agui/missing", {
+        const { body: missingRoute } = await problem("/agui/missing", {
             method: "GET",
             headers: { authorization: `Bearer ${access}` },
         });
@@ -3379,14 +3414,14 @@ test("{§agui-entry-route}: an address is served as the channel it selects, type
             } } }
             : missing(args);
     };
-    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
     const base = `http://127.0.0.1:${mod.address().port}`;
     const at = (address: string): string => `${base}/agui/3/77/entry?${new URLSearchParams({ target: address })}`;
     try {
         const refused = await fetch(at("log:///1/2/3/READ"));
         assert.equal(refused.status, 401, "the perimeter admits an address request as it admits a Run");
         assert.deepEqual(reads, [], "nothing is read for a request the perimeter refused");
-        const authorization = { authorization: `Bearer ${await mintAccess(mod.address().port, { id: "operator", secret: "expected" })}` };
+        const authorization = { authorization: `Bearer ${seam.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["agui"], family: "f", ttlMs: 60_000 }).token}` };
         const body = await fetch(at("log:///1/2/3/READ"), { headers: authorization });
         assert.equal(body.status, 200);
         assert.equal(body.headers.get("content-type"), "text/markdown; charset=utf-8", "typed as core types the channel");
@@ -4648,22 +4683,26 @@ test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a 
     } finally { await mod.close(); }
 });
 
-const mintAccess = async (port: number, client: { id: string; secret: string }): Promise<string> => {
-    const response = await fetch(`http://127.0.0.1:${port}/oauth/token`, {
-        method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ grant_type: "client_credentials", client_id: client.id, client_secret: client.secret }).toString(),
-    });
-    const body = await response.json() as { access_token?: string; error?: string };
-    assert.equal(response.status, 200, JSON.stringify(body));
-    return body.access_token!;
+const mintAccess = (seam: ApplicationPort, clientId = "operator"): { readonly token: string; readonly family: string } => {
+    const family = `family-${Math.random()}`;
+    return {
+        token: seam.credentials.issue({
+            kind: "access",
+            subject: clientId === "operator" ? "operator" : clientId,
+            clientId,
+            scopes: ["agui"],
+            family,
+            ttlMs: 60_000,
+        }).token,
+        family,
+    };
 };
 
 test("{§agui-run-source} {§agui-http-authorization} authentication is a perimeter gate: any admitted credential submits under agui://operator", async () => {
     const { seam } = mockSeam("s3cret");
     const sources: string[] = [];
     const mod = await host(seam, { env: {
-        ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0",
-        PLURNK_AGUI_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["agui"] }),
+        ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0",
     } });
     try {
         const port = mod.address().port;
@@ -4681,8 +4720,8 @@ test("{§agui-run-source} {§agui-http-authorization} authentication is a perime
             controller.abort();
             await response.then((r) => r.text()).catch(() => undefined);
         };
-        await prompt(`Bearer ${await mintAccess(port, { id: "operator", secret: "s3cret" })}`);
-        await prompt(`Bearer ${await mintAccess(port, { id: "agent", secret: "agent-secret" })}`);
+        await prompt(`Bearer ${mintAccess(seam, "operator").token}`);
+        await prompt(`Bearer ${mintAccess(seam, "agent").token}`);
         assert.deepEqual(sources.map((source) => source.replace(/\/messages\/.*$/u, "")), [
             "agui://operator/threads/agui-t",
             "agui://operator/threads/agui-t",
@@ -4695,11 +4734,11 @@ test("{§agui-oauth-revocation} {§agui-overview} revoking a credential ends the
     existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
-    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
     const controllers = [new AbortController(), new AbortController(), new AbortController()];
     try {
         const port = mod.address().port;
-        const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
+        const [revoked, kept] = [mintAccess(seam), mintAccess(seam)];
         const open = async (token: string, index: number): Promise<Response> => {
             const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
                 method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index].signal,
@@ -4708,18 +4747,14 @@ test("{§agui-oauth-revocation} {§agui-overview} revoking a credential ends the
             assert.equal(response.status, 200);
             return response;
         };
-        const ending = await open(revoked, 0);
-        const surviving = await open(kept, 1);
+        const ending = await open(revoked.token, 0);
+        const surviving = await open(kept.token, 1);
         const overview = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
-            method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${revoked}` }, signal: controllers[2].signal,
+            method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${revoked.token}` }, signal: controllers[2].signal,
             body: JSON.stringify(standardInput({ threadId: "overview", messages: [], forwardedProps: { plurnk: { overview: {} } } })),
         });
         assert.equal(overview.status, 200);
-        const revocation = await fetch(`http://127.0.0.1:${port}/oauth/revoke`, {
-            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token: revoked, client_id: "operator", client_secret: "s3cret" }).toString(),
-        });
-        assert.equal(revocation.status, 200);
+        seam.credentials.revokeFamily(revoked.family);
         const body = await ending.text();
         const events = body.split("\n\n").filter((frame) => frame.startsWith("data: ")).map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
         assert.equal(runProblem(events)?.type, "https://problems.plurnk.xyz/agui/http/credential-revoked", JSON.stringify(events.map(({ type }) => type)));
@@ -4743,7 +4778,7 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
     existingWorkspace(seam, "w");
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
-    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AUTH: "1", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
+    const mod = await host(seam, { env: { ...FLOOR, PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" } });
     const controllers = Array.from({ length: 3 }, () => new AbortController());
     const messageId = "model-call-21/request-1/reasoning";
     const reasoning = (phase: "start" | "content" | "end", delta?: string): void => emit(3, "reasoning/event", {
@@ -4764,7 +4799,7 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
     let closing: Promise<void> | undefined;
     try {
         const port = mod.address().port;
-        const [revoked, kept] = await Promise.all([mintAccess(port, { id: "operator", secret: "s3cret" }), mintAccess(port, { id: "operator", secret: "s3cret" })]);
+        const [revoked, kept] = [mintAccess(seam), mintAccess(seam)];
         const open = async (token: string, index: number): Promise<Response> => {
             const response = await fetch(`http://127.0.0.1:${port}/agui/connect`, {
                 method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, signal: controllers[index].signal,
@@ -4773,20 +4808,16 @@ test("{§agui-oauth-revocation} {§agui-shutdown} {§agui-readable-reasoning} a 
             assert.equal(response.status, 200);
             return response;
         };
-        const ending = await open(revoked, 0);
-        const watching = await open(kept, 1);
+        const ending = await open(revoked.token, 0);
+        const watching = await open(kept.token, 1);
         reasoning("start");
         reasoning("content", "Thinking");
-        const revocation = await fetch(`http://127.0.0.1:${port}/oauth/revoke`, {
-            method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token: revoked, client_id: "operator", client_secret: "s3cret" }).toString(),
-        });
-        assert.equal(revocation.status, 200);
+        seam.credentials.revokeFamily(revoked.family);
         const revokedEvents = frames(await ending.text());
         assert.ok(revokedEvents.some((event) => event.type === "REASONING_MESSAGE_START" && event.messageId === messageId), "the revoked Run was streaming the request");
         endsBalanced(revokedEvents, "https://problems.plurnk.xyz/agui/http/credential-revoked");
 
-        const joining = await open(kept, 2);
+        const joining = await open(kept.token, 2);
         reasoning("content", " further");
         mod.stop();
         const bodies = Promise.all([watching.text(), joining.text()]);

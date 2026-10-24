@@ -66,6 +66,8 @@ extensions included in the default installation. The terminal client is a separa
   (`parseStatements`, for client-authored blocks) and `plurnk-execs`
   (`parseStatements` and `frame`, for runtime invocation and teaching examples);
   no other package parses the language.
+- `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
+  `/oauth/*`) for the daemon's credential authority.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-modules` owns the daemon module contract: the lifecycle a module

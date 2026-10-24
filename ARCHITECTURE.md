@@ -79,6 +79,7 @@ package; this root document does not restate their teaching.
 | Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
+| OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
@@ -323,7 +324,7 @@ a second home for a choice, and it will eventually disagree with the first.
 - **A daemon is one trust domain with one credential authority.** Every
   credential presented to the listener, whatever protocol is mounted there, was
   issued by the daemon ({§credential-authority}): `plurnk-core` holds the
-  records, `plurnk-agui` is the OAuth 2.1 face that issues them ({§agui-oauth}),
+  records, `plurnk-auth` is the OAuth 2.1 face that issues them ({§auth-oauth}),
   and every mounted resource verifies through the same seam. The operator signs
   in from a browser; the operator's own tools exchange the minted secret; a
   remote agent is a declared client with its own revocable credentials. What the

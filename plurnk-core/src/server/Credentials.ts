@@ -25,7 +25,7 @@ export default class Credentials implements CredentialAuthority {
     readonly operatorSecret: string | null;
     readonly #live = new Map<string, CredentialClaims>();
     // A refresh token retired by rotation stays known until it would have expired, so a second
-    // presentation is recognized as reuse and ends its family ({§agui-oauth-tokens}).
+    // presentation is recognized as reuse and ends its family ({§auth-oauth-tokens}).
     readonly #retired = new Map<string, { readonly family: string; readonly expiresAt: number }>();
     readonly #listeners = new Set<(family: string) => void>();
     // {§credential-sessions} — when each family holding a live credential was first issued into.

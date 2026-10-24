@@ -145,7 +145,7 @@ export const probeInstalledDaemon = async ({
         if (child.exitCode !== null || child.signalCode !== null) {
             throw new Error(`installed daemon exited before its listener probe (${child.exitCode ?? child.signalCode})`);
         }
-        // {§agui-http-authorization} {§agui-oauth-clients}: the probe exercises the
+        // {§agui-http-authorization} {§auth-oauth-clients}: the probe exercises the
         // shipped authentication posture with its own credential, never the operator's.
         const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
         await listenerProblem(response, 401, "bearer-token-required");

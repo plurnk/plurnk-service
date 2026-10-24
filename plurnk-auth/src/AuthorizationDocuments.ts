@@ -1,4 +1,4 @@
-// {§agui-oauth-documents} — the documents the authorization server shows a person: semantic HTML with
+// {§auth-oauth-documents} — the documents the authorization server shows a person: semantic HTML with
 // no script and no class, readable on their own, and styled by a module client's registered stylesheet
 // on that client's requests. Pure: the server decides which document and which stylesheet.
 
@@ -74,7 +74,7 @@ const STANDALONE = ":root{color-scheme:light dark}body{font:16px/1.5 system-ui,s
     + "[role=alert]{color:#b3261e}@media (prefers-color-scheme:dark){[role=alert]{color:#f2b8b5}}";
 
 /**
- * {§agui-oauth-documents} The complete document and its content security policy: the registered
+ * {§auth-oauth-documents} The complete document and its content security policy: the registered
  * stylesheet, same-origin, in place of the standalone style when one applies.
  */
 export const renderAuthorizationDocument = (document: AuthorizationDocument, stylesheet: string | null): { readonly html: string; readonly policy: string } => ({
@@ -86,7 +86,7 @@ export const renderAuthorizationDocument = (document: AuthorizationDocument, sty
 });
 
 /**
- * {§agui-oauth-documents} Every document the authorization server serves, rendered with placeholder
+ * {§auth-oauth-documents} Every document the authorization server serves, rendered with placeholder
  * values, for a consumer whose production CSS pruning must keep the selectors they use.
  */
 export const authorizationDocumentSpecimens = (): readonly string[] => {

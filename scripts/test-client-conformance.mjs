@@ -62,7 +62,7 @@ const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
 const project = join(temp, "project");
 
-// {§credential-authority} {§agui-oauth-clients} — the daemon under test authenticates (the shipped
+// {§credential-authority} {§auth-oauth-clients} — the daemon under test authenticates (the shipped
 // PLURNK_AUTH=1) with a configured operator secret, the posture of a tool on another host or under
 // another user: every client exchanges it for access tokens through its own env cascade, and this
 // harness drives AguiTransport directly with the same value.
@@ -381,7 +381,7 @@ try {
     const { actionViaAgui } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "agui.js",
     )).href);
-    // {§agui-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
+    // {§auth-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
     const { default: Credential } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
     )).href);

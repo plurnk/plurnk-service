@@ -26,7 +26,6 @@ import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } 
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
-import OAuthServer from "./OAuthServer.ts";
 import RunHandler, { forwardedRefusal, type RunPort, type WorkerBinding } from "./RunHandler.ts";
 import ThreadAddress from "./ThreadAddress.ts";
 import { MessageScheme } from "@plurnk/plurnk-schemes";
@@ -93,9 +92,7 @@ interface RegisteredAction extends AguiActionContract {
     readonly execute: ActionExecutor;
 }
 
-// {§credential-authority} — at setup the module publishes the authority's issuing face, before any
-// start, and takes the listener's address so the face answers its issuer from then on ({§http-host}).
-export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "credentials" | "httpAddress">;
+export type AguiSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
 
 // {§agui-action-binding} The actions addressed to the thread's worker: those that set its durable
 // policy create it, the rest require it, and those that take an explicit `workerId` require it only
@@ -114,14 +111,12 @@ const WORKER_NAMING_ACTIONS: ReadonlySet<string> = new Set([
 const WORKSPACE_ATTACHING_ACTIONS: ReadonlySet<string> = new Set(["workspace.hidden.set"]);
 
 export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
-    // {§module-http-mounts} — the client protocol owns its own prefix and, when it authenticates, the
-    // authorization server's ({§agui-oauth-endpoints}).
-    readonly mounts: readonly string[];
+    // {§module-http-mounts} — the client protocol owns its own prefix.
+    readonly mounts: readonly string[] = Object.freeze(["/agui"]);
     #seam!: AguiPort;
     #listener!: AguiSetupSeam["httpAddress"];
     readonly #opts: ResolvedModuleOptions;
     #portal!: Portal;
-    #oauth: OAuthServer | null = null;
     #offRevoked: (() => void) | null = null;
     #workspaceEnvelopes = new Map<string, ClientEnvelope>();
     #threadWorkers = new Map<string, Promise<number>>();
@@ -139,21 +134,16 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         bounds: () => ({ limit: this.#opts.overviewWorkers, excerptChars: this.#opts.excerptChars, heartbeatMs: this.#opts.heartbeatMs }),
         track: this.#track.bind(this),
     });
-    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#issuer(req), track: this.#track.bind(this), overview: () => this.#overview });
+    readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, stopping: () => this.#stopped, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversation: this.#conversation.bind(this), boundWorker: this.#boundWorker.bind(this), actionBinding: this.#actionBinding.bind(this), workerGauge: this.#workerGauge.bind(this), action: this.#action.bind(this), origin: (req) => this.#origin(req), track: this.#track.bind(this), overview: () => this.#overview });
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
-        this.mounts = Object.freeze(this.#opts.authenticates
-            ? ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]
-            : ["/agui"]);
     }
 
-    // {§agui-oauth-endpoints} — the issuer: the configured public origin, else the origin the request
-    // reached this daemon at, else, with no request in hand, the listener's own ({§http-request-origin}).
-    // The host binds its listener before any module sets up ({§http-host}), so the face published at
-    // setup answers from publication.
-    #issuer(req: RequestHeaders = { headers: {} }): string {
-        return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());
+    // {§http-request-origin} — the authority's issuer when published, else the origin the request
+    // reached this daemon at, else, with no request in hand, the listener's own.
+    #origin(req: RequestHeaders = { headers: {} }): string {
+        return this.#seam.credentials.face()?.issuer(req) ?? requestOrigin(req, this.#listener());
     }
 
     // {§agui-configuration} — the module reads its settings from the assembled environment;
@@ -220,9 +210,6 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
     async setup(seam: AguiSetupSeam): Promise<void> {
         await seam.registerScheme("agui", new MessageScheme("agui"));
         this.#listener = () => seam.httpAddress();
-        // {§agui-oauth} — under PLURNK_AUTH=1 the face says so to every mounted resource before any
-        // module starts ({§module-phases}); the daemon refuses to run authenticating without one.
-        if (this.#opts.authenticates) seam.credentials.publish({ issuer: (req) => this.#issuer(req) });
     }
 
     // {§agui-listener-admission} — the host admits traffic after every module has started.
@@ -236,18 +223,11 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         this.#portal = new Portal(seam, { loops: this.#opts.historyLoops, chars: this.#opts.historyPageChars }, this.#track.bind(this));
         this.#portal.start();
         this.#overview.start();
-        if (this.#opts.authenticates) {
-            // {§agui-oauth} — the authority's issuing face mounts beside the resource it protects.
-            this.#oauth = new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: (req) => this.#issuer(req) });
-            for (const prefix of this.mounts) {
-                if (prefix !== "/agui") seam.registerHttpRoute(prefix, (req, res) => this.#oauthRoute(req, res));
-            }
-            // {§agui-oauth-revocation} — a revoked family's open Runs end; their loops continue.
-            this.#offRevoked = seam.credentials.onRevoked((family) => {
-                this.#portal.failFamily(family, runErrorEvents(credentialRevokedProblem()));
-                this.#overview.failFamily(family, runErrorEvents(credentialRevokedProblem()));
-            });
-        }
+        // {§agui-oauth-revocation} — a revoked family's open Runs end; their loops continue.
+        this.#offRevoked = seam.credentials.onRevoked((family) => {
+            this.#portal.failFamily(family, runErrorEvents(credentialRevokedProblem()));
+            this.#overview.failFamily(family, runErrorEvents(credentialRevokedProblem()));
+        });
         this.#activated = true;
     }
 
@@ -274,25 +254,43 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         return work;
     }
 
-    async #oauthRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.#stopped) {
-            writeHttpProblem(res, serviceStoppingProblem());
-            return;
+    // {§agui-http-authorization} — bearer admission for the AG-UI resource (RFC 6750 §3).
+    #admit(req: IncomingMessage, issuer: string):
+        | { readonly ok: true; readonly family: string }
+        | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string } {
+        const header = req.headers.authorization;
+        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${issuer}/.well-known/oauth-protected-resource"`;
+        const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
+        if (presented === null) {
+            return {
+                ok: false,
+                challenge: challenge(""),
+                problem: httpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
+                    stage: "authorization", recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.", retryable: false,
+                }),
+            };
         }
-        return this.#track(this.#oauthRouteAdmitted(req, res));
-    }
-
-    async #oauthRouteAdmitted(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.#opts.allowOrigin.length > 0) {
-            res.setHeader("access-control-allow-origin", this.#opts.allowOrigin);
-            res.setHeader("access-control-allow-headers", "content-type, authorization");
+        const token = (presented[1] ?? "").trim();
+        const claims = this.#seam.credentials.verify(token);
+        if (claims === null || claims.kind !== "access") {
+            return {
+                ok: false,
+                challenge: challenge(', error="invalid_token", error_description="The access token is unknown, expired or revoked."'),
+                problem: httpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
+                    stage: "authorization", recovery: "Obtain a new access token from this daemon's token endpoint.", retryable: false,
+                }),
+            };
         }
-        if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
-        if (this.#oauth === null || !(await this.#oauth.handle(req, res))) {
-            writeHttpProblem(res, httpProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
-                method: req.method ?? null, path: req.url ?? null, stage: "routing", retryable: false,
-            }));
+        if (!claims.scopes.includes("agui")) {
+            return {
+                ok: false,
+                challenge: challenge(', error="insufficient_scope", scope="agui"'),
+                problem: httpProblem("bearer-scope-insufficient", 403, "The access token does not carry the scope agui.", {
+                    stage: "authorization", scope: "agui", recovery: "Obtain an access token with the scope agui.", retryable: false,
+                }),
+            };
         }
+        return { ok: true, family: claims.family };
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -317,8 +315,9 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
             // The perimeter ({§agui-http-authorization}): bearer admission before any body read.
             let family: string | null = null;
-            if (this.#oauth !== null) {
-                const admission = this.#oauth.admit(req, "agui");
+            const face = this.#seam.credentials.face();
+            if (face !== null) {
+                const admission = this.#admit(req, face.issuer(req));
                 if (!admission.ok) {
                     res.setHeader("www-authenticate", admission.challenge);
                     writeHttpProblem(res, admission.problem);
@@ -413,7 +412,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         // The daemon refuses a worker outside the workspace as it reads the worker's log.
         const entries = await this.#runs.history(workspaceId, workerId);
         const view = {
-            workspaceId, workerId, threadId, origin: this.#issuer(req), replyThreads: await this.#runs.replyThreads(workspaceId, workerId, threadId),
+            workspaceId, workerId, threadId, origin: this.#origin(req), replyThreads: await this.#runs.replyThreads(workspaceId, workerId, threadId),
             descendants: query.get("descendants") === "true", reasoningByLink: query.get("reasoning") === "link",
         };
         const history = (descendant: number) => this.#runs.history(workspaceId, descendant);

@@ -1030,105 +1030,9 @@ An operation Run owns an execution from the row that announces it; the runtime W
 read-only management Run can therefore never replay reasoning, operation rows,
 or turn disposition from an active worker.
 
-## §agui-oauth Authentication
+## §agui-oauth-revocation Credential revocation
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§agui-oauth-authority} | One authority, scoped by resource. |
-| {§agui-oauth-endpoints} | The endpoints live on the daemon's listener, under the issuer. |
-| {§agui-oauth-clients} | Four kinds of client. |
-| {§agui-oauth-session} | A browser is the operator only once it signs in. |
-| {§agui-oauth-documents} | The authorization server's documents are plain semantic HTML. |
-| {§agui-oauth-login} | The operator signs in at the authorization endpoint. |
-| {§agui-oauth-tokens} | Credentials are opaque and bounded. |
-| {§agui-oauth-revocation} | Revocation reaches what is open. |
-<!-- /map -->
-
-AG-UI is the OAuth 2.1 authorization server of the daemon's one credential authority
-({§credential-authority}): it issues every credential the listener admits and verifies them for
-`/agui` ({§agui-http-authorization}). The daemon authenticates under the shared `PLURNK_AUTH=1`
-({§operator-config-shared-keys}), the shipped posture, and never by inference from what else is
-set: then the module publishes the authority's face at setup and serves the endpoints below. Under
-`PLURNK_AUTH=0` it publishes nothing, serves none of them, and admits every request.
-
-§agui-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the
-resources it may reach; `agui` names the client interface and `a2a` the hosted A2A exposure
-({§a2a-hosted-credentials}), and a mounted resource admits only a token carrying its own scope. Grants are authorization code with PKCE (`S256`, required) for public
-clients, `client_credentials` for confidential clients, and `refresh_token`; no password or implicit
-grant exists (RFC 9700). Nothing about a credential is interpreted by a consumer: every answer about
-one comes from the authority.
-
-§agui-oauth-endpoints **The endpoints live on the daemon's listener, under the issuer.** The issuer
-is `PLURNK_AGUI_ISSUER`, or, when that is empty, the origin each request reached the daemon at
-({§http-request-origin}), answered from setup: the host has bound its listener by then ({§http-host}). The module claims and
-mounts them beside `/agui` ({§module-http-mounts}):
-
-| Path | Standard | Contract |
-|---|---|---|
-| `/.well-known/oauth-authorization-server` | RFC 8414 | The issuer, its endpoints, `code` as the response type, the three grant types, `S256`, the client authentication methods (`client_secret_basic`, `client_secret_post`, `none`) and the scopes. |
-| `/.well-known/oauth-protected-resource` | RFC 9728 | The resource `<issuer>/agui`, this issuer as its authorization server, its scopes and `header` as the bearer method; every 401 from `/agui` names this document. |
-| `GET`/`POST /oauth/authorize` | RFC 6749 §4.1, RFC 7636 | The sign-in page ({§agui-oauth-login}) and the authorization code: sixty seconds, bound to the client, the redirect, the challenge, the scopes and a family, the browser session's for a module's own client and a fresh one for any other ({§agui-oauth-session}), spent by its first presentation whatever the outcome. |
-| `POST /oauth/token` | RFC 6749 §5, RFC 8707 | The grants; `resource`, when present, must be `<issuer>/agui`. Errors use the §5.2 JSON (`invalid_request`, `invalid_client` as 401 with a `Basic` challenge when Basic was used, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`, `invalid_target`). |
-| `POST /oauth/revoke` | RFC 7009 | Revokes the family of a live token the authenticated client owns; any other token answers 200 and revokes nothing. |
-| `POST /oauth/register` | RFC 7591 | Registers a public client (`token_endpoint_auth_method: none`) with absolute http(s) redirect URIs; a confidential client is declared, never registered. |
-| `GET`/`POST /oauth/session` | — | The browser's standing ({§agui-oauth-session}): `GET` says whether this browser holds a session; `POST` with `action=end` revokes it and clears the cookie. |
-
-Every response is uncacheable; OPTIONS answers 204 and the CORS headers follow {§agui-cors}. A redirect
-URI must match a registered one exactly, except that a registered public client's loopback redirect
-may change its port (RFC 8252 §7.3). A module's own client is answered only at the issuer followed
-by a path it registered ({§credential-module-client}), with no exception: under a configured issuer
-no other origin is its address. A request naming an unregistered client or redirect is answered to the person,
-never redirected; any other malformed request is redirected with its `error` and `state`.
-
-§agui-oauth-clients **Four kinds of client.** A scope a module client registered that this server does not issue is the module's fault and fails the request as a server error, never as a narrowed grant; a declared client may not take a module client's id.
-
-| Client | Kind | Secret | Scopes | Grants and subject |
-| --- | --- | --- | --- | --- |
-| `operator`, the operator's own | confidential | the authority's operator secret ({§credential-authority}): the shared `PLURNK_SECRET` when set, otherwise the one the daemon mints at boot into the file beside its database; an authority without an operator secret has no `operator` client, and the operator's tools have no way in but the sign-in | every scope | the terminal client, scripts and the bench exchange it for access tokens with `client_credentials` |
-| A declared client, `PLURNK_AGUI_CLIENT_<id>={"secret":"…","scopes":[…]}` | confidential | as declared | only the scopes declared | its tokens name it as their subject; removing its line and restarting revokes them |
-| A registered client | public: nothing to keep, authenticates by its id alone | none | as registered | only the code grant with PKCE and refresh; its tokens name the operator who signed in; may not use `client_credentials` (`unauthorized_client`) |
-| A module's own client, one a module of this daemon registered on the authority ({§credential-module-client}) | confidential, as RFC 10017 §6.2.3.1 requires of a backend that holds tokens for a page | the secret the authority minted and checks, by `client_secret_basic` or `client_secret_post` | as registered | the code grant with PKCE and refresh, its tokens naming the operator who authorized it; may not use `client_credentials` (`unauthorized_client`): it stands for the operator, never for itself |
-
-§agui-oauth-session **A browser is the operator only once it signs in.** The browser's standing is a `session` credential of the authority ({§credential-authority}), presented as the cookie `plurnk_session` (`HttpOnly`, `SameSite=Lax`, `Path=/oauth`, `Secure` under an https issuer), living as long as a refresh token and revoked by `POST /oauth/session` with `action=end`, which also clears the cookie; a session is never a bearer. Signing in with `PLURNK_PASS` ({§agui-oauth-login}) is the only way a session is established, wherever the browser runs: while it is empty, every browser is told so, and where to set it, at 503 and no session exists.
-
-| Client | What the session does for it |
-| --- | --- |
-| A module's own client ({§agui-oauth-clients}) | this daemon's by registration, and the operator's session authorizes it silently; having no standing apart from that sign-in, its grant joins the session's family, so revoking the family from either side, by `/oauth/session` or by the module's own sign-out, ends the browser's standing here and the module's credentials together, and a code not yet exchanged ends with them; the next visit after a sign-out meets the sign-in form |
-| Any other client, wherever its redirect points | shown a consent page naming it and its scopes, and only a `POST` carrying the session that preceded the request issues the code (`consent=allow`) or declines it (`consent=deny`, `access_denied` to the redirect), so a page elsewhere, whose cross-site POST carries no cookie and whose top-level GET cannot click, obtains nothing |
-
-Every request under the authorization server's paths is answered at the address it reached the daemon by ({§http-request-origin}): no `Host` is refused, so a page that rebinds a name to the daemon's address reaches it under that name. Every page it serves carries `frame-ancestors 'none'`.
-
-§agui-oauth-documents **The authorization server's documents are plain semantic HTML.** Every page it shows a person (sign-in, a refused password, too many attempts, no password, consent, a refused request, and the session page) is HTML with no script and no class. `authorizationDocumentSpecimens()` renders every one of these documents, for a consumer whose production CSS pruning must keep the selectors they use.
-
-| Fact | Rule |
-| --- | --- |
-| Structure | a `main` holding one `article` whose `header` carries the `h1`, paragraphs, and native form controls each named by its `label`; a page that reports a fault puts a warning glyph (`role="img"`, `aria-label="Warning"`) in its heading, and a refused password is an alert (`role="alert"`) |
-| Style | a page carries its own small inline style, readable alone in either color scheme |
-| A module client's stylesheet | on a request whose `client_id` names a module client that registered a stylesheet ({§credential-module-client}), the page links that stylesheet in place of its own style, and its policy admits same-origin styles only (`style-src 'self'`); the session page takes an optional `client_id` for the same purpose and carries it through its sign-out |
-| Any other request | can name a registered client and nothing else: no page links a stylesheet a request supplies, and a client that is unknown, not a module's or registered none gets the standalone page |
-
-§agui-oauth-login **The operator signs in at the authorization endpoint.** The sign-in page is plain HTML with no script: it names the client and the scopes it asks for and posts the operator's shared password, `PLURNK_PASS`, compared in constant time. There is one local operator: the password selects no account, and the session's subject is the operator's whatever the password is, so changing it changes who can sign in, never who they are or what they own.
-
-| Password | Result |
-| --- | --- |
-| Wrong | the form again, at 401 |
-| Right | the browser's session ({§agui-oauth-session}) and a redirect with the code and the `state` |
-| Empty (`PLURNK_PASS` ships empty) | every browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing; client credentials are unaffected |
-| Many attempts | the daemon does not throttle failed attempts: limiting requests by their real source is the job of a front such as the example nginx configuration ({§nginx-example}), which sees addresses a proxied daemon cannot |
-
-§agui-oauth-tokens **Credentials are opaque and bounded.** An access token lives
-`PLURNK_AGUI_ACCESS_TTL_SEC`, a refresh token `PLURNK_AGUI_REFRESH_TTL_SEC`; both are random strings the
-authority holds in memory, so a daemon restart revokes every credential and a client simply
-acquires again. A refresh token rotates: each use consumes it and answers a new access token and a
-new refresh token of the same family, with the same or a narrower scope; a consumed refresh token
-presented again is reuse, and reuse revokes the whole family (RFC 9700 §4.14). A code grant and a
-refresh grant answer a refresh token; `client_credentials` answers an access token alone, renewed
-with the secret.
-
-§agui-oauth-revocation **Revocation reaches what is open.** Revoking a family, by the revocation
-endpoint, by refresh-token reuse, by a code presented twice or by ending a browser's session, which
-for a module's own client is the same family ({§agui-oauth-session}), ends every Run admitted under that
+Revoking a family ({§auth-oauth-tokens}, {§auth-oauth-session}) ends every Run admitted under that
 family with the 401 `credential-revoked` Problem and `RUN_ERROR`, exactly as shutdown ends a Run
 ({§agui-shutdown}); the loops those Runs observed continue, because a revoked observer is not a
 cancelling one ({§agui-run-disconnect}). Expiry is checked at admission only: an admitted stream
@@ -1145,12 +1049,6 @@ address is the daemon's.
 | Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
 | ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
 | `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | The daemon's one listener ({§http-host}); AG-UI reads neither. |
-| `PLURNK_AUTH`                      | Shared  | Invalid; the shared panel is required  | `1` or `0`                          | The daemon's posture ({§credential-authority}, {§operator-config-shared-keys}): authenticate, or admit anonymously. |
-| `PLURNK_SECRET`                    | Shared  | The daemon mints one at boot           | Any non-empty string                | The operator's client secret ({§agui-oauth-clients}), what the operator's own tools exchange for access tokens. |
-| `PLURNK_AGUI_ISSUER`               | AG-UI   | The origin each request reached ({§http-request-origin}) | An absolute http(s) origin          | The authorization server's issuer, the public origin clients reach ({§agui-oauth-endpoints}). |
-| `PLURNK_PASS`                      | Shared  | Empty: no browser signs in until it is set ({§agui-oauth-session}) | Any string             | The operator's browser sign-in password ({§agui-oauth-login}). |
-| `PLURNK_AGUI_ACCESS_TTL_SEC` / `PLURNK_AGUI_REFRESH_TTL_SEC` | AG-UI | Invalid; the package floor is required | Positive safe integers | Credential lifetimes ({§agui-oauth-tokens}). |
-| `PLURNK_AGUI_CLIENT_<id>`          | AG-UI   | No declared clients                    | `{"secret": "…", "scopes": ["agui"]}` | One confidential client per line ({§agui-oauth-clients}); `operator` is reserved. |
 | `PLURNK_AGUI_ALLOW_ORIGIN`         | AG-UI   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§agui-cors}). |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
@@ -1218,7 +1116,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | `loop.inject` | normalizes its prompt into a user message with a server-generated message ID and the injecting Run's thread/envelope; it follows this same source and reply contract |
 | A SEND to this exact address | answers this message under {§send-response-receipt}; it does not create another inbound request; standard AG-UI assistant messages and history replay carry the reply, independently of whether the loop can yet conclude |
 
-§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. Authentication is a perimeter gate only: once admitted, every request acts as the workspace operator (`agui://operator`, {§agui-worker-owner}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
+§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§auth-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. Authentication is a perimeter gate only: once admitted, every request acts as the workspace operator (`agui://operator`, {§agui-worker-owner}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
 
 | Refusal, an RFC 6750 challenge (`WWW-Authenticate: Bearer` naming the realm and the RFC 9728 resource metadata) beside its Problem | Status |
 | --- | --- |

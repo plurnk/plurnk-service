@@ -1,0 +1,69 @@
+{
+    "name": "@plurnk/plurnk-auth",
+    "version": "1.0.0",
+    "description": "OAuth 2.1 authorization server module for the Plurnk daemon.",
+    "keywords": [
+        "plurnk",
+        "oauth2",
+        "authentication",
+        "authorization"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-auth#readme",
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-auth"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "dependencies": {
+        "@plurnk/plurnk-contracts": "^6.0.0",
+        "@plurnk/plurnk-meta": "^2.1.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-modules": "^4.0.0"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./module": {
+            "plurnk-dev": "./src/daemon-module.ts",
+            "types": "./dist/daemon-module.d.ts",
+            "default": "./dist/daemon-module.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "plurnk": {
+        "kind": "module",
+        "module": "./module"
+    },
+    "files": [
+        ".env.defaults",
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "scripts": {
+        "test": "npm run test:lint && npm run test:unit",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} \"src/**/*.test.ts\"",
+        "build:clean": "rm -rf dist",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:clean && npm run build:dist",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
+    }
+}

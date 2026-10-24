@@ -28,7 +28,7 @@ advertised HTTP+JSON interface at `/a2a` on the service listener
 authenticates exactly as the daemon does: when the daemon authenticates, the
 card declares OAuth 2.0 client credentials at the daemon's token endpoint with
 the scope `a2a`, and a remote agent is a declared client
-(`PLURNK_AGUI_CLIENT_<id>`); the card itself stays public. Starting the service
+(`PLURNK_AUTH_CLIENT_<id>`); the card itself stays public. Starting the service
 or reading the card does not create or hydrate the workspace; the first
 admitted Task does so.
 

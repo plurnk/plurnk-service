@@ -255,7 +255,7 @@ early ownership introduces neither traffic nor a close/rebind race.
 §http-request-origin **A request's origin is the address the caller used, and what the daemon advertises follows it.** A request's
 origin is the address its `Host` names, over http, or the listener's own for a request that names
 none (`requestOrigin`). Every address the daemon advertises to a caller, the authority's issuer
-({§agui-oauth-endpoints}) and the A2A card's endpoint, is its configured public origin or the origin
+({§auth-oauth-endpoints}) and the A2A card's endpoint, is its configured public origin or the origin
 of the request that asked, so a daemon bound to every interface answers each caller at the address
 that caller used; a module that asks with no request in hand, as one reading the issuer at its
 start does, is answered with the configured origin or the listener's own. A configured origin is for
@@ -264,7 +264,7 @@ a front the daemon cannot see, such as a TLS proxy. No request is refused for th
 §credential-authority **The daemon is one credential authority.** Every credential presented to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials` authority on the application port ({§application-port}): an opaque random token held in memory with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its subject, its client, its scopes, its family and its expiry.
 
 - A restart revokes every credential. Revocation is by family, so an access token and the refresh token that renews it fall together; a refresh token is consumed once, and a second presentation revokes its family and says so.
-- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§agui-http-authorization}), and the client protocol issues through it ({§agui-oauth}).
+- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§agui-http-authorization}), and the authorization server issues through it ({§auth-oauth}).
 - Credentials the daemon presents to others follow the remote party's declared scheme and are never minted here.
 
 The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is never inferred from what else is set:
@@ -281,12 +281,12 @@ The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is
 | `id` | letters, digits, `.`, `_` or `-`, other than `operator` |
 | `redirectPaths` | the absolute pathnames under the module's own mounts it may be answered at, each as a URL carries it, with no query and no fragment |
 | `scopes` | the scopes it may ask for |
-| `stylesheetPath` | optional: the pathname, in the same form, of a stylesheet under its own mounts, which the issuing face links on the documents it serves that client's requests ({§agui-oauth-documents}) |
+| `stylesheetPath` | optional: the pathname, in the same form, of a stylesheet under its own mounts, which the issuing face links on the documents it serves that client's requests ({§auth-oauth-documents}) |
 
-- A module states no origin: it serves only on the daemon's one listener ({§http-host}), so its address is its path on the issuer, and registration needs nothing from the listener, the issuer or another module. The issuing face answers the client at exactly the issuer followed by a registered path ({§agui-oauth-endpoints}), and the module forms the same address from `credentials.face().issuer()`, from its `start` on ({§credential-authority}).
+- A module states no origin: it serves only on the daemon's one listener ({§http-host}), so its address is its path on the issuer, and registration needs nothing from the listener, the issuer or another module. The issuing face answers the client at exactly the issuer followed by a registered path ({§auth-oauth-endpoints}), and the module forms the same address from `credentials.face().issuer()`, from its `start` on ({§credential-authority}).
 - The authority mints the client's secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration without the secret. A second registration of one id and a malformed registration are faults and register nothing.
-- The issuing face authenticates such a client as it does any confidential one ({§agui-oauth-clients}).
-- A module's own browser session is a credential of this authority too: a `session` credential it issues in the family of the authorization grant it stands on, which is the family of the browser's sign-in that authorized it ({§agui-oauth-session}), so revoking that family from either side ends the module's session, its tokens and the browser's standing at the issuing face together.
+- The issuing face authenticates such a client as it does any confidential one ({§auth-oauth-clients}).
+- A module's own browser session is a credential of this authority too: a `session` credential it issues in the family of the authorization grant it stands on, which is the family of the browser's sign-in that authorized it ({§auth-oauth-session}), so revoking that family from either side ends the module's session, its tokens and the browser's standing at the issuing face together.
 
 §credential-sessions **Credential sessions: a browser sign-in is a family, and a subject's sign-ins are listed without a
 token.** `sessions(subject)` answers every family of that subject that holds a live `session`
@@ -4757,7 +4757,7 @@ and environment adjustments instead of introducing a service-management command.
 the unit and under the same terms. Hardening belongs there, not in the daemon: TLS, security
 headers, sign-in throttling by real client address and an optional network allow-list. The
 daemon answers every caller at the address it used ({§http-request-origin}); behind TLS it is
-told the public origin (`PLURNK_AGUI_ISSUER`, and `PLURNK_A2A_ENDPOINT_URL` when it exposes A2A),
+told the public origin (`PLURNK_AUTH_ISSUER`, and `PLURNK_A2A_ENDPOINT_URL` when it exposes A2A),
 which it cannot see.
 
 Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
@@ -4769,7 +4769,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
 | `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§agui-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
+| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§auth-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_AGUI_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |

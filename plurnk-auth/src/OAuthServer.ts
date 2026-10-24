@@ -1,25 +1,24 @@
-// {§agui-oauth} — the daemon's OAuth 2.1 authorization server, the issuing face of the daemon's one
+// {§auth-oauth} — the daemon's OAuth 2.1 authorization server, the issuing face of the daemon's one
 // credential authority ({§credential-authority}): discovery (RFC 8414, RFC 9728), the operator's login
 // and authorization code with PKCE (RFC 6749 §4.1, RFC 7636), client credentials (§4.4), refresh with
 // rotation, revocation (RFC 7009) and public-client registration (RFC 7591), all on the daemon's one
-// listener. Bearer admission for a protected resource is here too (RFC 6750).
+// listener.
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { CredentialAuthority, CredentialClaims, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { CredentialAuthority, CredentialClaims } from "@plurnk/plurnk-contracts";
 import { AuthorizationDocuments, renderAuthorizationDocument, type AuthorizationDocument, type AuthorizationRequest } from "./AuthorizationDocuments.ts";
 import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
-import { httpProblem } from "./run-events.ts";
 
 // Mechanism, not choices ({§operator-config-only-home}); each is registered in the root's mechanism list.
 const CODE_TTL_MS = 60_000;
 const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
-// {§agui-oauth-login} — the one local operator, the subject of every grant made for them whatever password
+// {§auth-oauth-login} — the one local operator, the subject of every grant made for them whatever password
 // signed them in. Their built-in client shares the spelling; a client id is not a subject.
 const OPERATOR_SUBJECT = "operator";
-// {§agui-oauth-session} — the browser session's cookie, scoped to the authorization server's paths.
+// {§auth-oauth-session} — the browser session's cookie, scoped to the authorization server's paths.
 const SESSION_COOKIE = "plurnk_session";
 const BROWSER = "browser";
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/u;
@@ -28,14 +27,14 @@ const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/u;
 interface Client {
     readonly id: string;
     /**
-     * {§agui-oauth-clients} `public` registered itself and holds nothing; `declared` is the operator's
+     * {§auth-oauth-clients} `public` registered itself and holds nothing; `declared` is the operator's
      * own or a configured client, with its secret; `module` is a daemon module's own client, whose
      * secret the authority holds and checks.
      */
     readonly kind: "public" | "declared" | "module";
     /** The secret of a `declared` client; null for the other two kinds. */
     readonly secret: string | null;
-    /** {§agui-oauth-documents} A `module` client's registered stylesheet path; null for every other client. */
+    /** {§auth-oauth-documents} A `module` client's registered stylesheet path; null for every other client. */
     readonly stylesheet: string | null;
     readonly scopes: readonly string[];
     readonly redirectUris: readonly string[];
@@ -50,10 +49,6 @@ interface Code {
     readonly family: string;
     readonly expiresAt: number;
 }
-
-export type Admission =
-    | { readonly ok: true; readonly family: string | null }
-    | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string };
 
 // RFC 6749 §5.2 — an error code, its description and the status it is answered with.
 class OAuthError extends Error {
@@ -128,7 +123,7 @@ export default class OAuthServer {
     readonly #issuer: (req: Pick<IncomingMessage, "headers">) => string;
     readonly #clients = new Map<string, Client>();
     readonly #codes = new Map<string, Code>();
-    // {§agui-oauth-login} — failures per source address within the configured window.
+    // {§auth-oauth-login} — current clock for authorization code expiry and registration timestamps.
     readonly #now: () => number;
     #registered = 0;
 
@@ -142,16 +137,16 @@ export default class OAuthServer {
         this.#opts = opts;
         this.#issuer = issuer;
         this.#now = now;
-        // {§agui-oauth-clients} — the operator's own client holds the authority's operator secret,
+        // {§auth-oauth-clients} — the operator's own client holds the authority's operator secret,
         // configured or minted for this boot ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
         const operatorSecret = credentials.operatorSecret;
         if (operatorSecret !== null) this.#clients.set(OPERATOR_CLIENT, { id: OPERATOR_CLIENT, kind: "declared", secret: operatorSecret, stylesheet: null, scopes: SCOPES, redirectUris: [], name: null });
         for (const [id, declared] of Object.entries(opts.clients)) {
-            if (credentials.client(id) !== null) throw new Error(`PLURNK_AGUI_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
+            if (credentials.client(id) !== null) throw new Error(`PLURNK_AUTH_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, stylesheet: null, scopes: declared.scopes, redirectUris: [], name: null });
         }
-        // {§agui-oauth-session} — a code not yet exchanged ends with the family it would issue into, so
+        // {§auth-oauth-session} — a code not yet exchanged ends with the family it would issue into, so
         // a sign-in ended between authorization and exchange stays ended.
         credentials.onRevoked((family) => {
             for (const [code, pending] of this.#codes) if (pending.family === family) this.#codes.delete(code);
@@ -159,9 +154,12 @@ export default class OAuthServer {
     }
 
     // {§http-request-origin} — every address this server advertises is answered for the request that asks.
-    resource(req: Pick<IncomingMessage, "headers">): string { return `${this.#issuer(req)}/agui`; }
+    resources(req: Pick<IncomingMessage, "headers">): readonly string[] {
+        const issuer = this.#issuer(req);
+        return [issuer, ...SCOPES.map((scope) => `${issuer}/${scope}`)];
+    }
 
-    /** {§agui-oauth-endpoints} RFC 8414 */
+    /** {§auth-oauth-endpoints} RFC 8414 */
     metadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
         const issuer = this.#issuer(req);
         return {
@@ -180,52 +178,16 @@ export default class OAuthServer {
         };
     }
 
-    /** {§agui-oauth-endpoints} RFC 9728 */
+    /** {§auth-oauth-endpoints} RFC 9728 */
     resourceMetadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
+        const issuer = this.#issuer(req);
         return {
-            resource: this.resource(req),
-            authorization_servers: [this.#issuer(req)],
+            resource: issuer,
+            authorization_servers: [issuer],
             scopes_supported: [...SCOPES],
             bearer_methods_supported: ["header"],
-            resource_name: "Plurnk AG-UI",
+            resource_name: "Plurnk",
         };
-    }
-
-    // {§agui-http-authorization} — bearer admission for the AG-UI resource (RFC 6750 §3).
-    admit(req: IncomingMessage, scope: string): Admission {
-        const header = req.headers.authorization;
-        const challenge = (parameters: string): string => `Bearer realm="plurnk"${parameters}, resource_metadata="${this.#issuer(req)}/.well-known/oauth-protected-resource"`;
-        const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
-        if (presented === null) {
-            return {
-                ok: false,
-                challenge: challenge(""),
-                problem: httpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
-                    stage: "authorization", recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.", retryable: false,
-                }),
-            };
-        }
-        const token = (presented[1] ?? "").trim();
-        const claims = this.#credentials.verify(token);
-        if (claims === null || claims.kind !== "access") {
-            return {
-                ok: false,
-                challenge: challenge(', error="invalid_token", error_description="The access token is unknown, expired or revoked."'),
-                problem: httpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
-                    stage: "authorization", recovery: "Obtain a new access token from this daemon's token endpoint.", retryable: false,
-                }),
-            };
-        }
-        if (!claims.scopes.includes(scope)) {
-            return {
-                ok: false,
-                challenge: challenge(`, error="insufficient_scope", scope="${scope}"`),
-                problem: httpProblem("bearer-scope-insufficient", 403, `The access token does not carry the scope ${scope}.`, {
-                    stage: "authorization", scope, recovery: `Obtain an access token with the scope ${scope}.`, retryable: false,
-                }),
-            };
-        }
-        return { ok: true, family: claims.family };
     }
 
     /** Routes one request under `/oauth` or a well-known document; answers true when it was one of ours. */
@@ -258,7 +220,7 @@ export default class OAuthServer {
 
     // ── session ───────────────────────────────────────────────────────────
 
-    // {§agui-oauth-session} — the browser's session is a credential of the authority, presented as a cookie.
+    // {§auth-oauth-session} — the browser's session is a credential of the authority, presented as a cookie.
     #session(req: IncomingMessage): CredentialClaims | null {
         const token = cookieValue(req, SESSION_COOKIE);
         if (token === null) return null;
@@ -280,7 +242,7 @@ export default class OAuthServer {
         res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/oauth; Max-Age=0; HttpOnly; SameSite=Lax`);
     }
 
-    // {§agui-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
+    // {§auth-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
     // this server's. A module client naming a scope this server does not issue is a fault of the module.
     // Its redirect addresses are its registered paths on the issuer, formed when asked.
     #client(id: string, req: Pick<IncomingMessage, "headers">): Client | undefined {
@@ -292,7 +254,7 @@ export default class OAuthServer {
         return { id, kind: "module", secret: null, stylesheet: registered.stylesheetPath ?? null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
     }
 
-    // {§agui-oauth-endpoints} — a module's client is answered only at its path on the issuer; any other
+    // {§auth-oauth-endpoints} — a module's client is answered only at its path on the issuer; any other
     // client at a registered address, a loopback one on any port (RFC 8252 §7.3).
     static #redirects(client: Client, presented: string): boolean {
         return client.kind === "module"
@@ -316,7 +278,7 @@ export default class OAuthServer {
             : AuthorizationDocuments.signedIn(stylesheet === null ? {} : { client_id: clientId! }), stylesheet);
     }
 
-    // {§agui-oauth-documents} — a stylesheet is a module client's registration, which the request can
+    // {§auth-oauth-documents} — a stylesheet is a module client's registration, which the request can
     // only name, never supply.
     #stylesheet(clientId: string | null): string | null {
         return clientId === null ? null : this.#credentials.client(clientId)?.stylesheetPath ?? null;
@@ -376,9 +338,12 @@ export default class OAuthServer {
         const scopes = this.#scopes(params.get("scope"), client);
         if (scopes === null) { fail("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`); return; }
         const resource = params.get("resource");
-        if (resource !== null && resource !== this.resource(req)) { fail("invalid_target", `The resource must be ${this.resource(req)}.`); return; }
+        if (resource !== null && !this.resources(req).includes(resource)) {
+            fail("invalid_target", `The resource must be one of ${this.resources(req).join(", ")}.`);
+            return;
+        }
 
-        // {§agui-oauth-session} — a module's own client is authorized by the browser's sign-in and by
+        // {§auth-oauth-session} — a module's own client is authorized by the browser's sign-in and by
         // nothing else, so its grant joins that sign-in's family: ending either ends both. Any other
         // client's grant is a standing of its own, in a fresh family.
         const issue = (session: CredentialClaims): void => {
@@ -399,7 +364,7 @@ export default class OAuthServer {
                 .filter((name) => params.has(name)).map((name) => [name, params.get(name)!])),
         };
 
-        // {§agui-oauth-session} — a browser is the operator only once it has signed in. A consent
+        // {§auth-oauth-session} — a browser is the operator only once it has signed in. A consent
         // decision counts only with the session the request carries, which a cross-site POST cannot.
         const session = this.#session(req);
         if (session !== null) {
@@ -412,7 +377,7 @@ export default class OAuthServer {
             return;
         }
 
-        // {§agui-oauth-login} — the operator signs in here. Without a password no browser can: the page
+        // {§auth-oauth-login} — the operator signs in here. Without a password no browser can: the page
         // says the password is empty and where to set it, and issues nothing.
         if (this.#opts.password.length === 0) {
             this.#html(res, 503, AuthorizationDocuments.noPassword(), client.stylesheet);
@@ -483,6 +448,7 @@ export default class OAuthServer {
         return client;
     }
 
+    // {§auth-oauth-tokens} — issues access and refresh tokens across authorization_code, refresh_token and client_credentials grants.
     async #token(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const form = await this.#form(req);
         const client = this.#authenticateClient(req, form);
@@ -526,7 +492,7 @@ export default class OAuthServer {
             issued = { claims: { subject: claims.subject, clientId: client.id, scopes, family: claims.family }, refresh: true };
         } else if (grant === "client_credentials") {
             if (client.kind === "public") throw new OAuthError("unauthorized_client", "Only a confidential client may use client_credentials.");
-            // {§agui-oauth-clients} — a module's client stands for the operator who authorized it, never for itself.
+            // {§auth-oauth-clients} — a module's client stands for the operator who authorized it, never for itself.
             if (client.kind === "module") throw new OAuthError("unauthorized_client", "A module's client obtains tokens through the operator's authorization.");
             const scopes = this.#scopes(form.get("scope"), client);
             if (scopes === null) throw new OAuthError("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`);
@@ -535,7 +501,9 @@ export default class OAuthServer {
             throw new OAuthError("unsupported_grant_type", "The grant type is not authorization_code, refresh_token or client_credentials.");
         }
         const resource = form.get("resource");
-        if (resource !== null && resource !== this.resource(req)) throw new OAuthError("invalid_target", `The resource must be ${this.resource(req)}.`);
+        if (resource !== null && !this.resources(req).includes(resource)) {
+            throw new OAuthError("invalid_target", `The resource must be one of ${this.resources(req).join(", ")}.`);
+        }
         const access = this.#credentials.issue({ kind: "access", ...issued.claims, ttlMs: this.#opts.accessTtlSec * 1000 });
         const body: Record<string, unknown> = {
             access_token: access.token,
@@ -549,7 +517,7 @@ export default class OAuthServer {
         this.#json(res, 200, body);
     }
 
-    // ── revocation (RFC 7009) ───────────────────────────────────────────────────────────────────
+    // ── revocation (RFC 7009, {§auth-oauth-revocation}) ─────────────────────────────────────────
 
     async #revoke(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const form = await this.#form(req);

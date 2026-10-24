@@ -249,7 +249,7 @@ export type ApplicationEventHandler = (
 /**
  * {§credential-authority} The kind of a credential: an access token is presented as a bearer; a
  * refresh token is exchanged for new credentials of its family and is never presented; a session
- * is a browser's standing at the authorization server ({§agui-oauth-session}), never a bearer.
+ * is a browser's standing at the authorization server ({§auth-oauth-session}), never a bearer.
  */
 export type CredentialKind = "access" | "refresh" | "session";
 
@@ -299,7 +299,7 @@ export interface CredentialSession {
  * {§credential-module-client} The confidential client a module of this daemon registers for itself at
  * setup: its id, the absolute pathnames under its own mounts it may be answered at, the scopes it may
  * ask for and, optionally, the pathname of a stylesheet it serves for the authority's documents shown
- * to its requests ({§agui-oauth-documents}). The issuer supplies the origin of each. What others may
+ * to its requests ({§auth-oauth-documents}). The issuer supplies the origin of each. What others may
  * know of it; never its secret.
  */
 export interface ModuleClient {

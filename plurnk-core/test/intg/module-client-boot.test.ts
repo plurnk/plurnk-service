@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
-import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
 import { openMigrated } from "./_db.ts";
@@ -50,12 +50,12 @@ for (const order of ["the consumer set up first", "the client interface set up f
                 await db.close();
             });
             const { module, seen } = consumer();
-            const client = AguiModule.create({ auth: true, issuer, password: "composed" });
+            const auth = AuthModule.create({ auth: true, issuer, password: "composed" });
             if (order === "the consumer set up first") {
                 daemon.registerModule(module, "@acme/consumer");
-                daemon.registerModule(client, "@plurnk/plurnk-agui");
+                daemon.registerModule(auth, "@plurnk/plurnk-auth");
             } else {
-                daemon.registerModule(client, "@plurnk/plurnk-agui");
+                daemon.registerModule(auth, "@plurnk/plurnk-auth");
                 daemon.registerModule(module, "@acme/consumer");
             }
             await daemon.start();
@@ -69,7 +69,7 @@ for (const order of ["the consumer set up first", "the client interface set up f
             const verifier = randomBytes(32).toString("base64url");
             const challenge = createHash("sha256").update(verifier).digest("base64url");
             const page = await fetch(`${base}/oauth/authorize?${new URLSearchParams({ client_id: "consumer", redirect_uri: redirect, response_type: "code", scope: "agui", code_challenge: challenge, code_challenge_method: "S256" })}`);
-            assert.ok((await page.text()).includes(`<link rel="stylesheet" href="${STYLESHEET}">`), "{§agui-oauth-documents}: the module's own stylesheet on the page it is signed in at");
+            assert.ok((await page.text()).includes(`<link rel="stylesheet" href="${STYLESHEET}">`), "{§auth-oauth-documents}: the module's own stylesheet on the page it is signed in at");
             // The operator signs in at the authorization endpoint, which answers the consumer's client at once.
             const authorized = await fetch(`${base}/oauth/authorize`, {
                 method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" },

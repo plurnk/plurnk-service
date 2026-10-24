@@ -48,6 +48,7 @@
         "plurnk-a2a",
         "plurnk-schedule",
         "plurnk-skills",
+        "plurnk-auth",
         "plurnk-agui",
         "plurnk-core"
     ],

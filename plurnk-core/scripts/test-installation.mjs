@@ -207,7 +207,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
-// {§credential-authority} {§agui-oauth-clients} — a fresh install authenticates: the daemon mints its
+// {§credential-authority} {§auth-oauth-clients} — a fresh install authenticates: the daemon mints its
 // operator secret at boot into the file beside its database, and the probe exchanges it for an access
 // token exactly as a real client does. Reading it here also proves the perimeter is on: without the
 // header these calls would be refused.

@@ -4,8 +4,6 @@
 // and future transports.
 
 export { default as Module } from "./Module.ts";
-// {§agui-oauth-documents} — the authority's documents, for a consumer whose CSS pruning keeps their selectors.
-export { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 export type { AguiPort, ModuleOptions } from "./Module.ts";
 export { default as Portal } from "./Portal.ts";
 export { default as EventRouter } from "./EventRouter.ts";

@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
@@ -62,7 +63,7 @@ test("{§module-http-mounts} a daemon with a listener needs no root owner", asyn
 });
 
 test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", async (t) => {
-    const client = AguiModule.create({ auth: false });
+    const client = AguiModule.create();
     assert.deepEqual(client.mounts, ["/agui"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
@@ -90,15 +91,17 @@ test("{§agui-run-endpoint} AG-UI serves /agui without occupying the root", asyn
     assert.equal((await get("/")).status, 404);
 });
 
-test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization server's paths beside /agui, never the root", async (t) => {
-    const client = AguiModule.create({ auth: true });
-    assert.deepEqual(client.mounts, ["/agui", "/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
+test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authorization server's paths beside /agui, never the root", async (t) => {
+    const auth = AuthModule.create({ auth: true });
+    assert.deepEqual(auth.mounts, ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
+    const client = AguiModule.create();
     const { daemon, get, port } = await fixture(t, client);
+    daemon.registerModule(auth, "@plurnk/plurnk-auth");
     await daemon.start();
     const metadata = await get("/.well-known/oauth-authorization-server");
     assert.equal(metadata.status, 200);
     assert.equal(JSON.parse(metadata.body).issuer, `http://127.0.0.1:${port}`, "the issuer is the address the request reached");
-    assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}/agui`);
+    assert.equal(JSON.parse((await get("/.well-known/oauth-protected-resource")).body).resource, `http://127.0.0.1:${port}`);
     assert.equal((await get("/")).status, 404);
     const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     assert.equal(refused.status, 401);
@@ -106,7 +109,7 @@ test("{§agui-oauth-endpoints} an authenticating AG-UI claims its authorization 
 });
 
 test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {
-    const { daemon, get } = await fixture(t, AguiModule.create({ auth: false }));
+    const { daemon, get } = await fixture(t, AguiModule.create());
     daemon.registerModule(serving(["/"]), "@acme/web");
     await daemon.start();
     assert.deepEqual(await get("/"), { status: 200, body: "/" });
