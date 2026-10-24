@@ -22,7 +22,7 @@ import { ENTRY_ROUTE, HISTORY_ROUTE, aguiRouteTemplate, observed } from "./obser
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
-import { OPERATOR_CLIENT, resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
+import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -86,7 +86,6 @@ type ActionExecutor = (
     input: RunAgentInput,
     env: ClientEnvelope | null,
     boundWorkerId: number | undefined,
-    principal: string,
     onLoop: OperationLoopListener | undefined,
 ) => Promise<ActionOutcome>;
 
@@ -167,8 +166,8 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
             this.#actions.set(name, {
                 ...contract,
-                execute: (params, input, env, boundWorkerId, principal, onLoop) =>
-                    this.#builtins.executeBuiltin(name, params, input, env, boundWorkerId, principal, onLoop),
+                execute: (params, input, env, boundWorkerId, onLoop) =>
+                    this.#builtins.executeBuiltin(name, params, input, env, boundWorkerId, onLoop),
             });
         }
         for (const descriptor of this.#seam.listModuleActions()) {
@@ -317,7 +316,6 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
             // The perimeter ({§agui-http-authorization}): bearer admission before any body read.
-            let principal = OPERATOR_CLIENT;
             let family: string | null = null;
             if (this.#oauth !== null) {
                 const admission = this.#oauth.admit(req, "agui");
@@ -326,10 +324,10 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                     writeHttpProblem(res, admission.problem);
                     return;
                 }
-                ({ principal, family } = admission);
+                ({ family } = admission);
             }
-            if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res, false, principal, family);
-            if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, principal, family);
+            if (req.method === "POST" && req.url === "/agui") return await this.#runs.run(req, res, false, family);
+            if (req.method === "POST" && req.url === "/agui/connect") return await this.#runs.run(req, res, true, family);
             const entry = req.method === "GET" && req.url !== undefined ? ENTRY_ROUTE.exec(req.url) : null;
             if (entry !== null) return await this.#entry(res, entry);
             const history = req.method === "GET" && req.url !== undefined ? HISTORY_ROUTE.exec(req.url) : null;
@@ -628,7 +626,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
 
     // A control-plane AG-UI Run: no workspace bound. Open the SSE, execute the daemon verb, answer on
     // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
-    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string): Promise<void> {
+    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
@@ -637,7 +635,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
                 emit({ type: EventType.CUSTOM, name: "plurnk.notice", value: notice });
             }
         }
-        const outcome = await this.#action(action, input, null, undefined, principal, undefined)
+        const outcome = await this.#action(action, input, null, undefined, undefined)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);
                 const problem = Problems.fromError(err);
@@ -670,7 +668,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         });
     }
 
-    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, onLoop: OperationLoopListener | undefined): Promise<ActionOutcome> {
         const action = this.#actions.get(a.kind);
         if (action === undefined) {
             return actionFailure(
@@ -700,7 +698,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
         }
         try {
             if (action.scope !== "daemon") Module.#requireWorkspace(a.kind, env);
-            const outcome = await action.execute(a.params, input, env, boundWorkerId, principal, onLoop);
+            const outcome = await action.execute(a.params, input, env, boundWorkerId, onLoop);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
             if (!projected.valid) {

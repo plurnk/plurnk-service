@@ -397,7 +397,7 @@ not access to workspace resources ({§actor-boundary-no-mutex}).
 | Root creation | Explicit owner, otherwise the runtime `_plurnk`. |
 | WORK, FORK, or a fresh child | Inherit the parent's owner. |
 | SEND, schedule occurrence, or other incoming message | Preserve the recipient's owner. |
-| Explicit client control attachment | Claim a runtime-owned model worker and its runtime-owned descendants; never claim the runtime actor or replace another owner. |
+| Explicit client control attachment | Claim a model worker and its model descendants (updating any pending interaction recipients in that subtree); never claim the runtime actor. |
 | Observation or disconnect | No change. |
 
 An owner declares its capability set: the client tool names it implements, and whether it
@@ -5640,7 +5640,7 @@ Core's behavior behind them.
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§agui-owner-activation}). |
 | §methods-worker-create Workspace lifecycle  | `createWorker({ workspaceId, name?, parentWorkerId?, owner? })` | Creates a distinct model-origin worker with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§worker-owner-creation}). |
 | Worker ownership | `registerWorkerOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
-| Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims only runtime-owned work under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
+| Worker ownership | `claimWorkerOwner({ workspaceId, workerId, owner })` | Claims a model worker and its model descendants under {§worker-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeWorker(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkWorker({ workspaceId, workerId, name? })` | Creates a child worker that branches the source worker's history while sharing workspace state. The source is a model worker, else `409 model-worker-required` ({§machine-processes-worker-origin}). |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§workspace-name}; workers, log, and membership remain intact, and a refused name changes nothing. |

@@ -65,17 +65,14 @@ an absent worker may be created only by a worker-creating Run ({§agui-action-bi
 
 ## §agui-worker-owner Approval ownership
 
-An owner is its thread's address, `agui://<principal>/threads/<encoded threadId>` ({§agui-run-source}),
-scoped by workspace. Resolving another thread spelling to the same worker recognizes its retained
-owner only when the principal is identical and the owner's thread is a reference to that worker
-({§agui-thread-address}). It neither rewrites ownership nor grants a different principal or another
-worker's observer its approvals. An owner is not a socket, a Run, or a worker. `RunAgentInput.tools`
+The AG-UI owner is `agui://operator`, scoped by workspace: every AG-UI thread and client session in the
+workspace shares it. An owner is not a socket, a Run, a thread, or a worker. `RunAgentInput.tools`
 declares the client tools it implements, and `forwardedProps.plurnk.interactive` (a boolean)
 states whether a person attends it; unstated, nobody does. Every AG-UI owner reviews, because a gate
 is answered by a standard interrupt resume ({§agui-proposal-resolve}): the module registers core's
 review capability, `request_approval` ({§worker-ownership}), beside the declared tools, and a client
-declares no tool for it. Control attachment registers that capability set and claims only
-runtime-owned work under {§worker-ownership}; observation does neither. Capabilities survive
+declares no tool for it. Control attachment registers that capability set and claims the bound model
+worker and its model descendants under {§worker-ownership}; observation does neither. Capabilities survive
 disconnection and a later declaration replaces them for future requests.
 
 | Request | Ownership effect |
@@ -93,11 +90,11 @@ cleanup failures remain diagnostics. Core owns and joins the preparation, not th
 
 Approval delivery matches the recorded owner; interaction delivery matches its recorded
 recipient. No connected-ancestor fallback or topology-based authority exists. An owner may
-review an independently active child while its own worker is idle. Concurrent connections
-to one owner can see the same gate; Core settles it at most once. The owner's Runs are the Runs
-on its thread, a passive observation included: claiming is not presenting. A matching worker's Run
-receives its own gate; only when none is connected does delivery use the owner's Runs that
-observe its worker. An operation or other management Run never receives one.
+review an independently active worker while its own thread's worker is idle. Concurrent connections
+to the owner can see the same gate; Core settles it at most once. The owner's Runs are the worker Runs
+in its workspace, passive observations included: claiming is not presenting. Runs bound to the
+requesting worker receive its gate; only when none is connected does delivery use the owner's other
+worker Runs in the workspace. An operation or other management Run never receives one.
 Each presentation of a gate retains its own Run continuation. A resumed client interaction is
 acknowledged with the standard `TOOL_CALL_RESULT` of its call before the Run continues; a decision
 on a proposal is no result of its own, since the operation's settlement answers its call
@@ -741,7 +738,7 @@ selection.
 | {§agui-worker-loops} | `worker.loops` — Workspace |
 | {§agui-place-hiding} | A directory leaves hidden places out. |
 | {§agui-action-binding} | What a Run binds. |
-| {§agui-client-operation} | `op.exec` and `op.parse` are the thread owner's client operations. |
+| {§agui-client-operation} | `op.exec` and `op.parse` are the operator's client operations. |
 | {§agui-worker-model-actions} | Worker model selection is server-backed. |
 | {§agui-worker-effort-actions} | Effort has its own worker action. |
 | {§agui-module-action-scope} | An extension action uses the same management plane, not a private endpoint. |
@@ -803,7 +800,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.hidden.set`   | Workspace | `hidden`                                             | `ApplicationPort.setWorkspaceHidden` on the bound workspace ({§agui-place-hiding}); returns `{ id, hidden_at }`. |
 | `worker.hidden.set`      | Workspace | `hidden`, `workerId?`                                | `ApplicationPort.setWorkerHidden` on the thread's bound worker, or `workerId` ({§agui-place-hiding}); returns `{ id, hidden_at, workerIds }`. |
 | `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
-| `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the thread's owner ({§agui-client-operation}); returns the `RollbackReport`. |
+| `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the operator ({§agui-client-operation}); returns the `RollbackReport`. |
 | `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread's bound worker by default, preserving validated {§entry-read-result}. |
 | `op.exec`                | Workspace | `command`, `env?`                                    | Constructs one execution statement on the default `sh` runtime, `env` its environment under {§env-option}, and dispatches it as one client operation ({§agui-client-operation}). |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
@@ -842,8 +839,8 @@ its result. A Run that binds a worker carries that worker's gauge, `plurnk.statu
 its deltas ({§agui-state-patches}); one that binds none carries neither. Every Run bound to a
 workspace carries that workspace's state ({§agui-workspace-state}).
 
-§agui-client-operation **`op.exec` and `op.parse` are the thread owner's client operations.** Each
-dispatches one client operation ({§connection-lifecycle}) as the thread's owner address
+§agui-client-operation **`op.exec` and `op.parse` are the operator's client operations.** Each
+dispatches one client operation ({§connection-lifecycle}) as `agui://operator`
 ({§agui-worker-owner}), acting for the model worker the thread names when one exists
 ({§actor-boundary-client-operations}) and never creating it. The Run binds no worker, claims nothing and
 declares no capability set; it observes the operation's loop from the moment the dispatch opens it
@@ -1053,7 +1050,7 @@ AG-UI is the OAuth 2.1 authorization server of the daemon's one credential autho
 `/agui` ({§agui-http-authorization}). The daemon authenticates under the shared `PLURNK_AUTH=1`
 ({§operator-config-shared-keys}), the shipped posture, and never by inference from what else is
 set: then the module publishes the authority's face at setup and serves the endpoints below. Under
-`PLURNK_AUTH=0` it publishes nothing, serves none of them, and admits every request as `operator`.
+`PLURNK_AUTH=0` it publishes nothing, serves none of them, and admits every request.
 
 §agui-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the
 resources it may reach; `agui` names the client interface and `a2a` the hosted A2A exposure
@@ -1211,7 +1208,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | Its arrival | the row folds its facts onto the message the client holds — a repeated `TEXT_MESSAGE_START` and `TEXT_MESSAGE_END` under the same id and no words again ({§agui-plurnk-metadata}) — and the message leaves `status.inbox`; a loop that concludes without observing it — cancelled, say — leaves it listed with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}) |
 | A refused input | is nowhere: a refusal before admission is the Run's own error ({§agui-run-input}), and the client's copy stays its own |
 
-§agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}): `operator` for the operator's own credentials and when the listener authenticates nothing, and a declared client's id for its own. The frontend's self-identification never enters the address ({§client-metadata}).
+§agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://operator/threads/<threadId>/messages/<messageId>`, every segment URI-encoded. Neither HTTP admission ({§agui-http-authorization}) nor the frontend's self-identification ({§client-metadata}) enters the address.
 
 | Fact | Rule |
 | --- | --- |
@@ -1221,7 +1218,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | `loop.inject` | normalizes its prompt into a user message with a server-generated message ID and the injecting Run's thread/envelope; it follows this same source and reply contract |
 | A SEND to this exact address | answers this message under {§send-response-receipt}; it does not create another inbound request; standard AG-UI assistant messages and history replay carry the reply, independently of whether the loop can yet conclude |
 
-§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. The principal of the admitted request is the credential's subject ({§agui-run-source}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
+§agui-http-authorization **`/agui` is a protected resource of the daemon's authority.** When the daemon authenticates ({§agui-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. Authentication is a perimeter gate only: once admitted, every request acts as the workspace operator (`agui://operator`, {§agui-worker-owner}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
 
 | Refusal, an RFC 6750 challenge (`WWW-Authenticate: Bearer` naming the realm and the RFC 9728 resource metadata) beside its Problem | Status |
 | --- | --- |
@@ -1232,7 +1229,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | Posture | Rule |
 | --- | --- |
 | Shipped | authenticated with nothing configured: the daemon **mints its operator secret at every boot** into the file beside its database ({§credential-authority}), which the operator's own tools read, and the seeded operator file ({§operator-config-discovery}) teaches the keys without setting one |
-| `PLURNK_AUTH=0` | serves no authorization server and admits every request as `operator`: the operator's deliberate configuration, never a default |
+| `PLURNK_AUTH=0` | serves no authorization server and admits every request: the operator's deliberate configuration, never a default |
 
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and

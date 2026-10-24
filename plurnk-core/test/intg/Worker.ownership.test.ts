@@ -7,7 +7,7 @@ import type { WorkerOwner } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
-const owner: WorkerOwner = { address: "agui://local/threads/primary", tools: ["request_approval", "question"], interactive: true };
+const owner: WorkerOwner = { address: "agui://operator", tools: ["request_approval", "question"], interactive: true };
 
 test("{§worker-owner-creation}: every worker has a durable runtime owner before client attachment", async () => {
     await withDaemon(null, async (_db, daemon) => {
@@ -21,7 +21,7 @@ test("{§worker-owner-creation}: every worker has a durable runtime owner before
     });
 });
 
-test("{§worker-ownership}: control claims runtime descendants; later delegation inherits and other owners survive", async () => {
+test("{§worker-ownership}: control claims model descendants; later delegation inherits and the runtime actor is never claimable", async () => {
     await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-inheritance" });
         const parent = await daemon.createWorker({ workspaceId, name: "parent" });
@@ -33,10 +33,13 @@ test("{§worker-ownership}: control claims runtime descendants; later delegation
         for (const workerId of [parent.workerId, before.workerId, after.workerId, grandchild.workerId]) {
             assert.equal((await daemon.readWorker({ workspaceId, identity: { id: workerId } }))?.owner, owner.address);
         }
-        const stranger: WorkerOwner = { address: "agui://local/threads/other", tools: [], interactive: false };
-        await daemon.registerWorkerOwner(workspaceId, stranger);
-        assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: parent.workerId, owner: stranger.address }), owner,
-            "opening an already-owned worker is not a transfer");
+        const successor: WorkerOwner = { address: "acp://operator", tools: ["request_approval"], interactive: true };
+        await daemon.registerWorkerOwner(workspaceId, successor);
+        assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: parent.workerId, owner: successor.address }), successor,
+            "claiming a model worker transfers it and its model descendants to the claiming owner");
+        for (const workerId of [parent.workerId, before.workerId, after.workerId, grandchild.workerId]) {
+            assert.equal((await daemon.readWorker({ workspaceId, identity: { id: workerId } }))?.owner, successor.address);
+        }
         const runtimeId = await insertWorker(db, workspaceId, null, "_plurnk", "_plurnk");
         assert.deepEqual(await daemon.claimWorkerOwner({ workspaceId, workerId: runtimeId, owner: owner.address }),
             { address: "_plurnk", tools: [], interactive: false }, "the runtime actor itself is never claimable");

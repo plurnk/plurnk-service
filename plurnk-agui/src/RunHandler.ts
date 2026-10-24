@@ -11,7 +11,7 @@ import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
 import type { ClientEnvelope, LogEntryWire } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { OPERATOR_CLIENT, type ResolvedModuleOptions } from "./config.ts";
+import { type ResolvedModuleOptions } from "./config.ts";
 import { type OperationLoopListener } from "./BuiltinActions.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
@@ -36,13 +36,13 @@ export default class RunHandler {
     readonly #stopping: () => boolean;
     readonly #track: <T>(work: Promise<T>) => Promise<T>;
     readonly #requiresWorkspace: (action: ActionRequest) => boolean;
-    readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
+    readonly #controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
     readonly #boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
     readonly #actionBinding: (action: ActionRequest) => WorkerBinding;
     readonly #workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
-    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
+    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
     readonly #origin: (req: IncomingMessage) => string;
     readonly #overview: () => Overview;
 
@@ -54,13 +54,13 @@ export default class RunHandler {
         // {§agui-shutdown} Holds the work a Run starts until it settles, so the module's closure joins it.
         track: <T>(work: Promise<T>) => Promise<T>;
         requiresWorkspace: (action: ActionRequest) => boolean;
-        controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse, principal: string) => Promise<void>;
+        controlRun: (action: ActionRequest, input: RunAgentInput, res: ServerResponse) => Promise<void>;
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean; readonly worker?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversation: (threadId: string, forwarded?: Record<string, unknown>) => Promise<{ workspaceId: number; workerId: number } | null>;
         boundWorker: (threadId: string, env: ClientEnvelope, binding: "create" | "required", forwarded?: Record<string, unknown>) => Promise<number>;
         actionBinding: (action: ActionRequest) => WorkerBinding;
         workerGauge: (workspaceId: number, workerId: number, threadId: string) => Promise<AguiWorkerGauge>;
-        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, principal: string, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
+        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, boundWorkerId: number | undefined, onLoop: OperationLoopListener | undefined) => Promise<ActionOutcome>;
         // {§agui-body-reference} The origin a request reached this daemon at, where its Run's bodies are fetched.
         origin: (req: IncomingMessage) => string;
         // {§agui-overview} The observations of the worker overview.
@@ -105,8 +105,8 @@ export default class RunHandler {
         return { workspaceId: value.workspaceId ?? null };
     }
 
-    // {§agui-http-authorization} — the principal and credential family the perimeter admitted this request under.
-    async run(req: IncomingMessage, res: ServerResponse, connect = false, principal = OPERATOR_CLIENT, family: string | null = null): Promise<void> {
+    // {§agui-http-authorization} — the credential family the perimeter admitted this request under.
+    async run(req: IncomingMessage, res: ServerResponse, connect = false, family: string | null = null): Promise<void> {
         let decoded: unknown;
         try {
             decoded = JSON.parse(await RunHandler.#body(req));
@@ -145,7 +145,7 @@ export default class RunHandler {
         // {§agui-run-input} A Run does one thing, chosen by its input before anything binds: a resume resolves, an
         // action acts, a new message submits, and a Run that carries none of them synchronizes ({§agui-sync}).
         const action = parseAction(input.forwardedProps);
-        const fresh = await this.#newMessage(input, forwarded, principal);
+        const fresh = await this.#newMessage(input, forwarded);
         const asks = Number(input.resume !== undefined) + Number(action !== null) + Number(fresh !== null);
         // {§agui-overview-run} An overview is a Run of its own, binding nothing: the snapshot, or on a connection what follows it.
         const overview = RunHandler.#overviewScope(forwarded);
@@ -170,7 +170,7 @@ export default class RunHandler {
         // register or whose input it refuses, answers without binding — or forging — a workspace
         // ({§agui-action-binding}). Only admitted workspace-scoped actions, message Runs and sync Runs reach #envelope below.
         if (action !== null && !this.#requiresWorkspace(action)) {
-            return await this.#controlRun(action, input, res, principal);
+            return await this.#controlRun(action, input, res);
         }
 
         let prompt: string | null = null;
@@ -205,18 +205,11 @@ export default class RunHandler {
             ? await this.#boundWorker(input.threadId, env, binding, forwarded)
             : input.resume === undefined ? undefined : this.#portal().resumedWorker(workspaceId, input.threadId, input.resume);
         // {§agui-thread-address} Routing identity and the spelling a client used are separate from reply delivery.
-        const replyThreads = [input.threadId];
-        let address = MessageAddress.owner(principal, input.threadId);
-        if (workerId !== undefined) {
-            const { worker, threads } = await this.#replyThreads(workspaceId, workerId, input.threadId);
-            replyThreads.splice(0, replyThreads.length, ...threads);
-            // {§agui-worker-owner} An address alias for this worker is not a different owner.
-            if (replyThreads.some((threadId) => MessageAddress.owner(principal, threadId) === worker.owner)) address = worker.owner;
-        }
+        const replyThreads = workerId === undefined ? [input.threadId] : await this.replyThreads(workspaceId, workerId, input.threadId);
         // {§agui-sync} A passive observation claims nothing; an owner's control connection claims as a message Run does.
-        // Either presents the gates addressed to its thread ({§agui-proposal-resolve}).
+        // Either presents the gates addressed to the operator ({§agui-proposal-resolve}).
         const control = forwarded?.control === true || (!synchronize && action === null);
-        const owner = control ? address : undefined;
+        const owner = control ? MessageAddress.OWNER : undefined;
         if (owner !== undefined) {
             // {§agui-worker-owner} The Run declares the owner's capability set: the tools it
             // implements, and whether a person attends it. Unstated, nobody does.
@@ -311,7 +304,7 @@ export default class RunHandler {
             origin: this.#origin(req),
             replyThreads,
             notificationScope,
-            owner: address,
+            owner: MessageAddress.OWNER,
             family,
             descendants,
             reasoningByLink,
@@ -431,7 +424,7 @@ export default class RunHandler {
             const onLoop: OperationLoopListener | undefined = notificationScope === "operation"
                 ? (loop) => { this.#portal().bindOperation(boundRun, loop); }
                 : undefined;
-            void this.#track(this.#action(action, input, env, workerId, principal, onLoop)
+            void this.#track(this.#action(action, input, env, workerId, onLoop)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
@@ -460,7 +453,7 @@ export default class RunHandler {
         // admission holds it accepted, and no Run copies a message from its input into one.
         const submission = {
             workspaceId, workerId, prompt,
-            ...MessageAddress.submission(principal, input, currentUser),
+            ...MessageAddress.submission(input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: RunHandler.#forwardedInteger(forwarded, "maxTurns") }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
@@ -527,7 +520,7 @@ export default class RunHandler {
     // {§agui-run-input} The Run's new message: its last message, when that is a user message of the thread's own
     // conversation that is neither one the daemon presented, its id a coordinate the worker's log holds, nor one a
     // client already sent, its address an idempotency key core decides ({§message-idempotency}). Both are keyed reads.
-    async #newMessage(input: RunAgentInput, forwarded: Record<string, unknown> | undefined, principal: string): Promise<UserMessage | null> {
+    async #newMessage(input: RunAgentInput, forwarded: Record<string, unknown> | undefined): Promise<UserMessage | null> {
         const last = input.messages.at(-1);
         if (last?.role !== "user" || last.subagentRunId !== undefined) return null;
         const conversation = await this.#conversation(input.threadId, forwarded);
@@ -539,7 +532,7 @@ export default class RunHandler {
         }
         if (typeof last.content !== "string") return last;
         const admission = await this.#seam().messageAdmission({
-            workspaceId: conversation.workspaceId, address: MessageAddress.render(principal, input.threadId, last.id), body: last.content,
+            workspaceId: conversation.workspaceId, address: MessageAddress.render(input.threadId, last.id), body: last.content,
         });
         return admission === "new" ? last : null;
     }
@@ -547,14 +540,10 @@ export default class RunHandler {
     // {§agui-thread-address} The threads whose replies are speech in a worker's conversation: the thread itself, the
     // worker's name and qualified address, and every reference to it.
     async replyThreads(workspaceId: number, workerId: number, threadId: string): Promise<string[]> {
-        return (await this.#replyThreads(workspaceId, workerId, threadId)).threads;
-    }
-
-    async #replyThreads(workspaceId: number, workerId: number, threadId: string) {
         const worker = await this.#seam().readWorker({ workspaceId, identity: { id: workerId } });
         if (worker === null) throw new Error("The bound worker is absent.");
-        return { worker, threads: [threadId, worker.name, `${workspaceId}#${worker.name}`,
-            ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" })] };
+        return [threadId, worker.name, `${workspaceId}#${worker.name}`,
+            ...await this.#seam().listWorkerReferences({ workspaceId, workerId, namespace: "agui" })];
     }
 
     // {§agui-history-page} A worker's whole log, which every snapshot and history page is cut from.

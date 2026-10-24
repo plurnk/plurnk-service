@@ -786,7 +786,7 @@ test("{§agui-worker-owner} a control Run declares its owner's capability set: t
             await post(port, { threadId: "t1", tools, forwardedProps: { plurnk: {
                 workspace: "t1", control: true, ...(stated === undefined ? {} : { interactive: stated }), action: { kind: "worker.model.get" },
             } } });
-            assert.deepEqual(owners.get("agui://operator/threads/t1"), { address: "agui://operator/threads/t1", tools: ["request_approval", "question"], interactive },
+            assert.deepEqual(owners.get("agui://operator"), { address: "agui://operator", tools: ["request_approval", "question"], interactive },
                 `interactive ${String(stated)}: unstated, nobody attends`);
         }
         const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" },
@@ -1655,7 +1655,7 @@ test("{§credential-authority} a loop-owned proposal cannot terminate a concurre
             op: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
-            owner: "agui://operator/threads/interrupt-ownership",
+            owner: "agui://operator",
             disposition: { decision: "review" },
         });
         releaseInjection.resolve();
@@ -1815,7 +1815,7 @@ for (const origin of ["message", "observer", "observer-after-message", "rediscov
             let pending: ProposalProjection[] = [{
                 logEntryId: 42, workerId: gateWorkerId, worker: "child", loopId: 1, turnId: 1, coordinate: "1/1/42",
                 op: "EDIT", target: { scheme: "file", authority: null, pathname: "a" },
-                body: "replacement", attrs: {}, owner: "agui://operator/threads/lifetime",
+                body: "replacement", attrs: {}, owner: "agui://operator",
                 disposition: { decision: "review" },
             }];
             const cancellations: Array<{ workerId: number; reason?: string }> = [];
@@ -1920,7 +1920,7 @@ test("{§agui-proposal-resolve}: invalid presentation sets release nothing and l
     let pending: ProposalProjection[] = [41, 42].map((logEntryId) => ({
         logEntryId, workerId: 77, worker: "presentations", loopId: 1, turnId: 1, coordinate: `1/1/${logEntryId}`, op: "EDIT",
         target: { scheme: "file", authority: null, pathname: `file-${logEntryId}` }, body: "replacement", attrs: {},
-        owner: "agui://operator/threads/presentations", disposition: { decision: "review" },
+        owner: "agui://operator", disposition: { decision: "review" },
     }));
     seam.pendingProposals = async () => pending;
     const resolve = seam.resolveProposal;
@@ -1972,7 +1972,7 @@ test("{§agui-run-disconnect}: disconnect during resume validation refuses the d
     const { seam, resolves } = mockSeam();
     const pending: ProposalProjection[] = [{ logEntryId: 42, workerId: 77, worker: "validating", loopId: 9, turnId: 1, coordinate: "1/1/42", op: "EDIT",
         target: { scheme: "file", authority: null, pathname: "file" }, body: "replacement", attrs: {},
-        owner: "agui://operator/threads/validating", disposition: { decision: "review" } }];
+        owner: "agui://operator", disposition: { decision: "review" } }];
     seam.pendingProposals = async () => pending;
     const cancellations: number[] = [];
     seam.cancelDrain = (workerId) => { cancellations.push(workerId); return true; };
@@ -2017,7 +2017,7 @@ test("{§agui-proposal-resolve} a standard resume resolves the paused proposal w
         target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
         attrs: {},
-        owner: "agui://operator/threads/t2",
+        owner: "agui://operator",
         disposition: { decision: "review" },
     }];
     seam.pendingProposals = async () => pending;
@@ -2047,7 +2047,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
         const { seam, emit, loopRuns } = mockSeam();
         let resolutions = 0;
         let pending = [{
-            interactionId: 88, recipient: "agui://operator/threads/resume-race", workerId: 77, loopId: 9, turnId: 1,
+            interactionId: 88, recipient: "agui://operator", workerId: 77, loopId: 9, turnId: 1,
             request: { toolName: "review", arguments: {}, responseSchema: { type: "object" } },
         }];
         seam.pendingClientInteractions = async () => pending;
@@ -2108,7 +2108,7 @@ for (const kind of ["proposal", "interaction"] as const) {
         for (const applied of [true, false]) {
             test(`{§agui-resume-before-gate}: ${kind === "proposal" ? "a proposal" : "an interaction"} answer is ${applied ? "applied" : "refused"} on its own Run when another gate becomes pending during ${stage}`, async () => {
                 const { seam, emit } = mockSeam();
-                const owner = "agui://operator/threads/resume-first";
+                const owner = "agui://operator";
                 const gate = (id: number, workerId: number, loopId: number): ProposalProjection | ClientInteractionProjection => kind === "proposal"
                     ? { logEntryId: id, workerId, worker: `worker-${workerId}`, loopId, turnId: 1, coordinate: `1/1/${id}`, op: "EDIT",
                         target: { scheme: "file", authority: null, pathname: "a" }, body: "diff", attrs: {}, owner, disposition: { decision: "review" } }
@@ -2193,7 +2193,7 @@ test("{§agui-message-before-gate} a descendant client interaction round-trips t
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{
         interactionId: 88,
-        recipient: "agui://operator/threads/interaction-thread",
+        recipient: "agui://operator",
         workerId: 88,
         loopId: 6,
         turnId: 9,
@@ -2295,7 +2295,7 @@ test("{§agui-message-before-gate} a descendant client interaction round-trips t
 test("{§agui-proposal-resolve} {§agui-gate-deferral}: a presentation stays answerable as another gate becomes pending; the resuming Run presents that gate next", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     const ask = (interactionId: number, message: string): ClientInteractionProjection => ({
-        interactionId, recipient: "agui://operator/threads/two-questions", workerId: 77, loopId: 9, turnId: 1,
+        interactionId, recipient: "agui://operator", workerId: 77, loopId: 9, turnId: 1,
         request: { toolName: "ask", arguments: { n: interactionId }, message, responseSchema: { type: "object" } },
     });
     let pending = [ask(88, "First?")];
@@ -2348,7 +2348,7 @@ test("{§message-idempotency} the official AG-UI client reattaches to and resume
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        owner: "agui://operator/threads/verified-interrupt",
+        owner: "agui://operator",
         disposition: { decision: "review" },
     };
     let pending: ProposalProjection[] = [];
@@ -2928,7 +2928,7 @@ test("{§agui-sync}: sync re-surfaces a durable interrupt without driving the mo
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        owner: "agui://operator/threads/sync-interrupt",
+        owner: "agui://operator",
         disposition: { decision: "review" },
     };
     seam.pendingProposals = async () => [proposal];
@@ -3786,36 +3786,31 @@ const OWNER_OBSERVATIONS: Readonly<Record<string, RunForm>> = {
     "a connect control observation": { path: "/agui/connect", plurnk: { control: true } },
 };
 
-for (const { label, principal, threadId, recognized } of [
-    { label: "opaque reference", principal: "operator", threadId: "sdk-reference", recognized: true },
-    { label: "native name", principal: "operator", threadId: "page", recognized: true },
-    { label: "qualified address", principal: "operator", threadId: "3#page", recognized: true },
-    { label: "another principal", principal: "someone-else", threadId: "sdk-reference", recognized: false },
-    { label: "parent worker", principal: "operator", threadId: "3#parent", recognized: false },
-    { label: "unrelated opaque reference", principal: "operator", threadId: "another-reference", recognized: false },
+for (const { label, threadId } of [
+    { label: "opaque reference", threadId: "sdk-reference" },
+    { label: "native name", threadId: "page" },
+    { label: "qualified address", threadId: "3#page" },
 ]) {
-    test(`{§agui-worker-owner} qualified control ${recognized ? "recognizes" : "does not adopt"} its ${label} owner`, async () => {
+    test(`{§agui-worker-owner} control on ${label} registers and claims the workspace operator owner`, async () => {
         const { seam, owners } = mockSeam();
         existingWorkspace(seam, "workspace");
-        const owner = MessageAddress.owner(principal, threadId);
-        directory(seam, [{ ...workerRow(44, "page", "model", 20), owner }, workerRow(20, "parent")]);
-        seam.listWorkerReferences = async ({ workspaceId, workerId, namespace }) => {
-            assert.deepEqual({ workspaceId, workerId, namespace }, { workspaceId: 3, workerId: 44, namespace: "agui" });
-            return ["sdk-reference"];
+        directory(seam, [workerRow(44, "page", "model", 20), workerRow(20, "parent")]);
+        seam.ensureWorkerReference = seam.readWorkerReference = async ({ namespace, reference }) => {
+            assert.deepEqual({ namespace, reference }, { namespace: "agui", reference: "sdk-reference" });
+            return { workspaceId: 3, workerId: 44 };
         };
         seam.readLog = async () => [];
-        const claims: string[] = [];
+        const claims: Array<{ workerId: number; owner: string }> = [];
         const claim = seam.claimWorkerOwner;
-        seam.claimWorkerOwner = async (args) => { claims.push(args.owner); return await claim(args); };
+        seam.claimWorkerOwner = async (args) => { claims.push({ workerId: args.workerId, owner: args.owner }); return await claim(args); };
         const mod = await host(seam);
         try {
             const events = await post(mod.address().port, {
-                threadId: "3#page", forwardedProps: { plurnk: { control: true } },
+                threadId, forwardedProps: { plurnk: { ...(threadId === "page" ? { workspace: "workspace" } : {}), control: true } },
             });
             assert.equal(events.at(-1)?.type, "RUN_FINISHED");
-            const expected = recognized ? owner : MessageAddress.owner("operator", "3#page");
-            assert.deepEqual([...owners.keys()], [expected]);
-            assert.deepEqual(claims, [expected]);
+            assert.deepEqual([...owners.keys()], [MessageAddress.OWNER]);
+            assert.deepEqual(claims, [{ workerId: 44, owner: MessageAddress.OWNER }]);
         } finally { await mod.close(); }
     });
 }
@@ -3955,7 +3950,7 @@ for (const present of [true, false]) {
                 const result = actionOutcome(events) as { ok: boolean } | undefined;
                 assert.equal(result?.ok, true, JSON.stringify(result));
             }
-            const actor = "agui://operator/threads/page";
+            const actor = "agui://operator";
             assert.deepEqual(dispatched, Array.from({ length: 2 }, () => ({ workspaceId: 3, actor, ...(present ? { contextWorkerId: 44 } : {}) })));
             assert.deepEqual(claims, []);
             assert.equal(owners.size, 0, "an operation declares no owner capability set");
@@ -4663,7 +4658,7 @@ const mintAccess = async (port: number, client: { id: string; secret: string }):
     return body.access_token!;
 };
 
-test("{§agui-run-source} the principal is the credential's subject: the operator or a declared client", async () => {
+test("{§agui-run-source} {§agui-http-authorization} authentication is a perimeter gate: any admitted credential submits under agui://operator", async () => {
     const { seam } = mockSeam("s3cret");
     const sources: string[] = [];
     const mod = await host(seam, { env: {
@@ -4672,7 +4667,7 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
     } });
     try {
         const port = mod.address().port;
-        // A message Run submits the message under the admitted principal; the loop it enqueues is
+        // Every admitted Run submits the message under agui://operator; the loop it enqueues is
         // not the subject here, so the Run is abandoned once the submission was seen.
         const prompt = async (authorization: string): Promise<void> => {
             const entered = Promise.withResolvers<void>();
@@ -4690,7 +4685,7 @@ test("{§agui-run-source} the principal is the credential's subject: the operato
         await prompt(`Bearer ${await mintAccess(port, { id: "agent", secret: "agent-secret" })}`);
         assert.deepEqual(sources.map((source) => source.replace(/\/messages\/.*$/u, "")), [
             "agui://operator/threads/agui-t",
-            "agui://agent/threads/agui-t",
+            "agui://operator/threads/agui-t",
         ]);
     } finally { await mod.close(); }
 });

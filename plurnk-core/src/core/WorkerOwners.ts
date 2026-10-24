@@ -58,6 +58,7 @@ export default class WorkerOwners {
     static async claim(db: Db, workspaceId: number, workerId: number, owner: string): Promise<WorkerOwner> {
         await WorkerOwners.registered(db, workspaceId, owner);
         await db.worker_owner_claim.run({ workspace_id: workspaceId, worker_id: workerId, owner });
+        await db.worker_owner_claim_interactions.run({ workspace_id: workspaceId, worker_id: workerId, owner });
         return WorkerOwners.read(db, workerId);
     }
 }

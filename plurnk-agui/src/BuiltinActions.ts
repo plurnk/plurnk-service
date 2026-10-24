@@ -5,7 +5,6 @@ import { Problems, UNKNOWN_POSITION, Validator, excerptOf, isRecord, lifecycleOf
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { actionFailure } from "./action-results.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { OPERATOR_CLIENT } from "./config.ts";
 import type { RunAgentInput } from "./types.ts";
 
 // {§agui-broadcast-fan} What a client operation's Run hears: the loop its dispatch opened, before any statement runs.
@@ -116,12 +115,11 @@ export default class BuiltinActions {
         this.#requireWorkspace = requireWorkspace;
     }
 
-    // {§agui-client-operation} A person's client operation: the thread's owner acting, reading `log:///` in the
+    // {§agui-client-operation} A person's client operation: the operator acting, reading `log:///` in the
     // thread's model worker when it exists, and announcing its loop to the Run that observes it.
     async #clientOperation(
         input: RunAgentInput,
         workspace: ClientEnvelope,
-        principal: string,
         statements: PlurnkStatement[],
         onLoop: OperationLoopListener | undefined,
     ): Promise<OperationResult[]> {
@@ -130,7 +128,7 @@ export default class BuiltinActions {
         const contextWorkerId = await this.#threadWorker(input.threadId, workspace.workspaceId, forwarded);
         return await this.#seam().dispatchClientAction({
             workspaceId: workspace.workspaceId,
-            actor: MessageAddress.owner(principal, input.threadId),
+            actor: MessageAddress.OWNER,
             ...(contextWorkerId === undefined ? {} : { contextWorkerId }),
             statements,
             ...(onLoop === undefined ? {} : { onLoop }),
@@ -146,7 +144,6 @@ export default class BuiltinActions {
         input: RunAgentInput,
         env: ClientEnvelope | null,
         boundWorkerId?: number,
-        principal = OPERATOR_CLIENT,
         onLoop?: OperationLoopListener,
     ): Promise<ActionOutcome> {
         try {
@@ -232,7 +229,7 @@ export default class BuiltinActions {
                         workspaceId: workspace.workspaceId,
                         workerId: BuiltinActions.#bound(boundWorkerId),
                         prompt: p.prompt,
-                        ...MessageAddress.submission(principal, input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
+                        ...MessageAddress.submission(input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
                     });
                     return operationOutcome(ack);
                 }
@@ -311,7 +308,7 @@ export default class BuiltinActions {
                     return { ok: true, result: await this.#seam().rollback({
                         workspaceId: workspace.workspaceId,
                         workerId: typeof p.workerId === "number" ? p.workerId : BuiltinActions.#bound(boundWorkerId),
-                        actor: MessageAddress.owner(principal, input.threadId),
+                        actor: MessageAddress.OWNER,
                         to: p.to,
                     }) };
                 }
@@ -360,7 +357,7 @@ export default class BuiltinActions {
                         metadata: p.env === undefined ? null : [JSON.stringify({ env: p.env })],
                         lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
-                    const [result] = await this.#clientOperation(input, workspace, principal, [statement], onLoop);
+                    const [result] = await this.#clientOperation(input, workspace, [statement], onLoop);
                     if (result === undefined) throw new Error("op.exec dispatch returned no operation result");
                     return operationOutcome(result);
                 }
@@ -405,7 +402,7 @@ export default class BuiltinActions {
                     }
                     const dispatched = statements.length === 0
                         ? []
-                        : await this.#clientOperation(input, workspace, principal, statements, onLoop);
+                        : await this.#clientOperation(input, workspace, statements, onLoop);
                     let index = 0;
                     for (let i = 0; i < results.length; i++) {
                         if (results[i] === null) results[i] = dispatched[index++];

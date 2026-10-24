@@ -53,10 +53,25 @@ WHERE le.id = $log_entry_id AND le.state = 'proposed';
 WITH RECURSIVE tree(id) AS (
     SELECT id FROM workers
     WHERE id = $worker_id AND workspace_id = $workspace_id
-      AND owner = '_plurnk' AND origin != '_plurnk'
+      AND origin != '_plurnk'
     UNION ALL
     SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
-    WHERE w.owner = '_plurnk' AND w.origin != '_plurnk'
+    WHERE w.origin != '_plurnk'
 )
 UPDATE workers SET owner = $owner
 WHERE id IN (SELECT id FROM tree);
+
+-- PREP: worker_owner_claim_interactions
+UPDATE client_interactions
+SET recipient = $owner
+WHERE worker_id IN (
+    WITH RECURSIVE tree(id) AS (
+        SELECT id FROM workers
+        WHERE id = $worker_id AND workspace_id = $workspace_id
+          AND origin != '_plurnk'
+        UNION ALL
+        SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
+        WHERE w.origin != '_plurnk'
+    )
+    SELECT id FROM tree
+);

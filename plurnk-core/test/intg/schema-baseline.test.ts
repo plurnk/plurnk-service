@@ -393,7 +393,7 @@ test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's
             { id: 4, workspace_id: 1, name: "helper", origin: "model", parent_worker_id: null },
             { id: 6, workspace_id: 2, name: "_plurnk", origin: "_plurnk", parent_worker_id: null },
         ], "no client worker remains; a worker a client worker parented is a root worker; a workspace gains its runtime worker");
-        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, person, "the root keeps its owner");
+        assert.equal(after.prepare("SELECT owner FROM workers WHERE id = 4").get()!.owner, "agui://operator", "the thread-scoped AG-UI owner collapses onto the workspace operator owner");
         assert.deepEqual(rows("SELECT id, worker_id, sequence, prompt_source FROM loops ORDER BY id"), [
             { id: 1, worker_id: 2, sequence: 1, prompt_source: null },
             { id: 2, worker_id: 2, sequence: 2, prompt_source: person },
@@ -670,6 +670,47 @@ test(`{§db-migrations} {§place-hiding}: a ${V4_0_0.release} database keeps eve
         assert.deepEqual({ ...after.prepare("SELECT * FROM workspaces WHERE id = 1").get() }, { ...workspace, hidden_at: null });
         assert.deepEqual(after.prepare("SELECT * FROM workers ORDER BY id").all().map((row) => ({ ...row })),
             workers.map((row) => ({ ...row, hidden_at: null, hidden_by: null })));
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
+test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database collapses thread-scoped AG-UI owners onto the workspace operator owner`, async (t) => {
+    const path = await released(t, V4_3_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'operatorOwners');
+            INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES
+                (1, '_plurnk', '[]', 0),
+                (1, 'agui://anonymous/threads/1%23user', '["request_approval","question"]', 1),
+                (1, 'agui://operator/threads/1%23child', '["request_approval"]', 0),
+                (1, 'acp://operator', '["request_approval"]', 1);
+            INSERT INTO workers (id, workspace_id, name, origin, owner) VALUES
+                (1, 1, 'user', 'model', 'agui://anonymous/threads/1%23user'),
+                (2, 1, 'child', 'model', 'agui://operator/threads/1%23child'),
+                (3, 1, 'peer', 'model', 'acp://operator');
+            INSERT INTO loops (id, worker_id, sequence, prompt, max_turns) VALUES (1, 2, 1, 'Ask', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 102);
+            INSERT INTO client_interactions (id, worker_id, loop_id, turn_id, recipient, request)
+                VALUES (1, 2, 1, 1, 'agui://operator/threads/1%23child', '{"tool":"question"}');
+        `);
+    } finally { before.close(); }
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual(after.prepare("SELECT address, tools, interactive FROM worker_owners WHERE workspace_id = 1 ORDER BY address").all().map((row) => ({ ...row })), [
+            { address: "_plurnk", tools: "[]", interactive: 0 },
+            { address: "acp://operator", tools: '["request_approval"]', interactive: 1 },
+            { address: "agui://operator", tools: '["request_approval","question"]', interactive: 1 },
+        ]);
+        assert.deepEqual(after.prepare("SELECT id, owner FROM workers ORDER BY id").all().map((row) => ({ ...row })), [
+            { id: 1, owner: "agui://operator" },
+            { id: 2, owner: "agui://operator" },
+            { id: 3, owner: "acp://operator" },
+        ]);
+        assert.equal(after.prepare("SELECT recipient FROM client_interactions WHERE id = 1").get()!.recipient, "agui://operator");
         assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
 });

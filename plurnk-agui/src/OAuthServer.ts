@@ -52,7 +52,7 @@ interface Code {
 }
 
 export type Admission =
-    | { readonly ok: true; readonly principal: string; readonly family: string | null }
+    | { readonly ok: true; readonly family: string | null }
     | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string };
 
 // RFC 6749 §5.2 — an error code, its description and the status it is answered with.
@@ -225,7 +225,7 @@ export default class OAuthServer {
                 }),
             };
         }
-        return { ok: true, principal: claims.subject, family: claims.family };
+        return { ok: true, family: claims.family };
     }
 
     /** Routes one request under `/oauth` or a well-known document; answers true when it was one of ours. */
