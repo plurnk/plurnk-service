@@ -2,7 +2,7 @@ import type { ApplicationLoopPacket, ClientInteractionProjection, OperationResul
 import type { TerminatedNotification } from "../src/types.ts";
 import { loopUsage } from "./accounting-fixture.ts";
 
-const OWNER = "agui://anonymous/threads/client";
+const OWNER = "agui://operator/threads/client";
 
 export const termination = (
     overrides: Partial<TerminatedNotification> = {},

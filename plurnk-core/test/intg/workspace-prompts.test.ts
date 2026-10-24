@@ -10,7 +10,7 @@ import { namedModelWorker } from "./_workers.ts";
 
 const send = () => makeMockResponse("````SEND [200]\nok\n````", 50);
 const addressed = (thread: string, id: string) => {
-    const address = `agui://anonymous/threads/${thread}/messages/${id}`;
+    const address = `agui://operator/threads/${thread}/messages/${id}`;
     return { source: address, messageAddress: address };
 };
 

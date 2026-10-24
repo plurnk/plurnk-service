@@ -260,7 +260,7 @@ export default class Service {
             for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);
             // {§credential-authority} — the posture, and where a tool running as the operator finds the secret.
             process.stderr.write(daemon.credentials.operatorSecret === null
-                ? "plurnk-service: authentication off (PLURNK_AUTH=0): every request is anonymous\n"
+                ? "plurnk-service: authentication off (PLURNK_AUTH=0)\n"
                 : daemon.secretFile === null
                     ? "plurnk-service: authentication on; PLURNK_SECRET is the configured operator secret\n"
                     : `plurnk-service: authentication on; the operator secret minted for this boot is in ${daemon.secretFile}\n`);

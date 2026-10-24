@@ -91,7 +91,7 @@ const heldProvider = async (): Promise<{ provider: unknown; release: () => void;
 
 const A: Message = { id: "A", role: "user", content: "First question." };
 const B: Message = { id: "B", role: "user", content: "Second question." };
-const addressOf = (id: string): string => `agui://anonymous/threads/main/messages/${id}`;
+const addressOf = (id: string): string => `agui://operator/threads/main/messages/${id}`;
 
 test("{§agui-message-acceptance} {§agui-snapshot} {§agui-sync} an accepted follow-up is on the gauge and in every snapshot before its turn, and its arrival folds onto the one message each client holds", { timeout: 60_000 }, async (t) => {
     await import(join(SERVICE, "test/setup.ts"));

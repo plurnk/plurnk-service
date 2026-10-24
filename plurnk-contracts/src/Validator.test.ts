@@ -687,7 +687,7 @@ test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonic
 
 test("{§worker-ownership}: owner declarations require an address, explicit supported tools and attendance", () => {
     for (const [tools, interactive] of [[[], false], [["request_approval"], false], [["request_approval", "question", "mcp_input_required"], true]] as const) {
-        const owner = { address: "agui://anonymous/threads/main", tools: [...tools], interactive };
+        const owner = { address: "agui://operator/threads/main", tools: [...tools], interactive };
         assert.equal(Validator.assertWorkerOwner(owner), owner);
     }
     for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], interactive: false, undeclared: true }, null, []]) {

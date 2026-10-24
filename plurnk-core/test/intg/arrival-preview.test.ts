@@ -90,7 +90,7 @@ test("{§message-causal-source}: the operator's message is named for the model; 
     });
     const records = parseLogRecords(PacketWire.renderLog([
         arrival("1/2/1", null),
-        arrival("1/2/2", "agui://anonymous/threads/t/messages/m", true),
+        arrival("1/2/2", "agui://operator/threads/t/messages/m", true),
         arrival("1/2/3", "worker://peer"),
     ], countTokens));
     assert.deepEqual(records.map(({ origin, source }) => ({ origin, source })), [
@@ -126,7 +126,7 @@ test("{§markerless-first-page}: the operator's message and the model's own rows
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join("\n");
     const target = { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/x", query: null, fragment: null };
-    const prompt = { coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "agui://anonymous/threads/t/messages/m", target, status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" } };
+    const prompt = { coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "agui://operator/threads/t/messages/m", target, status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" } };
     const note = { coordinate: "1/3/1", origin: "model", op: "NOTE", source: null, target: null, status: 200, rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json", tx: { op: "NOTE", body: bomb }, mimetype_tx: "application/json", folded: [], attrs: {} };
     for (const [row, who] of [[prompt, "the operator's message keeps its own rule"], [note, "a NOTE the model wrote stands whole"]] as const) {
         const [projected] = parseLogRecords(PacketWire.renderLog([row], countTokens));

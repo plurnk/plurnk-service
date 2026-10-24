@@ -146,7 +146,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
 test("{§message-source-scheme} one source address identifies one immutable message per workspace", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
-    const address = "agui://anonymous/threads/shared/messages/m1";
+    const address = "agui://operator/threads/shared/messages/m1";
     const workspaces = await Promise.all(["first", "second"].map((name) => insertWorkspace(db, name)));
     for (const workspaceId of workspaces) {
         const workerId = await insertWorker(db, workspaceId);

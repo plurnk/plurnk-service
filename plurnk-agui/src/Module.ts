@@ -22,7 +22,7 @@ import { ENTRY_ROUTE, HISTORY_ROUTE, aguiRouteTemplate, observed } from "./obser
 import { Problems, Validator, isRecord, requestOrigin, selectWorkerLoop, type AguiDiscovery, type ClientEnvelope, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { AGUI_BUILTIN_ACTIONS, AGUI_NOTIFICATIONS, type AguiActionContract } from "./AguiSurface.ts";
-import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
+import { OPERATOR_CLIENT, resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import BuiltinActions, { type BuiltinActionsPort, type OperationLoopListener } from "./BuiltinActions.ts";
 import { credentialRevokedProblem, httpProblem, runErrorEvents, serviceStoppingProblem } from "./run-events.ts";
@@ -317,7 +317,7 @@ export default class Module implements DaemonModule<AguiSetupSeam, AguiPort> {
             }
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
             // The perimeter ({§agui-http-authorization}): bearer admission before any body read.
-            let principal = "anonymous";
+            let principal = OPERATOR_CLIENT;
             let family: string | null = null;
             if (this.#oauth !== null) {
                 const admission = this.#oauth.admit(req, "agui");

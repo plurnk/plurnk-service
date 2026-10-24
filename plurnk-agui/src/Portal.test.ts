@@ -23,7 +23,7 @@ import { NO_GAUGE, loopUsage } from "../test/accounting-fixture.ts";
 import { ORIGIN, packet, streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { wireRow } from "../test/log-fixture.ts";
 
-const OWNER = "agui://anonymous/threads/tui";
+const OWNER = "agui://operator/threads/tui";
 
 // What a Run receives: its events, and the interrupts that end it after them ({§agui-proposal-resolve}). A gate's
 // interrupt names the call it concerns, or, on a Run that does not hold that call, carries its row's facts.
@@ -475,7 +475,7 @@ test("{§agui-proposal-resolve} a worker without pending interrupts drives the l
 
     // A live model SEND fans to the thread as assistant speech.
     seen.length = 0;
-    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/tui/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 1, tx: { body: "hi" }, turn_id: 1 } });
+    m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, loop_id: 77, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://operator/threads/tui/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 1, tx: { body: "hi" }, turn_id: 1 } });
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
     // Workspace topology is visible, but another loop's terminal must never
@@ -509,7 +509,7 @@ test("{§agui-proposal-resolve} a worker without pending interrupts drives the l
 
     // An event for an UNbound workspace is dropped, not misrouted.
     seen.length = 0;
-    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, loop_id: 1, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/unbound/messages/m1"] }, tx: { body: "x" } } });
+    m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, loop_id: 1, origin: "model", op: "SEND", status_rx: 200, rx: { answers: ["agui://operator/threads/unbound/messages/m1"] }, tx: { body: "x" } } });
     assert.equal(seen.length, 0, "events for other workspaces don't leak into this thread");
     portal.stop();
 });
@@ -541,7 +541,7 @@ test("{§agui-sync}: synchronization observes an already-active loop without tak
             worker_id: 10,
             loop_id: 77,
             origin: "model",
-            op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/observer/messages/m1"] },
+            op: "SEND", status_rx: 200, rx: { answers: ["agui://operator/threads/observer/messages/m1"] },
             loop_seq: 1, turn_seq: 1, sequence: 2,
             tx: { body: "Observed answer." },
             turn_id: 1,
@@ -1154,7 +1154,7 @@ test("{§agui-readable-reasoning}: an interrupt resume retains delivered reasoni
             worker_id: 10,
             loop_id: 77,
             origin: "model",
-            op: "SEND", status_rx: 200, rx: { answers: ["agui://anonymous/threads/client/messages/m1"] },
+            op: "SEND", status_rx: 200, rx: { answers: ["agui://operator/threads/client/messages/m1"] },
             loop_seq: 1, turn_seq: 1, sequence: 3,
             tx: { body: "continued" },
             reasoning: "working", reasoning_model_call_id: 8, reasoning_request_sequence: 1,
@@ -1754,5 +1754,32 @@ test("{§agui-held-interrupts}: a synchronization holding another worker's gate 
     m.fire(3, "log/entry", { entry: wireRow({ id: 61, worker_id: 20, loop_id: 9, sequence: 61, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
     await drained();
     assert.deepEqual(again.finished(), ["success"], "a row of the gate's worker, once the gate is settled, finishes it");
+    portal.stop();
+});
+
+test("{§agui-proposal-resolve}: a non-owner worker Run observing a proposed operation receives the unanswered call without an interrupt and folds its settlement", async () => {
+    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
+    const ownerSeen: AguiEvent[] = [];
+    const observerSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    const ownerView = capture(ownerSeen);
+    const observerView = capture(observerSeen);
+    portal.start();
+    const ownerThread = portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "tui", owner: OWNER, notificationScope: "worker", emit: ownerView.emit });
+    portal.openThread({ origin: ORIGIN, workspaceId: 3, workerId: 10, threadId: "observer", owner: "agui://other/threads/observer", notificationScope: "worker", emit: observerView.emit });
+
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 7, target: { scheme: "file", authority: null, pathname: "a.ts" } }));
+    await nextTask();
+    const callsOf = (events: readonly AguiEvent[]) =>
+        events.filter(({ type }) => type.startsWith("TOOL_CALL")).map((event) => [event.type, (event as { toolCallId: string }).toolCallId]);
+    assert.deepEqual(callsOf(observerSeen), [["TOOL_CALL_START", "1/1/42"], ["TOOL_CALL_ARGS", "1/1/42"], ["TOOL_CALL_END", "1/1/42"]],
+        "the observer receives the unanswered proposed call as it arrives");
+    assert.deepEqual(observerView.interrupts, [], "only the owner receives the interrupt");
+
+    const gate = ownerView.interrupt("1/1/42");
+    await portal.resolve(3, ownerThread, [{ interruptId: gate.id, status: "resolved", payload: { decision: "accept" } }]);
+    m.fire(3, "log/entry", { entry: wireRow({ id: 42, worker_id: 10, loop_id: 7, sequence: 42, op: "EDIT", status_rx: 200, rx: { status: 200 } }) });
+    assert.deepEqual(callsOf(observerSeen).slice(3), [["TOOL_CALL_START", "1/1/42"], ["TOOL_CALL_END", "1/1/42"], ["TOOL_CALL_RESULT", "1/1/42"]],
+        "the observer folds the settlement onto the call it already holds");
     portal.stop();
 });

@@ -15,7 +15,7 @@ import type {
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { wireRow } from "../test/log-fixture.ts";
 
-const OWNER = "agui://anonymous/threads/tui";
+const OWNER = "agui://operator/threads/tui";
 
 const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,

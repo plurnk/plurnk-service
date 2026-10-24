@@ -33,7 +33,7 @@ test("{§worker-finished-reply} {§application-worker-overview} a worker's lates
         const provider = new Mock({ contextWindow: 100_000, responses: turns });
         for (const _turn of turns) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
     };
-    const ask = async (sequence: number, source = `agui://anonymous/threads/alice/messages/q${sequence}`) => {
+    const ask = async (sequence: number, source = `agui://operator/threads/alice/messages/q${sequence}`) => {
         const loopId = await insertLoop(db, alice, sequence);
         await engine.injectIntoLoop(loopId, `Question ${sequence}.`, [], source);
         return loopId;
@@ -56,7 +56,7 @@ test("{§worker-finished-reply} {§application-worker-overview} a worker's lates
     const empty = await replyOf(alice);
     assert.deepEqual([empty?.completion, empty?.excerpt, empty?.continued], [200, "", false],
         "an empty completion is the latest finished reply, and speech that completed nothing never replaces it");
-    await run(alice, await ask(5), said(frame("SEND (agui://anonymous/threads/alice/messages/missing) [200]", "Lost.")));
+    await run(alice, await ask(5), said(frame("SEND (agui://operator/threads/alice/messages/missing) [200]", "Lost.")));
     assert.equal((await replyOf(alice))?.id, empty?.id, "a failed delivery finishes nothing");
     // {§message-abandonment}: a message another worker sent, left open by a loop that ended.
     const abandoned = await ask(6, "worker://boss");

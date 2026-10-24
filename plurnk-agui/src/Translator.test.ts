@@ -31,7 +31,7 @@ const t = (): Translator => new Translator({ origin: ORIGIN, workspaceId: 3, thr
 const at = (worker: number, address: string): string => `${ORIGIN}/agui/3/${worker}/entry?${new URLSearchParams({ target: address })}`;
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => {
     const tx = over.op === "SEND" && typeof over.tx === "string" ? JSON.parse(over.tx) : over.tx;
-    const rx = over.op === "SEND" && (tx as { target?: unknown } | undefined)?.target == null ? { answers: ["agui://anonymous/threads/th-1/messages/m1"] } : { status: 200 };
+    const rx = over.op === "SEND" && (tx as { target?: unknown } | undefined)?.target == null ? { answers: ["agui://operator/threads/th-1/messages/m1"] } : { status: 200 };
     return { entry: wireRow({ id: 7, sequence: 3, tx: { target: null, body: { raw: "message" } }, rx, ...over }) };
 };
 
@@ -250,13 +250,13 @@ test("{§message-completion}: delivered completion replies enter live and replay
         entry({ id: 11, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", status_rx: 400,
             tx: { target: null, body: { raw: "Undelivered." } }, rx: { status: 400 } }),
         entry({ id: 12, loop_seq: 1, turn_seq: 2, sequence: 1, op: "SEND", status_rx: 200,
-            tx: { target: null, body: { raw: "Cancelled this request." } }, rx: { status: 200, completion: 499, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+            tx: { target: null, body: { raw: "Cancelled this request." } }, rx: { status: 200, completion: 499, answers: ["agui://operator/threads/th-1/messages/m1"] } }),
         entry({ id: 13, loop_seq: 1, turn_seq: 3, sequence: 1, op: "SEND", status_rx: 200,
-            tx: { target: null, body: { raw: "The answer is **42**." } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+            tx: { target: null, body: { raw: "The answer is **42**." } }, rx: { status: 200, completion: 200, answers: ["agui://operator/threads/th-1/messages/m1"] } }),
         entry({ id: 14, loop_seq: 1, turn_seq: 4, sequence: 1, op: "SEND", status_rx: 200,
-            tx: { target: null, body: null }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+            tx: { target: null, body: null }, rx: { status: 200, completion: 200, answers: ["agui://operator/threads/th-1/messages/m1"] } }),
         entry({ id: 15, loop_seq: 1, turn_seq: 5, sequence: 1, op: "SEND", status_rx: 200,
-            tx: { target: null, body: { raw: " \n\t" } }, rx: { status: 200, completion: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+            tx: { target: null, body: { raw: " \n\t" } }, rx: { status: 200, completion: 200, answers: ["agui://operator/threads/th-1/messages/m1"] } }),
     ];
     const tr = t();
     const live = messages.flatMap((message) => tr.logEntry(message));
@@ -299,7 +299,7 @@ test("{§agui-lifecycle-projection} NOTE remains literal in its call; no task in
 test("{§agui-projection} addressed replies project by thread, including answers delivered by another worker", () => {
     for (const origin of ["model", "client", "_plurnk"] as const) for (const thread of ["th-1", "another-thread"]) {
         const native = "Verification.";
-        const address = `agui://anonymous/threads/${thread}/messages/user-message`;
+        const address = `agui://operator/threads/${thread}/messages/user-message`;
         const record = entry({ id: 1, loop_seq: 1, turn_seq: 1, sequence: 1, op: "SEND", origin,
             source: origin === "_plurnk" ? "worker://peer" : null,
             attrs: origin === "_plurnk" ? { kind: "reply" } : {},
@@ -318,7 +318,7 @@ test("{§agui-projection} addressed replies project by thread, including answers
 });
 
 test("{§agui-replay} an arrival retains the AG-UI message id across reconnects", () => {
-    const source = "agui://anonymous/threads/th-1/messages/user%20one";
+    const source = "agui://operator/threads/th-1/messages/user%20one";
     const record = entry({ op: "SEND", origin: "_plurnk", source, attrs: { kind: "message" },
         tx: { body: { raw: "Question." } }, rx: { status: 200 }, loop_seq: 1, turn_seq: 1, sequence: 1 });
     const [snapshot] = t().replay([record.entry]);
@@ -577,7 +577,7 @@ test("{§agui-reasoning-link} reasoning the client did not stream arrives whole 
 test("{§agui-reasoning-link} a snapshot holds each turn's reasoning once, empty, under its live identity and with its link; the client holds what it streamed across an interrupt", () => {
     const rows = [
         wireRow({ id: 1, op: "WAIT", loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 1, tx: { body: "orient" }, reasoning: "first thought", reasoning_model_call_id: 5, reasoning_request_sequence: 1 }),
-        wireRow({ id: 2, op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 2, rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] },
+        wireRow({ id: 2, op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 2, rx: { answers: ["agui://operator/threads/th-1/messages/m1"] },
             tx: { body: "Answer." }, reasoning: "first thought", reasoning_model_call_id: 5, reasoning_request_sequence: 1 }),
         wireRow({ id: 3, op: "WAIT", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 1, tx: { body: "again" }, reasoning: "second thought" }),
     ];
@@ -600,7 +600,7 @@ test("{§agui-reasoning-link} a snapshot holds each turn's reasoning once, empty
 test("{§agui-reasoning-link} {§agui-ambient} another worker's row carries its reasoning by link, the thread's own row none: no row carries reasoning text", () => {
     const tr = linked();
     const foreign = tr.logEntry({ entry: wireRow({ id: 9, op: "SEND", status_rx: 200, worker_id: 5, worker_name: "peer", turn_id: 7, loop_seq: 2, turn_seq: 7, sequence: 1,
-        rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, tx: { body: "worker speech" }, reasoning: "worker reasoning" }) });
+        rx: { answers: ["agui://operator/threads/th-1/messages/m1"] }, tx: { body: "worker speech" }, reasoning: "worker reasoning" }) });
     assert.deepEqual((foreign[0] as { value: Record<string, unknown> }).value.reasoning, { url: at(5, "reasoning://peer/2/7"), mimeType: "text/plain" },
         "its reasoning, which no message of this Run holds, rides the row by reference");
     const own = tr.logEntry({ entry: wireRow({ id: 2, op: "error", worker_id: 2, turn_id: 8, loop_seq: 1, turn_seq: 8, sequence: 1, status_rx: 400, tx: "",
@@ -665,7 +665,7 @@ test("{§agui-plurnk-metadata} reasoning READs remain operation receipts without
     assert.equal(ambient?.type === "CUSTOM" && ambient.name, "plurnk.ambient");
     const replay = tr.replay([
         reasoning.entry,
-        wireRow({ id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th-1/messages/m1"] }, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." }),
+        wireRow({ id: 8, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://operator/threads/th-1/messages/m1"] }, loop_seq: 1, turn_seq: 1, turn_id: 1, sequence: 4, tx: { body: "Answer." }, reasoning: "Original provider text." }),
     ]);
     const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT");
     assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
@@ -845,7 +845,7 @@ test("{§agui-ambient} a FOREIGN worker's rows never enter the core stream — p
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: wireRow({ id: 1, op: "WAIT", worker_id: 2, tx: JSON.stringify({ body: "mine" }) }) });
     assert.ok(own.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "the thread's own WAIT speaks its body");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://operator/threads/th/messages/m1"] }, turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), reasoning: "worker reasoning", ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type === "CUSTOM" ? e.name : e.type), ["plurnk.ambient"], "a worker's rows ride plurnk.ambient — visible topology, never the thread's messages");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
     assert.ok(!worker.some((e) => e.type.startsWith("REASONING_")), "a worker's reasoning never enters another thread's messages");
@@ -872,13 +872,13 @@ test("{§agui-plurnk-metadata} the newest-first workspace log replays user promp
     const tr = new Translator({ origin: ORIGIN, workspaceId: 3, threadId: "th", runId: "r" });
     const events = tr.replay([
         wireRow({ id: 6, op: null, origin: "model", loop_seq: 1, turn_seq: 2, turn_id: 2, sequence: 3, attrs: { kind: "emissionAttempt" } }),
-        wireRow({ id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } }),
+        wireRow({ id: 5, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://operator/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 2, sequence: 2, turn_id: 2, tx: { body: "And done." } }),
         wireRow({ id: 4, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 2, sequence: 1, turn_id: 2, tx: { body: "finish" } }),
         wireRow({ id: 3, op: null, origin: "model", loop_seq: 1, turn_seq: 1, sequence: 10, turn_id: 1, attrs: { kind: "emissionAttempt" } }),
-        wireRow({ id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://anonymous/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" }),
+        wireRow({ id: 2, op: "SEND", status_rx: 200, origin: "model", rx: { answers: ["agui://operator/threads/th/messages/m1"] }, loop_seq: 1, turn_seq: 1, sequence: 9, turn_id: 1, tx: { body: "The answer is 42." }, reasoning: "considered the evidence" }),
         wireRow({ id: 1, op: "WAIT", origin: "model", loop_seq: 1, turn_seq: 1, sequence: 1, turn_id: 1, tx: { body: "orient" } }),
         wireRow({ id: 0, op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, loop_seq: 1, turn_seq: 1, sequence: 0, tx: { body: { raw: "What is the answer?" } } }),
-    ], [{ path: "agui://anonymous/threads/th/messages/current-user", source: "agui://anonymous/threads/th/messages/current-user", body: "Continue.", loopId: 1, lifecycle: "running" }]);
+    ], [{ path: "agui://operator/threads/th/messages/current-user", source: "agui://operator/threads/th/messages/current-user", body: "Continue.", loopId: 1, lifecycle: "running" }]);
     assert.equal(events.length, 1);
     const snap = events[0] as { type: string; messages: Array<{ id: string; role: string; activityType?: string; content: unknown }> };
     assert.equal(snap.type, "MESSAGES_SNAPSHOT");
@@ -1040,7 +1040,7 @@ test("{§agui-plurnk-metadata} a row's facts ride once, on what it builds: its c
         wireRow({ id: 1, sequence: 1, origin: "_plurnk", op: "SEND", source: "worker://helper", attrs: { kind: "message" }, tx: { body: { raw: "Look." } } }),
         wireRow({ id: 2, turn_id: 2, turn_seq: 2, sequence: 1, op: "READ", tx: authored("````READ (worker:///notes.md)\n````"), status_rx: 404,
             rx: { status: 404, problem: { type: "https://problems.plurnk.xyz/scheme/worker/missing", title: "Missing", status: 404, detail: "No such entry." } } }),
-        wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, aside: "the answer", body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://anonymous/threads/th-1/messages/m1"] } }),
+        wireRow({ id: 3, turn_id: 3, turn_seq: 3, sequence: 1, op: "SEND", tx: { target: null, aside: "the answer", body: { raw: "Done." } }, rx: { status: 200, answers: ["agui://operator/threads/th-1/messages/m1"] } }),
         wireRow({ id: 4, turn_id: 3, turn_seq: 3, sequence: 2, op: "WAIT", signal: 202, status_rx: 102, tx: authored("````WAIT\n````"), rx: { status: 102, detail: "Nothing is in flight. Continuing." } }),
         wireRow({ id: 5, turn_id: 3, turn_seq: 3, sequence: 3, op: "WAIT", signal: 202, status_rx: 202, tx: authored("````WAIT <!-- parked -->\nBack soon.\n````"), rx: { status: 202, attrs: { waiting: 1 } } }),
         wireRow({ id: 6, turn_id: 4, turn_seq: 4, sequence: 1, op: "WORK", tx: authored("````WORK (worker://helper)\nSay hello.\n````"),
@@ -1179,7 +1179,7 @@ test("{§agui-words-by-reference} the projection holds the reference form of eve
         wireRow({ id: 4, turn_seq: 2, sequence: 2, turn_id: 2, origin: "_plurnk", op: "SEND", source: "worker://peer", attrs: { kind: "reply" },
             invocation: "log:///1/1/2/SEND", tx: { target: null, body: { raw: "Forty-two." } }, rx: { status: 200, answers: ["message://peer/cd34"], completion: 200 } }),
     ];
-    const path = "agui://anonymous/threads/th-1/messages/m9";
+    const path = "agui://operator/threads/th-1/messages/m9";
     const { messages, references } = Translator.conversation([{ translator: tr, entries: rows }],
         [{ path, source: path, body: "Not yet read.", loopId: 1, lifecycle: "running" }]);
     const document = (url: string, mimeType: string) => [{ type: "document", source: { type: "url", value: url, mimeType } }];

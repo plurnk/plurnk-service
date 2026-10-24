@@ -11,7 +11,7 @@ import { type Interrupt } from "@ag-ui/core";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
 import type { ClientEnvelope, LogEntryWire } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { type ResolvedModuleOptions } from "./config.ts";
+import { OPERATOR_CLIENT, type ResolvedModuleOptions } from "./config.ts";
 import { type OperationLoopListener } from "./BuiltinActions.ts";
 import { HttpProblemError, actionFailure } from "./action-results.ts";
 import { httpProblem, runErrorEvents } from "./run-events.ts";
@@ -106,7 +106,7 @@ export default class RunHandler {
     }
 
     // {§agui-http-authorization} — the principal and credential family the perimeter admitted this request under.
-    async run(req: IncomingMessage, res: ServerResponse, connect = false, principal = "anonymous", family: string | null = null): Promise<void> {
+    async run(req: IncomingMessage, res: ServerResponse, connect = false, principal = OPERATOR_CLIENT, family: string | null = null): Promise<void> {
         let decoded: unknown;
         try {
             decoded = JSON.parse(await RunHandler.#body(req));

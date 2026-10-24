@@ -41,7 +41,7 @@ const heldProvider = (): { provider: AiSdkProvider; release: () => void; calls: 
     return { provider, release: () => held.resolve(), calls: () => calls };
 };
 
-const address = (id: string): string => `agui://anonymous/threads/inbox/messages/${id}`;
+const address = (id: string): string => `agui://operator/threads/inbox/messages/${id}`;
 
 test("{§methods-worker-inbox} a message accepted mid-turn is in the inbox until its arrival row lands", async () => {
     const { provider, release, calls } = heldProvider();

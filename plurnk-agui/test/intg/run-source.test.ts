@@ -117,7 +117,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         const message = messages.find(({ body }: { body: string }) => body === "Also check the new requirement.");
         assert.ok(message);
         assert.equal(message.loopId, messages[0]!.loopId);
-        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/main\/messages\/[^/]+$/u);
+        assert.match(message.source ?? "", /^agui:\/\/operator\/threads\/main\/messages\/[^/]+$/u);
         const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
         assert.equal(envelope.runId, "steering");
         assert.equal(envelope.message.role, "user");
@@ -125,7 +125,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         inspection.assistant.content = [
             PlurnkParser.frame("KILL (log:///**/SEND)", ""),
             PlurnkParser.frame(`READ (${message.source}) <1,-1>`, ""),
-            PlurnkParser.frame("SEND (agui://anonymous/threads/main/messages/opening) [200]", "Initial request answered."),
+            PlurnkParser.frame("SEND (agui://operator/threads/main/messages/opening) [200]", "Initial request answered."),
             PlurnkParser.frame(`SEND (${message.source}) [200]`, "Injected requirement answered."),
         ].join("\n\n");
         release.resolve();
@@ -203,14 +203,14 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned wor
             forwardedProps: { plurnk: { workspace: "collaborative-reply", maxTurns: 3 } },
         });
         await entered.promise;
-        const address = "agui://anonymous/threads/assigned/messages/question";
+        const address = "agui://operator/threads/assigned/messages/question";
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address})`, "A collaborator found 42."));
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") throw new Error("The exact-reply fixture did not parse.");
         // {§connection-lifecycle} The collaborator is a person replying through a client operation.
-        const [reply] = await daemon.dispatchClientAction({ workspaceId, actor: "agui://anonymous/threads/collaborator", statements: [item.statement] });
+        const [reply] = await daemon.dispatchClientAction({ workspaceId, actor: "agui://operator/threads/collaborator", statements: [item.statement] });
         assert.equal(reply?.status, 200);
         release.resolve();
         const events = await result;
@@ -240,7 +240,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         import(join(SERVICE, "src/server/Daemon.ts")),
         import(join(SERVICE, "test/intg/_mock.ts")),
     ]);
-    const expected = "agui://anonymous/threads/run-source/messages/message%201";
+    const expected = "agui://operator/threads/run-source/messages/message%201";
     const provider = new Mock({
         contextWindow: 32768,
         responses: [

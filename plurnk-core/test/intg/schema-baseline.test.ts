@@ -350,7 +350,7 @@ test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag co
 
 test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's client workers become their runtime worker's history, losing no row anything names`, async (t) => {
     const path = await released(t, V3_3_0);
-    const person = "agui://anonymous/threads/first";
+    const person = "agui://operator/threads/first";
     const json = "'{}', 'application/json', '{\"status\":200}', 'application/json', 200";
     const before = new DatabaseSync(path);
     try {

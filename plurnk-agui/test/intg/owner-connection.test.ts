@@ -38,7 +38,7 @@ test("{§agui-owner-connection}: an idle owner receives a later child gate; obse
         const pendingEvents = listening.text();
         const [workspace] = await daemon.listWorkspaces();
         const parent = await daemon.readWorker({ workspaceId: workspace.id, identity: { name: "operator" } });
-        assert.equal(parent.owner, "agui://anonymous/threads/operator");
+        assert.equal(parent.owner, "agui://operator/threads/operator");
         assert.deepEqual(await daemon.listWorkerLoops({ workspaceId: workspace.id, workerId: parent.id }), [], "connection admits no inference");
         const child = await daemon.createWorker({ workspaceId: workspace.id, parentWorkerId: parent.id, name: "background" });
         await daemon.runLoop({ workspaceId: workspace.id, workerId: child.workerId, prompt: "Run the shell command." });

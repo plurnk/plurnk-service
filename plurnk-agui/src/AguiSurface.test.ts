@@ -11,7 +11,7 @@ test("{§agui-action-schema-enforcement} {§worker-ownership}: worker directorie
         id: 1,
         name: "main",
         created_at: "2026-10-07T00:00:00Z",
-        owner: "agui://anonymous/threads/main",
+        owner: "agui://operator/threads/main",
         origin: "model",
         parentWorkerId: null,
         kind: "root",

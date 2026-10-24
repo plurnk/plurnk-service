@@ -677,7 +677,7 @@ echoing the opaque `Interrupt.id` it answers.
 | A proposal of any other worker the owner reviews | Nothing: the Run holds no conversation of that worker | No `toolCallId` |
 | A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, the request's `message` and `responseSchema`, and Core's `ClientInteractionProjection` as `metadata.plurnk.interaction`: the worker, loop and turn asking ({§agui-plurnk-metadata}) |
 
-A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and the decision is no result of its own.
+A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and the decision is no result of its own. Every other worker Run whose conversation holds the proposed operation's worker (its bound worker or an open subagent segment) presents that same unanswered call as the proposal arrives, without an interrupt, and folds the settlement onto it when the operation settles.
 
 | Fact | Rule |
 | --- | --- |
@@ -1053,7 +1053,7 @@ AG-UI is the OAuth 2.1 authorization server of the daemon's one credential autho
 `/agui` ({§agui-http-authorization}). The daemon authenticates under the shared `PLURNK_AUTH=1`
 ({§operator-config-shared-keys}), the shipped posture, and never by inference from what else is
 set: then the module publishes the authority's face at setup and serves the endpoints below. Under
-`PLURNK_AUTH=0` it publishes nothing, serves none of them, and every resource admits anonymously.
+`PLURNK_AUTH=0` it publishes nothing, serves none of them, and admits every request as `operator`.
 
 §agui-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the
 resources it may reach; `agui` names the client interface and `a2a` the hosted A2A exposure
@@ -1211,7 +1211,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | Its arrival | the row folds its facts onto the message the client holds — a repeated `TEXT_MESSAGE_START` and `TEXT_MESSAGE_END` under the same id and no words again ({§agui-plurnk-metadata}) — and the message leaves `status.inbox`; a loop that concludes without observing it — cancelled, say — leaves it listed with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}) |
 | A refused input | is nowhere: a refusal before admission is the Run's own error ({§agui-run-input}), and the client's copy stays its own |
 
-§agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}): `operator` for the operator's own credentials, a declared client's id for its own, and `anonymous` when the listener authenticates nothing. The frontend's self-identification never enters the address ({§client-metadata}).
+§agui-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `agui://<principal>/threads/<threadId>/messages/<messageId>`, every segment URI-encoded, the principal being the admitted credential's subject ({§agui-http-authorization}): `operator` for the operator's own credentials and when the listener authenticates nothing, and a declared client's id for its own. The frontend's self-identification never enters the address ({§client-metadata}).
 
 | Fact | Rule |
 | --- | --- |
@@ -1232,7 +1232,7 @@ the model-loop seam supports it deliberately. A client's address that core holds
 | Posture | Rule |
 | --- | --- |
 | Shipped | authenticated with nothing configured: the daemon **mints its operator secret at every boot** into the file beside its database ({§credential-authority}), which the operator's own tools read, and the seeded operator file ({§operator-config-discovery}) teaches the keys without setting one |
-| `PLURNK_AUTH=0` | serves no authorization server and admits every request as `anonymous`: the operator's deliberate configuration, never a default |
+| `PLURNK_AUTH=0` | serves no authorization server and admits every request as `operator`: the operator's deliberate configuration, never a default |
 
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and

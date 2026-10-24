@@ -33,7 +33,7 @@ test("{§agui-workspace-state} workspace preparation is replaceable state, never
 });
 
 test("{§agui-projection} log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
-    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 2, sequence: 3, tx: { body: "hello" }, rx: { answers: ["agui://anonymous/threads/t/messages/m"] }, turn_id: 1 } });
+    const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, loop_seq: 1, turn_seq: 2, sequence: 3, tx: { body: "hello" }, rx: { answers: ["agui://operator/threads/t/messages/m"] }, turn_id: 1 } });
     const types = new Set(evs.map((e) => e.type));
     assert.ok(types.has(EventType.TEXT_MESSAGE_START) && types.has(EventType.TEXT_MESSAGE_CONTENT) && types.has(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });

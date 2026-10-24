@@ -4,7 +4,7 @@ const ADDRESS = /^agui:\/\/[^/]+\/threads\/([^/]*)\/messages\/([^/]+)$/u;
 
 /** {§agui-run-source}: message identity belongs to the thread, not its transport run. */
 export default class MessageAddress {
-    /** The principal is the credential's subject ({§agui-http-authorization}); `anonymous` names nobody. */
+    /** The principal is the credential's subject ({§agui-http-authorization}), or `operator` when the listener authenticates nothing. */
     static owner(principal: string, threadId: string): string {
         return `agui://${encodeURIComponent(principal)}/threads/${encodeURIComponent(threadId)}`;
     }

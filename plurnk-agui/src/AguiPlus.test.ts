@@ -25,7 +25,7 @@ import { replayState } from "../test/state-replay.ts";
 import { NO_GAUGE } from "../test/accounting-fixture.ts";
 import { JSONPatchError } from "json-p3";
 
-const OWNER = "agui://anonymous/threads/tui";
+const OWNER = "agui://operator/threads/tui";
 // The daemon's {§provider-accounting} projection of a Worker that has spent nothing: explicit zero.
 const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, totalTokens: 0,
     inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokenDetails: { textTokens: 0, reasoningTokens: 0 } };

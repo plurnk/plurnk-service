@@ -321,7 +321,7 @@
                                             "target": { "scheme": "sh", "authority": null, "pathname": "" },
                                             "body": "printf ok",
                                             "attrs": { "runtime": "sh" },
-                                            "owner": "agui://anonymous/threads/fixture",
+                                            "owner": "agui://operator/threads/fixture",
                                             "disposition": { "decision": "review" }
                                         }
                                     }
@@ -374,7 +374,7 @@
                                             "target": { "scheme": "file", "authority": null, "pathname": "notes.md" },
                                             "body": "--- notes.md\n+++ notes.md\n@@ -1 +1 @@\n-before\n+after",
                                             "attrs": {},
-                                            "owner": "agui://anonymous/threads/fixture",
+                                            "owner": "agui://operator/threads/fixture",
                                             "disposition": { "decision": "review" },
                                             "expiresAt": "2026-10-16T12:00:00.000Z"
                                         }

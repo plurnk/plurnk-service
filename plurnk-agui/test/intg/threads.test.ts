@@ -98,8 +98,8 @@ test("{§agui-op-parse} two threads, one workspace: each thread's operations und
         const [workspace] = await daemon.listWorkspaces();
         const loops: readonly ApplicationLoopProjection[] = await daemon.listWorkerLoops({ workspaceId: workspace!.id, workerId: runtime.id });
         assert.deepEqual([...new Set(loops.flatMap(({ promptSource }) => promptSource === null ? [] : [promptSource]))].toSorted(), [
-            "agui://anonymous/threads/first-thread",
-            "agui://anonymous/threads/second-thread",
+            "agui://operator/threads/first-thread",
+            "agui://operator/threads/second-thread",
         ], "every operation's loop names the person who acted");
     } finally {
         await daemon.stop();

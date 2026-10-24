@@ -17,7 +17,7 @@ const setup = async (responses: MockResponse[]) => {
     const loopId = await insertLoop(db, workerId, 1);
     const notices: Array<{ kind: string; message?: string }> = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-    await engine.injectIntoLoop(loopId, "Answer the question.", [], "agui://anonymous/threads/alice/messages/question");
+    await engine.injectIntoLoop(loopId, "Answer the question.", [], "agui://operator/threads/alice/messages/question");
     const provider = new Mock({ contextWindow: 100_000, responses });
     return { db, engine, provider, workspaceId, workerId, loopId, notices,
         turn: () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),

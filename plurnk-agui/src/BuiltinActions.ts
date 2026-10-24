@@ -5,6 +5,7 @@ import { Problems, UNKNOWN_POSITION, Validator, excerptOf, isRecord, lifecycleOf
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { actionFailure } from "./action-results.ts";
 import MessageAddress from "./MessageAddress.ts";
+import { OPERATOR_CLIENT } from "./config.ts";
 import type { RunAgentInput } from "./types.ts";
 
 // {§agui-broadcast-fan} What a client operation's Run hears: the loop its dispatch opened, before any statement runs.
@@ -145,7 +146,7 @@ export default class BuiltinActions {
         input: RunAgentInput,
         env: ClientEnvelope | null,
         boundWorkerId?: number,
-        principal = "anonymous",
+        principal = OPERATOR_CLIENT,
         onLoop?: OperationLoopListener,
     ): Promise<ActionOutcome> {
         try {

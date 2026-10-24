@@ -328,7 +328,7 @@ test("{§agui-oauth-revocation} revocation is by family and by the owning client
     } finally { await mod.close(); }
 });
 
-test("{§agui-oauth} under PLURNK_AUTH=0 the module mounts only /agui and admits anonymously, whatever else is set", async () => {
+test("{§agui-oauth} under PLURNK_AUTH=0 the module mounts only /agui and admits as operator, whatever else is set", async () => {
     const mod = await boot({ PLURNK_AUTH: "0" }, {}, null);
     try {
         assert.deepEqual([...mod.module.mounts], ["/agui"]);
