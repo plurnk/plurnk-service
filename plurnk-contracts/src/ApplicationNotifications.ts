@@ -1,6 +1,6 @@
 import { isRecord } from "./guards.ts";
 import type { ApplicationLoopPacket, LogEntryWire } from "./Application.ts";
-import type { JsonSchema, OperationResult, ProposalProjection } from "./types.ts";
+import type { ClientInteractionProjection, JsonSchema, OperationResult, ProposalProjection } from "./types.ts";
 import type { ProviderAccounting } from "./types.generated.ts";
 
 // {§methods-log-entry-wire} The row exactly as core sends it.
@@ -165,8 +165,8 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
             contextCapacity: nullable(POSITIVE),
         }, ["curationWeight", "curationBudget", "contextTokens", "contextCapacity"]),
     }, ["workerId", "loopId", "loopSeq", "packetCount", "gauge"])),
-    "loop/proposal": notification(ref("ProposalProjection")),
-    "loop/interaction": notification(ref("ClientInteractionProjection")),
+    "loop/proposal": notification<ProposalProjection>(ref("ProposalProjection")),
+    "loop/interaction": notification<ClientInteractionProjection>(ref("ClientInteractionProjection")),
     "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({
         workerId: nullable(POSITIVE),
         loopId: NONNEGATIVE,

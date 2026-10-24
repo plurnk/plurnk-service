@@ -82,6 +82,7 @@
     "dependencies": {
         "@opentelemetry/api": "^1.10.0",
         "@plurnk/plurnk-a2a": "4.0.2",
+        "@plurnk/plurnk-acp": "1.0.0",
         "@plurnk/plurnk-auth": "1.0.0",
         "@plurnk/plurnk-agui": "5.0.2",
         "@plurnk/plurnk-contracts": "6.0.1",

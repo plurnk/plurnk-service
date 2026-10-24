@@ -29,9 +29,9 @@ export default {
         },
         {
             name: "parser-only-where-declared",
-            comment: "the language is parsed by the service's execution path, plurnk-agui and plurnk-execs; nowhere else",
+            comment: "the language is parsed by the service's execution path, plurnk-agui, plurnk-acp and plurnk-execs; nowhere else",
             severity: "error",
-            from: { pathNot: "^plurnk-(core|agui|execs|parser)/" },
+            from: { pathNot: "^plurnk-(core|agui|acp|execs|parser)/" },
             to: { path: "^plurnk-parser/" },
         },
         {

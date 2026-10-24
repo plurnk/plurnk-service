@@ -106,6 +106,9 @@ test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authoriza
     const refused = await fetch(`http://127.0.0.1:${port}/agui`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     assert.equal(refused.status, 401);
     assert.match(refused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
+    const acpRefused = await fetch(`http://127.0.0.1:${port}/acp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(acpRefused.status, 401);
+    assert.match(acpRefused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
 });
 
 test("{§module-http-mounts} an independent root module coexists with AG-UI", async (t) => {

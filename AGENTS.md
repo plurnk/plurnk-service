@@ -62,14 +62,16 @@ extensions included in the default installation. The terminal client is a separa
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
 - `plurnk-parser` owns the ANTLR grammars and the parser that implements that
-  language. Its importers are the service's execution path, `plurnk-agui`
-  (`parseStatements`, for client-authored blocks) and `plurnk-execs`
+  language. Its importers are the service's execution path, `plurnk-agui` and
+  `plurnk-acp` (`parseStatements`, for client-authored blocks) and `plurnk-execs`
   (`parseStatements` and `frame`, for runtime invocation and teaching examples);
   no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
-- `plurnk-agui` owns the external client protocol and translates between AG-UI
+- `plurnk-agui` owns the external AG-UI client protocol and translates between AG-UI
   and daemon operations.
+- `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between
+  ACP v2 and daemon operations.
 - `plurnk-modules` owns the daemon module contract: the lifecycle a module
   implements and the base setup seam. Each framework owns the slice for what
   modules contribute to its kind.
