@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "description": "AG-UI HTTP and SSE interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",

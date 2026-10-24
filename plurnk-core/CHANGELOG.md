@@ -1,5 +1,18 @@
 # @plurnk/plurnk-service
 
+## 4.3.2
+
+### Patch Changes
+
+- 4ec7cd3: Project the daemon's resolved `HostPaths` (`HOME` and `XDG_*` roots) into
+  `ExecEnv.scoped`, `ExecEnv.withoutOwnSecrets`, `EnvFunctionality`, and
+  `ExecScratch` so subprocesses and module-launched processes inherit the
+  daemon's isolated home and state root rather than ambient host paths (#1224).
+- Unify the AG-UI principal under `PLURNK_AUTH=0` onto `operator` so toggling authentication never splits worker ownership, project proposed tool calls (`gateCall`) live to all worker Runs observing the worker, and refine `plurnk.md` `COPY`/`MOVE` operand teaching and anchor examples (#1229, #0).
+- Updated dependencies
+  - @plurnk/plurnk-contracts@6.0.1
+  - @plurnk/plurnk-agui@5.0.1
+
 ## 4.3.1
 
 ### Patch Changes

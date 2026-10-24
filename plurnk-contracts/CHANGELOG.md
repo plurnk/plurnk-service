@@ -1,5 +1,11 @@
 # @plurnk/plurnk-contracts
 
+## 6.0.1
+
+### Patch Changes
+
+- Unify the AG-UI principal under `PLURNK_AUTH=0` onto `operator` so toggling authentication never splits worker ownership, project proposed tool calls (`gateCall`) live to all worker Runs observing the worker, and refine `plurnk.md` `COPY`/`MOVE` operand teaching and anchor examples (#1229, #0).
+
 ## 6.0.0
 
 ### Major Changes
