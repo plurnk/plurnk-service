@@ -1,11 +1,13 @@
-# @plurnk/plurnk-acp — the projection contract
+# @plurnk/plurnk-acp — ACP v2 Server Module Specification
 
-The module is the daemon's ACP v2 client interface. It consumes the
-contracts-owned {§application-port} and serves both ACP v2 JSON-RPC 2.0 over WebSocket/HTTP
-and Run streams over HTTP/SSE at `/acp`. Core's numbers and semantics pass through; the module
-does not recompute them.
+The module is the daemon's Standard ACP v2 (`@agentclientprotocol/sdk/experimental/v2/unstable`)
+server interface. It consumes the contracts-owned {§application-port} and mounts `/acp` on the
+daemon's listener via `AcpServer` (`@agentclientprotocol/sdk/experimental/server`), serving
+Streamable HTTP and WebSocket JSON-RPC 2.0 connections alongside HTTP entry and history resources
+under one OAuth 2.1 perimeter. Core's numbers and semantics pass through verbatim; the module
+introduces no parallel lifecycle dialect or custom `sessionUpdate` variants.
 
-## Architecture
+## 1. Architecture and Session Binding
 
 <!-- map -->
 | Tag | Promise |
@@ -13,1223 +15,668 @@ does not recompute them.
 | {§acp-daemon-client} | The module is a discovered module of the daemon. |
 | {§acp-client-types} | A client's contracts are runtime-neutral. |
 | {§acp-listener-admission} | Bound is not ready. |
-| {§acp-thread-binding} | An ACP thread represents a worker; workspace selection is a Plurnk extension. |
-| {§acp-run-authority} | ACP owns the client lifecycle |
-| {§acp-thread-address} | A qualified thread is `<workspace ID>#<worker name>`: a canonical positive, safe decimal integer and a native… |
+| {§acp-thread-binding} | An ACP session binds a workspace and session worker. |
+| {§acp-run-authority} | Standard ACP v2 owns the protocol surface. |
+| {§acp-thread-address} | A qualified session address is `<workspace ID>#<session name>`: |
 <!-- /map -->
 
-- §acp-daemon-client **The module is a discovered module of the daemon.** The package
-  declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
-  ({§module-discovery}); nothing composes it by hand. It claims only `/acp` on the daemon's
-  listener ({§http-host}, {§module-http-mounts}) and owns no socket. Its setup
-  registers the `acp` message scheme, and its start seam is `AcpPort`, the slice of
-  {§application-port} it calls. A daemon without a listener leaves it out.
-- §acp-client-types **A client's contracts are runtime-neutral.** `@plurnk/plurnk-acp/client` exports,
-  types only, what a client of this interface consumes: the state its `STATE_SNAPSHOT` and
-  `STATE_DELTA` events carry (`AcpPlusState` and its parts, {§acp-state-patches}) and the outcome a
-  management action reports (`ActionOutcome`). A browser type-checks it with DOM libraries and no Node
-  globals ({§runtime-neutral-root}); lint checks its whole source graph that way
-  (`tsconfig.browser.json`). The package root is the server module.
+- §acp-daemon-client **The module is a discovered module of the daemon.** The package declares
+  `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
+  ({§module-discovery}); nothing composes it by hand. It claims only `/acp` on the daemon's single
+  HTTP/WebSocket listener ({§http-host}, {§module-http-mounts}) and owns no separate socket or
+  `stdio` transport. Its `setup` registers the `acp` `MessageScheme`, and its `start` seam is
+  {§application-port}. A daemon without a listener leaves it out.
+- §acp-client-types **A client's contracts are runtime-neutral.** `@plurnk/plurnk-acp/client`
+  exports runtime-neutral types for the `_meta.plurnk` state and action outcomes a client consumes.
+  A browser type-checks it with DOM libraries and no Node globals ({§runtime-neutral-root}); lint
+  checks its whole source graph that way (`tsconfig.browser.json`). The package root is the server
+  module.
 - §acp-listener-admission **Bound is not ready.** The socket is core's
-  ({§startup-listener-admission}): bound before durable-state admission and answering a
-  retryable `503 service-starting` until daemon activation admits it after every module has
-  started ({§module-http-mounts}). This module mounts `/acp` at `start`, so no
-  request reaches it before its port is installed; from `stop` it answers `503
-  service-stopping`.
-- §acp-thread-binding **An ACP thread represents a worker; workspace selection is a Plurnk extension.** ACP itself defines no workspace. The core workspace envelope carries only the workspace ({§methods-rebind}); ACP owns the per-thread worker binding. `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's worker; `log.read` and `entry.read` default there and may explicitly select another workspace worker. Extended context persists across ACP Runs because the worker's log does.
+  ({§startup-listener-admission}): bound before durable-state admission and answering a retryable
+  `503 service-starting` until daemon activation admits it after every module has started
+  ({§module-http-mounts}). This module mounts `/acp` at `start`, so no request reaches it before its
+  port is installed; from `stop` it answers `503 service-stopping`.
+- §acp-thread-binding **An ACP session binds a workspace and session worker.** `session/new`,
+  `session/resume`, `session/fork`, `session/list`, `session/delete`, and `session/close` resolve
+  their workspace from `cwd` (`AbsolutePath`), `_meta.plurnk.workspace`, or a qualified `sessionId`
+  (`<workspaceId>#<sessionName>`, {§acp-thread-address}). `session/prompt`, `session/cancel`,
+  `session/fork`, `session/set_config_option`, and `session/delete` operate on the bound session
+  worker. Extended context persists across prompts because the session's log is durable.
 
   | Fact | Rule |
   | --- | --- |
-  | An opaque thread | without a workspace selection, an opaque thread string resolves through core's `acp` worker reference ({§worker-external-reference}); its first worker-creating Run allocates one ordinary folderless workspace and model worker atomically, and subsequent Runs reuse that durable association, across reconnects, workspace rename, and daemon restart; inspection, resume and workspace actions alone never allocate an opaque conversation, and an unknown thread is `404 thread-not-found`; neither names nor approval owners are lookup keys; qualified thread addresses resolve directly under {§acp-thread-address} |
-  | An explicit `forwardedProps.plurnk.workspace` | selects a workspace by exact name: attach if it exists, create with that name otherwise when the Run permits creation; an earlier binding serves only while the workspace still carries that name — after a rename, the old name resolves afresh and the new one reaches the renamed workspace; a rename preserves workers and their names, and subsequent requests must select the workspace's new name; under this binding, `threadId` names a worker by its immutable name and is never compared with the workspace's name |
-  | The worker name | resolves among model-origin workers only (forks and earlier workers are addressable as threads; the runtime actor `_plurnk` is never bound); a worker comes into being by an act addressed to it or by its owner's session attaching to it ({§acp-action-binding}): the first such Run creates the worker the thread names via `createWorker`, and a thread named after the runtime actor fails at minting; reading it, watching it passively, or acting on the workspace never creates one; a client that names no particular worker supplies its own default name |
-  | A name the daemon no longer holds | (a fresh database, a deleted worker) is minted anew by the next act addressed to it, with no history; the run-start status gauge then reports `loopId: null` where the previous run's reported a loop, which is how a client tells a new worker from a resumed one |
-  | Process-local bindings | key on the workspace's identity and the `threadId`; equal thread names in different workspaces never share an envelope, Worker, replay, state, or active Run; `workspace.create` selects its `name` literally under the same acquisition rule, and a workspace label resembling a qualified thread address is still a label, not an instruction to attach by ID |
-  | Concurrent first requests | acquire one envelope and worker binding; workspace acquisition is serialized across threads, retaining each request's create/attach contract: the creating request supplies settings, and other threads attach that workspace; failed acquisitions retain their cause and leave no failed cache entry preventing a later retry; explicit Core creation retains its name-conflict semantics, and protocol binding is not a second creation request |
-  | Workspace creation | a Run that may create its worker, or that binds none, may create the workspace; every other Run attaches only ({§acp-action-binding}): a workspace name that does not exist is the client's error, answered 404 `workspace-not-found` with nothing created — never a second workspace minted after the name and answered there; a creating Run's `projectRoot` (a string or null) and `settings` (a string or an object) reach `workspace.create` as forwarded, and any other type is the Run's 400 `project-root-invalid` or `settings-invalid` |
-  | A reply | to any retained thread reference of the bound worker, its qualified address, or its explicit workspace-selected name is speech in that worker's conversation; this changes neither the recorded message address nor its approval owner; arrivals from another thread spelling keep their log-coordinate identities and source labels ({§acp-snapshot}) |
+  | Qualified address (`<workspaceId>#<name>`) | Resolves directly to that immutable workspace ID and model worker name ({§acp-thread-address}). |
+  | Workspace selection by `cwd` or `_meta.plurnk.workspace` | `session/new` attaches or creates the workspace for `cwd` (or `_meta.plurnk.workspace`); `session/resume` and `session/list` attach an existing workspace and return `404 workspace-not-found` when absent. |
+  | Session name resolution | Resolves among model-origin workers only (forks and earlier sessions are addressable; the runtime actor `_plurnk` is never bound as a conversation session). `session/new` creates the session worker; `session/resume` attaches an existing session worker (unless `_meta.plurnk.create === true`) and returns `404 session-not-found` when absent. |
+  | Opaque `sessionId` | Without a workspace qualifier, an opaque `sessionId` resolves through core's `acp` worker reference ({§worker-external-reference}) or as a worker name within the `cwd` workspace. |
+  | Process-local bindings | Key on `(workspaceId, workerId)`; equal session names in different workspaces never share an envelope, replay, state, or active loop. |
+  | Concurrent first requests | Workspace acquisition is serialized across sessions, retaining each request's create/attach contract; failed acquisitions leave no stale cache entry. |
 
-- §acp-run-authority **ACP owns the client lifecycle** — `threadId`, `runId`,
-  `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR` (including client-aborted streams carrying code `abort`), interrupt outcomes, and `RunAgentInput.resume`
-  follow the contracts-owned ACP Run schemas. PLURNK does not maintain a parallel client
-  lifecycle dialect. PLURNK owns the internal worker/loop/turn topology and projects it
-  through standard events plus namespaced `plurnk.*` extensions.
+- §acp-run-authority **Standard ACP v2 owns the protocol surface.** `initialize` negotiates
+  `protocolVersion: 2` (`PROTOCOL_VERSION` from `@agentclientprotocol/sdk/experimental/v2/unstable`)
+  and advertises `agentCapabilities` (`promptCapabilities: { image: true, embeddedContext: true }`,
+  `sessionCapabilities: { list: {}, resume: { replay: true }, fork: {}, close: {}, delete: {}, configOptions: {} }`,
+  `providerCapabilities: { list: {}, set: {}, disable: {} }`, `mcpCapabilities: { http: true, sse: false }`).
+  Every client-to-agent request, agent-to-client request, and `session/update` notification uses
+  standard ACP v2 types from `@agentclientprotocol/sdk/experimental/v2/unstable`; Plurnk facts
+  about a standard item ride its `_meta.plurnk` ({§acp-plurnk-metadata}).
+- §acp-thread-address **A qualified session address is `<workspace ID>#<session name>`:** a
+  canonical positive, safe decimal integer and a native model-worker name. A string beginning with
+  decimal digits then `#` reserves this grammar; leading zeroes, an out-of-range ID, or an invalid
+  worker name fail with `400 session-address-invalid`. Qualified IDs always select the immutable
+  workspace ID.
 
-§acp-thread-address A qualified thread is `<workspace ID>#<worker name>`: a canonical positive,
-safe decimal integer and a native model-worker name. A string beginning with decimal digits then
-`#` reserves this grammar; leading zeroes, an out-of-range ID or an invalid worker name receive
-`400 thread-address-invalid`, not opaque-thread allocation. Other strings remain opaque, including
-Unicode and `#` in a nonnumeric prefix. Qualified IDs always select the immutable workspace ID,
-independently of forwarded workspace labels or target existence. An absent workspace is 404;
-an absent worker may be created only by a worker-creating Run ({§acp-action-binding}).
+## 2. Approval Ownership and Connection Lifetime
 
-## §acp-worker-owner Approval ownership
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§acp-worker-owner} | The ACP owner is `acp://operator`, scoped by workspace. |
+| {§acp-owner-activation} | An owner's arrival activates its workspace. |
+| {§acp-run-disconnect} | A disconnect ends delivery, never work. |
+| {§acp-owner-connection} | Persistent observation. |
+| {§acp-held-interrupts} | A session that holds an active gate waits on it without duplicate presentation. |
+| {§acp-shutdown} | Shutdown releases every remaining connection. |
+<!-- /map -->
 
-The ACP owner is `acp://operator`, scoped by workspace: every ACP thread and client session in the
-workspace shares it. An owner is not a socket, a Run, a thread, or a worker. `RunAgentInput.tools`
-declares the client tools it implements, and `forwardedProps.plurnk.interactive` (a boolean)
-states whether a person attends it; unstated, nobody does. Every ACP owner reviews, because a gate
-is answered by a standard interrupt resume ({§acp-proposal-resolve}): the module registers core's
-review capability, `request_approval` ({§worker-ownership}), beside the declared tools, and a client
-declares no tool for it. Control attachment registers that capability set and claims the bound model
-worker and its model descendants under {§worker-ownership}; observation does neither. Capabilities survive
-disconnection and a later declaration replaces them for future requests.
+§acp-worker-owner **The ACP owner is `acp://operator`, scoped by workspace.** Every ACP session in
+the workspace shares it. Control attachment registers `acp://operator` with core's
+`request_approval` capability ({§worker-ownership}) plus any client-declared `_meta.plurnk.tools`,
+and claims the bound session worker and its model descendants; passive observation
+(`_meta.plurnk.control === false`) claims nothing.
 
 | Request | Ownership effect |
-|---|---|
-| A new message ({§acp-run-input}) or an interrupt resume | Control attachment for the worker the Run binds, if any ({§acp-action-binding}). |
-| Synchronization / connection with `forwardedProps.plurnk.control = true` | Explicit control attachment without inference. |
-| Passive synchronization / connection; a client operation ({§acp-client-operation}); other management Runs | No claim and no capability replacement. |
-
-§acp-owner-activation **An owner's arrival activates its workspace.** A control attachment starts the
-workspace's Functionality activation ({§methods-workspace-activate}) and does not wait for it: the Run
-proceeds, and a first prompt waits only for what remains of that activation. Observation activates
-nothing. Shutdown cancellation of that background demand is expected; other activation and
-cleanup failures remain diagnostics. Core owns and joins the preparation, not the connected Run
-({§functionality-preparation-cancellation}).
-
-Approval delivery matches the recorded owner; interaction delivery matches its recorded
-recipient. No connected-ancestor fallback or topology-based authority exists. An owner may
-review an independently active worker while its own thread's worker is idle. Concurrent connections
-to the owner can see the same gate; Core settles it at most once. The owner's Runs are the worker Runs
-in its workspace, passive observations included: claiming is not presenting. Every connected worker
-Run of the owner in the workspace receives its gate; an operation or other management Run never receives one.
-Each presentation of a gate retains its own Run continuation. A resumed client interaction is
-acknowledged with the standard `TOOL_CALL_RESULT` of its call before the Run continues; a decision
-on a proposal is no result of its own, since the operation's settlement answers its call
-({§acp-proposal-resolve}).
-Server approval policy belongs to Core.
-
-## §acp-run-disconnect Run lifetime
-
-**A disconnect ends delivery, never work.** Once Core has admitted work, the loss of the
-transport that submitted it cancels nothing and changes nothing about it: not its owner, its
-permissions, its execution state or its accounting. Only an explicit cancellation
-(`loop.cancel`, {§methods-loop-cancel}) or the work's own end ends it. No connection owns a
-worker's lifetime, and approval ownership confers no responsibility for cancelling running work.
-
-| Connection | Unexpected disconnect |
-|---|---|
-| Message Run | Detach. The admitted loop runs on; its rows reach every other observer. |
-| Resume of a message Run's interrupt | Detach. An accepted decision stands; the resumed work runs on. |
-| Executing `op.exec` / `op.parse` Run | Detach. The dispatched operation, its loop and the executions it started run on under their own lifetime ({§connection-lifecycle}). |
-| Observation, including approval of independently started work | Detach. |
-| Other management Run | Detach. |
-
-The admission boundary is Core's acknowledgement of the submission. Before it, a request
-that is incomplete, invalid or unauthorized acquires no authority, and a request whose
-connection closed starts nothing: the disconnect handler is installed before asynchronous Run
-preparation. After it, a lost reply undoes nothing: the admission stands exactly once, and
-delivery teardown (the transport, its heartbeat, its subscriptions and the connection-local
-projection) cannot reach it or any other loop. A resume whose connection closes before its
-decision is accepted is refused (499 `connection-closed`) and the same gate stays discoverable;
-one accepted is settled at most once and never undone. An authored terminal or interrupt ends
-the connection normally. Interrupt continuations are adapter-owned, not worker ownership or a
-second core lifecycle; rediscovery, including after module restart, presents a fresh observer
-continuation. A client's own request abortion is not evidence of cancellation: only the
-daemon's terminal record is.
-
-## §acp-owner-connection Persistent observation
-
-`POST /acp/connect` accepts a standard `RunAgentInput` that submits nothing ({§acp-run-input}): its messages are
-the client's copy, and one that carries a new message, an action or a resume is refused, 400 `invalid-connect-input`.
-It binds as synchronization does: an owner's control connection creates the worker the
-thread names when there is none, and a passive one creates nothing. It uses the same snapshots,
-events, and interrupt representation
-({§acp-sync}), but waits when the worker is idle. New work, including owner-addressed
-child gates, is delivered without client polling or fabricated prompts. A terminal or interrupt
-ends that observation Run; the client reconnects after handling it. Detaching never cancels work.
-This is the transport implementation of the ACP `connect()` extension, not another event protocol: `HttpAgent`
-leaves `connect()` to its subclasses, and a client without one reattaches by running with nothing new. A client that
-holds an interrupt while its person decides stays informed by connecting with that interrupt named
-({§acp-held-interrupts}).
-
-§acp-held-interrupts **A Run that names the interrupts its client holds waits on them.**
-`forwardedProps.plurnk.interrupts` lists the `Interrupt.id`s its client holds unanswered, the standard client's
-`pendingInterrupts`: an array of strings, which only a Run that submits nothing reads ({§acp-run-input}).
-
-| Fact | Rule |
 | --- | --- |
-| A held interrupt | one a Run of this thread presented, whose gate is still pending: the Run does not present that gate again, and presents no other gate while it holds one; that other gate stays durable and is presented after |
-| While held | the Run observes as a connection does, waiting when the worker is idle |
-| Settlement | when a held gate settles, through any presentation's resume or by Core, the Run finishes with `RUN_FINISHED` success, which clears the standard client's pending interrupts; the client connects again to follow the work that continues |
-| An interrupt not held | unknown, settled, from before a restart, or another thread's: no longer its client's to answer. A Run holding no gate presents a pending one under a new id; otherwise it finishes with `RUN_FINISHED` success after its snapshots, as at a settlement |
-| Answering | a held interrupt is answered by an ordinary resume ({§acp-proposal-resolve}); one whose gate another answer settled first is refused, 409, and settles nothing |
+| `session/new`, `session/prompt` ({§acp-run-input}), or a permission / elicitation response | Control attachment for the bound session worker ({§acp-action-binding}). |
+| `session/resume` with `_meta.plurnk.control !== false` | Control attachment without model inference. |
+| Passive `session/resume` (`_meta.plurnk.control === false`), `session/list`, or client operations ({§acp-client-operation}) | No claim and no capability replacement. |
 
-§acp-shutdown **Shutdown releases every remaining Run.** Module `stop` refuses new
-requests while admitted Runs retain terminal-event delivery. In `close`, after core
-settlement ({§module-shutdown-order}), each still-open Run receives `service-stopping`
-as a `RUN_ERROR` carrying that Problem ({§acp-plurnk-metadata}), then its response and heartbeat end. This
-ends the transport Run, not a worker obligation. `close` returns once every request the
-module admitted, and the work it and the module's Runs started, has settled
-({§module-route-settlement}): nothing the module started reaches core after the module closes. A preparation finishing after closure
-answers `service-stopping` and opens no stream. Already-ended Runs receive nothing
-further; repeated closure is inert. Clients need not disconnect for the daemon to stop.
+§acp-owner-activation **An owner's arrival activates its workspace.** A control attachment starts
+the workspace's Functionality activation ({§methods-workspace-activate}) asynchronously without
+blocking the session response; a subsequent prompt waits only for what remains of that activation.
+Passive observation activates nothing.
 
-## §acp-body-reference Bodies by reference
+§acp-run-disconnect **A disconnect ends delivery, never work.** Once Core has admitted a prompt,
+permission resolution, or client operation, closing the WebSocket or HTTP stream that submitted it
+cancels nothing and changes nothing about its owner, permissions, execution state, or accounting.
+Only an explicit `session/cancel` ({§methods-loop-cancel}) or the work's own conclusion ends it.
+`session/close` detaches the calling connection's observation of `sessionId` without cancelling or
+deleting the durable session.
 
-A result's body travels when its client asks for it. A result whose receipt holds a body (`content`, a
-non-empty string) reaches its client as two standard parts: a text part, the receipt without its body, and
-a document part whose `url` source is the body's address at this daemon ({§acp-entry-route}), carrying the
-receipt's `mimetype` as its `mimeType`; a result without a body is its receipt as text. No receipt carries the line anchors only
-the model edits by (`lineAnchors`, `lineAnchorIdentity`, `lineNumberWidth`). The live `TOOL_CALL_RESULT`, the
-snapshot's tool message and a `plurnk.ambient` row follow one rule, so live and replayed messages agree:
-an ambient row's `rx` is its receipt without the body, beside `body: { url, mimeType }`. A reply's words
-are speech and travel inline ({§acp-call-result}). A Run that negotiated reasoning by link receives a turn's
-reasoning the same way: its message holds no text and names the reasoning's address ({§acp-reasoning-link}).
+§acp-owner-connection **Persistent observation.** A connection attached to a session via
+`session/new`, `session/resume`, or `session/fork` receives live `session/update` notifications,
+`session/request_permission` requests, and `elicitation/create` requests for that session until
+`session/close` or connection close.
 
-| By reference | The address it names, in its HTTP form |
-| --- | --- |
-| A result's body | The row's log address `log:///L/T/S/OP` ({§methods-log-coordinate}), read from the row's worker's perspective: the row's canonical body, the one its receipt holds |
-| A turn's reasoning | `reasoning://<worker>/L/T` ({§turn-source-resources}), whether or not the Run that names it negotiated it |
-| A message's words | Its row's log address, an arrival's or a reply's, whose canonical body is its words; for an accepted message not yet observed, the address that minted it ({§acp-words-by-reference}) |
+§acp-held-interrupts **A session that holds an active gate waits on it without duplicate
+presentation.** Each peer connection tracks the pending permission and elicitation requests it has
+sent (`pendingGates`), never sending the same gate twice to the same peer. When `session/cancel` is
+received for a session, the module calls `ApplicationPort.cancelWorker` (and `cancelLoop` if a
+client slash-command operation is running).
 
-§acp-entry-route **An address at this daemon has one HTTP form:** `<origin>/acp/<workspaceId>/<workerId>/entry?target=<address>`,
-at the configured public origin, else the one the request reached ({§http-request-origin}). `target` is the plurnk
-address, percent-encoded, its fragment naming the channel. `GET` at it is admitted by the same perimeter as a Run
-({§acp-http-authorization}) and answers the channel the address selects, read from that worker's perspective
-({§methods-entry-channel-read}), as `content-type: <mimetype>; charset=utf-8` with `cache-control: no-store`. A
-request naming no `target` is 400 `entry-target-required`; every other refusal is the daemon's own
-({§client-entry-address}).
+§acp-shutdown **Shutdown releases every remaining connection.** Module `stop` refuses new requests
+with `503 service-stopping` while admitted requests retain terminal delivery. In `close`, after core
+settlement ({§module-shutdown-order}), the module closes its `AcpServer` and all active WebSocket
+and HTTP streams, returning once every admitted request has settled ({§module-route-settlement}).
+Repeated closure is inert.
 
-## §acp-projection The projection
+## 3. Bodies by Reference and Entry Route
+
+§acp-body-reference **Bodies travel by reference when stripped or past the character ceiling.** A
+tool receipt whose result carries a body (`content`, a non-empty string) projects to
+`tool_call_update` with two `ToolCallContent` blocks: a text block containing the receipt metadata
+without its body, and a `resource_link` block (`{ type: "content", content: { type: "resource_link", uri, name, mimeType } }`)
+whose `uri` points to the entry route ({§acp-entry-route}). For file edits carrying `original` and
+`patched` text in `attrs`, `tool_call_update` also includes a standard ACP v2 `Diff` block
+(`{ type: "diff", path, oldText, newText }`). Line anchors (`lineAnchors`, `lineAnchorIdentity`,
+`lineNumberWidth`) are stripped from client-facing receipts.
+
+§acp-entry-route **An address at this daemon has one HTTP form:**
+`<origin>/acp/<workspaceId>/<workerId>/entry?target=<address>[&channel=<ch>&offset=<n>]`. `GET` at
+this route is admitted under the same bearer perimeter as `/acp` ({§acp-http-authorization}) and
+answers the selected channel ({§methods-entry-channel-read}) as
+`content-type: <mimetype>; charset=utf-8` with `cache-control: no-store`. A request without
+`target` fails with `400 entry-target-required`.
+
+## 4. Standard ACP v2 Event Projection
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§acp-call-result} | `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) — `TOOL_CALL_RESULT`… |
-| {§acp-parse-refusal} | `log/entry` model `error` row, a parse refusal — The call the worker attempted ({§parse-attempt}):… |
-| {§acp-progress-reply} | `log/entry` reply reporting progress on a message this worker's operation sent ({§methods-answering}) — A… |
-| {§acp-run-outcome} | `loop/terminated` — `STATE_DELTA` (latest-turn gauge only) + `RAW` (the provider's opaque metadata bag,… |
-| {§acp-outside-text} | `outside/event` — `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and… |
-| {§acp-lifecycle-projection} | Lifecycle, memory and speech remain distinct. |
-| {§acp-readable-reasoning} | Readable provider reasoning uses ACP's standard reasoning channel. |
-| {§acp-reasoning-link} | A Run may negotiate its reasoning by link. |
+| {§acp-call-result} | `log/entry` that discharges an obligation ({§methods-invocation}) — `tool_call_update` updating the opening… |
+| {§acp-parse-refusal} | `log/entry` model `error` row, a parse refusal — `tool_call_update` (`status: "failed"`, `kind: "other"`,… |
+| {§acp-progress-reply} | `log/entry` reply reporting progress on a message this worker sent ({§methods-answering}) —… |
+| {§acp-outside-text} | `outside/event` — `agent_message_chunk` carrying `text` and `_meta.plurnk.outside: { coordinate, tokens }`… |
+| {§acp-run-outcome} | `loop/terminated` — `usage_update` followed by `state_update` (`state: "idle"`, `stopReason: "end_turn" \ |
+| {§acp-lifecycle-projection} | Lifecycle, memory, and speech remain distinct. |
+| {§acp-readable-reasoning} | Readable provider reasoning uses ACP's standard `agent_thought_chunk` channel. |
+| {§acp-reasoning-link} | A session may negotiate its reasoning by link. |
 | {§acp-encrypted-reasoning} | The encrypted-reasoning interface is not implemented. |
-| {§acp-custom-namespace} | The custom namespace |
-| {§acp-plurnk-metadata} | plurnk facts ride standard metadata. |
-| {§acp-status-descendants} | The tree is the daemon's, never inferred. |
-| {§acp-status-spend} | The spend is the daemon's, from the Worker's beginning, republished, never promoted. |
-| {§acp-status-streams} | The streams still open are the daemon's, never inferred. |
-| {§acp-status-timing} | A Loop's timing is the daemon's, and it travels with the Loop's identity. |
+| {§acp-plurnk-metadata} | Plurnk facts ride standard `_meta.plurnk`. |
+| {§acp-status-descendants} | The subagent tree is the daemon's, never inferred. |
+| {§acp-status-spend} | Spend is the daemon's cumulative accounting, passed through on `usage_update`. |
+| {§acp-status-streams} | Open execution streams project as ACP v2 terminals. |
+| {§acp-status-timing} | A loop's timing travels with the loop's identity. |
 | {§acp-numbers-passthrough} | Gauge numbers pass through verbatim. |
-| {§acp-state-patches} | Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s. |
-| {§acp-provider-routes} | `snapshot.plurnk.providers[*]` — `providers.list.aliases[*]` |
-| {§acp-status-model} | `snapshot.plurnk.status.model` — `ApplicationPort.readWorkerModel` |
-| {§acp-status-loop-number} | `snapshot.plurnk.status.loopSeq` — that Loop's `ApplicationLoopProjection.sequence` |
-| {§acp-status-wait} | `snapshot.plurnk.status.waitUntil` — `ApplicationLoopProjection.waitUntil` |
-| {§acp-workspace-state} | `snapshot.plurnk.workspace` — the Run's client envelope |
-| {§acp-cost-evidence} | ACP carries token usage on `RUN_FINISHED` ({§acp-run-outcome}), but it defines no monetary accounting and no… |
-| {§acp-ambient} | A row outside the conversation rides whole |
-| {§acp-run-start} | The gauge starts true |
-| {§acp-replay} | Unoriented reattach replays once |
-| {§acp-sync} | Synchronization is an inference-free ACP Run. |
-| {§acp-snapshot} | A snapshot is the messages the live projection built |
+| {§acp-state-patches} | Session state metadata is consistent across initial responses and live `usage_update` notifications. |
+| {§acp-provider-routes} | `_meta.plurnk.providers[*]` — `ApplicationPort.listProviders().aliases[*]` |
+| {§acp-status-model} | `_meta.plurnk.status.model` — `ApplicationPort.readWorkerModel` |
+| {§acp-status-loop-number} | `_meta.plurnk.status.loopSeq` — `ApplicationLoopProjection.sequence` |
+| {§acp-status-wait} | `_meta.plurnk.status.waitUntil` — `ApplicationLoopProjection.waitUntil` |
+| {§acp-workspace-state} | `_meta.plurnk.workspace` — Client envelope + `workspacePreparationStatus` + `workspaceDerivationStatus` |
+| {§acp-cost-evidence} | Complete provider accounting is preserved. |
+| {§acp-ambient} | Non-conversation rows project as standard `notice` updates. |
+| {§acp-run-start} | Session responses start with authoritative state. |
 <!-- /map -->
 
-One accepted Run or daemon notification produces zero-or-more ACP events:
+Every daemon log entry and runtime notification projects to standard ACP v2 `SessionUpdate`
+variants on `session/update`:
 
-| plurnk wire                                | ACP events |
-| ------------------------------------------ | ------------ |
-| schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
-| A Run that carries nothing new ({§acp-run-input}) | Durable `MESSAGES_SNAPSHOT` of the bound worker, then pending interrupt, live observation, or `RUN_FINISHED` {§acp-sync} |
-| `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
-| `log/entry` WAIT (model) | A WAIT that carries a body speaks it: `TEXT_MESSAGE_START/CONTENT/END` with the body as written, its receipt in the speech's metadata ({§acp-plurnk-metadata}); a bodiless WAIT is an operation like any other, `TOOL_CALL_START/ARGS/END` + its receipt. No invented plan, no invented speech (#1003). |
-| Successful SEND replying to this thread, including an addressed reply delivered from another worker | Optional readable-reasoning sequence {§acp-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END`, the row's signal and status in its metadata ({§acp-plurnk-metadata}) |
-| Other directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
-| `log/entry` other op (model)               | The turn's readable-reasoning sequence when the row carries it {§acp-readable-reasoning}, then `TOOL_CALL_START/ARGS/END` + `TOOL_CALL_RESULT` carrying its receipt, except for a call that opened an obligation, which what discharges it answers {§acp-call-result}, and a gated call the Run's client already holds, which its settlement updates and answers ({§acp-proposal-resolve}) |
-| §acp-call-result `log/entry` that discharges an obligation, naming its invocation ({§methods-invocation}) | `TOOL_CALL_RESULT` answering the call that opened it, under the discharging row's own coordinate, with what the worker received: a stream observation's result (the output's first page, terminal status and exit code, {§exec-stream}), a child's conclusion, or a completion reply's words. A call whose row opened an obligation (a receipt below 400 with `attrs.stream` or `attrs.message`, {§worker-obligations}) is answered only by what discharges it, whenever that lands, one result per observed channel of a stream; its receipt rides the row. Never `plurnk.ambient`. |
-| `log/entry` actionless `kind=emissionAttempt` | `CUSTOM plurnk.ambient` ({§acp-ambient}); no assistant speech or reasoning replay. |
-| §acp-parse-refusal `log/entry` model `error` row, a parse refusal | The call the worker attempted ({§parse-attempt}): `TOOL_CALL_START` named by the attempt's verb, its arguments `{ text }` the statement as written, then `TOOL_CALL_RESULT` with the refusal, its status the failure; a refusal that names no attempt is no call and rides `CUSTOM plurnk.ambient` ({§acp-ambient}) |
-| `log/entry` READ of `reasoning://<worker>/…` or `ops://<worker>/…` | An ordinary operation receipt, not a reasoning stream. Standard reasoning delivery and replay retain original provider evidence under {§acp-readable-reasoning}. |
-| `log/entry` arrival (`_plurnk` SEND, `kind=message`) | A user `TEXT_MESSAGE_START/CONTENT/END`, as on replay ({§acp-snapshot}): a message a client on this thread sent keeps its message id, and the Run that submitted it, which already holds it, receives only `TEXT_MESSAGE_START/END` carrying its row's facts ({§acp-plurnk-metadata}); any other is named by its source |
-| §acp-progress-reply `log/entry` reply reporting progress on a message this worker's operation sent ({§methods-answering}) | A user `TEXT_MESSAGE_START/CONTENT/END` named by its source, as on replay; a reply that completes the message answers its call instead ({§acp-call-result}), and one to a message this worker did not send rides `CUSTOM plurnk.ambient` |
-| `log/entry` other origin≠model             | `CUSTOM plurnk.ambient` (foists, deltas, narrations, {§acp-ambient}) |
-| `log/entry` and `loop/terminated` of a subagent's loop | Its subagent run's projection ({§acp-subagents}): the rows above in its worker's namespace, each event attributed by `subagentRunId`, its segment bounded by `SUBAGENT_STARTED` and its conclusion |
-| client-owned `loop/proposal`               | The gated operation's own call, unless the Run's client holds it or the Run holds no conversation of its worker ({§acp-proposal-resolve}), `STEP_FINISHED` when a turn step is active, then `RUN_FINISHED` with an interrupt outcome; its resume Run reopens the continued turn with `STEP_STARTED` after `RUN_STARTED` and initial state |
-| `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
-| §acp-run-outcome `loop/terminated`        | `STATE_DELTA` (latest-turn gauge only) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475), then the Run's end: a loop that completed (below 400) is `RUN_FINISHED` with `outcome: success` and its exact terminal result as `result`; one stopped without failing (499) is `RUN_FINISHED` with `outcome: cancelled`; any other is `RUN_ERROR`, from the exact RFC 9457 Problem Details. The Run's end, finished or failed, carries its loop's token `usage`: ACP's own AI SDK mapping and per-model aggregation of the counts each physical request reported, absent when none did ({§acp-cost-evidence}). It also carries the complete daemon terminal record as its metadata, physical-request accounting and top-level attribution included ({§acp-plurnk-metadata}). |
-| transport failure after SSE opens          | `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`, the exact Problem Details as its metadata, {§acp-plurnk-metadata}) |
-| `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/workspace/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle` and `waitUntil`, while warnings/errors also retain their diagnostic Notice. Client discovery and passive synchronization also emit startup configuration Notices ({§configuration-repair-path}) without requiring a working model. An unavailable provider catalog is omitted from the state snapshot and reported as `CUSTOM plurnk.problem`; it does not terminate attachment or pretend the catalog is empty. |
-| `workspace/preparation` | `STATE_DELTA /plurnk/workspace/preparation`, scoped to the Runs attached to that workspace; no chat or diagnostic duplication. |
-| `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§acp-readable-reasoning}; for a Run that negotiated reasoning by link, each delta is `CUSTOM plurnk.reasoning` instead {§acp-reasoning-link} |
-| §acp-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
-| `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` alone: execution metadata, the stream's progress and its exact universal `result`, including RFC 9457 Problem Details, as they happen. Never a conversation message; the execution's result reaches the conversation through its observation {§acp-call-result}. ACP does not reconstruct failure from a status or summary. |
-
-§acp-lifecycle-projection **Lifecycle, memory and speech remain distinct.** Live
-events, replay and `log.read` preserve literal native bodies. No task inventory
-or ACP plan is inferred from prose.
-
-| Projection | Standard representation |
-| ---------- | ----------------------- |
-| NOTE | Ordinary tool-call operation and durable row, not assistant speech or a substitute reasoning stream |
-| WAIT | Ordinary tool-call operation and durable row, its receipt the result; a WAIT that carries a body speaks it instead ({§acp-projection}) and never becomes a response |
-| SEND response | Assistant message through {§loop-response-messages}; delivery and completion remain independent |
-| Completion | Standard run lifecycle without an invented message |
-| Replay | The window of the live projection's messages, in log order {§acp-snapshot}, and the history before it page by page {§acp-history-window} |
-
-§acp-readable-reasoning **Readable provider reasoning uses ACP's standard
-reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
-model worker projects each exact delta immediately through a balanced standard
-reasoning lifecycle identified by its durable model-call id and physical-request
-sequence. A retried request gets a new reasoning message instead of appending to
-the failed request's partial reasoning. Foreign-worker and BARE reasoning never
-stream into the thread; a subagent's arrives with its rows, attributed to its run
-({§acp-subagents}). Failed or rejected requests may therefore leave honest
-transient reasoning that is not replayed. A Run ended before its request, revoked
-({§acp-oauth-revocation}), stopped ({§acp-shutdown}) or failed, closes the reasoning message and
-span it opened before its `RUN_ERROR`; the request streams on to every Run still observing it. A Run
-that joins after a request's reasoning began presents none of that request's deltas.
-
-Core also derives a turn's optional complete `reasoning` onto its first model operation
-row from the durable packet ({§methods-readable-reasoning}). It reaches the Run's client once per turn,
-before that row: when the client holds the message of the request that streamed it, it is already there;
-otherwise projection emits it atomically under that request's identity,
-`model-call-<call>/request-<n>/reasoning` ({§methods-readable-reasoning}); history a FORK inherited, which
-no request of this worker streamed, is `<coordinate>/reasoning`. A standard interrupt may divide one durable
-Loop across consecutive ACP Runs; the Run B projection inherits Run A's delivered-reasoning evidence
-before the stopped operation is released. The accepted request's reasoning keeps its live identity in
-`MESSAGES_SNAPSHOT`, once per turn, so a snapshot leaves it where the live stream put it and drops only the
-transient reasoning of failed or rejected requests. Empty evidence emits nothing, NOTE never substitutes for
-reasoning ({§acp-lifecycle-projection}), and a response row still precedes its text sequence.
-
-§acp-reasoning-link **A Run may negotiate its reasoning by link.** A Run whose
-`forwardedProps.plurnk.reasoning` is `"link"` receives every turn's reasoning by reference
-({§acp-body-reference}) rather than as text; any other value is `400 reasoning-invalid`.
-
-| Where | What it receives |
+| Daemon source | Standard ACP v2 `SessionUpdate` |
 | --- | --- |
-| The live stream | the same balanced lifecycle, its message holding no text; each exact delta as `CUSTOM plurnk.reasoning` `{ messageId, delta }`, a preview no message holds, so its client neither keeps nor uploads it |
-| The turn's row | `metadata.plurnk.body`, `{ url, mimeType: "text/plain" }` at the turn's reasoning address, folded onto the message the client holds by a repeated `REASONING_MESSAGE_START` and `REASONING_MESSAGE_END`, or the message whole, holding no text, when the client holds none |
-| `MESSAGES_SNAPSHOT` | each turn's reasoning once under its live identity, holding no text, with that link |
-| A `plurnk.ambient` row | another worker's row names its reasoning by `reasoning: { url, mimeType }` in place of the text |
+| `session/new`, `session/resume`, `session/fork` | Response carrying `configOptions`, `availableCommands`, and `_meta.plurnk`; `session/resume` emits a current-state `state_update` snapshot (`idle` \| `running` \| `requires_action`) and `usage_update` before returning. |
+| `log/entry` arrival (`_plurnk` SEND, `kind=message`) | `user_message_chunk` under the sender's `messageId` (or coordinate when external) with `_meta.plurnk`. |
+| `log/entry` WAIT (model) | A WAIT carrying a body emits `agent_message_chunk` with the body as written and its receipt in `_meta.plurnk`; a bodiless WAIT emits `tool_call_update` (`kind: "other"`). |
+| Successful SEND replying to this session | Optional `agent_thought_chunk` ({§acp-readable-reasoning}), then `agent_message_chunk` with `_meta.plurnk`. |
+| `log/entry` model operation (`READ`, `WRITE`, `EDIT`, `COPY`, `MOVE`, `KILL`, `FIND`, `NOTE`, `WORK`, `FORK`, `EXEC`, scheme calls) | Optional turn `agent_thought_chunk` ({§acp-readable-reasoning}), then `tool_call_update` (`toolCallId: coordinate`, `kind`, `title`, `locations`, `rawInput`, `rawOutput`, `content`, `status: "completed" \| "failed" \| "in_progress"`). `NOTE` maps to `kind: "think"`. |
+| §acp-call-result `log/entry` that discharges an obligation ({§methods-invocation}) | `tool_call_update` updating the opening call's `toolCallId` to `status: "completed" \| "failed"` with the discharging receipt and `_meta.plurnk.coordinate` naming the discharging row. |
+| §acp-parse-refusal `log/entry` model `error` row, a parse refusal | `tool_call_update` (`status: "failed"`, `kind: "other"`, `rawInput: { text }`) when `attrs.attempt.verb` is present; otherwise a `notice` (`severity: "warning"`, {§acp-ambient}). |
+| §acp-progress-reply `log/entry` reply reporting progress on a message this worker sent ({§methods-answering}) | `user_message_chunk` named by its source; a reply that completes the message updates the opening call via `tool_call_update` ({§acp-call-result}). |
+| `reasoning/event` | Live `agent_thought_chunk` deltas ({§acp-readable-reasoning}), or `resource_link` when reasoning-by-link was negotiated ({§acp-reasoning-link}). |
+| §acp-outside-text `outside/event` | `agent_message_chunk` carrying `text` and `_meta.plurnk.outside: { coordinate, tokens }` ({§notifications-outside-event}), once per admitted emission for the bound session worker; foreign-worker text never enters the session. |
+| `stream/event` + `stream/concluded` (`sh://` execution streams) | The opening `tool_call_update` includes `{ type: "terminal", terminalId }`; live stream events emit `terminal_update` (`terminalId`, `command`, `cwd`, `exitStatus`) and `terminal_output_chunk` (`terminalId`, base64 `data`, `_meta.plurnk.stream`) ({§acp-status-streams}, {§acp-stream-producer}). |
+| `loop/packet` | `usage_update` (`used`, `size`, `cost`, `_meta.plurnk`) and `state_update` (`state: "running"`). |
+| §acp-run-outcome `loop/terminated` | `usage_update` followed by `state_update` (`state: "idle"`, `stopReason: "end_turn" \| "max_turn_requests" \| "cancelled" \| "refusal" \| "error"`), carrying the daemon's complete terminal record in `_meta.plurnk.terminal` ({§acp-plurnk-metadata}) and physical-request accounting ({§acp-cost-evidence}). |
+| `notice/event` and `workspace/preparation` | Standard ACP v2 `notice` (`severity: "info" \| "warning" \| "error"`, `title`, `description`, `_meta.plurnk`). |
 
-- **An op row IS a tool call** — its coordinate `L/T/S`, from the row's ordinals
-  ({§methods-log-coordinate}), is the `toolCallId`; its durable statement is the args, every
-  operand exactly as parsed (host, scope, pattern, aside, both COPY/MOVE selections) without the
-  verb that is the tool's name or its source position, in one delta because a dispatched plurnk op
-  is atomic; its rx is the result, except for a call that opened an obligation, whose discharge
-  is ({§acp-call-result}). The row's facts ride the call's metadata, and its own result repeats none ({§acp-plurnk-metadata}).
-- §acp-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
-  ACP defines encrypted-reasoning events and message values; plurnk emits none and
-  stores none ({§provider-open-reasoning}). Implementing a transport for bytes the
-  service cannot read would add surface without adding capability. Readable reasoning
-  streams and snapshot replay remain {§acp-readable-reasoning}.
-- §acp-custom-namespace **The custom namespace** — plurnk-specific metadata rides
-  `CUSTOM` events named `plurnk.*` (`plurnk.ambient`, `plurnk.notice`, `plurnk.outside`, `plurnk.reasoning` for a Run that negotiated it, `plurnk.stream`,
-  `plurnk.descendant` for a descendant outside any subagent, and `plurnk.problem` for a Problem that ends no
-  Run, such as an unavailable provider catalog): facts with no standard subject. Generic frontends skip unknown
-  customs; plurnk-aware frontends render them richly. Nothing plurnk-specific ever masquerades as a core event.
-- §acp-plurnk-metadata **plurnk facts ride standard metadata.** A plurnk fact about something the
-  standard conversation or Run holds rides that thing's `metadata` under the one key `plurnk`, on the event
-  that builds it and on its snapshot message alike, so the official reducer folds the same metadata live and
-  on refresh. A fact with no standard subject stays a declared `CUSTOM plurnk.*` extension
-  ({§acp-custom-namespace}).
+§acp-lifecycle-projection **Lifecycle, memory, and speech remain distinct.** Live updates, replay,
+and log reads preserve literal native bodies. `NOTE` is a `tool_call_update` (`kind: "think"`),
+never assistant speech or reasoning; `WAIT` without a body is a `tool_call_update`; `SEND` to the
+session is `agent_message_chunk`; loop completion is `state_update` (`state: "idle"`).
 
-  | Carrier | `metadata.plurnk` |
-  |---|---|
-  | `RUN_FINISHED` or `RUN_ERROR` that the bound Loop's terminal ends | `terminal`: the Loop's complete terminal record ({§notifications-loop-terminated}) with its `workspaceId`, numbers verbatim ({§acp-numbers-passthrough}): the full loop outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent |
-  | `RUN_ERROR` of a Run that fails without its Loop's terminal | `problem`: the exact RFC 9457 Problem Details |
-  | What a row builds: a tool call (`TOOL_CALL_START`, folded onto the call), a result it delivers for another row's call (`TOOL_CALL_RESULT`, onto the tool message), speech or an arrival (`TEXT_MESSAGE_START`, onto the message), and the same parts of a snapshot | The row's facts, once: `{ id, coordinate, worker, origin, op, source, address, signal, status, attrs, state }`, its durable id, log coordinate `L/T/S` ({§methods-log-coordinate}), worker, origin, operation, causal source, the address it recorded (`scheme://host[:port]path[?query][#fragment]`, or a file's bare path), signal, receipt status (the failure flag), attributes and lifecycle state ({§methods-log-entry-wire}). Its attributes travel without the bodies they hold: a file write's text before and after (`original`, `patched`, `patchedBytes`), its diff and edit receipt (`patch`, `editReceipt`), which its result holds, and a statement's body (`body`, `inputBody`), which its call's arguments hold. A call's own result carries none: the call it answers holds them. A gated call's settlement folds its settled facts onto the call ({§acp-proposal-resolve}). Speech, which holds only its body, also carries its heading's `aside` and the row's `receipt` |
-  | `MESSAGES_SNAPSHOT` | `history`: `{ older }`, the link to the page before its window ({§acp-history-window}) |
-  | A proposal's `Interrupt` ({§acp-proposal-resolve}) | `proposal`: Core's `ProposalProjection` ({§proposal-projection}), what the reviewer reviews, its `attrs` without the bodies they hold, as a row's: the review body is its `body` |
-  | A client interaction's `Interrupt` ({§acp-proposal-resolve}) | `interaction`: Core's `ClientInteractionProjection`, the worker, loop and turn asking and the request they present |
-  | `SUBAGENT_STARTED` of a subagent run ({§acp-subagents}) | Its worker's identity and generation, `{ workerId, name, parentWorkerId, depth }` ({§acp-delegation-observation}) |
-  | A reasoning message (`REASONING_MESSAGE_START`, live and as its turn's row folds onto it, and its snapshot message) | `coordinate`: its turn's `L/T` in its worker's log ({§turn-source-resources}), from the message's first event; for a Run that negotiated reasoning by link, also `body`: `{ url, mimeType }`, the address of that turn's reasoning ({§acp-reasoning-link}) |
+§acp-readable-reasoning **Readable provider reasoning uses ACP's standard `agent_thought_chunk`
+channel.** A `{§notifications-reasoning-event}` for the bound worker projects each delta immediately
+as `agent_thought_chunk` with `messageId: "model-call-<call>/request-<n>/reasoning"`. A retried
+request receives a distinct `messageId`. When a turn's first model operation row carries durable
+`reasoning` ({§methods-readable-reasoning}) that was not already streamed live to the peer, it is
+emitted once as `agent_thought_chunk` before that row's `tool_call_update`.
 
-  An action Run's `RUN_FINISHED.result` is the action's whole outcome, `{ kind, ok, result | problem }`.
+§acp-reasoning-link **A session may negotiate its reasoning by link.** When `_meta.plurnk.reasoning`
+is `"link"`, `agent_thought_chunk` carries a `resource_link` content block pointing to
+`reasoning://<worker>/L/T` at the entry route ({§acp-entry-route}) instead of inline text; any value
+other than `"inline"` or `"link"` fails with `400 reasoning-invalid`.
 
-§acp-status-descendants **The tree is the daemon's, never inferred.** `status.descendants` is the bound Worker's whole tree beneath it, depth first and in creation order: each worker `{ id, name, parentWorkerId, kind, lifecycle, gates }`, its `lifecycle` under {§loop-lifecycle-vocabulary} and `gates` the proposals and client interactions it waits on. The daemon states facts, never presentation: a client derives its own counts and markers from the tree, such as its alive workers or one stopped on a gate, and never polls the directory to keep them honest. Topology is navigation: the client hops to a descendant to speak to it; watching its rows is the delegation observation a Run asks for ({§acp-delegation-observation}).
+- §acp-encrypted-reasoning **The encrypted-reasoning interface is not implemented.** Plurnk emits
+  and stores no encrypted reasoning bytes ({§provider-open-reasoning}).
+- §acp-plurnk-metadata **Plurnk facts ride standard `_meta.plurnk`.** Every standard ACP v2
+  response and `session/update` notification carries its Plurnk provenance in `_meta.plurnk` without
+  inventing custom `sessionUpdate` types:
+  - On row-derived updates (`tool_call_update`, `agent_message_chunk`, `user_message_chunk`, `notice`):
+    `withoutBodies(attrs)` (`original`, `patched`, `patchedBytes`, `patch`, `editReceipt`, `body`,
+    `inputBody` stripped) and `addressOf(op, attrs)` ({§methods-log-entry-wire}).
+  - On `usage_update` and session responses: `{ status, budget, workspace, providers }`.
+  - On `state_update` (`state: "idle"`): `{ terminal }` with the complete `loop/terminated` payload.
+  - On `RequestError.data`: `{ problem }` with exact RFC 9457 Problem Details ({§acp-http-failure}).
 
-| Fact | Rule |
-| --- | --- |
-| Computed | from `ApplicationPort.listWorkers`, `pendingProposals` and `pendingClientInteractions` for every snapshot and whole-gauge replacement |
-| Read again | after another worker's `loop/terminated`, `loop/packet` or lifecycle beat ({§loop-status-notice}: queued, running, parked), after any `turn_generated` notice, after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands, when a gate is presented (`loop/proposal`, `loop/interaction`), and, while a descendant waits on a gate, after another worker's row or a stream's conclusion, either of which may settle it |
-| Republished | as `STATE_DELTA /plurnk/status/descendants`, replaced whole, only when it differs from the one the Run's client holds (its snapshot's, its latest whole-gauge replacement's, then each delta's), and never before the snapshot: a change that raced the snapshot is published after it |
+§acp-status-descendants **The subagent tree is the daemon's, never inferred.** Child workers beneath
+the bound session worker are projected from `ApplicationPort.listWorkers`, `pendingProposals`, and
+`pendingClientInteractions` as standard ACP v2 `subagent_update` notifications (`sessionId:
+"<workspaceId>#<name>"`, `title: name`, `state: "running" | "idle" | "requires_action"`,
+`capabilities: { cancel: {} }`, `_meta.plurnk: { id, name, parentWorkerId, kind, lifecycle, gates }`),
+and summarized in `_meta.plurnk.status.descendants` on session responses and `usage_update`.
 
-§acp-status-spend **The spend is the daemon's, from the Worker's beginning, republished, never promoted.** `status.spend` is `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection over every settled request the bound Worker and its descendants have made since the Worker began ({§methods-worker-accounting}), without its request list — `requests` counts them, so zero requests reads as nothing spent rather than unknown, and all totals and known subtotals pass through verbatim ({§acp-numbers-passthrough}). A fresh observer therefore starts from the Worker's spend so far.
+§acp-status-spend **Spend is the daemon's cumulative accounting, passed through on `usage_update`.**
+`ApplicationPort.workerAccounting({ workspaceId, workerId })` ({§methods-worker-accounting})
+populates `usage_update.cost` (`{ amount: costUsd, currency: "USD" }` when known) and
+`_meta.plurnk.status.spend` (`{ requests, usage, knownUsage, costUsd, knownCostUsd }`).
 
-| Fact | Rule |
-| --- | --- |
-| Read and republished | beside `descendants`, at the same moments, as `STATE_DELTA /plurnk/status/spend` under the same rule ({§acp-status-descendants}): only when the projection differs from the one the Run's client holds, never before the snapshot; a `turn_generated` notice is the moment a turn's spend settles |
-| Not promoted | descendant notices, packets and terminals themselves ({§acp-delegation-observation}); one loop's own `turn_generated` and terminal-record accounting keep their meaning |
-| The lifecycle beat ({§loop-status-notice}) | a parked parent's clock and its descendants' cost both move |
+§acp-status-streams **Open execution streams project as ACP v2 terminals.** Each active `sh://`
+stream from `ApplicationPort.readStreams` ({§methods-worker-streams}) projects as a `terminal_update`
+(`terminalId`, `command`, `cwd`, `exitStatus`) and `terminal_output_chunk` (`terminalId`, base64
+`data`), linked from its opening `tool_call_update` via `ToolCallContent`
+`{ type: "terminal", terminalId }`, and is listed in `_meta.plurnk.status.streams`.
 
-§acp-status-streams **The streams still open are the daemon's, never inferred.** `status.streams` is what the bound Worker holds open ({§methods-worker-streams}), in opening order: each stream `{ entryId, workerId, target, lifetime, loop_seq?, turn_seq?, sequence?, channels }`, its identity and causal coordinates named as its `plurnk.stream` events name them, and every channel of its entry as `{ channel, state, mimetype }`, written or not. A fresh observer therefore finds an execution that is silent or has never written. Its content is read by its address (`entry.read`), never carried here; its progress and its conclusion arrive as `plurnk.stream` events ({§acp-projection}).
+§acp-status-timing **A loop's timing travels with the loop's identity.**
+`_meta.plurnk.status.claimedAt` and `terminatedAt` carry the latest loop's Unix-millisecond
+timestamps from `ApplicationPort.listWorkerLoops` ({§application-loop-observation}), or `null`
+until they occur.
 
-| Fact | Rule |
-| --- | --- |
-| Computed | from `ApplicationPort.readStreams` for every snapshot and whole-gauge replacement |
-| Read again | when the bound Worker's row announcing a stream (`attrs.stream`) lands, when one of its streams reports a channel state the Run's client does not hold, and when one of them concludes; an append in a state the client holds reads nothing |
-| Republished | as `STATE_DELTA /plurnk/status/streams`, replaced whole, only when it differs from the one the Run's client holds, and never before the snapshot ({§acp-status-descendants}); a concluded stream is gone, and no stream open is an empty array |
-| Not in it | a descendant's streams, which are that Worker's own census, read by attaching to it; a concluded stream, whose result its `plurnk.stream` conclusion and the log carry |
+§acp-numbers-passthrough **Gauge numbers pass through verbatim.** `usage_update.used` (`contextTokens`
+or `curationWeight`) and `usage_update.size` (`contextCapacity` or `curationBudget`) and
+`_meta.plurnk.budget` (`{ curationWeight, curationBudget, contextTokens, contextCapacity }`) pass
+through from `ApplicationPort.workerGauge` without recomputation.
 
-§acp-status-timing **A Loop's timing is the daemon's, and it travels with the Loop's identity.**
-`status.claimedAt` is when the latest Loop first ran ({§loop-claim-latency}) and `status.terminatedAt`
-when it concluded, both Unix milliseconds like `waitUntil` and null until they happen. A snapshot
-reads them from `ApplicationPort.listWorkerLoops` ({§application-loop-observation}); live, they arrive
-with the events that change the Loop. A lifecycle beat ({§loop-status-notice}) replaces `lifecycle`,
-`loopId`, `loopSeq`, `packetCount`, `waitUntil`, `claimedAt` and `terminatedAt` in one delta, and the terminal
-({§notifications-loop-terminated}) replaces `lifecycle`, `loopId`, `loopSeq` and `terminatedAt` in one delta
-before the Run's own terminal. A connected observer therefore never holds one Loop's stamp beside
-another Loop's number, and a fresh observer measures a running Loop's elapsed time from
-`claimedAt`, never from its own attachment.
+§acp-state-patches **Session state metadata is consistent across initial responses and live
+`usage_update` notifications.**
 
-§acp-numbers-passthrough **Gauge numbers pass through verbatim.** The module
-never recomputes the daemon's gauge or promotes accounting into application
-state paths that could be mistaken for standard ACP fields.
+| Metadata path | Daemon source | Meaning |
+| --- | --- | --- |
+| §acp-provider-routes `_meta.plurnk.providers[*]` | `ApplicationPort.listProviders().aliases[*]` | Each declared alias as `{ alias, provider, model, effort, effortSource, active, inputCapacity }`, also exposed via `providers/list`. |
+| §acp-status-model `_meta.plurnk.status.model` | `ApplicationPort.readWorkerModel` | The bound worker's durable resolved model route, also exposed as the `model` and `spawn_model` `SessionConfigOption` entries and updated via `config_option_update`. |
+| §acp-status-loop-number `_meta.plurnk.status.loopSeq` | `ApplicationLoopProjection.sequence` | The active or latest loop's sequence number `L`, or `null` when `loopId` is `null`. |
+| §acp-status-wait `_meta.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. |
+| §acp-workspace-state `_meta.plurnk.workspace` | Client envelope + `workspacePreparationStatus` + `workspaceDerivationStatus` | `{ id, name, projectRoot, projectLabel, preparation, activity }`. |
 
-§acp-state-patches Each Run's `STATE_SNAPSHOT` precedes its `STATE_DELTA`s.
-Deltas use RFC 6902 `replace` on existing snapshot paths; replay yields the
-current gauge without clients inventing missing fields. A delta an event causes reaches the Run before any event the
-daemon published after it, the Run's terminal included, so no change the work made is lost when its Run ends. `plurnk.status` and `budget` are the
-bound Worker's gauge and ride only a Run that binds one ({§acp-action-binding}).
+§acp-cost-evidence **Complete provider accounting is preserved.** `usage_update` carries token gauge
+and cost, while `_meta.plurnk.terminal.usage.accounting` on the terminal `state_update` preserves
+the daemon's ordered physical-request accounting records verbatim ({§provider-accounting}).
 
-| ACP state location                        | Daemon source                            | Meaning |
-|:--------------------------------------------|:-----------------------------------------|:--------|
-| §acp-provider-routes `snapshot.plurnk.providers[*]` | `providers.list.aliases[*]` | Each declared alias as the route a worker seeded from it gets: `alias`, `provider`, `model` and, when the model has an effort dimension, the alias's configured `effort` with `effortSource: "default"`, which is what that worker reads back ({§worker-effort}); then `active` and `inputCapacity`. A client presents the active alias's route for a worker no act has created yet, and creates nothing to learn it. |
-| `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
-| §acp-status-model `snapshot.plurnk.status.model` | `ApplicationPort.readWorkerModel` | The bound Worker's durable resolved model route, including its alias when selected. Computed for every snapshot and whole-gauge replacement, read again when `worker/policy` names the bound Worker ({§notifications-worker-policy}), whoever changed it, and republished as `STATE_DELTA /plurnk/status/model` only when it differs from the route the Run's client holds. |
-| `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
-| §acp-status-loop-number `snapshot.plurnk.status.loopSeq` | that Loop's `ApplicationLoopProjection.sequence` | The Loop's number among the bound Worker's loops, the L of its log coordinates and the number `worker.loops` lists and a loop page takes ({§acp-worker-loops}, {§acp-loop-page}); `null` exactly when `loopId` is. Every delta that replaces `loopId` replaces it ({§loop-status-notice}, {§notifications-loop-packet}, {§notifications-loop-terminated}). |
-| `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
-| `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
-| §acp-status-wait `snapshot.plurnk.status.waitUntil` | `ApplicationLoopProjection.waitUntil` | Absolute Unix-millisecond observation deadline while parked, otherwise `null`. The lifecycle beat replaces it atomically with lifecycle; waking or concluding clears it. Clients may render the remaining time locally without polling, guessing from WAIT receipts, or implying work will finish at that time. |
-| `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, cancelled, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park, queued on wake) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
-| `snapshot.plurnk.status.descendants` | `ApplicationPort.listWorkers`, `pendingProposals`, `pendingClientInteractions` | The bound Worker's whole tree beneath it, each worker with its lifecycle and the gates it waits on ({§acp-status-descendants}). Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/descendants` only when it differs from what the Run's client holds, never before its snapshot. |
-| `snapshot.plurnk.status.streams` | `ApplicationPort.readStreams` | The streams the bound Worker holds open, each with its channels' states ({§acp-status-streams}). Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/streams` only when it differs from what the Run's client holds, never before its snapshot. |
-| §acp-workspace-state `snapshot.plurnk.workspace` | the Run's client envelope | `{ id, name, projectRoot, projectLabel, preparation, activity }`: the bound workspace, its folder and the folder's label as the daemon spells it ({§workspace-label}), both null without a folder, and the activity that belongs to the workspace rather than to a Worker. Every Run bound to a workspace carries it, whether or not it binds a Worker. Clients display the label and never derive one. |
-| `snapshot.plurnk.workspace.preparation` | `ApplicationPort.workspacePreparationStatus(workspaceId)` | Current workspace capability preparation ({§functionality-preparation-visibility}), also sent as `STATE_DELTA /plurnk/workspace/preparation`. Initial and reattachment snapshots carry the same state. An empty array clears it; no polling or model inference is required. |
-| `snapshot.plurnk.workspace.activity` | `ApplicationPort.workspaceDerivationStatus(workspaceId)` | Current workspace derivation: phase, counts, percent and message while preparing, indexing or failed, and `null` when none is under way or the last pass completed. Live `search_progress` Notices replace it as `STATE_DELTA /plurnk/workspace/activity`; a Loop's terminal leaves it as derivation last reported it. Reattachment snapshots carry the current derivation through the same projection, without polling or duplicate routine Notices. |
-| `snapshot.plurnk.status.claimedAt`, `.terminatedAt` | latest `ApplicationLoopProjection.claimedAt`, `.terminatedAt` | When the latest Loop first ran and when it concluded, Unix milliseconds, null until they happen; live, the lifecycle beat and the terminal replace them in the same delta as the Loop's identity ({§acp-status-timing}). |
-| `snapshot.plurnk.status.spend` | `ApplicationPort.workerAccounting({ workspaceId, workerId })` | `{ requests, usage, knownUsage, costUsd, knownCostUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's and its descendants' settled spend since the Worker began, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/spend` only when it differs from what the Run's client holds, never before its snapshot ({§acp-status-spend}). |
-| `snapshot.plurnk.status.inbox` | `ApplicationPort.readInbox({ workspaceId, workerId })` | `[{ path, id, loopId, lifecycle }]`: the accepted messages the bound Worker has not yet observed ({§acp-message-acceptance}), each by its immutable source address, that client's message id when a client on this thread sent it (else `null`), the loop holding it and that loop's lifecycle. |
-| `STATE_DELTA /plurnk/status/inbox` | the Run's own submission; an arrival row; the moments of {§acp-status-descendants} | Republished only when it differs from the one the Run's client holds, never before the snapshot. |
-| `STATE_DELTA /plurnk/status/*`               | packet, termination, and lifecycle events | The bound Worker's replaceable lifecycle and packet chronology. Clients never reconstruct packet count from row or STEP traffic. |
-| `snapshot.budget`                            | `ApplicationPort.workerGauge({ workspaceId, workerId })` | The four facts the bound Worker's latest packet reported ({§methods-worker-gauge}): each `null` when unknown and all `null` before its first packet, so every `replace` below addresses an existing value. Every snapshot and whole-gauge replacement carries it: a live, late or reattached client holds the gauge the latest packet reported. |
-| `STATE_DELTA /budget/curationWeight`         | `loop/packet.gauge.curationWeight`    | Latest assembled packet's model-independent curation weight, moved with every model turn of the bound Worker; a loop's end leaves it. |
-| `STATE_DELTA /budget/curationBudget`         | `loop/packet.gauge.curationBudget`    | Latest turn's provider-derived curation calibration, or `null` when capacity is unknown. |
-| `STATE_DELTA /budget/contextTokens`          | `loop/packet.gauge.contextTokens`     | Latest emission call's last physical request input occupancy, or `null` when that call issued none or reported none. |
-| `STATE_DELTA /budget/contextCapacity`        | `loop/packet.gauge.contextCapacity`   | That same latest emission call's request-shaped physical input capacity, or `null` when unknown. |
+§acp-ambient **Non-conversation rows project as standard `notice` updates.** Rows outside standard
+messages and tool calls (foists, deltas, narrations, rejected emission attempts, and verb-less parse
+refusals) project as `session/update` `notice` (`severity: "info" | "warning" | "error"`, `title`,
+`description`) with the row's bodyless facts in `_meta.plurnk` ({§acp-plurnk-metadata}).
 
-§acp-cost-evidence ACP carries token usage on `RUN_FINISHED` ({§acp-run-outcome}), but it defines
-no monetary accounting and no per-request record. The terminal record's `usage.accounting` ({§acp-plurnk-metadata}) therefore
-preserves the daemon's complete
-{§provider-accounting} verbatim: ordered physical request records, conventional
-input/output totals with cache/reasoning details, and exact-decimal nullable
-`costUsd`. The terminal record distinguishes charged, Models.dev-estimated,
-unknown, and exact-zero evidence without fabricating a value. Generic clients
-ignore the metadata; PLURNK clients consume the same contracts-owned shape as
-every other daemon surface.
+§acp-run-start **Session responses start with authoritative state.** `session/new`, `session/resume`,
+and `session/fork` return `configOptions` (`model`, `thought_level`, `spawn_model`, `mode`),
+`availableCommands`, and `_meta.plurnk` carrying the workspace, providers, status, and budget.
 
-- §acp-ambient **A row outside the conversation rides whole** — a row that builds no part of the
-  conversation rides `CUSTOM plurnk.ambient` carrying the complete client-facing row, its body by reference
-  ({§acp-body-reference}) and its attributes without the bodies they hold, as a part's ({§acp-plurnk-metadata}): a foist, delta or
-  narration, another worker's row, a descendant's row outside any subagent ({§acp-subagents}), an
-  emission the daemon rejected, and a parse refusal that names no attempt ({§acp-parse-refusal}). An emission row ({§emission-row}) rides it like any other; the operations
-  it announces arrive as their own parts, so a client that renders operations omits it. Literal bodies
-  follow {§acp-lifecycle-projection}; rich clients never receive the internal Plan extension. Generic
-  clients ignore this channel.
-- §acp-run-start **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT`
-  carrying the daemon's providers, the bound workspace and, when the Run binds a Worker, that
-  Worker's model, latest Loop, and exact packet-count truth, then `STATE_DELTA`s. Nothing precedes them: what reaches a Run while its snapshot is read
-  follows them, in the order it arrived; a Run that ends first ends with its terminal alone.
-
-- §acp-replay **Unoriented reattach replays once** — a rediscovered thread (the module restarted, a second
-  frontend arrived) whose Run input carries none of the log's durable assistant identities attaches
-  through its durable reference or explicit address and opens ORIENTED: the authoritative `MESSAGES_SNAPSHOT`
-  carries the window of the bound worker's messages ({§acp-snapshot}, {§acp-history-window}) and then the Run's new message ({§acp-run-input})
-  under a Run-owned identity. Client-claimed earlier history is not imported. A client already
-  carrying any durable assistant identity receives no repeated snapshot. Pending proposals and client interactions remain durable while
-  their operation owners are live and are presented as interrupts when the owning thread is
-  resumed; a days-old question is discoverable, never converted into a mystery hang.
-
-- §acp-sync **Synchronization is an inference-free ACP Run.** A Run that carries no new message, action or interrupt resume synchronizes ({§acp-run-input}); its messages are the client's copy. Synchronization admits no prompt, creates no turn, and performs no model inference. Disconnecting this observer never cancels independently-owned work.
-
-  | Fact | Rule |
-  | --- | --- |
-  | A passive observation (`forwardedProps.plurnk.control` absent or false) | resolves an existing worker under {§acp-thread-binding}, creates nothing and claims nothing |
-  | An owner's control observation | the owner's session attaching: it binds, creates and claims as a message Run does ({§acp-action-binding}) |
-  | What it emits | the normal `RUN_STARTED` and initial `STATE_SNAPSHOT`, then the window's `MESSAGES_SNAPSHOT` of the daemon-owned log and the accepted messages the Worker has not yet observed ({§acp-snapshot}, {§acp-history-window}, {§acp-message-acceptance}); what reaches the Run while its log is read follows that snapshot, in the order it arrived, except the parts of a row the snapshot already holds as it arrived, which are not built a second time; of a row it holds at an earlier version, only the later facts folded onto the call it holds, a repeated `TOOL_CALL_START` and `TOOL_CALL_END`, and its result follow |
-  | A durable pending gate addressed to the Run's thread ({§acp-worker-owner}) | re-presented through the standard terminate-resume contract, passive or not, unless the Run's client holds it ({§acp-held-interrupts}) |
-  | An active Loop | remains observed through its terminal; an idle worker emits `RUN_FINISHED` |
-
-§acp-snapshot **A snapshot is the messages the live projection built**, in log order, under
-the live identities and with the same metadata ({§acp-plurnk-metadata}), each tool result after its call where the official reducer puts one that arrives
-live, so a client that applies it keeps every message it built live and a reloaded
-client rebuilds them. It is cut from the bound worker's whole log, read page by page
-({§methods-log-read}), and each subagent run's under {§acp-subagents}: a client holds its window
-({§acp-history-window}) and fetches the history before it page by page ({§acp-history-page}):
-
-| Durable row | Snapshot messages |
-|---|---|
-| Arrival | `user`: a message a client on this thread sent, under its message id as that client sent it; any other, identified by its coordinate and named by its source ({§message-causal-source}) |
-| A turn's first model operation, carrying the turn's reasoning | `reasoning` under the identity of the request that streamed it, or `<coordinate>/reasoning` for history a FORK inherited, before that row's own messages ({§acp-readable-reasoning}) |
-| SEND or KILL replying to this thread; a model WAIT that carries a body | `assistant` speech identified by the coordinate |
-| Any other model operation, a bodiless WAIT and a parse refusal's attempt included ({§acp-parse-refusal}) | `assistant` with one tool call, both identified by the coordinate, then `tool` `<coordinate>/result` carrying the receipt; a call that opened an obligation carries none ({§acp-call-result}), nor does a proposal awaiting its decision ({§acp-proposal-resolve}) |
-| A row that discharges an obligation | `tool` identified by its coordinate, answering the call it names: after that call and the results already beside it, or last when the call is not in view ({§acp-call-result}) |
-| A reply reporting progress on a message this worker sent | `user` identified by its coordinate and named by its source ({§acp-progress-reply}) |
-| Emission attempt, a parse refusal that names no attempt, ambient row | No message of its own |
-| An accepted message a client on this thread sent, not yet observed | `user` under that client's message id, after its loop's rows, `metadata.plurnk.published` false and no coordinate ({§acp-message-acceptance}) |
-
-Interrupts are not snapshot messages: a pending gate is re-presented as an interrupt naming the call
-the snapshot holds, and a settled one's evidence is its operation's call and result. Transient reasoning of failed or rejected
-requests is not retained ({§acp-readable-reasoning}).
-
-## §acp-history The history window
+## 5. Replay and History Pagination
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§acp-history-window} | A snapshot holds the bound worker's newest loops. |
-| {§acp-history-page} | History before the window travels one page at a time. |
-| {§acp-loop-page} | A loop travels whole by its number. |
-| {§acp-history-advance} | A Run's window advances. |
-| {§acp-words-by-reference} | Words past the ceiling travel by reference. |
+| {§acp-replay} | `session/resume` replays the recent loop window before returning. |
+| {§acp-sync} | Synchronization is an inference-free session attachment. |
+| {§acp-snapshot} | A replay page is the exact `session/update` sequence the live projection built. |
+| {§acp-history-window} | A session replay holds the bound worker's newest `PLURNK_ACP_HISTORY_LOOPS` loops, bounded by… |
+| {§acp-history-page} | History before the window travels one HTTP `GET` page at a time. |
+| {§acp-loop-page} | A loop travels whole by its sequence number. |
+| {§acp-history-advance} | Each `session/resume` computes the current bounded window |
+| {§acp-words-by-reference} | Words exceeding `PLURNK_ACP_HISTORY_PAGE_CHARS` travel by reference. |
 <!-- /map -->
 
-§acp-history-window **A snapshot holds the bound worker's newest loops.** `MESSAGES_SNAPSHOT` carries the window of
-the complete projection ({§acp-snapshot}), and a client fetches what lies before it one page at a time
-({§acp-history-page}). No number fits every workload: both limits are the operator's settings.
+§acp-replay **`session/resume` replays the recent loop window before returning.** When
+`session/resume` is called (with `replayFrom` or default replay), the module emits the bound
+worker's recent conversation window as `session/update` notifications ({§acp-snapshot},
+{§acp-history-window}), followed by current `usage_update`, `state_update`, and any pending
+`session/request_permission` or `elicitation/create` requests ({§acp-proposal-resolve}).
 
-| Fact | Rule |
-| --- | --- |
-| The loops | The bound worker's newest `PLURNK_ACP_HISTORY_LOOPS` loops, with every subagent message among them in log order; a conversation of fewer loops travels whole |
-| The cut | Between whole turns: a turn's reasoning, its calls and their results travel together, a result a later row delivered with its call. Only a turn larger than the ceiling is cut between its parts: an arrival, a reasoning message, speech, or a call with its results |
-| The ceiling | The snapshot, its envelope included, serializes to at most `PLURNK_ACP_HISTORY_PAGE_CHARS`. A part that alone would pass it carries its senders' words by reference ({§acp-words-by-reference}); a part that passes it still, which only model output or a receipt can, never travels in a snapshot: it falls into history whole, a page of its own, the one page that passes the ceiling |
-| Accepted messages | Accepted messages of a live loop (`queued`, `running`, `parked`) travel last, always; one whose loop concluded without observing it stays with that loop ({§acp-message-acceptance}) |
-| The link | `metadata.plurnk.history` is `{ older }`: the URL of the page before the window, or `null` when the window holds the whole conversation |
-| What the Run holds | The rows whose messages the window holds ({§acp-sync}); a later delivery of a row the window left in history is a row the client does not hold, and arrives whole |
-| ACP's reasoning rule | A snapshot that carries no reasoning message leaves the reasoning messages a client holds in place, as ACP defines `MESSAGES_SNAPSHOT`: a window without reasoning keeps what the client held, and the next window that carries reasoning replaces it |
+§acp-sync **Synchronization is an inference-free session attachment.** `session/resume` attaches and
+replays without submitting a prompt, creating a turn, or performing model inference.
 
-§acp-history-page **History before the window travels one page at a time.** `GET` at an `older` link,
-`<origin>/acp/<workspaceId>/<workerId>/messages?thread=<threadId>`, with `descendants=true` and
-`reasoning=link` when the Run's view has them and `before=<message id>` the page's cursor, is admitted by the same
-perimeter as a Run ({§acp-http-authorization}) and answers `{ final, messages, older }` as `application/json` with
-`cache-control: no-store`. A link without `thread` is 400 `history-thread-required`, a cursor that names no message
-of the conversation 404 `history-cursor-not-found`, and a worker outside the workspace the daemon's own refusal.
+§acp-snapshot **A replay page is the exact `session/update` sequence the live projection built.**
+Replay emits `user_message_chunk`, `agent_thought_chunk`, `agent_message_chunk`, and
+`tool_call_update` notifications in log order under their live identities and `_meta.plurnk`
+metadata, pairing each obligation-discharge `tool_call_update` after its opening call
+({§acp-call-result}). Unobserved inbox messages sent on the session follow as `user_message_chunk`
+with `_meta.plurnk.published: false` ({§acp-message-acceptance}).
 
-| Fact | Rule |
-| --- | --- |
-| The view | The link reproduces its Run's: the thread whose messages are its client's own, whether it observes its delegation ({§acp-delegation-observation}), and whether it negotiated reasoning by link ({§acp-reasoning-link}) |
-| The page | The messages before the cursor (before the accepted messages when the link names none): the loop of the bound worker's newest message there, cut under the window's rules and ceiling, its parts' words by reference where the window's are, with the identities and metadata a complete snapshot gives them |
-| `final` | `true` when the page's loop has concluded and every call in it holds its result: such a page never changes. A page that is not final can gain a result after one of its calls; an attached client receives it live, as a row it does not hold, and a fetch of the same link holds it after its call |
-| `older` | The URL of the page before, or `null` at the conversation's beginning |
+§acp-history-window **A session replay holds the bound worker's newest `PLURNK_ACP_HISTORY_LOOPS`
+loops, bounded by `PLURNK_ACP_HISTORY_PAGE_CHARS`.** Cuts occur between whole turns unless a single
+turn exceeds the character ceiling. `_meta.plurnk.history.older` holds the URL of the preceding
+history page, or `null` when the window contains the beginning of the conversation.
 
-A snapshot and its pages, followed back, reassemble the complete projection exactly: each message once, in order.
+§acp-history-page **History before the window travels one HTTP `GET` page at a time.** `GET` at
+`<origin>/acp/<workspaceId>/<workerId>/messages?session=<sessionId>&before=<cursor>` is admitted
+under {§acp-http-authorization} and returns `{ final, updates, hasMore, beforeLoopSeq, older }` as
+`application/json` with `cache-control: no-store`. Missing `session` fails with `400
+history-session-required`; an unknown cursor fails with `404 history-cursor-not-found`.
 
-§acp-loop-page **A loop travels whole by its number.** A page link with `loop=<sequence>` in place of `before` answers
-the bound worker's loop of that sequence ({§acp-worker-loops}) as one page: from its first message to the next loop's
-first, every subagent message and any accepted message that loop concluded without observing among them, never cut to the
-ceiling, its parts' words by reference where a page's are. Accepted messages of a live loop belong to no loop page.
-`final` is a page's, and `older` the page before the loop's first message. A `loop` that is not a positive integer, or
-one beside `before`, is 400 `history-loop-invalid`; a sequence the conversation holds no loop of is 404
-`history-loop-not-found`.
+§acp-loop-page **A loop travels whole by its sequence number.** `GET` at
+`<origin>/acp/<workspaceId>/<workerId>/messages?session=<sessionId>&loop=<sequence>` returns that
+loop's complete `updates` array without character-ceiling truncation. Invalid `loop` parameters fail
+with `400 history-loop-invalid`; an absent loop sequence fails with `404 history-loop-not-found`.
 
-§acp-history-advance **A Run's window advances.** Each Run begins with the current window, and a Run spans at
-most one loop of its worker. Within a Run, once a turn ends with what its client holds of messages since its latest
-snapshot past the ceiling, the daemon sends a fresh `MESSAGES_SNAPSHOT` of the window, read again from the log; what
-reaches the Run meanwhile follows it, less the parts of rows it holds.
+§acp-history-advance **Each `session/resume` computes the current bounded window** of at most
+`PLURNK_ACP_HISTORY_LOOPS` loops and `PLURNK_ACP_HISTORY_PAGE_CHARS` characters and links prior
+items via `_meta.plurnk.history.older`.
 
-§acp-words-by-reference **Words past the ceiling travel by reference.** The words a sender writes are bounded only by
-their sender: an arrival's, a reply's, an accepted message's not yet observed. Model output is bounded by its request's
-output limit, in tokens rather than characters, and ACP gives it no reference form: a call's arguments, speech and
-reasoning text are strings, so it travels whole ({§acp-history-window}).
+§acp-words-by-reference **Words exceeding `PLURNK_ACP_HISTORY_PAGE_CHARS` travel by reference.**
+When a message or reply body exceeds the character ceiling, its update carries a `resource_link`
+content block pointing to `/acp/<workspaceId>/<workerId>/entry?target=<address>`
+({§acp-body-reference}) instead of truncating or omitting the text.
 
-| Where | Past `PLURNK_ACP_HISTORY_PAGE_CHARS` |
-| --- | --- |
-| A live delta | Every `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_ARGS` and `REASONING_MESSAGE_CONTENT`, and each `plurnk.reasoning` preview, is one of consecutive events, each within the ceiling and none ending inside a surrogate pair |
-| A reply's live `TOOL_CALL_RESULT` | Its words by reference when the event would pass the ceiling |
-| A snapshot or page | A part that alone, its envelope included, would pass the ceiling carries its senders' words by reference, measured as they serialize |
-
-Words by reference are one `document` part at the address that serves them ({§acp-body-reference}): the row's log
-address, `mimeType: "text/plain"`, or for an accepted message the address that minted it, `mimeType: "text/markdown"`.
-No message is shortened, omitted or invented. A client-authored statement rides `plurnk.ambient` whole ({§acp-ambient}).
-
-## §acp-overview The worker overview
+## 6. Session Directory (`session/list`)
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§acp-overview-run} | An overview is a Run that binds nothing. |
-| {§acp-overview-state} | The overview is ACP state. |
-| {§acp-overview-updates} | A connected overview changes by patches. |
+| {§acp-overview} | `session/list` provides the daemon and workspace session directory. |
+| {§acp-overview-run} | `session/list` inspects without side effects. |
+| {§acp-overview-state} | Each `SessionInfo` entry carries structured Plurnk overview state |
+| {§acp-overview-updates} | Live directory updates use `session_info_update`. |
 <!-- /map -->
 
-A client sees the daemon's places and what waits there without attaching to each worker: one Run observes the
-overview of the daemon, or of one workspace ({§application-worker-overview}), as ACP state.
+§acp-overview **`session/list` provides the daemon and workspace session directory.** Calling
+`session/list` (`ListSessionsRequest: { cwd?, cursor?, _meta? }`) reads
+`ApplicationPort.readWorkerOverview` and `listWorkers` without binding or creating a worker
+({§acp-overview-run}), returning `ListSessionsResponse: { sessions: SessionInfo[], nextCursor?, _meta }`
+where each `SessionInfo` carries `{ sessionId: "<workspaceId>#<name>", cwd, title, updatedAt, _meta: { plurnk: { workspaceId, workerId, kind, lifecycle, gates, reply } } }`
+({§acp-overview-state}), bounded by `PLURNK_ACP_OVERVIEW_WORKERS` and `PLURNK_ACP_EXCERPT_CHARS`.
+When a session's title or status changes while observed, `session_info_update` notifies attached
+peers ({§acp-overview-updates}).
 
-§acp-overview-run **An overview is a Run that binds nothing.** `forwardedProps.plurnk.overview` is `{}` for the daemon
-or `{ workspaceId }` for one workspace. The Run binds no workspace and no worker, creates nothing, claims nothing and
-presents no interrupt: watching, reconnecting and leaving start, cancel and approve no work.
+- §acp-overview-run **`session/list` inspects without side effects.** It binds no worker, creates no
+  workspace, claims no ownership, and triggers no model inference. An invalid `_meta.plurnk.workspaceId`
+  fails with `400 overview-invalid`; an unknown workspace fails with `404 workspace-not-found`.
+- §acp-overview-state **Each `SessionInfo` entry carries structured Plurnk overview state** in
+  `_meta.plurnk`, with the latest finished reply excerpt bounded to `PLURNK_ACP_EXCERPT_CHARS` and
+  its full words linked by reference at the entry route ({§acp-entry-route}).
+- §acp-overview-updates **Live directory updates use `session_info_update`.** When a bound session's
+  metadata or lifecycle updates, the module emits `session_info_update` to attached peers.
 
-| Endpoint | It |
-| --- | --- |
-| `POST /acp` | `RUN_STARTED`, the `STATE_SNAPSHOT`, then `RUN_FINISHED`: one read |
-| `POST /acp/connect` | `RUN_STARTED`, the `STATE_SNAPSHOT`, then one `STATE_DELTA` per change until the client leaves; SSE comments at `PLURNK_ACP_HEARTBEAT_MS` keep a quiet observation connected |
+## 7. First-Party and Stock Client Conformance
 
-| Refused before anything is streamed | Status |
-| --- | --- |
-| `overview` that is not `{}` or `{ workspaceId: <positive integer> }` | 400 `overview-invalid` |
-| `overview` beside a new message, an action or an interrupt resume | 400 `ambiguous-run-input` ({§acp-run-input}) |
-| A `workspaceId` that names no workspace | the daemon's 404 `workspace-not-found` |
+§acp-first-party-client-conformance **The platform gate verifies `@plurnk/plurnk` against the built
+daemon.**
 
-An observation ends as any Run does: its credential revoked, with `credential-revoked` ({§acp-oauth-revocation}); the
-daemon stopping, with `service-stopping` ({§acp-shutdown}); a read that fails, with its Problem.
+§acp-official-client-conformance The integration gate runs a stock `@agentclientprotocol/sdk` v2
+client (`ClientApp` over `createWebSocketStream` and `createHttpStream`) against the daemon and a
+deterministic model fixture, exercising `initialize`, `session/new`, `session/resume`,
+`session/fork`, `session/list`, `session/delete`, `session/close`, `session/prompt`,
+`session/cancel`, `session/set_config_option`, `providers/list`, `session/request_permission`,
+`elicitation/create`, streaming `agent_thought_chunk`, `agent_message_chunk`, `tool_call_update`,
+`terminal_update`, `subagent_update`, `usage_update`, and `notice`. The installed-client gate checks
+`PLURNK_CLIENT_CHECKOUT` (defaulting to `../plurnk`) against the packed release.
 
-§acp-overview-state **The overview is ACP state.** `STATE_SNAPSHOT` carries `{ plurnk: { overview } }`:
-
-| Field | Holds |
-| --- | --- |
-| `scope` | `{ workspaceId }`, `null` for the daemon |
-| `workspaces` | by id, `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to |
-| `workers` | by id, each held place `{ workspaceId, id, name, parentWorkerId, kind, lifecycle, gates, reply }` ({§application-worker-overview}); `reply` is `null` or `{ id, coordinate, completion, at, excerpt, continued, body }` ({§worker-finished-reply}), `body` its words by reference, `{ url, mimeType: "text/plain" }` at the entry route of its own worker ({§acp-entry-route}) |
-| `recent` | the held places' ids in order, most recently finished first |
-| `omitted` | the places in scope the overview leaves out |
-
-It holds every place waiting on a gate and `PLURNK_ACP_OVERVIEW_WORKERS` places in order, each excerpt at most
-`PLURNK_ACP_EXCERPT_CHARS` characters ({§list-excerpt}). It never carries words, reasoning or history: a reply's words
-are one read away under the same perimeter ({§acp-http-authorization}).
-
-§acp-overview-updates **A connected overview changes by patches.** After each event in its scope that can change it,
-the observation reads the overview again ({§methods-worker-overview}) and sends what changed as one `STATE_DELTA`: RFC
-6902 `add`, `replace` or `remove` of `/plurnk/overview/workspaces/<id>` and `/plurnk/overview/workers/<id>`, then
-`replace` of `/plurnk/overview/recent` and `/plurnk/overview/omitted` when they change; nothing unchanged travels.
-Events that land while it reads are read once after it, so a burst is one read; streamed reasoning, outside text and
-stream chunks never change it. A place moves in `recent` only when it finishes a reply or enters or leaves the
-overview; a lifecycle, a gate or a rename ({§notifications-workspace-renamed}) replaces the place or workspace where it
-stands.
-
-## §acp-first-party-client-conformance First-party client conformance
-
-§acp-official-client-conformance The ordinary integration gate runs a standard
-ACP client against the real daemon and a deterministic HTTP model fixture.
-Its verifier and message builder exercise lifecycle, state, streaming reasoning,
-assistant speech, and provider refusals. The explicit real-model tier adds provider
-evidence through the shared service live runner; it does not substitute for the
-deterministic gate. Wire shapes derive
-from the contracts-owned ACP Run schemas ({§acp-run-authority}).
-Deterministic daemon fixtures use the isolated mock-tier bootstrap
-({§operator-config-real-model-profile}); operator configuration must not start
-external resources during the integration gate.
-
-An independent stock `HttpAgent` witness supplies no Plurnk forwarded properties or metadata
-handling. It exercises first contact, continuation, replay, accepted-message retry, independent
-thread isolation, concurrent first contact, restart and rename continuity, and standard tool-call
-interrupt/resume. Unknown-thread inspection creates nothing. Qualified-address witnesses supply
-only the standard `threadId` field; test-host inspection is not client protocol participation.
-
-The one-shot CLI and interactive terminal consume one ACP+
-semantic contract. Each surface verifies the contracts-owned conformance corpus
-through its production transport and separately verifies the presentation its
-host owns; decoration and layout are not cross-client protocol facts.
-
-| Shared semantic fact | One-shot CLI | Interactive terminal | Intentional host-owned divergence |
-| -------------------- | ------------ | -------------------- | --------------------------------- |
-| lifecycle, model, packet status | structured output and Unix status trace | mutable prompt status | process and terminal lifecycle idioms |
-| reasoning | structured record and trace | streaming waterfall blocks | host-native persistence and navigation |
-| operation receipts and turn disposition | stdout plus structured operation record | scrollback waterfall | Unix streams versus visual surfaces |
-| cancellation, proposals, and interactions | explicit noninteractive policy and exit | terminal review or input | each host owns human interaction |
-| Problems and Notices | RFC 9457 JSON or stderr | terminal rows | presentation only; exact semantics survive |
-| MCP, Skills, and A2A Functionality | state commands | slash commands | one Functionality action contract |
-
-One installed-platform journey exercises both public entry paths against
-the same packed daemon release. It asserts semantic outcomes rather than exact
-glyphs or pixels and names any permitted divergence by its owning host.
-Unexpected Problems fail a successful journey, including asynchronous startup
-failures. A deterministic rejected-provider journey asserts the exact cause,
-one provider request, and failed status after subsequent management reads.
-Independent terminal-client connections verify shared workspace state and its
-persistence across daemon restart.
-
-The installed-client gate resolves `PLURNK_CLIENT_CHECKOUT` relative to the
-invocation directory, defaulting to `../plurnk` beside the service checkout.
-The selected checkout and its installed dependencies are required; an invalid
-explicit path fails rather than falling back or skipping conformance.
-
-## §acp-proposal-resolve Client-owned stop-the-world interactions
+## 8. Human-in-the-Loop: Permissions and Elicitations
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§acp-gate-deferral} | A gate waits for the reasoning it cannot split. |
-| {§acp-message-before-gate} | A message is durable before a pending gate is re-presented. |
-| {§acp-resume-before-gate} | A resume is applied or refused before its Run presents a gate. |
-| {§acp-proposal-disposition} | ACP consumes Core's `ProposalProjection` identically for live delivery and reconnect. |
-| {§acp-provider-policy-forwarding} | A textual Run forwards `selector` and `childSelector` from `forwardedProps.plurnk` unchanged to… |
+| {§acp-proposal-resolve} | Stopped-world proposals and client interactions use standard ACP v2 `session/request_permission` and… |
+| {§acp-gate-deferral} | A gate is tracked per peer and cancelled across peers once settled. |
+| {§acp-message-before-gate} | A message submitted via `session/prompt` is durable before a pending gate is re-presented. |
+| {§acp-resume-before-gate} | Gate resolutions are validated at Core's boundary. |
+| {§acp-proposal-disposition} | ACP consumes Core's `ProposalProjection` identically for live delivery and `session/resume` replay. |
+| {§acp-provider-policy-forwarding} | `session/prompt` forwards `selector` and `childSelector` from `_meta.plurnk` unchanged to… |
 <!-- /map -->
 
-A client-owned gate, a proposal its owner reviews ({§worker-owner-resolution}) or a contracts-owned
-client interaction, terminates ACP Run A with `RUN_FINISHED.outcome.type = "interrupt"`. The
-durable loop remains paused until the decision, indefinitely unless the operator sets a decision
-deadline, which a proposal's interrupt carries as `expiresAt` ({§proposal-projection}); absence is
-not an answer. ACP Run B on the same thread supplies standard `RunAgentInput.resume` entries, each
-echoing the opaque `Interrupt.id` it answers.
+§acp-proposal-resolve **Stopped-world proposals and client interactions use standard ACP v2
+`session/request_permission` and `elicitation/create`.** When a session worker (or an observed
+descendant owned by `acp://operator`) pauses on a `ProposalProjection` (`disposition: "review"`) or
+`ClientInteractionProjection`, the module transitions the session to
+`state_update: { state: "requires_action" }` and sends the corresponding standard ACP v2 request to
+every peer observing the owning session:
 
-| Gate | What Run A presents before its interrupt | The interrupt |
-|---|---|---|
-| A proposal of the Run's bound worker | The operation's own call, `TOOL_CALL_START/ARGS/END` as its row builds it, unanswered, unless the Run's client holds it | `toolCallId` its coordinate |
-| A proposal of a worker whose subagent segment the Run has open ({§acp-subagents}) | That call in the subagent's namespace | `toolCallId` the namespaced coordinate, and `subagentRunId` |
-| A proposal of any other worker the owner reviews | Nothing: the Run holds no conversation of that worker | No `toolCallId` |
-| A client interaction | Its request's tool call, `int:<interactionId>`, with the request's exact `toolName` and `arguments` | `toolCallId` that call, the request's `message` and `responseSchema`, and Core's `ClientInteractionProjection` as `metadata.plurnk.interaction`: the worker, loop and turn asking ({§acp-plurnk-metadata}) |
+- **Proposals (`session/request_permission`):**
+  - `sh` command proposals use `subject: { type: "command", command, cwd, toolCallId }`
+  - File, scheme, and MCP proposals use `subject: { type: "tool_call", toolCall }` (including `Diff`
+    content `{ type: "diff", path, oldText, newText }` when `attrs` carries `original` and `patched`)
+  - `options`: `allow_once` (`optionId: "approve"`), `allow_always` (`optionId: "allow_always"`),
+    and `reject_once` (`optionId: "deny"`)
+  - `_meta.plurnk.proposal`: the bodyless `ProposalProjection`
+  - Answering with `outcome: { outcome: "selected", optionId }` calls
+    `ApplicationPort.resolveProposal(logEntryId, { disposition: "approve" | "deny" }, owner)` (and
+    widens workspace capability policy when `optionId === "allow_always"`). Answering with
+    `outcome: { outcome: "cancelled" }` denies the proposal.
+- **Client Interactions (`elicitation/create`):**
+  - `question/ask` and structured form interactions use `mode: "form"` with `elicitationId`,
+    `scope: { type: "session", sessionId }`, `message`, and `requestedSchema`
+  - OAuth consent URLs use `mode: "url"` with `elicitationId`,
+    `scope: { type: "session", sessionId }`, `message`, and `url`
+  - Answering calls `ApplicationPort.resolveClientInteraction` and emits `elicitation/complete`
+    (`{ elicitationId }`).
 
-A proposal's interrupt carries `reason: "tool_call"`, a review `message`, the `responseSchema` of its decision and Core's `ProposalProjection` as `metadata.plurnk.proposal` ({§proposal-projection}), what the reviewer reviews, whether or not it names a call. The call it names is the operation itself: no other call stands for its approval, and the decision is no result of its own. Every other worker Run whose conversation holds the proposed operation's worker (its bound worker or an open subagent segment) presents that same unanswered call as the proposal arrives, without an interrupt, and folds the settlement onto it when the operation settles.
+§acp-gate-deferral **A gate is tracked per peer and cancelled across peers once settled.** When any
+peer or Core settles a proposal or interaction, the module sends standard JSON-RPC
+`$/cancel_request` (`methods.protocol.cancelRequest`) for that request ID to all other peers where
+the request was in flight and emits `state_update: { state: "running" }`.
 
-| Fact | Rule |
-| --- | --- |
-| Settlement | the operation's settlement answers it: the Run that holds the call receives a repeated `TOOL_CALL_START` and `TOOL_CALL_END` under the call's id carrying the settled facts, which the official reducer folds onto the call it holds, its arguments untouched, then the call's result, unless the operation opened an obligation, which what discharges it answers ({§acp-call-result}) |
-| Snapshots | a snapshot holds a pending proposal as its call without a result ({§acp-snapshot}), so a client that resumed holds exactly what a refreshed one builds |
-| Presentations | separate presentations of one gate have separate interrupt IDs, so a resume addresses exactly the presentation its client holds ({§acp-run-disconnect}); unknown presentations require rediscovery, and pending proposals and interactions remain durable in Core; a resume answers every interrupt of its presentation and nothing more: a gate of the same worker that became pending after that presentation stays durable and the resuming Run presents it next ({§acp-gate-deferral}); the module restores the thread's live projection state and only then releases what the resume answered; the pending Worker's persisted Worker and Loop remain the exact resolution identity |
-| Owner-addressed gates | route under {§acp-worker-owner}: when an owner's thread presents another worker's gate, its resume stays bound to that thread while releasing the exact requesting worker; reconnect discovers pending gates from Core by recorded owner, not inferred ancestry |
-| Ordering | a terminal published after a descendant gate remains ordered behind that gate's topology resolution and presentation; it cannot settle Run A before the interrupt is emitted; concurrent descendant gates are presented one Worker at a time, and resolving one re-surfaces the next without admitting a new prompt; sibling and unrelated threads never receive one another's gates |
-| An invalid resume | one containing foreign, partial, unknown, duplicate, or multi-worker interrupt sets fails before any stopped operation is released; mixing presentations or threads produces `interrupt-binding-invalid`; a connection closed before validated resolution produces `connection-closed` without releasing the stopped work |
-| Terminals during a resume | loop terminals received while a resume is being validated or resolved are held: successful resolution delivers the bound Loop's terminal once; rejected resolution emits its exact `RUN_ERROR`, never success from the previously interrupted Loop |
+§acp-message-before-gate **A message submitted via `session/prompt` is durable before a pending gate
+is re-presented.** `session/prompt` delivers its prompt through `ApplicationPort.runLoop` so Core
+holds it in the worker's inbox; the prompt is never discarded when a gate is pending.
 
-§acp-gate-deferral **A gate waits for the reasoning it cannot split.** A stopped-world that
-reaches a Run while its bound Worker's readable-reasoning lifecycle is open
-({§acp-readable-reasoning}) is held by that Run, never dropped, and is presented when the
-lifecycle ends, closing the active step first. A Loop terminal that arrives while a gate is
-held settles the Run normally and leaves the gate durable for the next Run's re-presentation;
-a second gate arriving while one is held stays durable and re-surfaces after the first resolves.
+§acp-resume-before-gate **Gate resolutions are validated at Core's boundary.** Invalid outcomes or
+already-settled gates fail with their exact RFC 9457 Problem Details (`400 interrupt-invalid`,
+`409 interrupt-not-pending`, `403 proposal-not-owned`) without releasing stopped work.
 
-§acp-message-before-gate **A message is durable before a pending gate is re-presented.** A
-message Run that finds a pending stopped-world first delivers its prompt through
-`ApplicationPort.runLoop`, so Core holds it (injected into the Worker's running or parked
-Loop, otherwise enqueued as its next Loop), and only then re-presents the gate and ends with
-the interrupt. The prompt is never discarded; an admission failure is that Run's `RUN_ERROR`.
+§acp-proposal-disposition **ACP consumes Core's `ProposalProjection` identically for live delivery
+and `session/resume` replay.** Only `disposition: "review"` becomes a `session/request_permission`
+request; `accept` and `reject` are Core's automatic settlements.
 
-§acp-resume-before-gate **A resume is applied or refused before its Run presents a gate.** A gate
-that becomes pending while a resume Run binds, validates or resolves its resume is not presented on
-that Run until the resume is applied, or refused with its exact `RUN_ERROR`. The gate stays durable:
-the Run whose resume was applied presents the pending gates next, and after a refusal the next Run
-does.
+§acp-provider-policy-forwarding **`session/prompt` forwards `selector` and `childSelector` from
+`_meta.plurnk` unchanged to `ApplicationPort.runLoop`.**
 
-An interrupt is an ACP Run boundary, not a Plurnk turn boundary. Before Run A's interrupt
-terminal, the projection closes any active `turn-<id>` step. Run B emits `RUN_STARTED`, its
-initial state, and a new `STEP_STARTED` for that same durable turn before releasing the stopped
-operation. The continued loop later closes that Run B step normally. No ACP Run may finish
-while a step remains active.
-
-A proposal's resume payload carries the review contract: a resolved one carries `decision`,
-optional edited `body`, and optional string `outcome`; a cancelled entry may also carry `payload.outcome`. The outcome reaches Core
-unchanged under {§proposal-outcome-terse-error}; invalid outcome types refuse the resume
-before any proposal is released. An omitted outcome leaves Core's existing default intact.
-An interaction's resolved resume payload becomes the generic resolved payload, while ACP cancellation becomes interaction cancellation. ACP
-never sees or reconstructs an upstream protocol's continuation state.
-
-§acp-proposal-disposition ACP consumes Core's `ProposalProjection` identically
-for live delivery and reconnect. A `review` disposition becomes a standard interrupt
-only for the matching owner. `accept` and `reject` remain
-Core's automatic settlements and never become client review work. Operation,
-attrs and stale-target facts remain evidence, not authority inputs.
-
-§acp-provider-policy-forwarding A textual Run forwards `selector` and
-`childSelector` from `forwardedProps.plurnk` unchanged to `ApplicationPort.runLoop`.
-Each string is one declared alias or exact provider/model route; an explicit
-`childSelector: null` remains distinguishable from an omitted service-default
-selection.
-
-## §acp-management-plane The action surface
+## 9. Configuration Options, Available Commands, and Module Actions
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
+| {§acp-management-plane} | Configuration, slash commands, and module actions share one schema-validated plane. |
 | {§acp-worker-loops} | `worker.loops` — Workspace |
-| {§acp-place-hiding} | A directory leaves hidden places out. |
-| {§acp-action-binding} | What a Run binds. |
-| {§acp-client-operation} | `op.exec` and `op.parse` are the operator's client operations. |
-| {§acp-worker-model-actions} | Worker model selection is server-backed. |
-| {§acp-worker-effort-actions} | Effort has its own worker action. |
-| {§acp-module-action-scope} | An extension action uses the same management plane, not a private endpoint. |
-| {§acp-op-parse} | Parsed-operation projection |
+| {§acp-place-hiding} | Directories omit hidden workspaces and sessions. |
+| {§acp-action-binding} | Each request binds only the resources its scope requires. |
+| {§acp-client-operation} | `/script` (`op.exec` and `op.parse`) executes in the workspace's runtime worker (`_plurnk`). |
+| {§acp-worker-model-actions} | Session model selection is server-backed. |
+| {§acp-worker-effort-actions} | Session reasoning effort is server-backed. |
+| {§acp-module-action-scope} | Extension module actions share the same schema-validated dispatch plane. |
+| {§acp-op-parse} | Parsed-operation projection (`/script` / `op.parse`). |
 | {§acp-module-actions} | One public action namespace. |
-| {§discovery} | Discovery contract |
-| {§acp-stream-producer} | Stream updates route to `workerId`, the initiating Worker. |
+| {§discovery} | Discovery contract. |
+| {§acp-stream-producer} | Stream updates route to the initiating worker. |
 <!-- /map -->
 
-A Run's input ({§acp-run-input}) is one of three, and a Run that carries none of them synchronizes. A new user
-message and a standard interrupt resume are not management actions.
+§acp-management-plane **Configuration, slash commands, and module actions share one schema-validated
+plane.**
 
-```mermaid
-flowchart LR
-    client["ACP client"] --> run["POST RunAgentInput"]
-    run --> classify{"What the conversation doesn't hold"}
-    classify -->|"new user message"| loop["ApplicationPort.runLoop"]
-    classify -->|"RunAgentInput.resume"| resume["ApplicationPort proposal / interaction resolution"]
-    classify -->|"forwardedProps.plurnk.action"| actions{"ACP action registry"}
-    classify -->|"none of them"| sync["Synchronization"]
-    actions --> builtIn["Advertised schema admission<br/>and typed ApplicationPort call"]
-    actions --> extension["Scoped ApplicationPort.invokeModuleAction"]
-    loop --> events["Core event source"]
-    resume --> events
-    sync --> events
-    builtIn --> events
-    events --> projection["ACP projection"]
-    extension --> result["RUN_FINISHED result"]
-    projection --> client
-    result --> client
-```
+- **Session Configuration (`configOptions` and `session/set_config_option`):**
+  Every session advertises `SessionConfigOption[]` entries for `model` (`category: "model"`),
+  `thought_level` (`category: "thought_level"`), `spawn_model` (`category: "other"`), and `mode`
+  (`category: "mode"`, workspace capability policy `propose` | `allow` | `deny`), plus
+  `providers/list`, `providers/set`, and `providers/disable`.
+- **Available Slash Commands (`availableCommands` on `session/prompt`):**
+  Every session advertises `AvailableCommand[]` entries for `/mcp`, `/skills`, `/a2a`, `/members`,
+  `/env`, `/schedule`, `/rollback`, `/share`, and `/script`. Submitting `/<command> ...` via
+  `session/prompt` executes the command under ACP v2's local-command lifecycle
+  (`state_update: { state: "running" }` → `agent_message_chunk` / `notice` →
+  `state_update: { state: "idle", stopReason: "end_turn" }`).
+- **Typed Extension Method (`_plurnk/action`):**
+  Programmatic callers and conformance suites may also invoke registered actions directly via the
+  ACP v2 `ExtensionMethod` `_plurnk/action` (`{ kind, params, sessionId?, workspace?, workspaceId?, workerId?, workerName? }`).
 
-A management-action Run carries
-`forwardedProps.plurnk.action = { kind, ...params }`. Once settled, the Run that asked finishes with
-`RUN_FINISHED` whose `result` is the outcome, shaped as `{ kind, ok, result | problem }`
-({§acp-plurnk-metadata}); no action presents an
-interrupt ({§acp-client-operation}). A failed
-action preserves exact RFC 9457 Problem Details and is the result of a
-successfully transported management Run; it does not turn the Run into
-`RUN_ERROR` or invent a parallel error string. Unknown kinds return an honest
-`unknown-action` Problem. There is no side-channel endpoint.
+| Action | Scope | Owner / Effect |
+| --- | --- | --- |
+| `ping` | Daemon | Liveness check; returns `{}`. |
+| `discover` | Daemon | Returns the complete `AcpDiscovery` manifest ({§discovery}). |
+| `models.list` | Daemon | `ApplicationPort.listModels` ({§model-catalog}). |
+| `workspace.list` / `workspace.create` / `workspace.attach` / `workspace.rename` / `workspace.hide` | Daemon / Workspace | Workspace lifecycle on `ApplicationPort` ({§acp-place-hiding}). |
+| §acp-worker-loops `worker.loops` | Workspace | `ApplicationPort.listWorkerLoops`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }` with `opening` bounded to `PLURNK_ACP_EXCERPT_CHARS`. |
+| `log.read` / `entry.read` / `workspace.prompts` | Workspace | `ApplicationPort.readLog`, `readEntry`, and `listPrompts`. |
+| `workspace.share` (`/share`) | Workspace | `ApplicationPort.shareWorkspace`. |
+| `workspace.rollback` (`/rollback`) | Workspace | `ApplicationPort.rollback`. |
+| `op.exec` / `op.parse` (`/script`) | Workspace | Client operations in the workspace runtime worker `_plurnk` ({§acp-client-operation}, {§acp-op-parse}). |
 
-| Public action            | Scope     | Parameters                                           | Owner / effect                                                                                                     |
-|--------------------------|-----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| `ping`                   | Daemon | none                                                 | ACP-local liveness; returns `{}`.                                                                                |
-| `discover`               | Daemon | none                                                 | ACP-local public membership manifest ({§discovery}).                                                             |
-| `providers.list`         | Daemon | none                                                 | `ApplicationPort.listProviders`: each alias as the route a worker seeded from it gets ({§acp-provider-routes}).            |
-| `models.list`            | Daemon | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `ApplicationPort.listModels` under {§model-catalog}. |
-| `workspace.list`         | Daemon | `includeHidden?`                                     | `ApplicationPort.listWorkspaces`: each workspace with its folder, the folder's label ({§workspace-label}) and its `hidden_at`, shown ones only unless `includeHidden` ({§acp-place-hiding}). |
-| `workspace.create`       | Daemon | `name?`, `projectRoot?`, `settings?`                 | Creates or attaches the exact named workspace, or asks core to name it ({§workspace-name}): the folder-derived default, selected when it exists, else a generated name ({§workspace-auto-name}). |
-| `workspace.attach`       | Daemon | exactly one of `id`, `name`, `projectRoot`              | Read-only selection under {§methods-workspace-attach}; returns `{ id, name }`, creates nothing and rebinds no thread. `name` is literal; `projectRoot` selects the daemon's folder-derived default name. |
-| `workspace.workers`      | Workspace | `id?`, `includeHidden?`                              | `ApplicationPort.listWorkers`; an explicit id overrides the bound workspace; shown workers only unless `includeHidden` ({§acp-place-hiding}). |
-| `log.read`               | Workspace | `workerId?`, log-coordinate filters                  | `ApplicationPort.readLog`; defaults to the thread's bound worker.                                                  |
-| `loop.inject`            | Workspace | `prompt`                                             | `ApplicationPort.runLoop` on the thread's bound worker; folds into live work or enqueues a loop.                   |
-| `loop.cancel`            | Workspace | `reason?`                                            | `ApplicationPort.cancelDrain` on the thread's bound worker.                                                        |
-| `workspace.prompts`      | Workspace | `workerId?`, `limit?`                                | `ApplicationPort.listPrompts` scoped like `log.read`: the thread's bound worker unless `workerId` pins another.    |
-| §acp-worker-loops `worker.loops` | Workspace | `workerId?` | `ApplicationPort.listWorkerLoops` scoped like `log.read`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }`: its lifecycle under {§loop-lifecycle-vocabulary}, `source` the sender of its opening message, `opening` and `continued` that message's excerpt ({§list-excerpt}) of at most `PLURNK_ACP_EXCERPT_CHARS` characters. Its rows are `log.read` by its `id`; its messages, its loop page ({§acp-loop-page}). |
-| `workspace.rename`       | Workspace | `name`                                               | `ApplicationPort.renameWorkspace`.                                                                                        |
-| `workspace.hidden.set`   | Workspace | `hidden`                                             | `ApplicationPort.setWorkspaceHidden` on the bound workspace ({§acp-place-hiding}); returns `{ id, hidden_at }`. |
-| `worker.hidden.set`      | Workspace | `hidden`, `workerId?`                                | `ApplicationPort.setWorkerHidden` on the thread's bound worker, or `workerId` ({§acp-place-hiding}); returns `{ id, hidden_at, workerIds }`. |
-| `workspace.share`        | Workspace | `folder`                                             | `ApplicationPort.shareWorkspace` shares the bound workspace ({§share}) into an absolute `folder` on the service host; returns `{ folder }`. |
-| `workspace.rollback`     | Workspace | `to`, `workerId?`                                    | `ApplicationPort.rollback` ({§rollback}) reverses the settled file mutations after log coordinate `to` of the thread's bound worker (or `workerId`), latest first, as one client operation of the operator ({§acp-client-operation}); returns the `RollbackReport`. |
-| `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `ApplicationPort.readEntry` from the explicit worker perspective or the thread's bound worker by default, preserving validated {§entry-read-result}. |
-| `op.exec`                | Workspace | `command`, `env?`                                    | Constructs one execution statement on the default `sh` runtime, `env` its environment under {§env-option}, and dispatches it as one client operation ({§acp-client-operation}). |
-| `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§acp-op-parse}.                                                            |
-| `run.fork`               | Workspace | `name?`                                              | `ApplicationPort.forkWorker` from the thread's bound worker.                                                       |
-| `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's bound worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
-| `worker.model.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerModel` on the thread's bound worker; persists the resolved selection and returns it.        |
-| `worker.child.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerSpawnModel` on the thread's bound worker; persists the override (`null` means inherit) and returns it. |
-| `worker.effort.get`   | Workspace | none                                                 | `ApplicationPort.readWorkerEffort` on the thread's bound worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
-| `worker.effort.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerEffort` on the thread's bound worker; validates and persists the policy between loops. |
-| `workspace.capabilities.get` | Workspace | none                                                | `ApplicationPort.readWorkspaceCapabilities` on the bound workspace, without creating a worker; returns the complete resolver-owned projection {§capability-policy-projection}. |
-| `workspace.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkspaceCapabilities` replaces the workspace policy and returns the complete resolver-owned projection {§capability-policy-projection}. |
-| Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; ACP enforces the owner's input/output schemas and passes a daemon, bound-workspace, or bound-Worker context outside supplied params. The owner retains semantic validation and the effect. |
+§acp-place-hiding **Directories omit hidden workspaces and sessions.** `session/list` and
+`workspace.list` omit hidden entries unless `includeHidden: true` is passed. `session/delete` hides
+the target session via `ApplicationPort.setWorkerHidden({ hidden: true })` and fails if the session
+holds live work.
 
-§acp-place-hiding **A directory leaves hidden places out.** `workspace.list` and `workspace.workers` list shown places
-unless `includeHidden` is true, every row carrying its `hidden_at`, so a client that knows nothing of hiding honors it.
-`workspace.hidden.set` and `worker.hidden.set` hide and show under {§place-hiding}, a refusal its `409 live-work` as the
-daemon wrote it; a connected overview follows each change ({§acp-overview-updates}). Neither creates the place it names.
+§acp-action-binding **Each request binds only the resources its scope requires.** Daemon-scoped
+requests (`initialize`, `providers/list`, `session/list` without `cwd`, `ping`, `discover`,
+`models.list`, `workspace.list`) bind neither a workspace nor a worker. Workspace-scoped requests
+attach the workspace without creating a model worker. Session-creating requests (`session/new`,
+`session/prompt` with a new session) create the named model worker if absent; read-only or
+mutation-of-existing requests (`session/resume`, `session/fork`, `session/delete`,
+`session/set_config_option`) return `404` (`session-not-found` or `worker-not-found`) when absent.
 
-§acp-action-binding **What a Run binds.** A message Run and an action addressed to the thread's
-worker resolve the thread's worker ({§acp-thread-binding}); a workspace-level action
-binds none. Opaque threads allocate only for worker-creating Runs. Qualified addresses always
-require their workspace to exist. For explicit workspace selection, only a Run that may create its
-worker, or binds none, may create the workspace:
+§acp-client-operation **`/script` (`op.exec` and `op.parse`) executes in the workspace's runtime
+worker (`_plurnk`).** It never creates or claims a model worker and never presents a permission
+prompt because the operator is the author. The request settles only after every non-detached stream
+opened by the operation has concluded ({§acp-broadcast-fan}).
 
-| The thread's worker | The workspace | Runs and actions |
-|---|---|---|
-| Created when the workspace has none by that name | Created when absent | message Run; an owner's control observation ({§acp-sync}, {§acp-owner-connection}); `worker.model.set`, `worker.child.set`, `worker.effort.set`, `worker.env.add`, `worker.env.replace` |
-| Required: 404 `worker-not-found` when there is none | Attached only | passive observation ({§acp-sync}); `loop.inject`, `loop.cancel`, `run.fork`, `worker.model.get`, `worker.effort.get`, other worker-scoped module actions; `log.read`, `entry.read`, `workspace.prompts`, `worker.loops`, `workspace.rollback` and `worker.hidden.set` unless `workerId` names another worker |
-| The one the interrupted Run bound, if it bound one | Attached only | interrupt resume ({§acp-proposal-resolve}) |
-| Not bound | Created when absent | `workspace.workers`, `workspace.rename`, `workspace.share`, `workspace.capabilities.get`, `workspace.capabilities.set`, `op.exec`, `op.parse`, workspace-scoped module actions |
-| Not bound | Attached only | `log.read`, `entry.read`, `workspace.prompts`, `worker.loops`, `workspace.rollback` and `worker.hidden.set` naming a `workerId`; `workspace.hidden.set` |
+§acp-worker-model-actions **Session model selection is server-backed.** `session/set_config_option`
+with `configId: "model"` or `"spawn_model"` reads and persists the session worker's durable model
+route via `ApplicationPort.readWorkerModel`, `setWorkerModel`, and `setWorkerSpawnModel`
+({§worker-model-selection}), emitting `config_option_update` to attached peers.
 
-A daemon action ({§acp-module-action-scope}), and an action the module does not register or
-whose input its schema refuses, binds neither: it is answered on the control path, the refusal in
-its result. A Run that binds a worker carries that worker's gauge, `plurnk.status` and `budget`, and
-its deltas ({§acp-state-patches}); one that binds none carries neither. Every Run bound to a
-workspace carries that workspace's state ({§acp-workspace-state}).
+§acp-worker-effort-actions **Session reasoning effort is server-backed.**
+`session/set_config_option` with `configId: "thought_level"` reads and persists the session worker's
+durable effort policy via `ApplicationPort.readWorkerEffort` and `setWorkerEffort`
+({§worker-effort}), emitting `config_option_update` to attached peers.
 
-§acp-client-operation **`op.exec` and `op.parse` are the operator's client operations.** Each
-dispatches one client operation ({§connection-lifecycle}) as `acp://operator`
-({§acp-worker-owner}), acting for the model worker the thread names when one exists
-({§actor-boundary-client-operations}) and never creating it. The Run binds no worker, claims nothing and
-declares no capability set; it observes the operation's loop from the moment the dispatch opens it
-({§acp-broadcast-fan}), and a disconnect ends only that observation ({§acp-run-disconnect}). A
-person's operation is never routed for review ({§proposal-disposition}), so its Run presents no
-interrupt. `workspace.rollback`'s compensations are such an operation too, without an observing Run.
+§acp-module-action-scope **Extension module actions share the same schema-validated dispatch plane.**
+`ApplicationPort.listModuleActions()` supplies `{ name, scope, inputSchema, outputSchema }`
+descriptors ({§acp-discovery-contract}) for `workspace.mcp.*`, `worker.skills.*`, `worker.a2a.*`,
+`worker.members.*`, `workspace.env.*`, `worker.env.*`, and `worker.schedule.*`. Workspace and
+session identities come from the bound session context, never from untrusted client parameters.
 
-§acp-worker-model-actions **Worker model selection is server-backed.**
-`worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the
-thread's bound worker under {§worker-model-selection}. They are
-the client's durable `/model` and `/child`; a client must not reassert a
-model on every loop. The get action returns the worker's resolved durable
-model and spawn override (`null` for an unset worker or inherit); the set
-actions accept one alias-or-exact-route selector, resolve and persist before returning, failing with the owning
-problem when the selector is unresolvable or the daemon is deliberately
-modelless.
+§acp-op-parse **Parsed-operation projection (`/script` / `op.parse`).** `op.parse` parses client
+statements with `parseStatements` and dispatches all trusted-prefix statements before any
+`unparsedTail` boundary as one client operation ({§acp-client-operation}), returning per-statement
+results in source order and `400 acp/action/parse-failed` (`stage: "parsing"`, `retryable: false`)
+for bounded hard errors or `unparsedTail` ({§unparsed-tail-boundary}).
 
-§acp-worker-effort-actions **Effort has its own worker action.**
-`worker.effort.get` returns the durable policy and the supported-policy
-intersection of the selected model and optional spawn model. `worker.effort.set` accepts one policy from
-{§effort-wire}; core owns its durable {§worker-effort}
-validation and refuses mutation while a
-loop is active or parked.
+§acp-module-actions **One public action namespace.** At startup the module rejects any extension
+action colliding with a built-in name and validates all action inputs and outputs against their
+advertised JSON Schemas ({§acp-action-schema-enforcement}). Recognized Problems cross the boundary
+unchanged; unexpected handler exceptions map to `500 action-failed`.
 
-§acp-module-action-scope **An extension action uses the same management plane,
-not a private endpoint.** `ApplicationPort.listModuleActions()` returns its exact
-`{ name, scope, inputSchema, outputSchema }` descriptors under
-{§acp-discovery-contract}. A daemon action follows the control path and
-cannot establish a workspace. A workspace action follows ordinary thread
-binding, resolves the client envelope first, and invokes core with
-`{ scope: "workspace", workspaceId: envelope.workspaceId }`; an `id`,
-`workspaceId`, or similarly named owner parameter cannot override that
-identity. A Worker action additionally receives the thread's bound
-Worker as `{ scope: "worker", workspaceId, workerId }`; client parameters cannot
-select either authority coordinate. `discover.actions` advertises all three
-kinds without importing the extension owner.
+§discovery **Discovery contract.** `discover` returns the complete `{ schemaVersion: 1, actions, notifications, display }`
+manifest ({§acp-discovery-contract}), where `display` is `ApplicationPort.listClientDisplayCapabilities()`
+({§client-display-capabilities}).
 
-### §acp-op-parse Parsed-operation projection
+§acp-stream-producer **Stream updates route to the initiating worker.** `stream/event` and
+`stream/concluded` notifications route to sessions observing `workerId` as `terminal_update` and
+`terminal_output_chunk` notifications ({§notifications-stream-event-on-channel-change}).
 
-`op.parse` dispatches all trusted-prefix statements as one client operation ({§acp-client-operation}) and
-preserves the parser's source order in its `results` array:
-
-| Parser output                                  | ACP result                                                                                                                                         |
-|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Statement before the tail boundary             | Its corresponding `ApplicationPort.dispatchClientAction` result in the statement's position                                                                 |
-| Bounded hard error                             | A 400 `acp/action/parse-failed` result in the error's position, preserving parser detail, line, column, source, and severity                        |
-| `unparsedTail` under {§unparsed-tail-boundary} | Exactly one final 400 `acp/action/parse-failed` result with its verbatim reason and position, `source: "grammar"`, and no adapter-authored recovery |
-
-No statement at or beyond the tail boundary is dispatched. Every parse failure
-uses `stage: "parsing"` and `retryable: false`. Outside text is ignored by the
-parser under {§whitespace-contract} and produces no result.
-
-§acp-module-actions **One public action namespace.** Core rejects empty and
-duplicate extension registrations ({§module-action-registration}). At module
-startup ACP rejects any extension name colliding with a built-in before it
-opens the listener. The resulting executable registry is the sole source for
-scope classification, input admission, dispatch, output projection, and
-discovery under {§acp-action-schema-enforcement}. A recognized Problem thrown by an extension crosses the
-boundary unchanged; an unexpected handler exception becomes the generic
-`action-failed` Problem without exposing private exception text.
-
-### §discovery Discovery contract
-
-The `discover` action returns the complete schema-bearing
-{§acp-discovery-contract} projection of the executable registry:
-
-```ts
-type Discovery = {
-    schemaVersion: 1;
-    actions: Record<string, {
-        scope: "daemon" | "workspace" | "worker";
-        inputSchema: JsonSchema;
-        outputSchema: JsonSchema;
-    }>;
-    notifications: Record<string, { payloadSchema: JsonSchema }>;
-    display: ClientDisplayCapabilities;
-};
-```
-
-`display` is Core's validated, contracts-owned installed scheme/MIME projection
-({§client-display-capabilities}). ACP adds no fallback, font, theme, or packet
-policy.
-
-`actions` contains the 29 built-ins in the table plus every registered module
-action. `notifications` contains exactly these externally projected daemon
-event families:
-
-| Notification |
-|--------------|
-| `workspace/preparation` |
-| `log/entry` |
-| `loop/terminated` |
-| `loop/packet` |
-| `loop/proposal` |
-| `loop/interaction` |
-| `notice/event` |
-| `reasoning/event` |
-| `outside/event` |
-| `stream/event` |
-| `stream/concluded` |
-
-The schemas are the same executable values used for runtime admission and
-projection. `plurnk-acp` owns the built-in action and notification registry;
-discovery never reconstructs it from handlers. It does not report extension
-catalogs, package versions, or update availability. Object key order is not a
-contract.
-
-§acp-stream-producer Stream updates route to `workerId`, the initiating
-Worker. Resource reads use the canonical workspace address, not a separate
-read perspective. Shared resources neither broadcast to unrelated workers
-nor hide updates from the producer ({§notifications-stream-event-on-channel-change}).
-
-`loop.inject`'s steered effect streams on the original worker's open SSE.
-`loop.cancel` is its counterpart: the one cancellation, since a hangup is none
-({§acp-run-disconnect}). An action that opens a stream remains one live ACP Run; its result is
-held until every observed stream emits `stream/concluded`, then the result and
-`RUN_FINISHED` close that Run.
-
-## §acp-topology-scope Topology scope
-
-An ACP Run observes its bound Worker, not the workspace's raw event stream. A
-`log/entry` reaches that Run only when `entry.worker_id` names the bound Worker;
-once its Loop is known, `entry.loop_id` must name that Loop. Cross-worker activity
-appears only after Core materializes it into the recipient Worker's log through
-lineage or commons attention ({§actor-boundary}), or under the delegation
-observation the Run asked for ({§acp-delegation-observation}). ACP does not
-synthesize a second topology by rebroadcasting sibling rows.
-
-§acp-delegation-observation **A message Run may observe its delegation.** A message Run whose `forwardedProps.plurnk.descendants` is `true` also receives the rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker beneath its bound Worker in Core's authoritative topology. None enters the bound Worker's own steps or reasoning. Without the request, the Run observes its bound Worker alone.
-
-| Fact | Rule |
-| --- | --- |
-| A descendant row | a row of a loop that a call in view opened is its subagent run's ({§acp-subagents}); every other descendant row is a foreign row, `CUSTOM plurnk.ambient` ({§acp-ambient}), and every descendant stream event is `plurnk.stream` |
-| Introduction | each descendant is introduced once with its identity and generation `{workerId, name, parentWorkerId, depth}`, depth counted from the bound Worker, so a client renders them without a second directory read: by the metadata of its subagent's `SUBAGENT_STARTED` ({§acp-subagents}), or, when its first event belongs to no subagent, by a `CUSTOM plurnk.descendant` before that event |
-| Order | a workspace's events reach the Run in the order the daemon published them: while a descendant's topology or loop is being read, every later event waits for it |
-| Settlement | a descendant's terminal never settles this Run, and its conclusion reaches the bound Worker as its parent's collect row; a descendant's open stream never defers this Run's settlement; a sibling or unrelated Worker's events never arrive |
-
-§acp-subagents **An observed delegation is a subagent run of the call that opened it.** Under
-{§acp-delegation-observation}, a descendant loop is a subagent of the Run when a call in view
-opened it ({§methods-worker-loops}): a call of the bound Worker, or one a subagent of the Run
-made. The Run judges each loop once, from the daemon's record of its opener, for its live
-projection and its snapshot alike.
-
-| Subagent run | ACP |
-|---|---|
-| Identity | `subagentRunId` is its loop's address `ops://<worker>/<loop>` ({§worker-loop-result}); `name` is its worker's name |
-| Its rows | Its own worker's projection ({§acp-projection}, {§acp-snapshot}): each message and tool-call id is a coordinate in that worker's namespace, `worker://<name>#L/T/S`, and every event and message is attributed by `subagentRunId`, its `CUSTOM` metadata included, except the Run-scoped `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR` and `MESSAGES_SNAPSHOT` |
-| Start | `SUBAGENT_STARTED` the first time the Run presents its work, a live row or a snapshot that holds its messages, after its parent subagent's: `parentToolCallId` is the opening call's id, and `parentSubagentRunId` names the subagent that made it |
-| Conclusion | Its loop's conclusion ends the segment once its step closes, in the order the daemon published it: below 400, `SUBAGENT_FINISHED` with `outcome: success` and the exact terminal result as `result`; any other, a stop included, `SUBAGENT_ERROR` with the Problem's `detail` as `message` and `type` as `code`. A loop that concluded before the Run could see it ends as it starts. |
-| The Run's end | Before `RUN_FINISHED`, whether the bound Loop's terminal, an idle synchronization's or an interrupt's, each segment still open ends `SUBAGENT_FINISHED` with `outcome: suspended`: the work goes on, and a later Run presents it again. `RUN_ERROR` ends the stream as it stands. |
-
-A snapshot is one conversation in log order, the bound Worker's messages and each subagent's, and is
-followed by each subagent run it holds, presented parents first.
-
-## §acp-broadcast-fan Event fan and ACP Run settlement
-
-One in-process subscription receives Core events; ACP routes each event to the Run that owns it. Only the controlling Run's bound Loop terminal may end the Run with its terminal record and close the SSE. Gate routing follows {§acp-worker-owner}; topology does not confer authority.
-
-| Run | Binds to |
-| --- | --- |
-| A message Run | the Worker selected by its thread and then the exact `loopId` returned by `ApplicationPort.runLoop` |
-| An interrupt-resume Run | its predecessor's projection and notification scope; a same-worker interrupt remains bound to the pending item's Worker and Loop, and a foreign-worker interrupt preserves the owner's controlling Run binding, using the pending item's Worker and Loop only as its release identity |
-
-| Fact | Rule |
-| --- | --- |
-| The terminal record | preserves the daemon's exact universal `result`; failures use the Problem `type` as the ACP error code and `detail` as its message; the module never reconstructs a failure from a status, summary, or exception text |
-| A gate inside an open reasoning lifecycle | waits for it ({§acp-gate-deferral}) |
-| Terminations racing ahead of the `runLoop` acknowledgement | held until the loop identity is known, so sibling and concurrent loops cannot end, relabel, or duplicate this Run |
-
-| ACP Run | Core notifications admitted | Settlement owner |
-| ---------- | --------------------------- | ---------------- |
-| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. Under {§acp-delegation-observation}, descendants' rows and streams: a subagent's ({§acp-subagents}) or foreign. | Exact Loop terminal or interrupt. |
-| `op.exec` / `op.parse` | Its operation's Loop in the runtime Worker, from the moment the dispatch opens it: that Loop's rows and notices, and the streams those rows announce. Workspace derivation progress may carry no Worker. | This action result, deferred through its owned streams; never the Loop's terminal. |
-| Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
-
-An operation Run owns an execution from the row that announces it; the runtime Worker hosts every person's operations and the daemon's own work, so an operation Run never owns a stream its Loop did not announce.
-
-| Receipt | The Run's obligation |
-| --- | --- |
-| A started or queued execution (`200` or `202`), carrying `attrs.stream` | the admitted address stays open for the Run until its `stream/concluded`, so the action result is deferred even when the command writes late or never (a `stream/event` is a race the result must not win) |
-| A failed receipt's proposed address | opens no stream |
-| A detached execution (`<-1>`) | nobody's obligation; never defers the result |
-| Stream activity of that Worker no row of the Run's Loop has announced yet | held for it: the row that announces the address delivers the latest progress and then any conclusion, so a stream that concluded before its row defers nothing; activity no row of its Loop ever announces never reaches it |
-
-`workerId` (or `entry.worker_id`) is the actor owner; `loopId` (or
-`entry.loop_id`) refines it wherever the event is loop-scoped. Opening a
-read-only management Run can therefore never replay reasoning, operation rows,
-or turn disposition from an active worker.
-
-## §acp-oauth-revocation Credential revocation
-
-Revoking a family ({§auth-oauth-tokens}, {§auth-oauth-session}) ends every Run admitted under that
-family with the 401 `credential-revoked` Problem and `RUN_ERROR`, exactly as shutdown ends a Run
-({§acp-shutdown}); the loops those Runs observed continue, because a revoked observer is not a
-cancelling one ({§acp-run-disconnect}). Expiry is checked at admission only: an admitted stream
-outlives its token's expiry and is never cut by it.
-
-## §acp-configuration Module configuration
-
-The daemon assembles installed package defaults through
-{§operator-config-env-defaults}; ACP reads and validates its own keys from that
-environment as the daemon discovers it, and an invalid value fails boot. Explicit
-`Module.create` options override their corresponding environment values. The listener
-address is the daemon's.
-
-| Input                              | Owner   | Empty or absent                        | Accepted value                      | Effect |
-| ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
-| `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | The daemon's one listener ({§http-host}); ACP reads neither. |
-| `PLURNK_ACP_ALLOW_ORIGIN`         | ACP   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§acp-cors}). |
-| `PLURNK_ACP_MAX_TURNS`            | ACP   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
-| `PLURNK_ACP_HEARTBEAT_MS`         | ACP   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
-| `PLURNK_ACP_HISTORY_LOOPS`        | ACP   | Invalid; the package floor is required | Positive safe integer               | The bound worker's newest loops a snapshot holds ({§acp-history-window}). |
-| `PLURNK_ACP_HISTORY_PAGE_CHARS`   | ACP   | Invalid; the package floor is required | Positive safe integer               | The most characters one snapshot, history page or live delta serializes to, but for a page holding one part of model output past it ({§acp-history-window}); keep it below what a client takes in one event. |
-| `PLURNK_ACP_EXCERPT_CHARS`        | ACP   | Invalid; the package floor is required | Positive safe integer               | The most characters of a message's excerpt a list carries ({§list-excerpt}): a loop's opening ({§acp-worker-loops}) and a place's latest finished reply ({§acp-overview-state}). |
-| `PLURNK_ACP_OVERVIEW_WORKERS`     | ACP   | Invalid; the package floor is required | Positive safe integer               | The places one overview holds beside every place waiting on a gate ({§acp-overview-state}); it counts the rest. |
-
-## §acp-run-endpoint The ACP Run endpoint
+## 10. Topology Scope and Subagents
 
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§acp-run-input} | A Run's input is what its conversation doesn't hold. |
-| {§acp-message-acceptance} | A client tells an accepted message from its own copy by the daemon's word, never by an echo. |
-| {§acp-run-source} | The run's user message is the causal actor behind its inbound SEND |
-| {§acp-http-authorization} | `/acp` is a protected resource of the daemon's authority. |
-| {§acp-cors} | Every response carries `access-control-allow-origin` with the value of `PLURNK_ACP_ALLOW_ORIGIN`, and allows… |
-| {§acp-http-failure} | Failures before SSE headers are sent use `application/problem+json` with exact RFC 9457 Problem Details. |
+| {§acp-topology-scope} | A session observes its bound worker and, when enabled, its delegated subagent tree. |
+| {§acp-delegation-observation} | Delegated subagent observation. |
+| {§acp-subagents} | Observed subagent updates carry their child worker's coordinate namespace. |
+<!-- /map -->
+
+§acp-topology-scope **A session observes its bound worker and, when enabled, its delegated subagent
+tree.** Unrelated sibling workers never broadcast into the session ({§actor-boundary}).
+
+§acp-delegation-observation **Delegated subagent observation.** A session with
+`_meta.plurnk.descendants !== false` receives `subagent_update` notifications when child workers are
+spawned, updated, or concluded beneath the bound worker, and receives child messages and tool calls
+attributed via `session_message` / `session_message_chunk` (`senderSessionId`, `recipientSessionId`)
+and `_meta.plurnk.subagentRunId` ({§acp-subagents}). When `_meta.plurnk.descendants === false`, only
+the bound worker's own events are streamed.
+
+§acp-subagents **Observed subagent updates carry their child worker's coordinate namespace.** Child
+updates carry coordinates in `worker://<name>#L/T/S` and `_meta.plurnk.subagentRunId`
+(`ops://<worker>/<loop>`, {§worker-loop-result}) in both live streaming and replay. A child's
+termination never settles the parent session's `session/prompt`.
+
+## 11. Event Fan, Revocation, Configuration, and HTTP Boundary
+
+<!-- map -->
+| Tag | Promise |
+| --- | --- |
+| {§acp-broadcast-fan} | One Core event subscription fans out to all attached ACP connections. |
+| {§acp-oauth-revocation} | Credential revocation closes admitted streams without cancelling work. |
+| {§acp-configuration} | Module configuration is read and validated from the assembled environment at startup. |
+| {§acp-run-endpoint} | `/acp` is the single HTTP and WebSocket endpoint. |
+| {§acp-run-input} | `session/prompt` submits a user message and optional resource attachments to the bound worker's loop. |
+| {§acp-message-acceptance} | Accepted messages are tracked through `ApplicationPort.readInbox` and arrival rows. |
+| {§acp-run-source} | The session's user message is the causal actor behind its inbound SEND |
+| {§acp-http-authorization} | `/acp` is a protected resource requiring scope `acp`. |
+| {§acp-cors} | CORS headers follow `PLURNK_ACP_ALLOW_ORIGIN`. |
+| {§acp-http-failure} | Failures preserve exact RFC 9457 Problem Details. |
 | {§problems-acp} | ACP Problems. |
 | {§pinned-wording-acp} | Pinned wording. |
 <!-- /map -->
 
-`POST /acp` accepts a schema-valid ACP `RunAgentInput`; the response is `text/event-stream`, one `data:` line
-per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Proposal disposition remains Core policy; this module routes
-review to the worker's owner.
+§acp-broadcast-fan **One Core event subscription fans out to all attached ACP connections.**
+`session/prompt` admission resolves with `{ messageId }` once accepted by `ApplicationPort.runLoop`
+while `state_update: { state: "idle", stopReason }` signals loop termination; client operations
+(`/script` / `op.exec` / `op.parse`) settle after all non-detached streams they opened conclude.
 
-§acp-run-input **A Run's input is what its conversation doesn't hold.** A Run's `messages` are the client's copy of
-the conversation its thread names, which the official `HttpAgent` sends whole on every Run. Its last message is new
-when it is a user message of that conversation (no `subagentRunId`) that is neither one the daemon presented, its id a
-coordinate the worker's log holds ({§acp-snapshot}), nor one a client already sent: its address is an idempotency key
-core decides ({§message-idempotency}), so the same words attach to what that message started. Every other message is
-the client's copy, never imported ({§acp-replay}). Each check is one keyed read. The Run is decided before it binds
-anything, and a refused Run binds, creates and claims nothing:
+§acp-oauth-revocation **Credential revocation closes admitted streams without cancelling work.**
+When a token family is revoked ({§auth-oauth-tokens}), every active WebSocket or HTTP stream
+admitted under that family closes with `401 credential-revoked` ({§acp-shutdown}); running loops
+continue unaffected ({§acp-run-disconnect}).
 
-| The Run carries | It |
-|---|---|
-| An interrupt resume | Resolves its interrupts ({§acp-proposal-resolve}) |
-| `forwardedProps.plurnk.action` | Acts ({§acp-management-plane}) |
-| A new message | Submits it, durable before the Run presents anything ({§acp-message-acceptance}): its text is the `ApplicationPort.runLoop` prompt, `maxTurns` from the forwarded PLURNK properties |
-| `forwardedProps.plurnk.overview` | Observes the worker overview, binding nothing ({§acp-overview-run}) |
-| None of them | Synchronizes ({§acp-sync}) |
-| More than one of them | Is refused, 400 `ambiguous-run-input` |
+§acp-configuration **Module configuration is read and validated from the assembled environment at
+startup.** Invalid values fail boot; explicit `Module.create` options override environment defaults.
 
-A new message that is not non-empty text is refused, 400 `user-message-text-required`: multimodal content waits until
-the model-loop seam supports it deliberately. A client's address that core holds with other words is core's refusal,
-422 `message-address-reused`. A connection submits nothing ({§acp-owner-connection}).
+| Key | Default | Accepted value | Effect |
+| --- | --- | --- | --- |
+| `PLURNK_ACP_ALLOW_ORIGIN` | `*` | Empty, `*`, or one origin | CORS `access-control-allow-origin` header ({§acp-cors}). |
+| `PLURNK_ACP_MAX_TURNS` | empty | Empty, `-1`, or non-negative safe integer | Default `maxTurns` passed to `runLoop` when not specified on `session/prompt`. |
+| `PLURNK_ACP_HEARTBEAT_MS` | `15000` | Safe integer `0..2147483647` | Transport keepalive cadence in milliseconds (`0` disables). |
+| `PLURNK_ACP_HISTORY_LOOPS` | `2` | Positive safe integer | Newest loops included in a `session/resume` replay window ({§acp-history-window}). |
+| `PLURNK_ACP_HISTORY_PAGE_CHARS` | `2000000` | Positive safe integer | Character ceiling per replay window, history page, or inline message body ({§acp-history-window}). |
+| `PLURNK_ACP_EXCERPT_CHARS` | `240` | Positive safe integer | Maximum excerpt length in `worker.loops` ({§acp-worker-loops}) and `session/list` ({§acp-overview}). |
+| `PLURNK_ACP_OVERVIEW_WORKERS` | `200` | Positive safe integer | Maximum non-gated sessions returned in `session/list` ({§acp-overview}). |
 
-§acp-message-acceptance **A client tells an accepted message from its own copy by the daemon's word, never by an echo.** A message is accepted when Core holds it ({§message-arrival}): a message Run submits it before it presents anything, and no Run copies a message from its input into a snapshot. Until the Worker observes it at a turn boundary, an accepted message is discoverable on every Run that binds the Worker — before the current inference ends and after a disconnect, a reattachment or a cancellation:
+§acp-run-endpoint **`/acp` is the single HTTP and WebSocket endpoint.** It serves Streamable HTTP
+(`POST /acp`, `GET /acp`, `DELETE /acp` via `AcpServer.handleRequest`), WebSocket upgrades (`GET /acp`
+with `Upgrade: websocket` via `AcpServer.prepareWebSocketUpgrade`), entry reads
+(`GET /acp/<workspaceId>/<workerId>/entry`), and history pages
+(`GET /acp/<workspaceId>/<workerId>/messages`).
 
-| Where | What |
-| --- | --- |
-| `status.inbox` | every accepted message the bound Worker has not yet observed, `{ path, id, loopId, lifecycle }`: its immutable source address, that client's message id when a client on this thread sent it (else `null`), the loop holding it and that loop's lifecycle ({§loop-lifecycle-vocabulary}); read from `ApplicationPort.readInbox` with the gauge ({§methods-worker-inbox}) and republished as `STATE_DELTA /plurnk/status/inbox` under the rule of {§acp-status-descendants}, after the Run's own submission and after an arrival row lands |
-| The snapshot | each such message a client on this thread sent, as a `user` message under that client's id with its words and `metadata.plurnk` `{ message, loop, lifecycle, source, published: false }`, after its loop's rows and with no coordinate ({§acp-snapshot}); one another client, a worker or a schedule sent waits for its arrival row, which names it by its coordinate |
-| Its arrival | the row folds its facts onto the message the client holds — a repeated `TEXT_MESSAGE_START` and `TEXT_MESSAGE_END` under the same id and no words again ({§acp-plurnk-metadata}) — and the message leaves `status.inbox`; a loop that concludes without observing it — cancelled, say — leaves it listed with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}) |
-| A refused input | is nowhere: a refusal before admission is the Run's own error ({§acp-run-input}), and the client's copy stays its own |
+§acp-run-input **`session/prompt` submits a user message and optional resource attachments to the
+bound worker's loop.** It requires non-empty text or attachment content (`400
+user-message-text-required` when empty) and passes `messageId` as Core's idempotency key
+({§message-idempotency}); reusing a `messageId` with different text fails with `422
+message-address-reused`.
 
-§acp-run-source **The run's user message is the causal actor behind its inbound SEND** ({§message-causal-source}). The module supplies its canonical address as the loop's `source`: `acp://operator/threads/<threadId>/messages/<messageId>`, every segment URI-encoded. Neither HTTP admission ({§acp-http-authorization}) nor the frontend's self-identification ({§client-metadata}) enters the address.
+§acp-message-acceptance **Accepted messages are tracked through `ApplicationPort.readInbox` and
+arrival rows.** Until observed at a turn boundary, an accepted message appears in
+`_meta.plurnk.status.inbox` (`{ path, id, loopId, lifecycle }`) and replays on `session/resume` with
+`_meta.plurnk.published: false`; when observed, its arrival `log/entry` emits `user_message_chunk`
+with its durable coordinate.
 
-| Fact | Rule |
-| --- | --- |
-| The arrival row | renders that source, so a model tells an operator's message from a worker's or a schedule's by address rather than by absence |
-| Identity | message identity belongs to the thread, not a transport run; the run ID remains envelope provenance; the source is immutable, and EDIT, MOVE and KILL cannot mutate an accepted message |
-| Durability | accepted text remains available through ordinary READ, FIND and COPY after log curation, run conclusion, disconnect and daemon restart |
-| `loop.inject` | normalizes its prompt into a user message with a server-generated message ID and the injecting Run's thread/envelope; it follows this same source and reply contract |
-| A SEND to this exact address | answers this message under {§send-response-receipt}; it does not create another inbound request; standard ACP assistant messages and history replay carry the reply, independently of whether the loop can yet conclude |
+§acp-run-source **The session's user message is the causal actor behind its inbound SEND**
+({§message-causal-source}), addressed as
+`acp://operator/sessions/<sessionId>/messages/<messageId>` (each segment URI-encoded).
 
-§acp-http-authorization **`/acp` is a protected resource of the daemon's authority.** When the daemon authenticates ({§auth-oauth}), every non-preflight request carries an access token the daemon issued as `authorization: Bearer <token>`, and admission precedes request-body reading. Authentication is a perimeter gate only: once admitted, every request acts as the workspace operator (`acp://operator`, {§acp-worker-owner}). This is the perimeter because a daemon is one trust domain and on loopback the operator's browser is inside it — any page they visit can reach the port, and only the credential tells the two apart. The secret itself is never a bearer: presented directly, it is an unknown token.
+§acp-http-authorization **`/acp` is a protected resource requiring scope `acp`.** When
+`port.credentials.mode() === "oauth"`, every non-preflight HTTP request and WebSocket upgrade must
+present `Authorization: Bearer <token>` with scope `acp` (missing bearer token returns
+`401 bearer-token-required` with `WWW-Authenticate: Bearer`; invalid, expired, or revoked token
+returns `401 bearer-token-invalid` with `error="invalid_token"`; token lacking `acp` scope returns
+`403 bearer-scope-insufficient` with `error="insufficient_scope"`). When `PLURNK_AUTH=0`
+(`mode() === "none"`), all requests are admitted as `acp://operator`. Also supports `auth/login`
+and `auth/logout` over ACP v2.
 
-| Refusal, an RFC 6750 challenge (`WWW-Authenticate: Bearer` naming the realm and the RFC 9728 resource metadata) beside its Problem | Status |
-| --- | --- |
-| No bearer at all | 401 `bearer-token-required` |
-| A token that is unknown, expired, consumed, revoked or not an access token | 401 `bearer-token-invalid` with `error="invalid_token"` |
-| An access token without the scope `acp` | 403 `bearer-scope-insufficient` with `error="insufficient_scope"` |
+§acp-cors **CORS headers follow `PLURNK_ACP_ALLOW_ORIGIN`.** When non-empty, responses include
+`access-control-allow-origin: <value>`, `access-control-allow-headers: content-type, authorization, acp-connection-id, acp-session-id`,
+and `access-control-expose-headers: acp-connection-id, acp-session-id`, and `OPTIONS /acp*`
+preflights answer `204 No Content` before authorization. When empty, no CORS headers are emitted.
 
-| Posture | Rule |
-| --- | --- |
-| Shipped | authenticated with nothing configured: the daemon **mints its operator secret at every boot** into the file beside its database ({§credential-authority}), which the operator's own tools read, and the seeded operator file ({§operator-config-discovery}) teaches the keys without setting one |
-| `PLURNK_AUTH=0` | serves no authorization server and admits every request: the operator's deliberate configuration, never a default |
+§acp-http-failure **Failures preserve exact RFC 9457 Problem Details.** HTTP errors return
+`application/problem+json`; JSON-RPC errors return `RequestError` with the RFC 9457 Problem in
+`error.data.problem`.
 
-§acp-cors Every response carries `access-control-allow-origin` with the value
-of `PLURNK_ACP_ALLOW_ORIGIN`, and allows the `content-type` and
-`authorization` request headers; an empty value sends neither header, so no
-page of another origin can read a reply, while a page the daemon itself serves
-reads its own origin's replies as any same-origin page does. CORS narrows which
-other origins' pages may *read*; it does
-not authenticate a request and is no substitute for the bearer
-({§acp-http-authorization}). A preflight is answered `204` before
-authorization.
+§problems-acp **ACP Problems.**
 
-§acp-http-failure Failures before SSE headers are sent use
-`application/problem+json` with exact
-RFC 9457 Problem Details. Once SSE has opened, `RUN_ERROR` maps that same object to the standard ACP fields
-and carries it whole as its metadata ({§acp-plurnk-metadata}). That metadata and the terminal record's
-`result.problem` are lossless; `RUN_ERROR.code` and `message` are the required standard projection, not a second
-failure object.
-Consumers preserve the exact Problem from the lossless surface and never
-reconstruct one from `RUN_ERROR`.
-
-§problems-acp **ACP Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
-
-| code | status | contract |
-|---|---:|---|
-| `parse-failed` | 400 | A client-authored block did not parse; the detail is the parser's own diagnostic, verbatim, with its line, column and source ({§acp-outside-text}). |
+| Code | Status | Contract |
+| --- | --- | --- |
+| `parse-failed` | 400 | A client-authored block did not parse; detail is the parser's diagnostic verbatim ({§acp-op-parse}). |
+| `invalid-json` | 400 | The request body is not valid JSON. |
+| `invalid-json-rpc` | 400 | The request body is not a valid ACP v2 JSON-RPC 2.0 message. |
+| `invalid-session-metadata` | 400 | Session metadata field *field* must be *expected*. |
+| `reasoning-invalid` | 400 | Session reasoning mode must be 'inline' or 'link'. |
+| `proposal-not-owned` | 403 | This session does not own the worker for this proposal. |
 | `bearer-token-required` | 401 | The request did not provide a bearer token. Recovery: Present an access token issued by this daemon as `Authorization: Bearer <token>`. |
 | `bearer-token-invalid` | 401 | The access token is unknown, expired or revoked. Recovery: Obtain a new access token from this daemon's token endpoint. |
+| `bearer-token-revoked` | 401 | The access token's authorization grant was revoked. Recovery: Obtain a new access token from this daemon's token endpoint. |
 | `bearer-scope-insufficient` | 403 | The access token does not carry the scope *scope*. Recovery: Obtain an access token with the scope *scope*. |
 | `credential-revoked` | 401 | The credential this stream was admitted under has been revoked. |
-| `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
+| `service-stopping` | 503 | The service is shutting down. |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `entry-target-required` | 400 | The request names no address in `target`. Recovery: Request `?target=<address>`, the address percent-encoded. |
 | `entry-query-invalid` | 400 | workspaceId, workerId and target are required to read an entry channel. |
+| `history-session-required` | 400 | A history page request requires a `session` query parameter. |
+| `history-cursor-not-found` | 404 | The history cursor does not match any item in the conversation. |
+| `history-loop-invalid` | 400 | The history `loop` query parameter must be a positive integer without `before`. |
+| `history-loop-not-found` | 404 | No loop with that sequence exists in the conversation. |
 | `overview-invalid` | 400 | An overview's scope is `{}` or `{ workspaceId: <positive integer> }` ({§acp-overview-run}). |
 | `overview-read-failed` | 500 | The overview read failed; the observation ends with it ({§acp-overview-run}). |
 | `request-failed` | 500 | The ACP request failed unexpectedly. |
-| `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
-| `thread-not-found` | 404 | The thread has no conversation. |
-| `thread-address-invalid` | 400 | The qualified thread address is not `<workspace ID>#<worker name>`. |
-| `interrupt-duplicate` | 400 | The resume contains the same interrupt more than once. Recovery: Include each pending interrupt exactly once. |
-| `interrupt-invalid` | 400 | The resume contains an invalid client interrupt. Recovery: Resume with the interrupt IDs and response shapes supplied by the pending tool calls. |
-| `interrupt-not-pending` | 409 | The resume addresses an interrupt that is not pending, or an unknown interrupt presentation. Recovery: Refresh pending interrupts before resuming. |
-| `interrupt-binding-invalid` | 400 | The resume combines interrupts from different Runs, or does not match its interrupt's binding. |
-| `connection-closed` | 499 | The connection closed before the interrupt was resolved. |
-| `worker-scope-invalid` | 400 | One resume must address interrupts for exactly one worker. Recovery: Resume each worker separately. |
-| `interrupt-set-incomplete` | 409 | The resume does not address every interrupt of its presentation. Recovery: Answer every interrupt of the presentation in one resume. |
-| `invalid-json` | 400 | The request body is not valid JSON. |
-| `invalid-run-input` | 400 | The request body does not satisfy the ACP RunAgentInput contract. |
-| `control-invalid` | 400 | control must be a boolean. |
-| `max-turns-invalid` | 400 | maxTurns must be an integer. |
-| `open-paths-invalid` | 400 | openPaths must be an array of strings. |
-| `selector-invalid` | 400 | selector must be a string. |
-| `child-selector-invalid` | 400 | childSelector must be a string or null. |
-| `project-root-invalid` | 400 | projectRoot must be a string or null. |
-| `settings-invalid` | 400 | settings must be a string or an object. |
-| `interactive-invalid` | 400 | interactive must be a boolean. |
-| `reasoning-invalid` | 400 | reasoning must be "link" ({§acp-reasoning-link}). |
-| `interrupts-invalid` | 400 | interrupts must be an array of strings. |
-| `invalid-connect-input` | 400 | A connection cannot include a new message, an action, or an interrupt resume. |
-| `ambiguous-run-input` | 400 | The Run carries more than one of a new message, an action, and an interrupt resume. Recovery: Send each in its own Run. |
+| `session-not-found` | 404 | The session has no conversation. |
+| `session-address-invalid` | 400 | The qualified session address is not `<workspace ID>#<worker name>`. |
 | `worker-not-found` | 404 | No model worker named *name* exists in workspace *workspace*. Recovery: Name an existing model worker, or create one by sending it a message. |
 | `user-message-text-required` | 400 | A new user message must be non-empty text. Recovery: Send the message as non-empty text. |
-| `run-failed` | 500 | The ACP Run failed unexpectedly. |
+| `interrupt-invalid` | 400 | An interrupt resolution is missing its `interruptId` or carries an invalid resolution payload ({§acp-resume-before-gate}). |
+| `interrupt-duplicate` | 400 | Duplicate interrupt resolution '*id*' ({§acp-resume-before-gate}). |
+| `interrupt-not-pending` | 409 | The named proposal or interaction interrupt '*id*' is not pending ({§acp-held-interrupts}, {§acp-resume-before-gate}). |
+| `worker-scope-invalid` | 400 | A single resume request may only resolve interrupts for one worker ({§acp-resume-before-gate}). |
+| `request-cancelled` | 499 | The ACP request was cancelled before completion. |
 
-§pinned-wording-acp **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+§pinned-wording-acp **Pinned wording.**
 
-| sentence | arises when |
-|---|---|
-| Action '*name*' is not registered. Recovery: Use an action advertised by discover. | an action call naming no registered action |
-| Action '*name*' rejected parameters. *schema path*: *reason*. | an action call whose parameters fail the action's schema |
-| The action failed unexpectedly. | an action handler that threw |
-
-## §acp-jsonrpc-surface ACP v2 JSON-RPC 2.0 surface
-
-<!-- map -->
-| Tag | Promise |
+| Sentence | Arises when |
 | --- | --- |
-| {§acp-daemon-module} | `@plurnk/plurnk-acp` is a discovered daemon module claiming `/acp` and registering the `acp://` message… |
-| {§acp-transport} | `/acp` serves both WebSocket (`Upgrade: websocket`), JSON-RPC 2.0 HTTP (`POST /acp`), and Run streams (`POST… |
-| {§acp-session-binding} | An ACP `sessionId` resolves to a `(workspaceId, workerId)` pair via qualified `<workspaceId>#<workerName>`… |
-| {§acp-session-load} | `session/load` and `session/resume` replay the bound worker's recent loop window as `session/update`… |
-| {§acp-hitl} | Stopped-world proposals and client interactions project to `session/request_permission` and… |
-| {§acp-extensions} | **`_plurnk/*` JSON-RPC methods expose discovery, worker overview, and management actions over the same… |
-<!-- /map -->
-
-§acp-daemon-module **`@plurnk/plurnk-acp` is a discovered daemon module claiming `/acp` and registering the `acp://` message scheme.** At `setup` it registers the `acp` `MessageScheme` so client-submitted messages and interactions are addressable at `acp://operator/threads/<thread>/messages/<id>` and `acp://operator/sessions/<session>/messages/<id>`, and sets `acp://operator` as the approval and interaction owner in workspaces it attaches. At `start` it mounts `/acp` via `registerHttpRoute` and `registerHttpUpgrade`. `close` closes active WebSocket and SSE streams and awaits in-flight requests before returning ({§module-route-settlement}).
-
-§acp-transport **`/acp` serves both WebSocket (`Upgrade: websocket`), JSON-RPC 2.0 HTTP (`POST /acp`), and Run streams (`POST /acp`, `POST /acp/connect`, `GET /acp/entry`).**
-
-| Path & Method | Behavior |
-| --- | --- |
-| `GET /acp` with `Upgrade: websocket` | Completes the RFC 6455 handshake (`101 Switching Protocols`) and exchanges bidirectional JSON-RPC 2.0 text frames. |
-| `POST /acp` (with `jsonrpc: "2.0"`) | Accepts a JSON-RPC 2.0 request or response (`application/json`). When `Accept` includes `text/event-stream` on a streaming method (`session/prompt`, `session/load`, `session/resume`), streams `data: <jsonrpc>\n\n` frames before the terminal JSON-RPC response; otherwise answers `200 OK` with `application/json`. |
-| `POST /acp` (with `RunAgentInput`) | Streams the Run lifecycle over `text/event-stream` ({§acp-run-endpoint}). |
-| `POST /acp/connect` | Persistent owner observation over `text/event-stream` ({§acp-owner-connection}). |
-| `GET /acp/entry` or `GET /acp/<workspace>/<worker>/entry` | Reads an entry channel by reference via `ApplicationPort.readEntryChannel` ({§acp-entry-route}). |
-| `GET /acp/<workspace>/<worker>/history` | Reads one older loop page ({§acp-history-window}). |
-| `OPTIONS /acp` | Answers `204 No Content` with CORS headers when `PLURNK_ACP_ALLOW_ORIGIN` is non-empty ({§acp-cors}). |
-
-§acp-session-binding **An ACP `sessionId` resolves to a `(workspaceId, workerId)` pair via qualified `<workspaceId>#<workerName>` syntax or the `"acp"` external worker reference namespace.** A qualified `<workspaceId>#<workerName>` address is parsed syntactically (400 `session-address-invalid` when malformed, 404 `session-not-found` when absent). An unqualified `sessionId` resolves through `readWorkerReference` / `ensureWorkerReference` under `namespace: "acp"`. `session/new` attaches or creates the requested workspace (`cwd` / `projectRoot`, `workspaceId`, or `workspaceName`), allocates or binds the worker, claims `acp://operator` ownership, and returns the canonical `sessionId`.
-
-§acp-session-load **`session/load` and `session/resume` replay the bound worker's recent loop window as `session/update` notifications and subscribe to live events.** Replay windows the worker's log to the newest `PLURNK_ACP_HISTORY_LOOPS` concluded loops (or an explicit `beforeLoopSeq` page cursor), emits each row's `session/update` notification in log order followed by pending inbox messages, and returns `{ sessionId, workspaceId, workerId, modes, models, configOptions, hasMore, beforeLoopSeq }`.
-
-§acp-hitl **Stopped-world proposals and client interactions project to `session/request_permission` and `_plurnk/question` and settle through `ApplicationPort`.** When a proposal or client interaction is pending for the session's workspace, the adapter sends a `session/request_permission` (with options `accept`, `reject`, `cancel`) or `_plurnk/question` JSON-RPC request on WebSocket (and notifications on SSE), and resolves the gate via `resolveProposal` or `resolveClientInteraction` when the client answers or invokes `session/resolve_permission` / `_plurnk/interaction.resolve`.
-
-§acp-extensions **`_plurnk/*` JSON-RPC methods expose discovery, worker overview, and management actions over the same connection.** `_plurnk/discover` returns the installed action and notification schemas and display capabilities; `_plurnk/overview` returns `ApplicationPort.readWorkerOverview`; and `_plurnk/action` validates and dispatches built-in and module actions (`invalid-action-parameters`, `parse-failed`, `action-failed`), sharing one transport and authentication boundary with standard ACP v2 methods.
+| Action '*name*' is not registered. Recovery: Use an action advertised by discover. | An action call naming no registered action. |
+| Action '*name*' rejected parameters. *schema path*: *reason*. | An action call whose parameters fail the action's schema. |
+| The action failed unexpectedly. | An action handler that threw an unrecognized error. |

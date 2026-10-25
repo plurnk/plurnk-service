@@ -1,118 +1,110 @@
-// {§acp-client-types} The contracts and transport agent a client of this interface consumes, runtime-neutral:
-// the state its STATE_SNAPSHOT and STATE_DELTA events carry, the outcome a management action reports, and
-// the fetch-based HttpAgent. A browser type-checks this entry with DOM libraries and no Node globals; the
-// server module is the package root.
-export type {
-    ActionOutcome,
-    AcpBudgetState,
-    AcpDescendant,
-    AcpDerivationActivity,
-    AcpLifecycle,
-    AcpPlusState,
-    AcpSpendState,
-    AcpStatusState,
-    AcpWorkspaceState,
-} from "./AcpPlus.ts";
-export {
-    EventType,
-    MessageSchema,
-    MessagesSnapshotEventSchema,
-    ReasoningEndEventSchema,
-    ReasoningMessageContentEventSchema,
-    ReasoningMessageEndEventSchema,
-    ReasoningMessageStartEventSchema,
-    ReasoningStartEventSchema,
-    RunAgentInputSchema,
-    RunErrorEventSchema,
-    RunFinishedEventSchema,
-    parseRunAgentInput,
-    type AcpEvent,
-    type ActivityDeltaEvent,
-    type ActivityMessage,
-    type ActivitySnapshotEvent,
-    type AssistantMessage,
-    type AudioPart,
-    type BaseEvent,
-    type ContentPart,
-    type Context,
-    type CustomEvent,
-    type DataSource,
-    type DeveloperMessage,
-    type DocumentPart,
-    type FileSource,
-    type FunctionCall,
-    type ImagePart,
-    type Interrupt,
-    type JsonPatch,
-    type JsonPatchOperation,
-    type Message,
-    type MessagesSnapshotEvent,
-    type Metadata,
-    type PartSource,
-    type RawEvent,
-    type ReasoningEncryptedValueEvent,
-    type ReasoningEndEvent,
-    type ReasoningMessage,
-    type ReasoningMessageChunkEvent,
-    type ReasoningMessageContentEvent,
-    type ReasoningMessageEndEvent,
-    type ReasoningMessageStartEvent,
-    type ReasoningStartEvent,
-    type ResumeEntry,
-    type Role,
-    type RunAgentInput,
-    type RunErrorEvent,
-    type RunFinishedCancelledOutcome,
-    type RunFinishedEvent,
-    type RunFinishedInterruptOutcome,
-    type RunFinishedOutcome,
-    type RunFinishedSuccessOutcome,
-    type RunStartedEvent,
-    type SchemaValidator,
-    type StateDeltaEvent,
-    type StateSnapshotEvent,
-    type StepFinishedEvent,
-    type StepStartedEvent,
-    type SubagentErrorEvent,
-    type SubagentFinishedEvent,
-    type SubagentFinishedOutcome,
-    type SubagentStartedEvent,
-    type SystemMessage,
-    type TextMessageChunkEvent,
-    type TextMessageContentEvent,
-    type TextMessageEndEvent,
-    type TextMessageRole,
-    type TextMessageStartEvent,
-    type TextPart,
-    type TokenUsage,
-    type Tool,
-    type ToolCall,
-    type ToolCallArgsEvent,
-    type ToolCallChunkEvent,
-    type ToolCallEndEvent,
-    type ToolCallResultEvent,
-    type ToolCallStartEvent,
-    type ToolMessage,
-    type UrlSource,
-    type UserMessage,
-    type VideoPart,
-} from "./types.ts";
-export {
-    HttpAgent,
-    RunEventStream,
-    applyJsonPatch,
-    buildResumeArray,
-    enforceEvents,
-    randomUUID,
-    type AgentConfig,
-    type AgentStateMutation,
-    type AgentSubscriber,
-    type AgentSubscriberParams,
-    type HttpAgentConfig,
-    type HttpAgentFetchFn,
-    type ResumeResponse,
-    type RunAgentParameters,
-    type RunAgentResult,
-    type RunEventObserver,
-    type RunHttpAgentConfig,
-} from "./HttpAgent.ts";
+// {§acp-client-types} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
+import type {
+    Effort,
+    FunctionalityPreparationActivity,
+    ModelRoute,
+    ProposalProjection,
+    ClientInteractionProjection,
+    ProviderAccounting,
+} from "@plurnk/plurnk-contracts";
+
+export interface AcpDescendantState {
+    readonly id: number;
+    readonly name: string;
+    readonly parentWorkerId: number | null;
+    readonly kind: string;
+    readonly lifecycle: string;
+    readonly gates: ReadonlyArray<ProposalProjection | ClientInteractionProjection>;
+}
+
+export interface AcpStreamState {
+    readonly entryId: number;
+    readonly workerId: number;
+    readonly target: string;
+    readonly lifetime: string;
+    readonly loop_seq?: number;
+    readonly turn_seq?: number;
+    readonly sequence?: number;
+    readonly channels: ReadonlyArray<{
+        readonly channel: string;
+        readonly state: string;
+        readonly mimetype: string;
+    }>;
+}
+
+export interface AcpSpendState {
+    readonly requests: number;
+    readonly usage: ProviderAccounting["usage"];
+    readonly knownUsage: ProviderAccounting["knownUsage"];
+    readonly costUsd: string | null;
+    readonly knownCostUsd: string | null;
+}
+
+export interface AcpInboxItem {
+    readonly path: string;
+    readonly id: string | null;
+    readonly loopId: number;
+    readonly lifecycle: string;
+}
+
+export interface AcpWorkspaceState {
+    readonly id: number;
+    readonly name: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+    readonly preparation: readonly FunctionalityPreparationActivity[];
+    readonly activity: {
+        readonly phase: "preparing" | "indexing" | "complete" | "failed";
+        readonly completed: number;
+        readonly total: number;
+        readonly percent: number;
+        readonly message: string;
+        readonly level: "info" | "warn" | "error";
+    } | null;
+}
+
+export interface AcpProviderRoute {
+    readonly alias: string;
+    readonly provider: string;
+    readonly model: string;
+    readonly effort?: Effort | null;
+    readonly effortSource?: "default" | "explicit";
+    readonly active: boolean;
+    readonly inputCapacity: number | null;
+}
+
+export interface AcpWorkerStatus {
+    readonly model: ModelRoute | null;
+    readonly spawnModel?: ModelRoute | null;
+    readonly loopId: number | null;
+    readonly loopSeq: number | null;
+    readonly packetCount: number;
+    readonly lifecycle: string;
+    readonly waitUntil: number | null;
+    readonly claimedAt: number | null;
+    readonly terminatedAt: number | null;
+    readonly descendants: readonly AcpDescendantState[];
+    readonly streams: readonly AcpStreamState[];
+    readonly spend: AcpSpendState;
+    readonly inbox: readonly AcpInboxItem[];
+}
+
+export interface AcpBudgetState {
+    readonly curationWeight: number | null;
+    readonly curationBudget: number | null;
+    readonly contextTokens: number | null;
+    readonly contextCapacity: number | null;
+}
+
+export interface AcpPlusState {
+    readonly plurnk: {
+        readonly workspace: AcpWorkspaceState;
+        readonly providers: readonly AcpProviderRoute[];
+        readonly status: AcpWorkerStatus;
+    };
+    readonly budget: AcpBudgetState;
+}
+
+export type ActionOutcome<T = unknown> =
+    | { readonly ok: true; readonly result: T }
+    | { readonly ok: false; readonly problem: Record<string, unknown> };

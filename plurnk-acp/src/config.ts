@@ -1,4 +1,4 @@
-import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+import { isSafeInteger } from "@plurnk/plurnk-contracts";
 
 export interface ModuleOptions {
     readonly allowOrigin?: string;
@@ -8,69 +8,76 @@ export interface ModuleOptions {
     readonly historyPageChars?: number;
     readonly excerptChars?: number;
     readonly overviewWorkers?: number;
-    readonly env?: NodeJS.ProcessEnv;
+    readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface ResolvedModuleOptions {
     readonly allowOrigin: string;
-    readonly maxTurns?: number;
+    readonly maxTurns: number | undefined;
     readonly heartbeatMs: number;
-    /** {§acp-history-window} The bound worker's newest loops a snapshot holds. */
     readonly historyLoops: number;
-    /** {§acp-history-window} The most characters one snapshot, page or live delta serializes to. */
     readonly historyPageChars: number;
-    /** {§list-excerpt} The most characters of a message's excerpt a list carries. */
     readonly excerptChars: number;
-    /** {§acp-overview} The places one overview holds beside those waiting on a gate. */
     readonly overviewWorkers: number;
 }
 
-const safeInteger = (
-    raw: unknown,
-    name: string,
-    minimum: number,
-    maximum: number = Number.MAX_SAFE_INTEGER,
-): number => {
-    const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.length > 0 ? Number(raw) : Number.NaN;
-    if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-        throw new Error(`${name} must be a safe integer from ${minimum} through ${maximum}; got ${JSON.stringify(raw)}.`);
+const parsePositiveSafeInt = (key: string, raw: string | undefined, floor: number): number => {
+    if (raw === undefined) return floor;
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) {
+        throw new Error(`${key} must be a positive safe integer; received '${raw}'`);
     }
-    return value;
+    const n = Number(trimmed);
+    if (!isSafeInteger(n) || n <= 0) {
+        throw new Error(`${key} must be a positive safe integer; received '${raw}'`);
+    }
+    return n;
 };
 
-const environmentMaxTurns = (raw: string | undefined): number | undefined => {
-    if (raw === undefined || raw === "") return undefined;
-    return safeInteger(raw, "PLURNK_ACP_MAX_TURNS", -1);
+const parseHeartbeatMs = (raw: string | undefined, floor: number): number => {
+    if (raw === undefined) return floor;
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) {
+        throw new Error(`PLURNK_ACP_HEARTBEAT_MS must be a safe integer in 0..2147483647; received '${raw}'`);
+    }
+    const n = Number(trimmed);
+    if (!isSafeInteger(n) || n < 0 || n > 2147483647) {
+        throw new Error(`PLURNK_ACP_HEARTBEAT_MS must be a safe integer in 0..2147483647; received '${raw}'`);
+    }
+    return n;
 };
 
-// {§operator-config-only-home} — an absent key is a broken floor; only the panel's own value speaks.
-const floorString = (options: ModuleOptions, env: NodeJS.ProcessEnv, option: keyof ModuleOptions, key: string): string => {
-    const explicit = options[option];
-    const value = explicit === undefined ? env[key] : explicit;
-    if (value === undefined) throw new Error(`${key} is missing from the assembled environment floor.`);
-    if (typeof value !== "string") throw new Error(`ModuleOptions.${option} must be a string; got ${JSON.stringify(value)}.`);
-    return value;
+const parseMaxTurns = (raw: string | undefined, floor: number | undefined): number | undefined => {
+    if (raw === undefined || raw.trim() === "") return floor;
+    const trimmed = raw.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+        throw new Error(`PLURNK_ACP_MAX_TURNS must be -1 or a non-negative safe integer; received '${raw}'`);
+    }
+    const n = Number(trimmed);
+    if (!isSafeInteger(n) || n < -1) {
+        throw new Error(`PLURNK_ACP_MAX_TURNS must be -1 or a non-negative safe integer; received '${raw}'`);
+    }
+    return n;
 };
 
-export const resolveModuleOptions = (options: ModuleOptions = {}): ResolvedModuleOptions => {
-    const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "historyLoops" | "historyPageChars" | "excerptChars" | "overviewWorkers", key: string, minimum: number): number =>
-        safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
+const parseAllowOrigin = (raw: string | undefined, floor: string): string => raw ?? floor;
+
+export const resolveModuleOptions = (opts: ModuleOptions = {}): ResolvedModuleOptions => {
+    const env = opts.env ?? process.env;
+    const allowOrigin = opts.allowOrigin ?? parseAllowOrigin(env.PLURNK_ACP_ALLOW_ORIGIN, "*");
+    const maxTurns = opts.maxTurns ?? parseMaxTurns(env.PLURNK_ACP_MAX_TURNS, undefined);
+    const heartbeatMs = opts.heartbeatMs ?? parseHeartbeatMs(env.PLURNK_ACP_HEARTBEAT_MS, 15000);
+    const historyLoops = opts.historyLoops ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_LOOPS", env.PLURNK_ACP_HISTORY_LOOPS, 2);
+    const historyPageChars = opts.historyPageChars ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_PAGE_CHARS", env.PLURNK_ACP_HISTORY_PAGE_CHARS, 2000000);
+    const excerptChars = opts.excerptChars ?? parsePositiveSafeInt("PLURNK_ACP_EXCERPT_CHARS", env.PLURNK_ACP_EXCERPT_CHARS, 240);
+    const overviewWorkers = opts.overviewWorkers ?? parsePositiveSafeInt("PLURNK_ACP_OVERVIEW_WORKERS", env.PLURNK_ACP_OVERVIEW_WORKERS, 200);
     return {
-        // {§acp-cors} — the panel states the origin; only its own empty value sends no CORS header.
-        allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_ACP_ALLOW_ORIGIN"),
-        maxTurns: options.maxTurns === undefined
-            ? environmentMaxTurns(env.PLURNK_ACP_MAX_TURNS)
-            : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1),
-        heartbeatMs: safeInteger(
-            options.heartbeatMs === undefined ? env.PLURNK_ACP_HEARTBEAT_MS : options.heartbeatMs,
-            options.heartbeatMs === undefined ? "PLURNK_ACP_HEARTBEAT_MS" : "ModuleOptions.heartbeatMs",
-            0,
-            MAX_TIMER_MS,
-        ),
-        historyLoops: number("historyLoops", "PLURNK_ACP_HISTORY_LOOPS", 1),
-        historyPageChars: number("historyPageChars", "PLURNK_ACP_HISTORY_PAGE_CHARS", 1),
-        excerptChars: number("excerptChars", "PLURNK_ACP_EXCERPT_CHARS", 1),
-        overviewWorkers: number("overviewWorkers", "PLURNK_ACP_OVERVIEW_WORKERS", 1),
+        allowOrigin,
+        maxTurns,
+        heartbeatMs,
+        historyLoops,
+        historyPageChars,
+        excerptChars,
+        overviewWorkers,
     };
 };

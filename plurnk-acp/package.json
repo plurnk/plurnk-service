@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-acp",
     "version": "1.0.0",
-    "description": "ACP v2 HTTP, SSE, and WebSocket interface for the PLURNK daemon",
+    "description": "ACP v2 WebSocket interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",
     "repository": {
@@ -15,15 +15,15 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
-        "./client": {
-            "plurnk-dev": "./src/client.ts",
-            "types": "./dist/client.d.ts",
-            "default": "./dist/client.js"
-        },
         "./module": {
             "plurnk-dev": "./src/daemon-module.ts",
             "types": "./dist/daemon-module.d.ts",
             "default": "./dist/daemon-module.js"
+        },
+        "./client": {
+            "plurnk-dev": "./src/client.ts",
+            "types": "./dist/client.d.ts",
+            "default": "./dist/client.js"
         },
         "./package.json": "./package.json"
     },
@@ -38,7 +38,7 @@
     },
     "scripts": {
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
-        "test:lint": "tsc --noEmit && tsc --noEmit -p tsconfig.browser.json",
+        "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} src/*.test.ts",
         "test:intg": "export PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ) PLURNK_TEST_LANE=acp; node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/intg/*.test.ts && node ../scripts/reclaim-green-run.mjs acp",
         "prepublishOnly": "npm test",
@@ -49,6 +49,7 @@
     },
     "devDependencies": {
         "@plurnk/plurnk-providers": "^5.0.0",
+        "@types/ws": "^8.18.2",
         "json-p3": "^3.0.1"
     },
     "keywords": [
@@ -75,10 +76,12 @@
         "access": "public"
     },
     "dependencies": {
+        "@agentclientprotocol/sdk": "^2.0.2",
         "@opentelemetry/api": "^1.9.1",
         "@plurnk/plurnk-contracts": "^6.0.0",
         "@plurnk/plurnk-meta": "^2.1.0",
-        "@plurnk/plurnk-parser": "^4.2.0"
+        "@plurnk/plurnk-parser": "^4.2.0",
+        "ws": "^8.22.0"
     },
     "plurnk": {
         "kind": "module",

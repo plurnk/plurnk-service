@@ -1,5 +1,5 @@
-// {§acp-daemon-client} {§module-self-activation} — this package's daemon module entry ({§module-discovery}):
-// the client interface reads its settings from the assembled environment.
 import Module from "./Module.ts";
+import { resolveModuleOptions } from "./config.ts";
 
-export default (): Module => Module.create();
+export const createDaemonModule = (): Module => Module.create(resolveModuleOptions());
+export default createDaemonModule;
