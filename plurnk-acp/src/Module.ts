@@ -664,8 +664,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
             : "inherit";
 
-        const wsDeny = isRecord(capabilities) && isRecord(capabilities.workspace) ? capabilities.workspace.deny : undefined;
-        const currentPolicy = Array.isArray(wsDeny) && wsDeny.length > 0 ? "deny" : "propose";
+        const wsPolicy = isRecord(capabilities) && isRecord(capabilities.workspace) ? capabilities.workspace : undefined;
+        const wsDeny = wsPolicy?.deny;
+        const wsAllow = wsPolicy?.allow;
+        const currentPolicy = Array.isArray(wsDeny) && wsDeny.length > 0
+            ? "deny"
+            : Array.isArray(wsAllow) && wsAllow.length > 0
+                ? "allow"
+                : "propose";
 
         return [
             {
@@ -818,8 +824,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         readonly create?: boolean;
         readonly activate?: boolean;
         readonly messageId?: string;
-        readonly selector?: string;
-        readonly childSelector?: string | null;
         readonly projectRoot?: string | null;
         readonly settings?: Record<string, unknown>;
         readonly maxTurns?: number;
@@ -848,14 +852,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
             ? p.messageId.trim()
             : undefined;
-        const selector = typeof p.selector === "string" && p.selector.trim().length > 0
-            ? p.selector.trim()
-            : undefined;
-        const childSelector = p.childSelector === null
-            ? null
-            : typeof p.childSelector === "string" && p.childSelector.trim().length > 0
-                ? p.childSelector.trim()
-                : undefined;
         const projectRoot = p.projectRoot === null || typeof p.projectRoot === "string"
             ? p.projectRoot
             : undefined;
@@ -874,8 +870,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             ...(create !== undefined ? { create } : {}),
             ...(activate !== undefined ? { activate } : {}),
             ...(messageId !== undefined ? { messageId } : {}),
-            ...(selector !== undefined ? { selector } : {}),
-            ...(childSelector !== undefined ? { childSelector } : {}),
             ...(projectRoot !== undefined ? { projectRoot } : {}),
             ...(settings !== undefined ? { settings } : {}),
             ...(maxTurns !== undefined ? { maxTurns } : {}),
@@ -1099,7 +1093,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     await this.#settleGate(gate, peer, session, async () => {
                         await this.#seam.resolveProposal(
                             resolution.logEntryId,
-                            { decision: resolution.decision },
+                            {
+                                decision: resolution.decision,
+                                ...(resolution.scope !== undefined ? { scope: resolution.scope } : {}),
+                                ...(resolution.outcome !== undefined ? { outcome: resolution.outcome } : {}),
+                            },
                             { workspaceId: gate.workspaceId, address: OWNER_ADDRESS },
                         );
                     });
@@ -1127,7 +1125,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             if (p.client !== null) {
                                 void p.client
                                     .notify(methods.client.elicitation.complete, {
-                                        elicitationId: String(interaction.interactionId),
+                                        elicitationId:
+                                            interaction.request.mode === "url"
+                                                ? interaction.request.elicitationId
+                                                : String(interaction.interactionId),
                                     })
                                     .catch(() => undefined);
                             }
@@ -1188,15 +1189,20 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         }
         gate.peerControllers.clear();
 
-        this.#broadcastWorkerUpdate(gate.workspaceId, gate.workerId, (s) => [
-            {
-                sessionId: s.sessionId,
-                update: {
-                    sessionUpdate: "state_update",
-                    state: "running",
+        const hasRemainingWorkerGate = [...this.#activeGates.values()].some(
+            (g) => !g.settled && g.workspaceId === gate.workspaceId && g.workerId === gate.workerId,
+        );
+        if (!hasRemainingWorkerGate) {
+            this.#broadcastWorkerUpdate(gate.workspaceId, gate.workerId, (s) => [
+                {
+                    sessionId: s.sessionId,
+                    update: {
+                        sessionUpdate: "state_update",
+                        state: "running",
+                    },
                 },
-            },
-        ]);
+            ]);
+        }
     }
 
     #openOrGetGate(
@@ -1256,13 +1262,42 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                               ? entryRec.op
                               : "op";
                         const workerName = typeof entryRec.worker_name === "string" ? entryRec.worker_name : String(workerId);
+                        const childSessionId = formatSessionId(workspaceId, workerName);
+                        const loopSeq = isSafeInteger(entryRec.loop_seq) ? entryRec.loop_seq : 1;
+                        const coord =
+                            isSafeInteger(entryRec.loop_seq) &&
+                            isSafeInteger(entryRec.turn_seq) &&
+                            isSafeInteger(entryRec.sequence)
+                                ? `${entryRec.loop_seq}/${entryRec.turn_seq}/${entryRec.sequence}`
+                                : `${loopSeq}/1/1`;
+                        const childMeta = {
+                            plurnk: {
+                                id: workerId,
+                                name: workerName,
+                                coordinate: `worker://${workerName}#${coord}`,
+                                subagentRunId: `ops://${workerName}/${loopSeq}`,
+                            },
+                        };
                         this.#notifyPeerSession(peer, session.sessionId, {
                             sessionUpdate: "subagent_update",
-                            sessionId: formatSessionId(workspaceId, workerName),
+                            sessionId: childSessionId,
                             title: workerName,
                             description: summary,
+                            capabilities: { cancel: {} },
                             state: { state: "running" },
+                            _meta: childMeta,
                         });
+                        if (entryRec.op === "SEND" && summary.length > 0) {
+                            const isChildToParent = entryRec.origin === "model";
+                            this.#notifyPeerSession(peer, session.sessionId, {
+                                sessionUpdate: "session_message",
+                                messageId: `worker://${workerName}#${coord}`,
+                                senderSessionId: isChildToParent ? childSessionId : session.sessionId,
+                                recipientSessionId: isChildToParent ? session.sessionId : childSessionId,
+                                content: [{ type: "text", text: summary }],
+                                _meta: childMeta,
+                            });
+                        }
                     }
                 }
                 break;
@@ -1364,6 +1399,41 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 if (!isRecord(params) || typeof params.workerId !== "number") break;
                 const workerId = params.workerId;
                 this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.terminated(params));
+                const resultRec = isRecord(params.result) ? params.result : {};
+                const status = typeof resultRec.status === "number"
+                    ? resultRec.status
+                    : typeof params.status === "number"
+                      ? params.status
+                      : 200;
+                const childState = params.hitMaxTurns === true || status === 429
+                    ? ({ state: "idle" as const, stopReason: "max_turn_requests" as const })
+                    : status === 499
+                      ? ({ state: "idle" as const, stopReason: "cancelled" as const })
+                      : status >= 400
+                        ? ({ state: "idle" as const, stopReason: "refusal" as const })
+                        : ({ state: "idle" as const, stopReason: "end_turn" as const });
+                void this.#seam
+                    ?.listWorkers(workspaceId)
+                    .then((workers) => {
+                        const workerRow = workers.find((w) => w.id === workerId);
+                        const workerName = typeof params.workerName === "string"
+                            ? params.workerName
+                            : (workerRow?.name ?? String(workerId));
+                        for (const peer of this.#peers) {
+                            const visited = new Set<BoundSession>();
+                            for (const session of peer.sessions.values()) {
+                                if (visited.has(session)) continue;
+                                visited.add(session);
+                                if (session.workspaceId !== workspaceId || session.workerId === workerId) continue;
+                                this.#notifyPeerSession(peer, session.sessionId, {
+                                    sessionUpdate: "subagent_update",
+                                    sessionId: formatSessionId(workspaceId, workerName),
+                                    state: childState,
+                                });
+                            }
+                        }
+                    })
+                    .catch(() => undefined);
                 break;
             }
             case "loop/proposal": {
@@ -1513,7 +1583,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             "log.read": { scope: "worker", inputSchema: objSchema, outputSchema: objSchema },
             "entry.read": { scope: "worker", inputSchema: objSchema, outputSchema: objSchema },
             "op.parse": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-            "op.exec": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
         };
         for (const act of moduleActions) {
             actions[act.name] = {
@@ -1590,6 +1659,86 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             workerId: worker?.id ?? 1,
             hasWorker: worker !== null,
         };
+    }
+
+    async #executeSlashCommand(bound: BoundSession, cmd: string, rest: string, peer?: AcpPeer): Promise<string> {
+        const envelope = {
+            sessionId: bound.sessionId,
+            workspaceId: bound.workspaceId,
+            workspace: bound.workspaceName,
+            worker: bound.workerName,
+        };
+        if (cmd === "script") {
+            const res = await this.#handlePlurnkAction(
+                { ...envelope, kind: "op.parse", params: { text: rest } },
+                peer,
+            );
+            if (isRecord(res) && Array.isArray(res.results)) {
+                return res.results
+                    .map((r) => {
+                        if (!isRecord(r)) return String(r);
+                        if (typeof r.content === "string") return r.content;
+                        if (typeof r.message === "string") return r.message;
+                        if (typeof r.status === "number") return String(r.status);
+                        return "200";
+                    })
+                    .join("\n");
+            }
+            return `Executed /${cmd}`;
+        }
+        if (cmd === "rollback") {
+            const res = await this.#handlePlurnkAction(
+                { ...envelope, kind: "workspace.rollback", params: { to: rest } },
+                peer,
+            );
+            return typeof res === "string" ? res : JSON.stringify(res);
+        }
+        if (cmd === "share") {
+            const res = await this.#handlePlurnkAction(
+                { ...envelope, kind: "workspace.share", params: { folder: rest } },
+                peer,
+            );
+            return typeof res === "string" ? res : JSON.stringify(res);
+        }
+        const tokens = rest.length > 0 ? rest.split(/\s+/u) : [];
+        const verb = tokens[0] ?? "list";
+        const alias = tokens[1];
+        const actionName = `workspace.${cmd}.${verb}`;
+        const actionParams: Record<string, unknown> = alias !== undefined ? { alias } : {};
+        try {
+            const res = await this.#handlePlurnkAction(
+                { ...envelope, kind: actionName, params: actionParams },
+                peer,
+            );
+            if (isRecord(res)) {
+                const definitions = Array.isArray(res.definitions)
+                    ? res.definitions
+                    : Array.isArray(res.items)
+                        ? res.items
+                        : null;
+                if (definitions !== null) {
+                    if (definitions.length === 0) {
+                        const label = cmd === "a2a" ? "A2A agents" : cmd;
+                        return `${label}: none`;
+                    }
+                    return definitions
+                        .map((item) => {
+                            if (!isRecord(item)) return String(item);
+                            const name = typeof item.alias === "string"
+                                ? item.alias
+                                : typeof item.name === "string"
+                                    ? item.name
+                                    : "";
+                            const state = typeof item.state === "string" ? item.state : "active";
+                            return `${name}  ${state}`;
+                        })
+                        .join("\n");
+                }
+            }
+            return `Executed /${cmd}`;
+        } catch {
+            return `Executed /${cmd}`;
+        }
     }
 
     async #handlePlurnkAction(rawParams: unknown, peer?: AcpPeer): Promise<unknown> {
@@ -1769,7 +1918,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             });
         }
 
-        if (kind === "op.parse" || kind === "op.exec") {
+        if (kind === "op.parse") {
             const target = await this.#resolveActionTarget(rawParams, params, true);
             await this.#seam.activateWorkspace?.({ workspaceId: target.workspaceId });
             const text = typeof params.text === "string" ? params.text : "";
@@ -2089,24 +2238,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     this.#dispatchGateToPeer(gate, peer, bound);
                 }
 
-                if (isRecord(ctx.params._meta) && isRecord(ctx.params._meta.plurnk) && isRecord(ctx.params._meta.plurnk.resolveInteraction)) {
-                    const ri = ctx.params._meta.plurnk.resolveInteraction;
-                    const targetId = Number(ri.interactionId);
-                    if (!workerInteractions.some((i) => i.interactionId === targetId)) {
-                        const resolution: Parameters<ApplicationPort["resolveClientInteraction"]>[1] = ri.status === "cancelled"
-                            ? { status: "cancelled" }
-                            : {
-                                status: "resolved",
-                                ...(ri.payload !== undefined ? { payload: ri.payload } : {}),
-                            };
-                        await this.#seam.resolveClientInteraction(
-                            targetId,
-                            resolution,
-                            { workspaceId: bound.workspaceId, address: OWNER_ADDRESS },
-                        );
-                    }
-                }
-
                 return {
                     configOptions,
                     availableCommands: [...AVAILABLE_COMMANDS],
@@ -2287,7 +2418,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                 selector: value,
                             });
                             break;
-                        case "effort":
                         case "thought_level":
                             await this.#seam.setWorkerEffort({
                                 workspaceId: bound.workspaceId,
@@ -2303,22 +2433,53 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             });
                             break;
                         case "mode":
-                            if (value === "propose" || value === "allow") {
+                            if (value === "propose") {
                                 await this.#seam.setWorkspaceCapabilities({
                                     workspaceId: bound.workspaceId,
                                     policy: {},
                                 });
+                            } else if (value === "allow") {
+                                await this.#seam.setWorkspaceCapabilities({
+                                    workspaceId: bound.workspaceId,
+                                    policy: {
+                                        allow: [
+                                            { access: "observe" },
+                                            { access: "mutate" },
+                                            { access: "execute" },
+                                            { access: "interact" },
+                                            { access: "control" },
+                                        ],
+                                    },
+                                });
                             } else if (value === "deny") {
                                 await this.#seam.setWorkspaceCapabilities({
                                     workspaceId: bound.workspaceId,
-                                    policy: { deny: [{ access: "mutate" }, { access: "execute" }] },
+                                    policy: { deny: [{ access: "mutate" }, { access: "execute" }, { access: "control" }] },
                                 });
                             } else {
                                 throw RequestError.invalidParams({ detail: `Unsupported mode '${value}'.` });
                             }
                             break;
-                        default:
+                        default: {
+                            const colonIdx = ctx.params.configId.indexOf(":");
+                            const family = colonIdx > 0 ? ctx.params.configId.slice(0, colonIdx) : "";
+                            const alias = colonIdx > 0 ? ctx.params.configId.slice(colonIdx + 1) : "";
+                            if (
+                                (family === "mcp" || family === "skills" || family === "a2a" || family === "schedule") &&
+                                alias.length > 0
+                            ) {
+                                const enabled =
+                                    ctx.params.value === true || value === "true" || value === "1" || value === "on";
+                                const verb = enabled ? "enable" : "disable";
+                                await this.#seam.invokeModuleAction(
+                                    `workspace.${family}.${verb}`,
+                                    { alias },
+                                    { scope: "workspace", workspaceId: bound.workspaceId },
+                                );
+                                break;
+                            }
                             throw RequestError.invalidParams({ detail: `Unknown configId '${ctx.params.configId}'.` });
+                        }
                     }
 
                     const configOptions = await this.#configOptions(bound.workspaceId, bound.workerId);
@@ -2376,14 +2537,25 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 if (trimmed.startsWith("/")) {
                     const spaceIdx = trimmed.indexOf(" ");
                     const cmd = (spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx)).toLowerCase();
+                    const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
                     if (AVAILABLE_COMMANDS.some((c) => c.name === cmd)) {
+                        this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
+                            {
+                                sessionId: s.sessionId,
+                                update: {
+                                    sessionUpdate: "state_update",
+                                    state: "running",
+                                },
+                            },
+                        ]);
+                        const replyText = await this.#executeSlashCommand(bound, cmd, rest, peer);
                         this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
                             {
                                 sessionId: s.sessionId,
                                 update: {
                                     sessionUpdate: "agent_message_chunk",
                                     messageId,
-                                    content: { type: "text", text: `Executed /${cmd}` },
+                                    content: { type: "text", text: replyText },
                                 },
                             },
                             {
@@ -2431,8 +2603,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     prompt: text,
                     source: messageAddress,
                     messageAddress,
-                    ...(plurnkMeta.selector !== undefined ? { selector: plurnkMeta.selector } : {}),
-                    ...(plurnkMeta.childSelector !== undefined ? { childSelector: plurnkMeta.childSelector } : {}),
                     ...(maxTurns !== undefined ? { maxTurns } : {}),
                     ...(plurnkMeta.openPaths !== undefined ? { openPaths: plurnkMeta.openPaths } : {}),
                     ...(plurnkMeta.envelope !== undefined ? { envelope: plurnkMeta.envelope } : {}),
@@ -2461,7 +2631,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         });
 
         app.onNotification(methods.agent.session.cancel, async (ctx) => {
-            const bound = peer.sessions.get(ctx.params.sessionId);
+            const bound = peer.sessions.get(ctx.params.sessionId)
+                ?? (await this.#resolveSessionBinding(peer, ctx.params.sessionId, undefined, false).catch(() => undefined));
             if (bound === undefined) return;
             this.#seam.cancelDrain(bound.workerId, "Cancelled by ACP client");
             await this.#seam.cancelWorker({

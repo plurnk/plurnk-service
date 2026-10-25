@@ -663,15 +663,14 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 supportedEfforts: ["low", "medium", "high"],
             };
         },
-        readWorkspaceCapabilities: async () =>
-            ({ policy: currentPolicy, effective: currentPolicy }) as unknown as Awaited<
-                ReturnType<ApplicationPort["readWorkspaceCapabilities"]>
-            >,
+        readWorkspaceCapabilities: async () => ({
+            service: {},
+            workspace: currentPolicy,
+            effective: currentPolicy,
+        }),
         setWorkspaceCapabilities: async ({ policy }) => {
             currentPolicy = policy as unknown as Record<string, unknown>;
-            return { policy: currentPolicy, effective: currentPolicy } as unknown as Awaited<
-                ReturnType<ApplicationPort["setWorkspaceCapabilities"]>
-            >;
+            return { service: {}, workspace: currentPolicy, effective: currentPolicy };
         },
     };
 
@@ -899,13 +898,49 @@ test("{§acp-worker-model-actions} {§acp-worker-effort-actions} {§acp-provider
             });
             assert.ok(updatedEffort.configOptions.some((c) => c.configId === "thought_level"));
             assert.ok(updates.some((u) => u.sessionUpdate === "config_option_update"));
+
+            const updatedAllowMode = await ctx.request(methods.agent.session.setConfigOption, {
+                sessionId: session.sessionId,
+                configId: "mode",
+                type: "id",
+                value: "allow",
+            });
+            const allowModeOption = updatedAllowMode.configOptions.find((c) => c.configId === "mode");
+            assert.equal(allowModeOption?.currentValue, "allow");
+
+            const updatedDenyMode = await ctx.request(methods.agent.session.setConfigOption, {
+                sessionId: session.sessionId,
+                configId: "mode",
+                type: "id",
+                value: "deny",
+            });
+            const denyModeOption = updatedDenyMode.configOptions.find((c) => c.configId === "mode");
+            assert.equal(denyModeOption?.currentValue, "deny");
+
+            const updatedProposeMode = await ctx.request(methods.agent.session.setConfigOption, {
+                sessionId: session.sessionId,
+                configId: "mode",
+                type: "id",
+                value: "propose",
+            });
+            const proposeModeOption = updatedProposeMode.configOptions.find((c) => c.configId === "mode");
+            assert.equal(proposeModeOption?.currentValue, "propose");
+
+            const updatedSpawnModel = await ctx.request(methods.agent.session.setConfigOption, {
+                sessionId: session.sessionId,
+                configId: "spawn_model",
+                type: "id",
+                value: "fast",
+            });
+            const spawnModelOption = updatedSpawnModel.configOptions.find((c) => c.configId === "spawn_model");
+            assert.equal(spawnModelOption?.currentValue, "mocktest/fast");
         });
     } finally {
         await h.close();
     }
 });
 
-test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run-outcome} {§acp-cost-evidence} {§acp-numbers-passthrough} {§acp-status-spend} {§acp-status-timing} {§acp-status-loop-number} {§acp-status-wait} {§acp-provider-policy-forwarding} {§acp-run-disconnect} {§acp-owner-connection}: session/prompt, idempotency, usage_update, and state_update", async () => {
+test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run-outcome} {§acp-cost-evidence} {§acp-numbers-passthrough} {§acp-status-spend} {§acp-status-timing} {§acp-status-loop-number} {§acp-status-wait} {§acp-run-disconnect} {§acp-owner-connection}: session/prompt, idempotency, usage_update, and state_update", async () => {
     const h = await createHarness();
     try {
         const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
@@ -926,7 +961,7 @@ test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run
                 const promptRes = await ctx.request(methods.agent.session.prompt, {
                     sessionId: session.sessionId,
                     prompt: [{ type: "text", text: "Hello ACP v2" }],
-                    _meta: { plurnk: { messageId: "msg-100", selector: "fast", childSelector: null } },
+                    _meta: { plurnk: { messageId: "msg-100" } },
                 });
                 assert.equal(promptRes.messageId, "msg-100");
 
@@ -1104,7 +1139,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 notice: { level: "warn", code: "test-notice", message: "Watch out" },
             });
 
-            // 6. Delegated child worker and subagent_update ({§acp-status-descendants}, {§acp-delegation-observation}, {§acp-subagents})
+            // 6. Delegated child worker, subagent_update, session_message, and child cancel ({§acp-status-descendants}, {§acp-delegation-observation}, {§acp-subagents})
             h.port.workers.push({
                 id: 2,
                 workspaceId: 1,
@@ -1134,6 +1169,31 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                     rx: { status: 200, content: "Child progress", mimetype: "text/markdown" },
                 },
             });
+            h.port.emitEvent({
+                type: "loop/packet",
+                workspaceId: 1,
+                workerId: 1,
+                loopId: 1,
+                sequence: 1,
+                gauge: {
+                    curationWeight: 420,
+                    curationBudget: 4000,
+                    contextTokens: 840,
+                    contextCapacity: 8000,
+                },
+            });
+            h.port.emitEvent({
+                type: "loop/terminated",
+                workspaceId: 1,
+                workerId: 2,
+                loopId: 2,
+                outcome: "end_turn",
+                turns: 1,
+            });
+
+            await ctx.notify(methods.agent.session.cancel, {
+                sessionId: "1#helper",
+            });
 
             await new Promise((r) => setTimeout(r, 50));
 
@@ -1150,7 +1210,42 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             assert.ok(updates.some((u) => u.sessionUpdate === "terminal_update"));
             assert.ok(updates.some((u) => u.sessionUpdate === "terminal_output_chunk"));
             assert.ok(updates.some((u) => u.sessionUpdate === "notice"));
-            assert.ok(updates.some((u) => u.sessionUpdate === "subagent_update"));
+            assert.ok(
+                updates.some(
+                    (u) =>
+                        u.sessionUpdate === "subagent_update" &&
+                        u.sessionId === "1#helper" &&
+                        u.capabilities?.cancel !== undefined,
+                ),
+            );
+            assert.ok(
+                updates.some(
+                    (u) =>
+                        u.sessionUpdate === "subagent_update" &&
+                        u.sessionId === "1#helper" &&
+                        u.state?.state === "idle",
+                ),
+            );
+            assert.ok(
+                updates.some(
+                    (u) =>
+                        u.sessionUpdate === "session_message" &&
+                        u.senderSessionId === "1#helper" &&
+                        u.recipientSessionId === "1#user",
+                ),
+            );
+            assert.ok(
+                updates.some((u) => {
+                    if (u.sessionUpdate !== "usage_update") return false;
+                    const plurnk = (u._meta as { plurnk?: { budget?: Record<string, unknown> } } | undefined)?.plurnk;
+                    return (
+                        plurnk?.budget?.curationWeight === 420 &&
+                        plurnk?.budget?.curationBudget === 4000 &&
+                        plurnk?.budget?.contextTokens === 840 &&
+                        plurnk?.budget?.contextCapacity === 8000
+                    );
+                }),
+            );
 
             // Entry route serves body by reference ({§acp-entry-route})
             const entryUrl = `${h.baseUrl}/1/1/entry?target=${encodeURIComponent("log:///1/1/2/EDIT")}`;
@@ -1180,7 +1275,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
         const client1 = createAcpClient()
             .onRequest(methods.client.session.requestPermission, async ({ params }) => {
                 permissionRequests1.push(params);
-                return { outcome: { outcome: "selected", optionId: "approve" } };
+                return { outcome: { outcome: "selected", optionId: "allow_once" } };
             })
             .onRequest(methods.client.elicitation.create, async ({ params }) => {
                 elicitations1.push(params);
@@ -1225,10 +1320,11 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                     loopId: 1,
                     turnId: 1,
                     coordinate: "1/1/1",
-                    op: "EXEC",
+                    op: "sh",
                     disposition: "review",
                     owner: "acp://operator",
                     attrs: { tag: "sh", body: "rm -rf build", cwd: "/workspace/alpha" },
+                    subject: { type: "command", command: "rm -rf build", cwd: "/workspace/alpha" },
                 };
                 h.port.proposals.push(proposal);
                 h.port.emitEvent({
@@ -1243,16 +1339,14 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                     interactionId: 601,
                     workspaceId: 1,
                     workerId: 1,
-                    workerName: "user",
                     loopId: 1,
                     turnId: 1,
-                    coordinate: "1/1/2",
-                    kind: "question/ask",
-                    owner: "acp://operator",
+                    recipient: "acp://operator",
                     request: {
-                        title: "Answer question",
+                        toolName: "question" as const,
+                        mode: "form" as const,
                         message: "What is the answer?",
-                        schema: {
+                        requestedSchema: {
                             type: "object",
                             properties: { answer: { type: "string", title: "Answer" } },
                             required: ["answer"],
@@ -1271,6 +1365,15 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
 
                 assert.equal(permissionRequests1.length, 1);
                 assert.equal(permissionRequests1[0]?.subject?.type, "command");
+                assert.deepEqual(
+                    permissionRequests1[0]?.options.map((o) => ({ optionId: o.optionId, kind: o.kind })),
+                    [
+                        { optionId: "allow_once", kind: "allow_once" },
+                        { optionId: "allow_always", kind: "allow_always" },
+                        { optionId: "reject_once", kind: "reject_once" },
+                        { optionId: "reject_always", kind: "reject_always" },
+                    ],
+                );
                 assert.equal(h.port.proposals.length, 0, "proposal resolved in port");
                 assert.equal(peer2Cancelled, true, "second peer received $/cancel_request ({§acp-gate-deferral})");
 

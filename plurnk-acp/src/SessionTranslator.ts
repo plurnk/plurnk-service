@@ -81,6 +81,13 @@ const buildUnifiedDiff = (filePath: string, oldText: string, newText: string): s
     return [...header, ...removed, ...added].join("\n");
 };
 
+export const STANDARD_PERMISSION_OPTIONS = [
+    { optionId: "allow_once", name: "Allow once", kind: "allow_once" as const },
+    { optionId: "allow_always", name: "Allow always", kind: "allow_always" as const },
+    { optionId: "reject_once", name: "Reject once", kind: "reject_once" as const },
+    { optionId: "reject_always", name: "Reject always", kind: "reject_always" as const },
+];
+
 export const proposalToolCall = (
     proposal: ProposalProjection,
 ): Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> => {
@@ -89,9 +96,31 @@ export const proposalToolCall = (
         proposal.target?.pathname ??
         proposal.target?.scheme ??
         (typeof attrs.path === "string" ? attrs.path : null);
-    const title = target === null ? proposal.op : `${proposal.op} (${target})`;
+    const subject = proposal.subject;
+    const title = subject?.type === "tool_call"
+        ? subject.title
+        : target === null
+            ? proposal.op
+            : `${proposal.op} (${target})`;
+    const kind = subject?.type === "tool_call"
+        ? subject.kind
+        : SessionTranslator.toolKindOf(proposal.op, proposal.target?.scheme ?? null);
+    const locations = subject?.type === "tool_call"
+        ? subject.locations
+        : target !== null
+            ? [{ path: target }]
+            : undefined;
     const content: ToolCallContent[] = [];
-    if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
+    if (subject?.type === "tool_call" && subject.diff !== undefined) {
+        content.push({
+            type: "diff",
+            changes: [{ operation: "modify", path: subject.diff.path }],
+            patch: {
+                format: "git_patch",
+                text: subject.diff.patch,
+            },
+        });
+    } else if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
         const path = target ?? "";
         content.push({
             type: "diff",
@@ -119,9 +148,9 @@ export const proposalToolCall = (
         toolCallId: proposalKey(proposal.logEntryId),
         name: proposal.op,
         title,
-        kind: SessionTranslator.toolKindOf(proposal.op, proposal.target?.scheme ?? null),
+        kind,
         status: "pending",
-        ...(target !== null ? { locations: [{ path: target }] } : {}),
+        ...(locations !== undefined ? { locations } : {}),
         ...(content.length > 0 ? { content } : {}),
         rawInput: {
             op: proposal.op,
@@ -146,37 +175,18 @@ export const proposalPermissionRequest = (
         proposal.target?.scheme ??
         (typeof attrs.path === "string" ? attrs.path : null);
     const title = target === null ? proposal.op : `${proposal.op} (${target})`;
-    const isCommand =
-        proposal.op === "EXEC" ||
-        proposal.target?.scheme === "sh" ||
-        attrs.tag === "sh" ||
-        typeof attrs.command === "string";
 
-    const commandText =
-        typeof attrs.command === "string"
-            ? attrs.command
-            : typeof proposal.body === "string"
-                ? proposal.body
-                : typeof attrs.body === "string"
-                    ? attrs.body
-                    : proposal.op;
-    const cwd = typeof attrs.cwd === "string" ? attrs.cwd : "/";
-
-    if (isCommand) {
+    if (proposal.subject?.type === "command") {
         return {
             sessionId,
             title,
             description: "Review the requested command.",
             subject: {
                 type: "command",
-                command: commandText,
-                cwd,
+                command: proposal.subject.command,
+                cwd: proposal.subject.cwd,
             },
-            options: [
-                { optionId: "approve", name: "Accept", kind: "allow_once" },
-                { optionId: "accept", name: "Allow always", kind: "allow_always" },
-                { optionId: "reject", name: "Reject", kind: "reject_once" },
-            ],
+            options: [...STANDARD_PERMISSION_OPTIONS],
             _meta: {
                 plurnk: {
                     proposal,
@@ -189,17 +199,13 @@ export const proposalPermissionRequest = (
     const { sessionUpdate: _, ...toolCallFields } = toolCall;
     return {
         sessionId,
-        title,
+        title: toolCall.title ?? title,
         description: "Review the requested action.",
         subject: {
             type: "tool_call",
             toolCall: toolCallFields,
         },
-        options: [
-            { optionId: "approve", name: "Accept", kind: "allow_once" },
-            { optionId: "accept", name: "Allow always", kind: "allow_always" },
-            { optionId: "reject", name: "Reject", kind: "reject_once" },
-        ],
+        options: [...STANDARD_PERMISSION_OPTIONS],
         _meta: {
             plurnk: {
                 proposal,
@@ -225,14 +231,17 @@ export const resolutionFromPermissionResponse = (
         }
         if (kind === "selected") {
             const optionId = response.outcome.optionId;
-            if (optionId === "approve" || optionId === "accept") {
-                return { logEntryId, decision: "accept" };
+            if (optionId === "allow_once") {
+                return { logEntryId, decision: "accept", scope: "once" };
             }
-            if (optionId === "deny" || optionId === "reject") {
-                return { logEntryId, decision: "reject" };
+            if (optionId === "allow_always") {
+                return { logEntryId, decision: "accept", scope: "always", outcome: "allow_always" };
             }
-            if (optionId === "cancel") {
-                return { logEntryId, decision: "cancel" };
+            if (optionId === "reject_once") {
+                return { logEntryId, decision: "reject", scope: "once" };
+            }
+            if (optionId === "reject_always") {
+                return { logEntryId, decision: "reject", scope: "always", outcome: "reject_always" };
             }
             return null;
         }
@@ -240,33 +249,20 @@ export const resolutionFromPermissionResponse = (
     return null;
 };
 
-export const interactionToolCall = (interaction: ClientInteractionProjection): SessionUpdate => {
-    const reqRecord: Record<string, unknown> = isRecord(interaction.request)
-        ? interaction.request
-        : {};
-    const interRec: Record<string, unknown> = isRecord(interaction) ? interaction : {};
-    const toolName =
-        typeof reqRecord.toolName === "string"
-            ? reqRecord.toolName
-            : typeof interRec.kind === "string"
-                ? interRec.kind
-                : "elicitation";
-    const title = typeof reqRecord.title === "string" ? reqRecord.title : toolName;
-    return {
-        sessionUpdate: "tool_call_update",
-        toolCallId: interactionToolCallId(interaction.interactionId),
-        name: toolName,
-        title,
-        kind: "other",
-        status: "in_progress",
-        rawInput: reqRecord.arguments ?? reqRecord,
-        _meta: {
-            plurnk: {
-                interaction,
-            },
+export const interactionToolCall = (interaction: ClientInteractionProjection): SessionUpdate => ({
+    sessionUpdate: "tool_call_update",
+    toolCallId: interactionToolCallId(interaction.interactionId),
+    name: interaction.request.toolName,
+    title: interaction.request.toolName,
+    kind: "other",
+    status: "in_progress",
+    rawInput: interaction.request,
+    _meta: {
+        plurnk: {
+            interaction,
         },
-    };
-};
+    },
+});
 
 export const interactionToolCallResult = (
     interactionId: number,
@@ -274,7 +270,7 @@ export const interactionToolCallResult = (
 ): SessionUpdate => ({
     sessionUpdate: "tool_call_update",
     toolCallId: interactionToolCallId(interactionId),
-    status: resolution.status === "cancelled" ? "failed" : "completed",
+    status: resolution.action === "accept" ? "completed" : "failed",
     rawOutput: resolution,
     content: [{ type: "content", content: { type: "text", text: JSON.stringify(resolution) } }],
 });
@@ -283,20 +279,30 @@ export const interactionElicitationRequest = (
     sessionId: string,
     interaction: ClientInteractionProjection,
 ): CreateElicitationRequest => {
-    const reqRecord: Record<string, unknown> = isRecord(interaction.request)
-        ? interaction.request
-        : {};
-    const rawSchema = isRecord(reqRecord.responseSchema)
-        ? reqRecord.responseSchema
-        : isRecord(reqRecord.schema)
-            ? reqRecord.schema
-            : null;
-    const schema = rawSchema !== null && rawSchema.type === "object"
+    const { request } = interaction;
+    if (request.mode === "url") {
+        return {
+            scope: "session",
+            sessionId,
+            toolCallId: interactionToolCallId(interaction.interactionId),
+            mode: "url",
+            message: request.message,
+            elicitationId: request.elicitationId,
+            url: request.url,
+            _meta: {
+                plurnk: {
+                    interaction,
+                },
+            },
+        };
+    }
+    const rawSchema = request.requestedSchema;
+    const schema = rawSchema.type === "object"
         ? { properties: {}, ...rawSchema }
         : {
             type: "object",
             properties: {
-                value: rawSchema ?? { type: "string" },
+                value: rawSchema,
             },
         };
     return {
@@ -304,7 +310,7 @@ export const interactionElicitationRequest = (
         sessionId,
         toolCallId: interactionToolCallId(interaction.interactionId),
         mode: "form",
-        message: typeof reqRecord.message === "string" ? reqRecord.message : "Provide the requested input.",
+        message: request.message,
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         requestedSchema: schema as unknown as ElicitationSchema,
         _meta: {
@@ -326,18 +332,14 @@ export const interactionResolutionFromResponse = (
     if (!isRecord(response)) return null;
 
     if (response.action === "cancel" || response.action === "decline") {
-        return { interactionId, resolution: { status: "cancelled" } };
+        return { interactionId, resolution: { action: response.action } };
     }
     if (response.action === "accept") {
-        const metaPayload = isRecord(response._meta) && isRecord(response._meta.plurnk)
-            ? response._meta.plurnk.payload
-            : undefined;
-        const payload = metaPayload !== undefined ? metaPayload : response.content;
         return {
             interactionId,
             resolution: {
-                status: "resolved",
-                ...(payload !== undefined ? { payload } : {}),
+                action: "accept",
+                ...(isRecord(response.content) ? { content: response.content } : {}),
             },
         };
     }
@@ -892,12 +894,26 @@ export default class SessionTranslator {
 
     packet(event: ApplicationLoopPacket): AcpSessionUpdate[] {
         if (event.workerId !== this.#workerId) return [];
+        const curationWeight = event.gauge.curationWeight ?? 0;
+        const curationBudget = event.gauge.curationBudget ?? 0;
+        const contextTokens = event.gauge.contextTokens ?? null;
+        const contextCapacity = event.gauge.contextCapacity ?? null;
         return [{
             sessionId: this.#sessionId,
             update: {
                 sessionUpdate: "usage_update",
-                used: event.gauge.contextTokens ?? event.gauge.curationWeight ?? 0,
-                size: event.gauge.contextCapacity ?? event.gauge.curationBudget ?? 0,
+                used: contextTokens ?? curationWeight,
+                size: contextCapacity ?? curationBudget,
+                _meta: {
+                    plurnk: {
+                        budget: {
+                            curationWeight,
+                            curationBudget,
+                            contextTokens,
+                            contextCapacity,
+                        },
+                    },
+                },
             },
         }];
     }
@@ -977,16 +993,12 @@ export default class SessionTranslator {
                     ? { sessionUpdate: "state_update", state: "idle", stopReason: "refusal", usage, _meta: terminalMeta }
                     : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn", usage, _meta: terminalMeta };
 
-        const used = typeof usageObj.contextTokens === "number"
-            ? usageObj.contextTokens
-            : typeof usageObj.curationWeight === "number"
-                ? usageObj.curationWeight
-                : totalTokens;
-        const size = typeof usageObj.contextCapacity === "number"
-            ? usageObj.contextCapacity
-            : typeof usageObj.curationBudget === "number"
-                ? usageObj.curationBudget
-                : 128000;
+        const curationWeight = typeof usageObj.curationWeight === "number" ? usageObj.curationWeight : 0;
+        const curationBudget = typeof usageObj.curationBudget === "number" ? usageObj.curationBudget : 0;
+        const contextTokens = typeof usageObj.contextTokens === "number" ? usageObj.contextTokens : null;
+        const contextCapacity = typeof usageObj.contextCapacity === "number" ? usageObj.contextCapacity : null;
+        const used = contextTokens ?? (typeof usageObj.curationWeight === "number" ? curationWeight : totalTokens);
+        const size = contextCapacity ?? (typeof usageObj.curationBudget === "number" ? curationBudget : 128000);
 
         const updates: AcpSessionUpdate[] = [];
         if (problem !== null) {
@@ -1008,6 +1020,16 @@ export default class SessionTranslator {
                     used,
                     size,
                     ...(cost === undefined ? {} : { cost }),
+                    _meta: {
+                        plurnk: {
+                            budget: {
+                                curationWeight,
+                                curationBudget,
+                                contextTokens,
+                                contextCapacity,
+                            },
+                        },
+                    },
                 },
             },
             {

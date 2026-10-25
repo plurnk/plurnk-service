@@ -379,7 +379,6 @@ deterministic model fixture, exercising `initialize`, `session/new`, `session/re
 | {§acp-message-before-gate} | A message submitted via `session/prompt` is durable before a pending gate is re-presented. |
 | {§acp-resume-before-gate} | Gate resolutions are validated at Core's boundary. |
 | {§acp-proposal-disposition} | ACP consumes Core's `ProposalProjection` identically for live delivery and `session/resume` replay. |
-| {§acp-provider-policy-forwarding} | `session/prompt` forwards `selector` and `childSelector` from `_meta.plurnk` unchanged to… |
 <!-- /map -->
 
 §acp-proposal-resolve **Stopped-world proposals and client interactions use standard ACP v2
@@ -390,16 +389,16 @@ descendant owned by `acp://operator`) pauses on a `ProposalProjection` (`disposi
 every peer observing the owning session:
 
 - **Proposals (`session/request_permission`):**
-  - `sh` command proposals use `subject: { type: "command", command, cwd, toolCallId }`
-  - File, scheme, and MCP proposals use `subject: { type: "tool_call", toolCall }` (including `Diff`
-    content `{ type: "diff", path, oldText, newText }` when `attrs` carries `original` and `patched`)
-  - `options`: `allow_once` (`optionId: "approve"`), `allow_always` (`optionId: "allow_always"`),
-    and `reject_once` (`optionId: "deny"`)
-  - `_meta.plurnk.proposal`: the bodyless `ProposalProjection`
+  - `sh` command proposals use `subject: { type: "command", command, cwd }` from `ProposalProjection.subject`
+  - File, scheme, and MCP proposals use `subject: { type: "tool_call", toolCall }` derived from `ProposalProjection.subject`
+  - `options`: all 4 standard ACP v2 permission options with `optionId === kind`:
+    `allow_once`, `allow_always`, `reject_once`, and `reject_always`
+  - `_meta.plurnk.proposal`: the `ProposalProjection`
   - Answering with `outcome: { outcome: "selected", optionId }` calls
-    `ApplicationPort.resolveProposal(logEntryId, { disposition: "approve" | "deny" }, owner)` (and
-    widens workspace capability policy when `optionId === "allow_always"`). Answering with
-    `outcome: { outcome: "cancelled" }` denies the proposal.
+    `ApplicationPort.resolveProposal(logEntryId, { decision, scope, outcome }, owner)`, where
+    `allow_always` and `reject_always` pass `scope: "always"` so Core atomically updates the
+    workspace's `capabilities.allow` or `capabilities.deny` policy. Answering with
+    `outcome: { outcome: "cancelled" }` cancels the proposal.
 - **Client Interactions (`elicitation/create`):**
   - `question/ask` and structured form interactions use `mode: "form"` with `elicitationId`,
     `scope: { type: "session", sessionId }`, `message`, and `requestedSchema`
@@ -425,9 +424,6 @@ already-settled gates fail with their exact RFC 9457 Problem Details (`400 inter
 and `session/resume` replay.** Only `disposition: "review"` becomes a `session/request_permission`
 request; `accept` and `reject` are Core's automatic settlements.
 
-§acp-provider-policy-forwarding **`session/prompt` forwards `selector` and `childSelector` from
-`_meta.plurnk` unchanged to `ApplicationPort.runLoop`.**
-
 ## 9. Configuration Options, Available Commands, and Module Actions
 
 <!-- map -->
@@ -437,7 +433,7 @@ request; `accept` and `reject` are Core's automatic settlements.
 | {§acp-worker-loops} | `worker.loops` — Workspace |
 | {§acp-place-hiding} | Directories omit hidden workspaces and sessions. |
 | {§acp-action-binding} | Each request binds only the resources its scope requires. |
-| {§acp-client-operation} | `/script` (`op.exec` and `op.parse`) executes in the workspace's runtime worker (`_plurnk`). |
+| {§acp-client-operation} | `/script` (`op.parse`) executes in the workspace's runtime worker (`_plurnk`). |
 | {§acp-worker-model-actions} | Session model selection is server-backed. |
 | {§acp-worker-effort-actions} | Session reasoning effort is server-backed. |
 | {§acp-module-action-scope} | Extension module actions share the same schema-validated dispatch plane. |
@@ -452,9 +448,10 @@ plane.**
 
 - **Session Configuration (`configOptions` and `session/set_config_option`):**
   Every session advertises `SessionConfigOption[]` entries for `model` (`category: "model"`),
-  `thought_level` (`category: "thought_level"`), `spawn_model` (`category: "other"`), and `mode`
-  (`category: "mode"`, workspace capability policy `propose` | `allow` | `deny`), plus
-  `providers/list`, `providers/set`, and `providers/disable`.
+  `thought_level` (`category: "thought_level"`), `spawn_model` (`category: "model_config"`), and `mode`
+  (`category: "mode"`, workspace capability policy `propose` | `allow` | `deny`), plus boolean
+  toggles `<family>:<alias>` (`mcp`, `skills`, `a2a`, `schedule`) and `providers/list`,
+  `providers/set`, and `providers/disable`.
 - **Available Slash Commands (`availableCommands` on `session/prompt`):**
   Every session advertises `AvailableCommand[]` entries for `/mcp`, `/skills`, `/a2a`, `/members`,
   `/env`, `/schedule`, `/rollback`, `/share`, and `/script`. Submitting `/<command> ...` via
@@ -475,7 +472,7 @@ plane.**
 | `log.read` / `entry.read` / `workspace.prompts` | Workspace | `ApplicationPort.readLog`, `readEntry`, and `listPrompts`. |
 | `workspace.share` (`/share`) | Workspace | `ApplicationPort.shareWorkspace`. |
 | `workspace.rollback` (`/rollback`) | Workspace | `ApplicationPort.rollback`. |
-| `op.exec` / `op.parse` (`/script`) | Workspace | Client operations in the workspace runtime worker `_plurnk` ({§acp-client-operation}, {§acp-op-parse}). |
+| `op.parse` (`/script`) | Workspace | Client operations in the workspace runtime worker `_plurnk` ({§acp-client-operation}, {§acp-op-parse}). |
 
 §acp-place-hiding **Directories omit hidden workspaces and sessions.** `session/list` and
 `workspace.list` omit hidden entries unless `includeHidden: true` is passed. `session/delete` hides
@@ -490,7 +487,7 @@ attach the workspace without creating a model worker. Session-creating requests 
 mutation-of-existing requests (`session/resume`, `session/fork`, `session/delete`,
 `session/set_config_option`) return `404` (`session-not-found` or `worker-not-found`) when absent.
 
-§acp-client-operation **`/script` (`op.exec` and `op.parse`) executes in the workspace's runtime
+§acp-client-operation **`/script` (`op.parse`) executes in the workspace's runtime
 worker (`_plurnk`).** It never creates or claims a model worker and never presents a permission
 prompt because the operator is the author. The request settles only after every non-detached stream
 opened by the operation has concluded ({§acp-broadcast-fan}).
@@ -577,7 +574,7 @@ termination never settles the parent session's `session/prompt`.
 §acp-broadcast-fan **One Core event subscription fans out to all attached ACP connections.**
 `session/prompt` admission resolves with `{ messageId }` once accepted by `ApplicationPort.runLoop`
 while `state_update: { state: "idle", stopReason }` signals loop termination; client operations
-(`/script` / `op.exec` / `op.parse`) settle after all non-detached streams they opened conclude.
+(`/script` / `op.parse`) settle after all non-detached streams they opened conclude.
 
 §acp-oauth-revocation **Credential revocation closes admitted streams without cancelling work.**
 When a token family is revoked ({§auth-oauth-tokens}), every active WebSocket or HTTP stream

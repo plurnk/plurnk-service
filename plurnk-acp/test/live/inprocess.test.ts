@@ -1,62 +1,48 @@
+// {§acp-daemon-client} The go-live smoke: the in-process client interface, discovered by the
+// daemon and mounted at /acp on its listener, drives
+// a real model worker through the shared live runner.
+
 import assert from "node:assert/strict";
-import http from "node:http";
-import type { Duplex } from "node:stream";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { WebSocket } from "ws";
 import { client as createAcpClient, methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { createWebSocketStream, type WebSocketConstructor } from "@agentclientprotocol/sdk/experimental/ws-client";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { liveTest as test } from "../../../plurnk-core/test/live-test.ts";
-import Module from "../../src/Module.ts";
 
-const HARNESS = new URL("../../../plurnk-core/test/_live-harness.ts", import.meta.url).href;
+const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
 
-test("live: discovery and model response traverse the in-process ACP module", async () => {
-    const mod: unknown = await import(HARNESS);
-    const liveWorkspace: (opts: { name: string }) => Promise<{
-        daemon: ApplicationPort & { applicationPort?: () => ApplicationPort };
-        cleanup: () => Promise<void>;
-    }> = Reflect.get(Object(mod), "liveWorkspace");
-    const ws = await liveWorkspace({ name: "live-acp-inprocess" });
-    const routes = new Map<string, (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>>();
-    const upgrades = new Map<string, (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>>();
-    const server = http.createServer(async (req, res) => {
-        const url = new URL(req.url ?? "/", "http://127.0.0.1");
-        for (const [prefix, handler] of [...routes.entries()].toSorted((a, b) => b[0].length - a[0].length)) {
-            if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
-                await handler(req, res);
-                return;
-            }
-        }
-        res.writeHead(404).end();
-    });
-    server.on("upgrade", async (req, socket, head) => {
-        const url = new URL(req.url ?? "/", "http://127.0.0.1");
-        for (const [prefix, handler] of [...upgrades.entries()].toSorted((a, b) => b[0].length - a[0].length)) {
-            if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
-                await handler(req, socket, head);
-                return;
-            }
-        }
-        socket.destroy();
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-    const rawAddr = server.address();
-    const port = typeof rawAddr === "object" && rawAddr !== null ? rawAddr.port : 0;
-    const acp = Module.create();
-    const basePort = ws.daemon.applicationPort?.() ?? ws.daemon;
-    await acp.start({
-        ...basePort,
-        registerHttpRoute: (prefix: string, h: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>) => {
-            routes.set(prefix, h);
-        },
-        registerHttpUpgrade: (prefix: string, h: (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>) => {
-            upgrades.set(prefix, h);
-        },
-        httpAddress: () => ({ host: "127.0.0.1", port }),
-    });
+test("live: discovery and model response traverse the in-process ACP module", async (t) => {
+    const { serverProposals } = await import(join(SERVICE, "test/intg/_approval.ts"));
+    serverProposals(t, "accept");
+    const { liveProvider, liveRun } = await import(join(SERVICE, "test/_live-harness.ts"));
+    const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
+    const { bindListener } = await import(join(SERVICE, "test/intg/_a2a.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+
+    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live worker's.
+    const run = await liveRun("live-acp-inprocess");
+    const db = await openMigrated(run.dbPath);
+    const provider = await liveProvider();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules"), http, hostPaths: run.hostPaths });
+    const sandbox = await mkdtemp(join(tmpdir(), "acp-inproc-"));
+
+    // The daemon discovers the module, starts it on the application port, and admits its listener.
+    await daemon.start();
+    const addr = http.httpAddress();
+
     try {
+        // {§acp-http-authorization} — an access token the daemon's own authority issued; under the
+        // gate profile's PLURNK_AUTH=0 the listener ignores it and admits anonymously.
+        const token = daemon.credentials.issue({ kind: "access", subject: "operator", clientId: "operator", scopes: ["acp"], family: "live", ttlMs: 600_000 }).token;
         const wsCtor: WebSocketConstructor = Reflect.get({ v: WebSocket }, "v");
-        const stream = createWebSocketStream(`ws://127.0.0.1:${port}/acp`, { WebSocket: wsCtor });
+        const stream = createWebSocketStream(`ws://${addr.host}:${addr.port}/acp`, {
+            WebSocket: wsCtor,
+            ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        });
         const app = createAcpClient().onConnect((conn) => {
             void conn.agent.request(methods.agent.initialize, {
                 protocolVersion: PROTOCOL_VERSION,
@@ -66,16 +52,19 @@ test("live: discovery and model response traverse the in-process ACP module", as
         await app.connectWith(stream, async (ctx) => {
             const discovered = await ctx.request<{ schemaVersion: number }>("_plurnk/action", { kind: "discover", params: {} });
             assert.equal(discovered.schemaVersion, 1);
-            await ctx.buildSession("/tmp").withSession(async (session) => {
+            const providers = await ctx.request(methods.agent.providers.list, {});
+            assert.ok(providers.providers.length > 0, "the active provider is discoverable");
+            await ctx.buildSession(sandbox).withSession(async (session) => {
                 await session.prompt("Reply with the single word READY.");
-                const reply = await session.readTextUntilIdle();
+                const reply = await session.readTextUntilIdle(t.signal);
                 assert.match(reply, /READY/i);
             });
         });
     } finally {
-        acp.stop();
-        await acp.close();
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-        await ws.cleanup();
+        await daemon.stop();
+        await http.close();
+        await db.close();
+        run.finish();
+        await rm(sandbox, { recursive: true, force: true });
     }
 });
