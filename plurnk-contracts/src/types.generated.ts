@@ -119,7 +119,7 @@ error: "invalid-json"
 }
 
 export interface Event {
-type: string
+sessionUpdate: string
 [k: string]: unknown
 }
 
@@ -638,6 +638,7 @@ traits: string[]
 }
 
 export interface CapabilityPolicy {
+allow?: CapabilitySelector[]
 only?: CapabilitySelector[]
 deny?: CapabilitySelector[]
 }
@@ -666,7 +667,26 @@ workspace: CapabilityPolicy
 effective: CapabilityPolicy
 }
 /**
- * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
+ * One capability-policy layer. Deny wins; when only is present, a demand must match at least one selector; allow pre-approves matching admitted proposals.
+ */
+
+export type ClientInteractionRequest = ({
+toolName: string
+mode: "form"
+message: string
+requestedSchema: {
+[k: string]: unknown
+}
+} | {
+toolName: string
+mode: "url"
+message: string
+elicitationId: string
+url: string
+})
+
+/**
+ * The runtime-neutral client-interface projection of one pending client interaction. Live delivery and reconnect discovery expose this same shape.
  */
 
 export interface ClientInteractionProjection {
@@ -677,26 +697,16 @@ turnId: number
 recipient: string
 request: ClientInteractionRequest
 }
-/**
- * A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.
- */
-
-export interface ClientInteractionRequest {
-toolName: string
-arguments: {
-[k: string]: unknown
-}
-message?: string
-responseSchema: {
-[k: string]: unknown
-}
-}
 
 export type ClientInteractionResolution = ({
-status: "resolved"
-payload?: unknown
+action: "accept"
+content?: {
+[k: string]: unknown
+}
 } | {
-status: "cancelled"
+action: "decline"
+} | {
+action: "cancel"
 })
 
 export type Effort = ("off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max")
@@ -1200,11 +1210,34 @@ attrs: {
 }
 owner: string
 disposition: ProposalDisposition
+selector?: CapabilitySelector
+/**
+ * Structured ACP v2 permission subject for the proposed operation.
+ */
+subject?: ({
+type: "command"
+command: string
+cwd: string
+} | {
+type: "tool_call"
+kind: ("read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other")
+title: string
+locations?: {
+path: string
+}[]
+diff?: {
+path: string
+patch: string
+}
+})
 /**
  * When the gate stops waiting and core cancels it (ISO 8601); absent while it waits indefinitely.
  */
 expiresAt?: string
 }
+/**
+ * The capability selector for the proposed operation, persisted on allow_always / reject_always.
+ */
 
 export type ProviderCost = ({
 kind: "charged"

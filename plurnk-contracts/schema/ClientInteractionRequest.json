@@ -2,14 +2,30 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ClientInteractionRequest.json",
     "title": "ClientInteractionRequest",
-    "description": "A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.",
-    "type": "object",
-    "required": ["toolName", "arguments", "responseSchema"],
-    "additionalProperties": false,
-    "properties": {
-        "toolName": { "type": "string", "minLength": 1 },
-        "arguments": { "type": "object", "additionalProperties": true },
-        "message": { "type": "string", "minLength": 1 },
-        "responseSchema": { "type": "object", "additionalProperties": true }
-    }
+    "description": "A runtime-neutral client elicitation request in standard ACP v2 / MCP form or URL mode. Protocol-private continuation state is excluded.",
+    "oneOf": [
+        {
+            "type": "object",
+            "required": ["toolName", "mode", "message", "requestedSchema"],
+            "additionalProperties": false,
+            "properties": {
+                "toolName": { "type": "string", "minLength": 1 },
+                "mode": { "const": "form" },
+                "message": { "type": "string", "minLength": 1 },
+                "requestedSchema": { "type": "object", "additionalProperties": true }
+            }
+        },
+        {
+            "type": "object",
+            "required": ["toolName", "mode", "message", "elicitationId", "url"],
+            "additionalProperties": false,
+            "properties": {
+                "toolName": { "type": "string", "minLength": 1 },
+                "mode": { "const": "url" },
+                "message": { "type": "string", "minLength": 1 },
+                "elicitationId": { "type": "string", "minLength": 1 },
+                "url": { "type": "string", "format": "uri", "minLength": 1 }
+            }
+        }
+    ]
 }

@@ -407,7 +407,6 @@ const driveTask = async (
                         operation: "tasks/update",
                         inputRequests: fresh,
                         interact: options.interact,
-                        arguments: { taskId: task.taskId },
                         signal: options.signal,
                         deadline,
                     });

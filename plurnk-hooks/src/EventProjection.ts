@@ -85,7 +85,7 @@ export default class EventProjection {
             case "loop/interaction": {
                 const request = isRecord(params) && isRecord(params.request) ? params.request : {};
                 return { hook_event_name: "PermissionRequest", ...shared, tool_name: typeof request.toolName === "string" ? request.toolName : "",
-                    tool_input: request.arguments, ...(typeof request.message === "string" ? { message: request.message } : {}) };
+                    tool_input: request, ...(typeof request.message === "string" ? { message: request.message } : {}) };
             }
             default:
                 throw new Error(`Hook event ${method} has no projection.`);

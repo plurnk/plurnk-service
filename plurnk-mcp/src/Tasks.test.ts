@@ -24,38 +24,30 @@ test("{§mcp-tasks} current HTTP Tasks preserve MRTR, task input, polling, notif
         const catalog = await connection.catalog();
         const tool = catalog.tools.find(({ name }) => name === "deferred-review") as Tool;
         assert.ok(tool);
-        const interactions: Array<Record<string, unknown>> = [];
+        const interactions: Array<{ mode: string; message: string }> = [];
         const result = await connection.callTool(
             "deferred-review",
             { topic: "MCP" },
             undefined,
             undefined,
             async (request) => {
-                interactions.push(request.arguments);
-                return request.arguments.operation === "tools/call"
-                    ? {
-                        status: "resolved",
-                        payload: {
-                            preflight: { action: "accept", content: { proceed: true } },
-                        },
-                    }
-                    : {
-                        status: "resolved",
-                        payload: {
-                            profile: { action: "accept", content: { name: "Ada" } },
-                            authorize: { action: "accept" },
-                        },
-                    };
+                interactions.push({ mode: request.mode, message: request.message });
+                if (request.message === "Start the asynchronous review?") {
+                    return { action: "accept", content: { proceed: true } };
+                }
+                if (request.mode === "form") {
+                    return { action: "accept", content: { name: "Ada" } };
+                }
+                return { action: "accept" };
             },
             tool,
         );
         assert.deepEqual(result.content, [{ type: "text", text: "Ada reviewed MCP" }]);
-        assert.deepEqual(interactions.map(({ operation }) => operation), [
-            "tools/call",
-            "tasks/update",
+        assert.deepEqual(interactions, [
+            { mode: "form", message: "Start the asynchronous review?" },
+            { mode: "form", message: "Name this review." },
+            { mode: "url", message: "Authorize the review source." },
         ]);
-        assert.equal(interactions[0]?.taskId, undefined);
-        assert.equal(interactions[1]?.taskId, taskId);
         assert.equal(fixture.updates.length, 1);
         assert.deepEqual({
             taskId: fixture.updates[0]?.taskId,
@@ -182,7 +174,7 @@ test("{§mcp-host-composition} unsupported Task input fails before interaction a
                 undefined,
                 async () => {
                     interactions += 1;
-                    return { status: "cancelled" };
+                    return { action: "cancel" };
                 },
                 tool,
             ),
@@ -253,9 +245,9 @@ test("{§mcp-connection-shutdown} concurrent close waits for Task cancellation w
     t.after(async () => { cancelled.resolve(); await connection.close(); });
     const tool = (await connection.catalog()).tools[0];
     const running = connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, async (request) => {
-        if (request.arguments.operation === "tools/call") return {
-            status: "resolved", payload: { preflight: { action: "accept", content: { proceed: true } } },
-        };
+        if (request.message === "Start the asynchronous review?") {
+            return { action: "accept", content: { proceed: true } };
+        }
         input.resolve();
         return new Promise(() => {});
     }, tool);

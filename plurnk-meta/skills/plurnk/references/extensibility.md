@@ -48,7 +48,7 @@ the daemon starts.
 
 | Surface | Shape | Code in the daemon |
 | --- | --- | --- |
-| Application | an ACP client: `POST /acp` with `RunAgentInput` or JSON-RPC 2.0 on the daemon's listener (`PLURNK_PORT`) | none |
+| Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`) | none |
 | Agent | an A2A client of the exposure that `PLURNK_A2A_EXPOSE` mounts | none |
 | Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none |
 | Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon |

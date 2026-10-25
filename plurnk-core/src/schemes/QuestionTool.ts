@@ -30,7 +30,7 @@ export const questionRuntimeDecl = {
 | \`message\` | The question shown to the user (non-empty string). |
 | \`requestedSchema\` | JSON Schema object the user's answer must satisfy; \`enum\`/enumNames/oneOf/array/boolean/string/number forms supported. |
 
-An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\` or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`,
+An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\`, \`{ "action": "decline" }\`, or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`,
 } satisfies RuntimeDecl;
 
 export default class QuestionTool extends BaseExecutor {
@@ -81,9 +81,9 @@ export default class QuestionTool extends BaseExecutor {
         // The interaction schema describes the answer, not this executor's output.
         const request = Validator.assertClientInteractionRequest({
             toolName: "question",
-            arguments: { message: parsed.message, requestedSchema: parsed.requestedSchema },
+            mode: "form",
             message: parsed.message,
-            responseSchema: parsed.requestedSchema,
+            requestedSchema: parsed.requestedSchema,
         });
         // {§client-interaction-routing} An unsupported request is this operation's result.
         let resolution;
@@ -94,11 +94,8 @@ export default class QuestionTool extends BaseExecutor {
             setState("results", "errored");
             return cause.result;
         }
-        const result = resolution.status === "cancelled"
-            ? { action: "cancel" as const }
-            : { action: "accept" as const, content: resolution.payload };
-        write("results", `${JSON.stringify(result, null, 2)}\n`, "application/json");
+        write("results", `${JSON.stringify(resolution, null, 2)}\n`, "application/json");
         setState("results", "closed");
-        return { status: 200, attrs: { action: result.action } };
+        return { status: 200, attrs: { action: resolution.action } };
     }
 }

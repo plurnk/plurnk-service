@@ -18,7 +18,17 @@ type Event = Record<string, unknown>;
 interface Interrupt {
     readonly id: string;
     readonly toolCallId: string;
-    readonly responseSchema: Record<string, unknown>;
+    readonly mode: "form" | "url";
+    readonly message: string;
+    readonly requestedSchema?: Record<string, unknown>;
+    readonly url?: string;
+    readonly elicitationId?: string;
+}
+
+interface ResumeAnswer {
+    readonly interruptId: string | number;
+    readonly action: "accept" | "decline" | "cancel";
+    readonly content?: Record<string, unknown>;
 }
 
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
@@ -52,68 +62,331 @@ const setup = async (
     const { port } = http.httpAddress();
     const workspace = "mcp-interaction-composition";
     const post = async (additions: Record<string, unknown> = {}): Promise<Event[]> => {
-        const response = await fetch(`http://127.0.0.1:${port}/acp`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: workspace,
-                runId: crypto.randomUUID(),
-                state: {}, messages: [],
-                tools: [{ name: "mcp_input_required", description: "Answer MCP requests.", parameters: { type: "object" } }],
-                context: [],
-                forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true } },
-                ...additions,
-            }),
-            signal: AbortSignal.timeout(10_000),
+        const defaultMeta: Record<string, unknown> = {
+            workspace,
+            projectRoot: null,
+            control: true,
+            interactive: true,
+            tools: ["mcp_input_required"],
+        };
+        const extraPlurnk = (additions._meta as { plurnk?: Record<string, unknown> } | undefined)?.plurnk ?? {};
+        const mergedPlurnk = { ...defaultMeta, ...extraPlurnk };
+        const reqId = crypto.randomUUID();
+        const resumeItems = Array.isArray(additions.resume) && additions.resume.length > 0
+            ? (additions.resume as ResumeAnswer[])
+            : null;
+        const expectedElicitations = typeof additions.expectedElicitations === "number"
+            ? additions.expectedElicitations
+            : 1;
+        const followUpElicitations = typeof additions.followUpElicitations === "number"
+            ? additions.followUpElicitations
+            : 0;
+        const rpcBody = (() => {
+            if (resumeItems !== null) {
+                return {
+                    jsonrpc: "2.0",
+                    id: reqId,
+                    method: "session/resume",
+                    params: {
+                        sessionId: workspace,
+                        cwd: "/",
+                        _meta: {
+                            plurnk: mergedPlurnk,
+                        },
+                    },
+                };
+            }
+            if (mergedPlurnk.action !== undefined) {
+                const { kind, ...params } = mergedPlurnk.action as { kind: string; [key: string]: unknown };
+                return {
+                    jsonrpc: "2.0",
+                    id: reqId,
+                    method: "_plurnk/action",
+                    params: {
+                        sessionId: workspace,
+                        workspace: mergedPlurnk.workspace,
+                        projectRoot: mergedPlurnk.projectRoot,
+                        kind,
+                        params,
+                    },
+                };
+            }
+            if (Array.isArray(additions.messages) && additions.messages.length > 0) {
+                const msg = additions.messages[0] as { content?: string };
+                return {
+                    jsonrpc: "2.0",
+                    id: reqId,
+                    method: "session/prompt",
+                    params: {
+                        sessionId: workspace,
+                        prompt: [{ type: "text", text: msg.content ?? "" }],
+                        _meta: { plurnk: mergedPlurnk },
+                    },
+                };
+            }
+            return {
+                jsonrpc: "2.0",
+                id: reqId,
+                method: "session/resume",
+                params: {
+                    sessionId: workspace,
+                    cwd: "/",
+                    _meta: { plurnk: mergedPlurnk },
+                },
+            };
+        })();
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/acp`);
+        const events: Event[] = [];
+        return await new Promise<Event[]>((resolvePromise, rejectPromise) => {
+            let settled = false;
+            const answeredIds = new Set<number>();
+            let sawRunningAfterAnswer = false;
+            let workspaceId: number | undefined;
+            let collectTimer: ReturnType<typeof setTimeout> | undefined;
+            const finish = (terminal?: Event) => {
+                if (settled) return;
+                settled = true;
+                if (collectTimer !== undefined) clearTimeout(collectTimer);
+                if (terminal !== undefined) events.push(terminal);
+                ws.close();
+                resolvePromise(events);
+            };
+            ws.addEventListener("open", () => {
+                ws.send(JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: "init",
+                    method: "initialize",
+                    params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+                }));
+            });
+            ws.addEventListener("message", (msg) => {
+                const frame = JSON.parse(String(msg.data)) as Event & {
+                    id?: string | number;
+                    method?: string;
+                    params?: {
+                        toolCallId?: string;
+                        mode?: "form" | "url";
+                        message?: string;
+                        requestedSchema?: Record<string, unknown>;
+                        url?: string;
+                        elicitationId?: string;
+                        update?: {
+                            sessionUpdate?: string;
+                            state?: string;
+                            stopReason?: string;
+                            _meta?: {
+                                plurnk?: {
+                                    workspace?: { id?: number };
+                                    problem?: unknown;
+                                };
+                            };
+                        };
+                        _meta?: {
+                            plurnk?: {
+                                interaction?: { interactionId?: number };
+                            };
+                        };
+                    };
+                    result?: {
+                        _meta?: {
+                            plurnk?: {
+                                workspaceId?: number;
+                                workspace?: { id?: number };
+                            };
+                        };
+                    };
+                    error?: unknown;
+                };
+                if (frame.id === "init") {
+                    ws.send(JSON.stringify(rpcBody));
+                    return;
+                }
+                if (frame.method === "elicitation/create") {
+                    if (resumeItems === null) {
+                        events.push(frame);
+                        if (rpcBody.method === "session/prompt") {
+                            const count = events.filter((e) => e.method === "elicitation/create").length;
+                            if (count >= expectedElicitations) {
+                                finish();
+                            } else {
+                                if (collectTimer !== undefined) clearTimeout(collectTimer);
+                                collectTimer = setTimeout(() => finish(), 50);
+                            }
+                        }
+                        return;
+                    }
+                    const intId = frame.params?._meta?.plurnk?.interaction?.interactionId;
+                    const match = resumeItems.find((item) => Number(item.interruptId) === intId);
+                    if (match !== undefined && intId !== undefined && !answeredIds.has(intId) && frame.id !== undefined) {
+                        answeredIds.add(intId);
+                        ws.send(JSON.stringify({
+                            jsonrpc: "2.0",
+                            id: frame.id,
+                            result: {
+                                action: match.action,
+                                ...(match.content === undefined ? {} : { content: match.content }),
+                            },
+                        }));
+                        return;
+                    }
+                    if (answeredIds.size === resumeItems.length && followUpElicitations > 0) {
+                        events.push(frame);
+                        const followUpCount = events.filter((e) => e.method === "elicitation/create").length;
+                        if (followUpCount >= followUpElicitations) {
+                            finish();
+                        } else {
+                            if (collectTimer !== undefined) clearTimeout(collectTimer);
+                            collectTimer = setTimeout(() => finish(), 50);
+                        }
+                    }
+                    return;
+                }
+                if (frame.method === "session/update") {
+                    const update = frame.params?.update;
+                    const wsId = update?._meta?.plurnk?.workspace?.id;
+                    if (typeof wsId === "number") workspaceId = wsId;
+                    if (resumeItems !== null && answeredIds.size < resumeItems.length) {
+                        // Ignore replay notifications before answering all target elicitations
+                        return;
+                    }
+                    events.push(frame);
+                    if (resumeItems !== null && update?.sessionUpdate === "notice" && update._meta?.plurnk?.problem !== undefined) {
+                        finish({
+                            jsonrpc: "2.0",
+                            id: reqId,
+                            error: { data: { problem: update._meta.plurnk.problem } },
+                        });
+                        return;
+                    }
+                    if (resumeItems !== null && update?.sessionUpdate === "state_update" && update.state === "running") {
+                        sawRunningAfterAnswer = true;
+                        return;
+                    }
+                    if ((rpcBody.method === "session/prompt" || (resumeItems !== null && sawRunningAfterAnswer))
+                        && update?.sessionUpdate === "state_update"
+                        && update.state === "idle") {
+                        finish({
+                            jsonrpc: "2.0",
+                            id: reqId,
+                            result: {
+                                stopReason: update.stopReason ?? "end_turn",
+                                _meta: {
+                                    plurnk: {
+                                        stopReason: update.stopReason ?? "end_turn",
+                                        ...(workspaceId !== undefined ? { workspaceId } : {}),
+                                    },
+                                },
+                            },
+                        });
+                    }
+                    return;
+                }
+                if (frame.id === reqId) {
+                    const wsId = frame.result?._meta?.plurnk?.workspaceId ?? frame.result?._meta?.plurnk?.workspace?.id;
+                    if (typeof wsId === "number") workspaceId = wsId;
+                    if (frame.error !== undefined) {
+                        finish(frame);
+                        return;
+                    }
+                    if (rpcBody.method === "_plurnk/action" || (rpcBody.method === "session/resume" && resumeItems === null)) {
+                        finish(frame);
+                    }
+                }
+            });
+            ws.addEventListener("error", (err) => {
+                if (!settled) {
+                    settled = true;
+                    rejectPromise(err);
+                }
+            });
         });
-        const body = await response.text();
-        assert.equal(response.status, 200, body);
-        assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
-        return body.split("\n\n")
-            .filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as Event);
     };
     // The Task fixtures' tools carry no readOnlyHint, so they are host effects ({§mcp-model-projection});
     // server auto-approval leaves each MCP input as the only client decision.
-    const start = (): Promise<Event[]> => post({
+    const start = (expectedElicitations = 1): Promise<Event[]> => post({
+        expectedElicitations,
         messages: [{ id: "prompt", role: "user", content: "Perform the MCP operation and report its result." }],
-        forwardedProps: { plurnk: { workspace, projectRoot: null, interactive: true } },
+        _meta: { plurnk: { workspace, projectRoot: null, interactive: true } },
     });
     const reconnect = (): Promise<Event[]> => post({
-        forwardedProps: { plurnk: { workspace, projectRoot: null, control: true, interactive: true } },
+        _meta: { plurnk: { workspace, projectRoot: null, control: true, interactive: true } },
     });
-    return { provider, post, start, reconnect, daemon, db };
+    const assertNotPending = async (interruptId: string | number): Promise<void> => {
+        const [{ id: workspaceId }] = await daemon.listWorkspaces();
+        await assert.rejects(
+            daemon.resolveClientInteraction(
+                Number(interruptId),
+                { action: "cancel" },
+                { workspaceId, address: "acp://operator" },
+            ),
+            /interaction-not-pending|is not pending/u,
+        );
+    };
+    return { provider, post, start, reconnect, assertNotPending, daemon, db };
+};
+
+const updatesOf = (events: readonly Event[]): ReadonlyArray<Record<string, unknown>> =>
+    events
+        .filter((e) => e.method === "session/update")
+        .map((e) => ((e.params as { update?: Record<string, unknown> } | undefined)?.update ?? {}));
+
+const interactions = (events: readonly Event[], expectedCount = 1): readonly Interrupt[] => {
+    const updates = updatesOf(events);
+    const elicitations = events.filter((e) => e.method === "elicitation/create");
+    assert.equal(elicitations.length, expectedCount, `expected ${expectedCount} elicitation(s): ${JSON.stringify(events)}`);
+    assert.doesNotMatch(JSON.stringify(events), /round-one|round-two|opaque/u, "upstream continuation state stays private");
+    return elicitations.map((elicit) => {
+        const params = elicit.params as {
+            toolCallId: string;
+            mode: "form" | "url";
+            message: string;
+            requestedSchema?: Record<string, unknown>;
+            url?: string;
+            elicitationId?: string;
+            _meta?: { plurnk?: { interaction?: { interactionId: number } } };
+        };
+        const intMeta = params._meta?.plurnk?.interaction;
+        const id = String(intMeta?.interactionId ?? params.toolCallId.replace(/^int:/u, ""));
+        const toolCallId = params.toolCallId;
+        assert.ok(id.length > 0);
+        assert.match(toolCallId, /^int:\d+$/u);
+        assert.ok(updates.some((u) => u.sessionUpdate === "tool_call_update"
+            && u.toolCallId === toolCallId && u.title === "mcp_input_required"));
+        return {
+            id,
+            toolCallId,
+            mode: params.mode,
+            message: params.message,
+            ...(params.requestedSchema !== undefined ? { requestedSchema: params.requestedSchema } : {}),
+            ...(params.url !== undefined ? { url: params.url } : {}),
+            ...(params.elicitationId !== undefined ? { elicitationId: params.elicitationId } : {}),
+        };
+    });
 };
 
 const interaction = (events: readonly Event[], keys: readonly string[]): Interrupt => {
-    const terminal = events.at(-1);
-    assert.ok(terminal);
-    assert.equal(terminal.type, "RUN_FINISHED", JSON.stringify(terminal));
-    const outcome = terminal.outcome as { type?: string; interrupts?: Interrupt[] };
-    assert.equal(outcome.type, "interrupt");
-    assert.equal(outcome.interrupts?.length, 1, "one MCP input set is one atomic client interaction");
-    const interrupt = outcome.interrupts[0];
-    assert.ok(interrupt.id.length > 0);
-    assert.match(interrupt.toolCallId, /^int:\d+$/u);
-    assert.deepEqual(Object.keys(interrupt.responseSchema.properties as object).toSorted(), [...keys].toSorted());
-    assert.ok(events.some((event) => event.type === "TOOL_CALL_START"
-        && event.toolCallId === interrupt.toolCallId && event.toolCallName === "mcp_input_required"));
-    assert.doesNotMatch(JSON.stringify(events), /round-one|round-two|opaque/u, "upstream continuation state stays private");
-    return interrupt;
+    const [item] = interactions(events, 1);
+    assert.equal(item.mode, "form");
+    assert.deepEqual(Object.keys(item.requestedSchema?.properties ?? {}).toSorted(), [...keys].toSorted());
+    return item;
 };
 
 const rediscovered = (events: readonly Event[], keys: readonly string[], previous: Interrupt): Interrupt => {
     const current = interaction(events, keys);
-    assert.notEqual(current.id, previous.id, "rediscovery has its own interrupt continuation");
-    assert.deepEqual({ ...current, id: previous.id }, previous, "a new ACP Run re-presents the same pending operation");
+    assert.deepEqual(current, previous, "session/resume re-presents the same pending operation");
+    return current;
+};
+
+const rediscoveredAll = (events: readonly Event[], previous: readonly Interrupt[]): readonly Interrupt[] => {
+    const current = interactions(events, previous.length);
+    assert.deepEqual(current, previous, "session/resume re-presents the same pending operations");
     return current;
 };
 
 const completed = (events: readonly Event[], provider: Mock, expected: RegExp): void => {
-    const terminal = events.at(-1);
+    const terminal = events.at(-1) as { result?: { _meta?: { plurnk?: { stopReason?: string } } } } | undefined;
     assert.ok(terminal);
-    assert.equal(terminal.type, "RUN_FINISHED", JSON.stringify(terminal));
-    assert.equal((terminal.outcome as { type?: string }).type, "success");
+    assert.equal(terminal.result?._meta?.plurnk?.stopReason, "end_turn", JSON.stringify(terminal));
     assert.equal(provider.received.length, 2, "client input wakes the original operation, not another inference loop");
     const packet = provider.received[1].map(chatMessageText).join("\n");
     assert.match(packet, expected, "the server's actual terminal result reaches the model");
@@ -123,17 +396,23 @@ const completed = (events: readonly Event[], provider: Mock, expected: RegExp): 
 for (const cancel of [false, true]) {
     test(`{§mcp-host-composition}: ACP batch elicitation ${cancel ? "cancellation" : "accept/decline"} survives reconnect`, { timeout: 20_000 }, async (t) => {
         const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
-        const first = interaction(await start(), ["profile", "approval"]);
+        const first = interactions(await start(2), 2);
         assert.equal(provider.received.length, 1);
-        const resurfaced = rediscovered(await reconnect(), ["profile", "approval"], first);
+        const resurfaced = rediscoveredAll(await reconnect(), first);
         assert.equal(provider.received.length, 1, "reconnect performs no inference");
-        const events = await post({ resume: [{
-            interruptId: resurfaced.id,
-            ...(cancel ? { status: "cancelled" } : { status: "resolved", payload: {
-                profile: { action: "accept", content: { name: "Ada" } },
-                approval: { action: "decline" },
-            } }),
-        }] });
+        const profile = resurfaced.find((item) => item.message === "Who is making this request?")!;
+        const approval = resurfaced.find((item) => item.message === "Continue the batch operation?")!;
+        assert.ok(profile);
+        assert.ok(approval);
+        const events = await post({ resume: cancel
+            ? [
+                { interruptId: profile.id, action: "cancel" },
+                { interruptId: approval.id, action: "cancel" },
+            ]
+            : [
+                { interruptId: profile.id, action: "accept", content: { name: "Ada" } },
+                { interruptId: approval.id, action: "decline" },
+            ] });
         completed(events, provider, cancel ? /"action": "cancel"/u : /"name": "Ada"/u);
         if (!cancel) assert.match(provider.received[1].map(chatMessageText).join("\n"), /"action": "decline"/u);
     });
@@ -141,48 +420,53 @@ for (const cancel of [false, true]) {
 
 test("{§mcp-host-composition}: ACP URL elicitation preserves its browser action and returns to the server", { timeout: 20_000 }, async (t) => {
     const { provider, post, start } = await setup(t, '````fixture (url)\n{}\n````');
-    const events = await start();
-    const pending = interaction(events, ["authorize"]);
-    const args = events.filter((event) => event.type === "TOOL_CALL_ARGS" && event.toolCallId === pending.toolCallId)
-        .map((event) => event.delta).join("");
-    assert.equal(JSON.parse(args).requests.authorize.params.url, "https://example.test/authorize");
-    completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
-        authorize: { action: "accept" },
-    } }] }), provider, /accept/u);
+    const events = await start(1);
+    const [pending] = interactions(events, 1);
+    assert.equal(pending.mode, "url");
+    assert.equal(pending.url, "https://example.test/authorize");
+    assert.equal(pending.elicitationId, "fixture-authorization");
+    const toolCall = updatesOf(events).find((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === pending.toolCallId);
+    const rawInput = (toolCall?.rawInput ?? {}) as { mode?: string; url?: string };
+    assert.equal(rawInput.mode, "url");
+    assert.equal(rawInput.url, "https://example.test/authorize");
+    completed(await post({ resume: [{ interruptId: pending.id, action: "accept" }] }), provider, /accept/u);
 });
 
 test("{§mcp-host-composition}: two MRTR rounds stay on the originating operation across ACP Runs", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start, reconnect } = await setup(t, '````fixture (round-trip)\n{}\n````');
+    const { provider, post, start, reconnect, assertNotPending } = await setup(t, '````fixture (round-trip)\n{}\n````');
     const first = interaction(await start(), ["name"]);
-    const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
-        name: { action: "accept", content: { name: "Ada" } },
-    } }] }), ["confirm"]);
+    const second = interaction(await post({
+        followUpElicitations: 1,
+        resume: [{
+            interruptId: first.id, action: "accept", content: { name: "Ada" },
+        }],
+    }), ["confirm"]);
     assert.notEqual(second.id, first.id, "each new input set owns a fresh interrupt identity");
     assert.equal(provider.received.length, 1, "an intermediate MRTR round does not wake inference");
-    const stale = await post({ resume: [{ interruptId: first.id, status: "cancelled" }] });
-    assert.ok(stale.some((event) => event.type === "RUN_ERROR"));
-    assert.match(JSON.stringify(stale), /interrupt-not-pending/u);
+    await assertNotPending(first.id);
     const resurfaced = rediscovered(await reconnect(), ["confirm"], second);
-    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
-        confirm: { action: "accept", content: { confirm: true } },
-    } }] }), provider, /Ada confirmed/u);
+    completed(await post({ resume: [{
+        interruptId: resurfaced.id, action: "accept", content: { confirm: true },
+    }] }), provider, /Ada confirmed/u);
 });
 
 test("{§mcp-host-composition}: a schema-invalid ACP answer preserves the pending MCP request for correction", { timeout: 20_000 }, async (t) => {
     const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
-    const pending = interaction(await start(), ["profile", "approval"]);
-    const invalid = await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
-        profile: { action: "accept", content: { name: 42 } },
-        approval: { action: "decline" },
-    } }] });
-    assert.ok(invalid.some((event) => event.type === "RUN_ERROR"));
+    const pending = interactions(await start(2), 2);
+    const profile = pending.find((item) => item.message === "Who is making this request?")!;
+    const invalid = await post({ resume: [
+        { interruptId: profile.id, action: "accept", content: { name: 42 } },
+    ] });
+    assert.ok(invalid.some((event) => "error" in event));
     assert.match(JSON.stringify(invalid), /interaction-response-invalid/u);
     assert.equal(provider.received.length, 1, "invalid client input did not finish the operation");
-    const resurfaced = rediscovered(await reconnect(), ["profile", "approval"], pending);
-    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
-        profile: { action: "accept", content: { name: "Ada" } },
-        approval: { action: "decline" },
-    } }] }), provider, /"name": "Ada"/u);
+    const resurfaced = rediscoveredAll(await reconnect(), pending);
+    const resurfacedProfile = resurfaced.find((item) => item.message === "Who is making this request?")!;
+    const resurfacedApproval = resurfaced.find((item) => item.message === "Continue the batch operation?")!;
+    completed(await post({ resume: [
+        { interruptId: resurfacedProfile.id, action: "accept", content: { name: "Ada" } },
+        { interruptId: resurfacedApproval.id, action: "decline" },
+    ] }), provider, /"name": "Ada"/u);
 });
 
 for (const { path, key, expected } of [
@@ -191,10 +475,10 @@ for (const { path, key, expected } of [
 ]) {
     test(`{§mcp-host-composition}: a ${key} READ completes its elicitation through ACP`, { timeout: 20_000 }, async (t) => {
         const { provider, post, start } = await setup(t, `\`\`\`\`READ (fixture:///${path}) <1,-1>\`\`\`\``);
-        const pending = interaction(await start(), [key]);
-        completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
-            [key]: { action: "accept", content: { confirm: true } },
-        } }] }), provider, expected);
+        const pending = interaction(await start(), ["confirm"]);
+        completed(await post({ resume: [{
+            interruptId: pending.id, action: "accept", content: { confirm: true },
+        }] }), provider, expected);
     });
 }
 
@@ -217,10 +501,11 @@ test("{§mcp-host-composition}: fixture teardown settles an unanswered Task befo
         });
         owner = host.daemon;
         provider = host.provider;
-        const first = interaction(await host.start(), ["preflight"]);
-        interaction(await host.post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
-            preflight: { action: "accept", content: { proceed: true } },
-        } }] }), ["profile", "authorize"]);
+        const first = interaction(await host.start(), ["proceed"]);
+        interactions(await host.post({
+            followUpElicitations: 2,
+            resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
+        }), 2);
     });
     assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), [taskId]);
     assert.deepEqual(fixture.updates, [], "teardown never fabricates a human answer");
@@ -236,17 +521,22 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through ACP befo
         fixture: httpEntry(served.url),
     });
     owner = daemon;
-    const first = interaction(await start(), ["preflight"]);
-    const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
-        preflight: { action: "accept", content: { proceed: true } },
-    } }] }), ["profile", "authorize"]);
-    assert.notEqual(first.id, second.id);
-    const resurfaced = rediscovered(await reconnect(), ["profile", "authorize"], second);
+    const first = interaction(await start(), ["proceed"]);
+    const second = interactions(await post({
+        followUpElicitations: 2,
+        resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
+    }), 2);
+    assert.ok(second.every((item) => item.id !== first.id));
+    const resurfaced = rediscoveredAll(await reconnect(), second);
     assert.equal(provider.received.length, 1, "Task input and reconnect never release the model early");
-    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
-        profile: { action: "accept", content: { name: "Ada" } },
-        authorize: { action: "accept" },
-    } }] }), provider, /Ada reviewed MCP/u);
+    const profile = resurfaced.find((item) => item.mode === "form")!;
+    const authorize = resurfaced.find((item) => item.mode === "url")!;
+    assert.ok(profile);
+    assert.ok(authorize);
+    completed(await post({ resume: [
+        { interruptId: profile.id, action: "accept", content: { name: "Ada" } },
+        { interruptId: authorize.id, action: "accept" },
+    ] }), provider, /Ada reviewed MCP/u);
     assert.deepEqual(fixture.updates.map((update) => ({ taskId: update.taskId, inputResponses: update.inputResponses })), [{
         taskId,
         inputResponses: {
@@ -282,19 +572,18 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         });
         owner = daemon;
         const events = await start();
-        const terminal = events.at(-1);
+        const terminal = events.at(-1) as { result?: { _meta?: { plurnk?: { stopReason?: string; workspaceId?: number } } } } | undefined;
         assert.ok(terminal);
-        assert.equal((terminal.outcome as { type?: string }).type, "success", JSON.stringify(terminal));
+        assert.equal(terminal.result?._meta?.plurnk?.stopReason, "end_turn", JSON.stringify(terminal));
         assert.equal(provider.received.length, 2, "the original worker receives one failure and continues normally");
         const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /executor\/mcp\/tool-call-failed/);
         assert.match(packet, state === "failed" ? /task execution exploded/
             : state === "cancelled" ? /cancelled/ : /sampling\/createMessage/);
-        assert.equal(events.some((event) => event.type === "TOOL_CALL_START" && event.toolCallName === "mcp_input_required"), false);
-        const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
-            plurnk: { workspace: { id: number } };
-        };
-        assert.deepEqual(await daemon.pendingClientInteractions(snapshot.plurnk.workspace.id), []);
+        assert.equal(updatesOf(events).some((u) => u.sessionUpdate === "tool_call_update" && u.title === "mcp_input_required"), false);
+        const wsId = terminal.result?._meta?.plurnk?.workspaceId;
+        assert.ok(typeof wsId === "number");
+        assert.deepEqual(await daemon.pendingClientInteractions(wsId), []);
         assert.deepEqual(fixture.updates, []);
         assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), state === "unsupported-input" ? [taskId] : [],
             "unhandled input abandons the live Task; terminal Tasks need no second cancellation");
@@ -309,24 +598,26 @@ for (const stage of ["MRTR", "Task"] as const) {
             t.after(() => owner?.stop());
             const fixture = taskHandler();
             const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-            const { provider, post, start, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+            const { provider, post, start, assertNotPending, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
                 fixture: httpEntry(served.url),
             });
             owner = daemon;
             const events = await start();
-            const first = interaction(events, ["preflight"]);
-            const pending = stage === "MRTR" ? first : interaction(await post({ resume: [{
-                interruptId: first.id, status: "resolved", payload: {
-                    preflight: { action: "accept", content: { proceed: true } },
-                },
-            }] }), ["profile", "authorize"]);
-            const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
-                plurnk: { workspace: { id: number } };
-            };
-            const workspaceId = snapshot.plurnk.workspace.id;
-            const [waiting] = await daemon.pendingClientInteractions(workspaceId);
+            const first = interaction(events, ["proceed"]);
+            const pending = stage === "MRTR" ? [first] : interactions(await post({
+                followUpElicitations: 2,
+                resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
+            }), 2);
+            const wsUpdate = updatesOf(events).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+                _meta?: { plurnk?: { workspace?: { id: number } } };
+            } | undefined;
+            assert.ok(wsUpdate?._meta?.plurnk?.workspace);
+            const workspaceId = wsUpdate._meta.plurnk.workspace.id;
+            const waitingList = await daemon.pendingClientInteractions(workspaceId);
+            assert.equal(waitingList.length, pending.length);
+            const waiting = waitingList[0];
             assert.ok(waiting);
-            assert.equal(`int:${waiting.interactionId}`, pending.toolCallId);
+            assert.ok(pending.some((item) => item.toolCallId === `int:${waiting.interactionId}`));
             const workerId = waiting.workerId;
             if (boundary === "owner cancellation") {
                 await daemon.cancelWorker({ workspaceId, workerId, reason: "MCP operation cancelled" });
@@ -343,9 +634,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             assert.equal(served.requests.map(wireRequest).filter(({ method }) => method === "tools/call").length,
                 stage === "Task" ? 2 : 1, "the interrupted operation is not replayed");
             if (boundary === "owner cancellation") {
-                const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });
-                assert.ok(late.some((event) => event.type === "RUN_ERROR"));
-                assert.match(JSON.stringify(late), /interrupt-not-pending/u);
+                await assertNotPending(pending[0].id);
             }
         });
     }
@@ -360,30 +649,30 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
         fixture: httpEntry(served.url),
     });
     owner = daemon;
-    const first = interaction(await start(), ["preflight"]);
-    const pending = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
-        preflight: { action: "accept", content: { proceed: true } },
-    } }] }), ["profile", "authorize"]);
-    const mutate = (kind: string) => post({ forwardedProps: { plurnk: {
+    const first = interaction(await start(), ["proceed"]);
+    const pending = interactions(await post({
+        followUpElicitations: 2,
+        resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
+    }), 2);
+    const mutate = (kind: string) => post({ _meta: { plurnk: {
         workspace: "mcp-interaction-composition", projectRoot: null, action: { kind, alias: "fixture" },
     } } });
     const rejected = await mutate("workspace.mcp.disable");
-    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
-    const outcome = rejected.find((event) => event.type === "RUN_FINISHED")?.result as {
-        ok: boolean; problem?: { status: number; type: string };
-    };
-    assert.equal(outcome.ok, false, JSON.stringify(rejected));
-    assert.equal(outcome.problem?.status, 409);
-    assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
-    const resurfaced = rediscovered(await reconnect(), ["profile", "authorize"], pending);
-    completed(await post({ resume: [{ interruptId: resurfaced.id, status: "resolved", payload: {
-        profile: { action: "accept", content: { name: "Ada" } },
-        authorize: { action: "accept" },
-    } }] }), provider, /Ada reviewed MCP/u);
+    // {§acp-plurnk-metadata} A JSON-RPC _plurnk/action response carries error.data.problem on failure.
+    const rejectedError = (rejected.find((event) => "error" in event) as { error?: { data?: { problem?: { status: number; type: string } } } } | undefined)?.error?.data?.problem;
+    assert.ok(rejectedError, JSON.stringify(rejected));
+    assert.equal(rejectedError.status, 409);
+    assert.equal(rejectedError.type, "https://problems.plurnk.xyz/daemon/workspace-functionality/workspace-busy");
+    const resurfaced = rediscoveredAll(await reconnect(), pending);
+    const profile = resurfaced.find((item) => item.mode === "form")!;
+    const authorize = resurfaced.find((item) => item.mode === "url")!;
+    completed(await post({ resume: [
+        { interruptId: profile.id, action: "accept", content: { name: "Ada" } },
+        { interruptId: authorize.id, action: "accept" },
+    ] }), provider, /Ada reviewed MCP/u);
     assert.deepEqual(fixture.cancellations, [], "the failed mutation neither cancels nor replaces the original Task");
     const disabled = await mutate("workspace.mcp.disable");
-    const result = disabled.find((event) => event.type === "RUN_FINISHED")?.result as { ok: boolean };
-    assert.equal(result.ok, true, JSON.stringify(disabled));
+    assert.ok(disabled.some((event) => "result" in event), JSON.stringify(disabled));
     assert.deepEqual(fixture.cancellations, [], "completed Tasks are not cancelled again at connection close");
 });
 
@@ -397,23 +686,23 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         const operation = tool ? '````fixture (deferred-review)\n{"topic":"MCP"}\n````'
             : source === "resource" ? "````READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>````"
                 : "````READ (fixture:///prompts/guarded?topic=MCP) <1,-1>````";
-        const { provider, post, start, reconnect, daemon } = await setup(t, operation, {
+        const { provider, post, start, reconnect, assertNotPending, daemon } = await setup(t, operation, {
             fixture: served === undefined ? stdioEntry("interaction-server.mjs") : httpEntry(served.url),
         }, {
             PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         });
         owner = daemon;
         const events = await start();
-        const first = interaction(events, [tool ? "preflight" : source === "resource" ? "read" : "prompt"]);
-        const pending = source !== "Task" ? first : interaction(await post({ resume: [{
-            interruptId: first.id, status: "resolved", payload: {
-                preflight: { action: "accept", content: { proceed: true } },
-            },
-        }] }), ["profile", "authorize"]);
-        const snapshot = events.find((event) => event.type === "STATE_SNAPSHOT")?.snapshot as {
-            plurnk: { workspace: { id: number } };
-        };
-        const workspaceId = snapshot.plurnk.workspace.id;
+        const first = interaction(events, [tool ? "proceed" : "confirm"]);
+        const pending = source !== "Task" ? [first] : interactions(await post({
+            followUpElicitations: 2,
+            resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
+        }), 2);
+        const wsUpdate = updatesOf(events).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+            _meta?: { plurnk?: { workspace?: { id: number } } };
+        } | undefined;
+        assert.ok(wsUpdate?._meta?.plurnk?.workspace);
+        const workspaceId = wsUpdate._meta.plurnk.workspace.id;
         const [waiting] = await daemon.pendingClientInteractions(workspaceId);
         assert.ok(waiting);
         await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 0,
@@ -424,13 +713,10 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /operation timeout/u);
         assert.match(packet, tool ? /tool-call-failed/u : /resource-read-failed/u);
-        const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });
-        assert.ok(late.some((event) => event.type === "RUN_ERROR"), JSON.stringify(late));
-        assert.match(JSON.stringify(late), /interrupt-not-pending/u);
+        await assertNotPending(pending[0].id);
         const synced = await reconnect();
-        const terminal = synced.at(-1);
-        assert.ok(terminal);
-        assert.equal((terminal.outcome as { type?: string }).type, "success");
+        const terminal = synced.at(-1) as { result?: Record<string, unknown> } | undefined;
+        assert.ok(terminal?.result !== undefined);
         assert.equal(provider.received.length, 2, "late input and reconnect do not replay work");
         if (fixture !== undefined && served !== undefined) {
             assert.deepEqual(fixture.cancellations.map((cancellation) => cancellation.taskId), source === "Task" ? [taskId] : []);

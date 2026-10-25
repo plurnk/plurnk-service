@@ -63,7 +63,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
     assert.equal(ClientInput.assertMaxTurns("loop.run", -1), -1);
     assert.deepEqual(ClientInput.assertOpenPaths("loop.run", ["README.md"]), ["README.md"]);
     assert.equal(ClientInput.assertLimit("workspace.prompts", 10), 10);
-    assert.deepEqual(ClientInput.assertProposalResolution("proposal.resolve", {
+    assert.deepEqual(ClientInput.assertProposalResolution("resolveProposal", {
         decision: "reject",
         outcome: "declined",
     }), {
@@ -185,12 +185,12 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "limit",
         },
         {
-            run: () => ClientInput.assertProposalResolution("proposal.resolve", {
+            run: () => ClientInput.assertProposalResolution("resolveProposal", {
                 decision: "accept",
                 result: { status: 200 },
             }),
             code: "proposal-resolution-field-not-supported",
-            context: "proposal.resolve",
+            context: "resolveProposal",
             field: "resolution.result",
         },
     ];

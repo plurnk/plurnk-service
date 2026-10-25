@@ -73,8 +73,8 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
         assert.equal(pending.request.message, "Which branch?");
 
         await engine.resolveClientInteraction(pending.interactionId, {
-            status: "resolved",
-            payload: { branch: "main" },
+            action: "accept",
+            content: { branch: "main" },
         }, { workspaceId, address: TEST_OWNER });
         const result = await dispatched;
         await exec.idle();
@@ -125,8 +125,8 @@ Waiting for your answer.
                         (row) => row?.status === 202,
                     );
                     await daemon.resolveClientInteraction(pending[0].interactionId, action === "accept"
-                        ? { status: "resolved", payload: { branch: "main" } }
-                        : { status: "cancelled" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
+                        ? { action: "accept", content: { branch: "main" } }
+                        : { action: "cancel" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
                     await waitForDb(
                         () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
                         (row) => row?.status === 200,

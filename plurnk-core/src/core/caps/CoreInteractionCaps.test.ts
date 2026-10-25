@@ -15,11 +15,11 @@ for (const abort of ["owner", "interaction"] as const) {
             writer: "model", signal: owner.signal, weigh: () => 0,
             requestInteraction: async (_request, signal) => {
                 forwarded = signal;
-                return { status: "cancelled" };
+                return { action: "cancel" };
             },
         };
         await new CoreInteractionCaps(context).request({
-            toolName: "example", arguments: {}, message: "Choose.", responseSchema: { type: "boolean" },
+            toolName: "example", mode: "form", message: "Choose.", requestedSchema: { type: "boolean" },
         }, interaction.signal);
         assert.ok(forwarded);
         assert.equal(forwarded.aborted, false);

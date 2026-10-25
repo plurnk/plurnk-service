@@ -65,7 +65,6 @@ interface ResolveInputRequestsOptions {
     readonly operation: InputRequiredMethod;
     readonly inputRequests: Readonly<Record<string, unknown>>;
     readonly interact?: ClientInteractionHandler;
-    readonly arguments?: Readonly<Record<string, unknown>>;
     readonly signal?: AbortSignal;
     readonly deadline: number;
 }
@@ -90,43 +89,6 @@ const formatValidationIssues = (issues: readonly { message: string; path?: reado
         ? `${issue.path.map(String).join(".")}: ${issue.message}`
         : issue.message).join(", ");
 
-const elicitationResponseSchema = (request: ElicitRequest): Record<string, unknown> => {
-    const params = request.params;
-    if (params.mode === "url") {
-        return {
-            description: `${params.message}\n${params.url}`,
-            type: "object",
-            required: ["action"],
-            additionalProperties: false,
-            properties: {
-                action: { enum: ["accept", "decline", "cancel"] },
-            },
-        };
-    }
-    return {
-        description: params.message,
-        oneOf: [
-            {
-                type: "object",
-                required: ["action", "content"],
-                additionalProperties: false,
-                properties: {
-                    action: { const: "accept" },
-                    content: params.requestedSchema,
-                },
-            },
-            {
-                type: "object",
-                required: ["action"],
-                additionalProperties: false,
-                properties: {
-                    action: { enum: ["decline", "cancel"] },
-                },
-            },
-        ],
-    };
-};
-
 const supportedElicitations = (
     server: string,
     operation: InputRequiredMethod,
@@ -148,32 +110,23 @@ const supportedElicitations = (
 });
 
 const interactionRequest = (
-    server: string,
-    operation: InputRequiredMethod,
-    entries: readonly [string, ElicitRequest][],
-    args: Readonly<Record<string, unknown>> = {},
+    request: ElicitRequest,
 ): ClientInteractionRequest => {
-    const properties = Object.fromEntries(entries.map(([key, request]) => [
-        key,
-        elicitationResponseSchema(request),
-    ]));
+    const params = request.params;
+    if (params.mode === "url") {
+        return {
+            toolName: INPUT_REQUIRED_TOOL,
+            mode: "url",
+            message: params.message,
+            elicitationId: params.elicitationId,
+            url: params.url,
+        };
+    }
     return {
         toolName: INPUT_REQUIRED_TOOL,
-        arguments: {
-            server,
-            operation,
-            ...args,
-            requests: Object.fromEntries(entries),
-        },
-        message: entries.length === 1
-            ? entries[0][1].params.message
-            : `MCP server '${server}' requires ${entries.length} responses to continue '${operation}'.`,
-        responseSchema: {
-            type: "object",
-            required: entries.map(([key]) => key),
-            additionalProperties: false,
-            properties,
-        },
+        mode: "form",
+        message: params.message,
+        requestedSchema: params.requestedSchema,
     };
 };
 
@@ -182,7 +135,6 @@ export const resolveInputRequests = async ({
     operation,
     inputRequests,
     interact,
-    arguments: args,
     signal,
     deadline,
 }: ResolveInputRequestsOptions): Promise<Record<string, InputResponse>> => {
@@ -194,7 +146,6 @@ export const resolveInputRequests = async ({
             `MCP server '${server}' requires client input during '${operation}', but this operation has no client interaction owner.`,
         );
     }
-    const request = interactionRequest(server, operation, entries, args);
     const controller = new AbortController();
     const inputSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
     const timer = setTimeout(() => controller.abort(timeoutError(operation)), remainingTimeout(deadline, operation));
@@ -202,55 +153,57 @@ export const resolveInputRequests = async ({
     const cancelled = Promise.withResolvers<ClientInteractionResolution>();
     const listener = addAbortListener(inputSignal, () => cancelled.reject(inputSignal.reason));
     try {
-        const resolution = await Promise.race([interact(request, inputSignal), cancelled.promise]);
-        inputSignal.throwIfAborted();
-        return resolvedInputResponses(request, resolution);
+        const pairs = await Promise.all(entries.map(async ([key, elicitRequest]): Promise<[string, InputResponse]> => {
+            const request = interactionRequest(elicitRequest);
+            const resolution = await Promise.race([interact(request, inputSignal), cancelled.promise]);
+            inputSignal.throwIfAborted();
+            return [key, await resolvedInputResponse(key, request, resolution)];
+        }));
+        return Object.fromEntries(pairs);
+    } catch (error) {
+        controller.abort(error);
+        throw error;
     } finally {
         clearTimeout(timer);
         listener[Symbol.dispose]();
     }
 };
 
-const cancelledInputResponses = (
-    entries: readonly [string, ElicitRequest][],
-): Record<string, ElicitResult> => Object.fromEntries(entries.map(([key]) => [
-    key,
-    { action: "cancel" },
-]));
-
-const resolvedInputResponses = async (
+const resolvedInputResponse = async (
+    key: string,
     request: ClientInteractionRequest,
     resolution: ClientInteractionResolution,
-): Promise<Record<string, InputResponse>> => {
-    if (resolution.status === "cancelled") {
-        const requests = isRecord(request.arguments.requests) ? request.arguments.requests : {};
-        const entries = Object.entries(requests).map(([key, value]): [string, ElicitRequest] => {
-            const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(value);
-            if (parsed.issues !== undefined) throw new Error(`MCP elicitation '${key}' is not an elicitation request: ${formatValidationIssues(parsed.issues)}.`);
-            return [key, parsed.value];
-        });
-        return cancelledInputResponses(entries);
+): Promise<ElicitResult> => {
+    if (resolution.action === "cancel" || resolution.action === "decline") {
+        return { action: resolution.action };
     }
-    const validator = fromJsonSchema<Record<string, unknown>>(
-        request.responseSchema,
-    );
-    const validation = await validator["~standard"].validate(resolution.payload);
-    if (validation.issues !== undefined) {
-        throw new Error(
-            `MCP client interaction response is invalid: ${formatValidationIssues(validation.issues)}.`,
-        );
-    }
-    const responses: Record<string, InputResponse> = {};
-    for (const [key, value] of Object.entries(validation.value)) {
-        const parsed = specTypeSchemas.ElicitResult["~standard"].validate(value);
-        if (parsed.issues !== undefined) {
+    if (request.mode === "url") {
+        if (resolution.content !== undefined) {
             throw new Error(
-                `MCP client interaction response '${key}' is invalid: ${formatValidationIssues(parsed.issues)}.`,
+                `MCP client interaction response '${key}' is invalid: URL elicitation accepts no content.`,
             );
         }
-        responses[key] = parsed.value;
+        return { action: "accept" };
     }
-    return responses;
+    const validator = fromJsonSchema<Record<string, unknown>>(
+        request.requestedSchema,
+    );
+    const validation = await validator["~standard"].validate(resolution.content);
+    if (validation.issues !== undefined) {
+        throw new Error(
+            `MCP client interaction response '${key}' is invalid: ${formatValidationIssues(validation.issues)}.`,
+        );
+    }
+    const parsed = specTypeSchemas.ElicitResult["~standard"].validate({
+        action: "accept",
+        content: validation.value,
+    });
+    if (parsed.issues !== undefined) {
+        throw new Error(
+            `MCP client interaction response '${key}' is invalid: ${formatValidationIssues(parsed.issues)}.`,
+        );
+    }
+    return parsed.value;
 };
 
 export const runInputRequiredRequest = async <

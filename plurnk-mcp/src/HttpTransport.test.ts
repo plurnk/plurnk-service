@@ -422,10 +422,8 @@ test("{§mcp-core-matrix} Streamable HTTP retries MRTR with a fresh ID and exact
         async (request) => {
             projectedRequest = JSON.stringify(request);
             return {
-                status: "resolved",
-                payload: {
-                    confirm: { action: "accept", content: { confirm: true } },
-                },
+                action: "accept",
+                content: { confirm: true },
             };
         },
     );

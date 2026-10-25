@@ -393,13 +393,9 @@ test("{§mcp-core-matrix} MCP executor keeps elicitation on its generic client i
         const h = harness({
             runtime: "interaction",
             target: "batch",
-            interact: async () => ({
-                status: "resolved",
-                payload: {
-                    profile: { action: "accept", content: { name: "Ada" } },
-                    approval: { action: "accept", content: { confirm: true } },
-                },
-            }),
+            interact: async (request) => request.message === "Who is making this request?"
+                ? { action: "accept", content: { name: "Ada" } }
+                : { action: "accept", content: { confirm: true } },
         });
         const result = await executor.run(h.args);
         assert.equal(result.status, 200);

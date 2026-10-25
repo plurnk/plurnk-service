@@ -3,7 +3,6 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
     ClientInteractionRequest,
-    ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 import ServerConnection, { type ClientInteractionHandler } from "./client.ts";
 import { stdioServer } from "../test/definitions.ts";
@@ -16,40 +15,25 @@ const env = {
 
 const configured = (): ServerConnection => new ServerConnection(stdioServer("interaction", [fixture]), env);
 
-const resolved = (payload: unknown): ClientInteractionResolution => ({
-    status: "resolved",
-    payload,
-});
-
-test("{§mcp-host-composition} one input_required round becomes one atomic client interaction", async () => {
+test("{§mcp-host-composition} embedded elicitations map directly to form and URL client interactions", async () => {
     const connection = configured();
     const requests: ClientInteractionRequest[] = [];
     const interact: ClientInteractionHandler = async (request) => {
         requests.push(request);
-        return resolved({
-            profile: { action: "accept", content: { name: "Ada" } },
-            approval: { action: "decline" },
-        });
+        if (request.message === "Who is making this request?") {
+            return { action: "accept", content: { name: "Ada" } };
+        }
+        return { action: "decline" };
     };
     try {
         const result = await connection.callTool("batch", {}, undefined, undefined, interact);
-        assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.toolName, "mcp_input_required");
-        assert.equal(requests[0]?.arguments.server, "interaction");
-        assert.equal(requests[0]?.arguments.operation, "tools/call");
-        assert.deepEqual(Object.keys(requests[0]?.arguments.requests as object).toSorted(), [
-            "approval",
-            "profile",
-        ]);
-        assert.equal(JSON.stringify(requests[0]).includes("round-one"), false);
+        assert.equal(requests.length, 2);
+        assert.ok(requests.every((r) => r.toolName === "mcp_input_required" && r.mode === "form"));
         assert.deepEqual(
-            (requests[0]?.responseSchema.properties as Record<string, unknown> | undefined)
-                && Object.keys(requests[0].responseSchema.properties as object).toSorted(),
-            ["approval", "profile"],
+            requests.map((r) => r.message).toSorted(),
+            ["Continue the batch operation?", "Who is making this request?"],
         );
-        const fields = requests[0].responseSchema.properties as Record<string, { description: string }>;
-        assert.equal(fields.profile.description, "Who is making this request?");
-        assert.equal(fields.approval.description, "Continue the batch operation?");
+        assert.equal(JSON.stringify(requests).includes("round-one"), false);
         assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /Ada/);
     } finally {
         await connection.close();
@@ -62,13 +46,12 @@ test("{§mcp-host-composition} multi-round tool calls preserve opaque state and 
     const interact: ClientInteractionHandler = async (request) => {
         requests.push(request);
         return requests.length === 1
-            ? resolved({ name: { action: "accept", content: { name: "Ada" } } })
-            : resolved({ confirm: { action: "accept", content: { confirm: true } } });
+            ? { action: "accept", content: { name: "Ada" } }
+            : { action: "accept", content: { confirm: true } };
     };
     try {
         const result = await connection.callTool("round-trip", {}, undefined, undefined, interact);
-        assert.deepEqual(requests.map(({ arguments: args }) =>
-            Object.keys(args.requests as object)), [["name"], ["confirm"]]);
+        assert.deepEqual(requests.map((r) => r.message), ["Name the operator.", "Confirm Ada as the operator?"]);
         assert.ok(requests.every((request) => !JSON.stringify(request).includes("opaque")));
         assert.deepEqual(result.content, [{ type: "text", text: "Ada confirmed" }]);
     } finally {
@@ -84,7 +67,7 @@ test("{§mcp-host-composition} client cancellation becomes a standard elicitatio
             {},
             undefined,
             undefined,
-            async () => ({ status: "cancelled" }),
+            async () => ({ action: "cancel" }),
         );
         const text = result.content[0]?.type === "text" ? result.content[0].text : "";
         assert.match(text, /"action":"cancel"/);
@@ -102,10 +85,9 @@ test("{§mcp-host-composition} form and URL responses are validated before retry
                 {},
                 undefined,
                 undefined,
-                async () => resolved({
-                    profile: { action: "accept", content: { name: 42 } },
-                    approval: { action: "accept", content: { confirm: true } },
-                }),
+                async (request) => request.message === "Who is making this request?"
+                    ? { action: "accept", content: { name: 42 } }
+                    : { action: "accept", content: { confirm: true } },
             ),
             /client interaction response.*profile/i,
         );
@@ -115,14 +97,13 @@ test("{§mcp-host-composition} form and URL responses are validated before retry
             undefined,
             undefined,
             async (request) => {
-                const fields = request.responseSchema.properties as Record<string, { description: string }>;
-                assert.equal(fields.authorize.description, "Authorize the fixture in a browser.\nhttps://example.test/authorize");
-                assert.equal(
-                    (request.arguments.requests as Record<string, { params?: { mode?: string } }>)
-                        .authorize?.params?.mode,
-                    "url",
-                );
-                return resolved({ authorize: { action: "accept" } });
+                assert.equal(request.mode, "url");
+                if (request.mode === "url") {
+                    assert.equal(request.message, "Authorize the fixture in a browser.");
+                    assert.equal(request.elicitationId, "fixture-authorization");
+                    assert.equal(request.url, "https://example.test/authorize");
+                }
+                return { action: "accept" };
             },
         );
         assert.deepEqual(result.content, [{ type: "text", text: "accept" }]);
@@ -133,11 +114,10 @@ test("{§mcp-host-composition} form and URL responses are validated before retry
 
 test("{§mcp-core-matrix} resource reads and prompt retrievals share the same interaction contract", async () => {
     const connection = configured();
-    const operations: unknown[] = [];
+    const messages: string[] = [];
     const interact: ClientInteractionHandler = async (request) => {
-        operations.push(request.arguments.operation);
-        const key = Object.keys(request.arguments.requests as object)[0];
-        return resolved({ [key]: { action: "accept", content: { confirm: true } } });
+        messages.push(request.message);
+        return { action: "accept", content: { confirm: true } };
     };
     try {
         const resource = await connection.readResource("fixture://guarded", undefined, interact);
@@ -148,7 +128,7 @@ test("{§mcp-core-matrix} resource reads and prompt retrievals share the same in
         assert.equal(prompt.messages[0]?.content.type === "text"
             ? prompt.messages[0].content.text
             : "", "MCP:accept");
-        assert.deepEqual(operations, ["resources/read", "prompts/get"]);
+        assert.deepEqual(messages, ["Read the guarded resource?", "Build the MCP prompt?"]);
     } finally {
         await connection.close();
     }
@@ -165,7 +145,7 @@ test("{§mcp-host-composition} requestState-only continuation needs no fabricate
             undefined,
             async () => {
                 interactions += 1;
-                return { status: "cancelled" };
+                return { action: "cancel" };
             },
         );
         assert.equal(interactions, 0);
@@ -199,9 +179,7 @@ test("{§mcp-host-composition} one operation rejects a non-converging server at 
                 undefined,
                 async () => {
                     interactions += 1;
-                    return resolved({
-                        confirm: { action: "accept", content: { confirm: true } },
-                    });
+                    return { action: "accept", content: { confirm: true } };
                 },
             ),
             /still required input after 10 rounds/i,
@@ -224,7 +202,7 @@ test("{§mcp-host-composition} unclaimed input families fail without opening a c
                 undefined,
                 async () => {
                     interactions += 1;
-                    return { status: "cancelled" };
+                    return { action: "cancel" };
                 },
             ),
             /sampling|capabilit/i,

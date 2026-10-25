@@ -40,13 +40,14 @@ test("{§question-tool}: an answered question writes the standard ElicitResult",
         setState: (channel, state) => { states.push(`${channel}:${state}`); },
         interact: async (request) => {
             assert.equal(request.toolName, "question");
+            assert.equal(request.mode, "form");
             assert.equal(request.message, "Which branch?");
-            assert.deepEqual(request.arguments, {
-                message: "Which branch?",
-                requestedSchema: { type: "object", properties: { branch: { type: "string", enum: ["main"] } }, required: ["branch"] },
+            assert.deepEqual(request.requestedSchema, {
+                type: "object",
+                properties: { branch: { type: "string", enum: ["main"] } },
+                required: ["branch"],
             });
-            assert.deepEqual(request.responseSchema, request.arguments.requestedSchema);
-            return { status: "resolved", payload: { branch: "main" } };
+            return { action: "accept", content: { branch: "main" } };
         },
     }));
     assert.equal(result.status, 200);
@@ -63,22 +64,24 @@ test("{§question-tool}: answer fields named action or content remain answer dat
             type: "object", properties: { action: { type: "string" }, content: { type: "string" } },
         } }),
         write: (_channel, chunk) => writes.push(chunk),
-        interact: async () => ({ status: "resolved", payload: answer }),
+        interact: async () => ({ action: "accept", content: answer }),
     }));
     assert.equal(result.status, 200);
     assert.deepEqual(JSON.parse(writes.join("")), { action: "accept", content: answer });
 });
 
-test("{§question-tool}: a cancelled interaction returns the standard cancel action", async () => {
-    const writes: Array<[string, string]> = [];
-    const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
-    const result = await tool.run(args({
-        body: JSON.stringify({ message: "Ok?", requestedSchema: { type: "object" } }),
-        write: (channel, chunk) => { writes.push([channel, chunk]); },
-        interact: async () => ({ status: "cancelled" }),
-    }));
-    assert.equal(result.status, 200);
-    assert.deepEqual(JSON.parse(writes[0][1]), { action: "cancel" });
+test("{§question-tool}: a cancelled or declined interaction returns the standard action", async () => {
+    for (const action of ["cancel", "decline"] as const) {
+        const writes: Array<[string, string]> = [];
+        const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
+        const result = await tool.run(args({
+            body: JSON.stringify({ message: "Ok?", requestedSchema: { type: "object" } }),
+            write: (channel, chunk) => { writes.push([channel, chunk]); },
+            interact: async () => ({ action }),
+        }));
+        assert.equal(result.status, 200);
+        assert.deepEqual(JSON.parse(writes[0][1]), { action });
+    }
 });
 
 test("{§question-tool}: a malformed body fails with the standard shape steer", async () => {

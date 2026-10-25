@@ -32,21 +32,9 @@ const definition = () => httpServer("conformance", serverUrl);
 
 const interaction = async (
     request: ClientInteractionRequest,
-): Promise<ClientInteractionResolution> => {
-    const requests = request.arguments.requests as Record<string, {
-        readonly method?: string;
-        readonly params?: { readonly mode?: string };
-    }>;
-    return {
-        status: "resolved",
-        payload: Object.fromEntries(Object.entries(requests).map(([key, value]) => [
-            key,
-            value.params?.mode === "url"
-                ? { action: "accept" }
-                : { action: "accept", content: { confirmed: true } },
-        ])),
-    };
-};
+): Promise<ClientInteractionResolution> => request.mode === "url"
+    ? { action: "accept" }
+    : { action: "accept", content: { confirmed: true } };
 
 const withConnection = async <T>(
     connection: ServerConnection,

@@ -50,14 +50,14 @@ test("{§hooks-event-projection} common hook names retain native evidence withou
     fixture.emit(42, "loop/terminated", terminal);
     const notice = { workerId: null, loopId: 0, notice: { source: "fixture", level: "warn", message: "Preparation incomplete." } };
     fixture.emit(42, "notice/event", notice);
-    const interaction = { workerId: 7, loopId: 10, turnId: 11, interactionId: 12, request: { toolName: "question", arguments: { prompt: "Proceed?" }, message: "Please choose.", responseSchema: {} } };
+    const interaction = { workerId: 7, loopId: 10, turnId: 11, interactionId: 12, request: { toolName: "question", mode: "form", message: "Please choose.", requestedSchema: { type: "object" } } };
     fixture.emit(42, "loop/interaction", interaction);
     await module.close();
     const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     assert.deepEqual(events, [
         { hook_event_name: "Stop", session_id: "7", plurnk: { workspaceId: 42, method: "loop/terminated", params: terminal } },
         { hook_event_name: "Notification", message: "Preparation incomplete.", plurnk: { workspaceId: 42, method: "notice/event", params: notice } },
-        { hook_event_name: "PermissionRequest", session_id: "7", tool_name: "question", tool_input: { prompt: "Proceed?" }, message: "Please choose.", plurnk: { workspaceId: 42, method: "loop/interaction", params: interaction } },
+        { hook_event_name: "PermissionRequest", session_id: "7", tool_name: "question", tool_input: interaction.request, message: "Please choose.", plurnk: { workspaceId: 42, method: "loop/interaction", params: interaction } },
     ]);
 });
 

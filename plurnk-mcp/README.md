@@ -88,15 +88,22 @@ MCP is one family of workspace Functionality, managed with the verbs every famil
 definition and enabled state. Use `disable` to suppress an inherited server.
 MCP management neither installs nor deletes plugins or configuration files.
 
-An ACP client sends each as the ordinary management action under
-`forwardedProps.plurnk.action`, and the Run's `RUN_FINISHED.result` reports the result or
-exact RFC 9457 Problem Details:
+An ACP client sends each as the ordinary management action via the `_plurnk/action`
+JSON-RPC 2.0 method, receiving the action result or exact RFC 9457 Problem Details:
 
 ```json
-{ "forwardedProps": { "plurnk": { "workspace": "example", "action": {
-  "kind": "workspace.mcp.add",
-  "definition": { "name": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
-} } } }
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "_plurnk/action",
+  "params": {
+    "workspace": "example",
+    "kind": "workspace.mcp.add",
+    "params": {
+      "definition": { "name": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
+    }
+  }
+}
 ```
 
 The model manages the same family through ````` ````mcp (list|discover|add|replace|enable|disable|remove) `````

@@ -349,7 +349,7 @@ export default class ClientInput {
             );
         }
         const value = resolution;
-        const supported = new Set(["decision", "body", "outcome"]);
+        const supported = new Set(["decision", "scope", "body", "outcome"]);
         for (const key of Object.keys(value)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -376,6 +376,18 @@ export default class ClientInput {
                 },
             );
         }
+        if (value.scope !== undefined && value.scope !== "once" && value.scope !== "always") {
+            ClientInput.#invalid(
+                context,
+                "proposal-scope-invalid",
+                "resolution.scope is not once or always.",
+                {
+                    field: "resolution.scope",
+                    allowedScopes: ["once", "always"],
+                    recovery: "Use once or always, or omit resolution.scope.",
+                },
+            );
+        }
         if (value.body !== undefined && typeof value.body !== "string") {
             ClientInput.#invalid(
                 context,
@@ -394,6 +406,7 @@ export default class ClientInput {
         }
         return {
             decision: value.decision,
+            ...(value.scope === undefined ? {} : { scope: value.scope }),
             ...(value.body === undefined ? {} : { body: value.body }),
             ...(value.outcome === undefined ? {} : { outcome: value.outcome }),
         };
@@ -412,7 +425,7 @@ export default class ClientInput {
                 "resolution is not a valid client interaction resolution.",
                 {
                     field: "resolution",
-                    recovery: "Resolve with status 'resolved' and an optional payload, or status 'cancelled'.",
+                    recovery: "Resolve with action 'accept' (and optional content), 'decline', or 'cancel'.",
                 },
             );
         }

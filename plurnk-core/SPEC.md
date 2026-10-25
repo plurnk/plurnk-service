@@ -4159,6 +4159,8 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | `attrs`               | proposed log row `attrs` object                                                                                    |
 | `owner`               | the worker's durable workspace-scoped approval owner ({§worker-ownership}) |
 | `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
+| `selector`            | the proposal's `CapabilitySelector` ({§capability-policy-matching}) for standing workspace policy rules            |
+| `subject`             | the structured ACP v2 review subject (`{ type: "command", command, cwd }` or `{ type: "tool_call", kind, title, locations?, diff? }`) |
 
 Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, owner registration, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
 
@@ -4176,11 +4178,12 @@ awaiting operation owner.
 
 Only the live process-local waiter can make a durable row resolvable. Interaction
 identities are never reused after settlement or owner loss. Resolution validates
-one `ClientInteractionResolution` and its resolved payload against the pending
-request's `responseSchema` before deleting the row and releasing the owner exactly
-once. An invalid payload returns `400 interaction-response-invalid` with validation
-issues; the same request remains pending and answerable. Cancellation requires no
-payload. Owner abort deletes the row and rejects the
+one `ClientInteractionResolution` (`{ action: "accept", content? } | { action: "decline" } | { action: "cancel" }`)
+and, when `action` is `"accept"`, validates `content` against the pending form
+request's `requestedSchema` (or rejects any `content` on a URL request) before
+deleting the row and releasing the owner exactly once. Invalid content returns
+`400 interaction-response-invalid` with validation issues; the same request remains
+pending and answerable. `"decline"` and `"cancel"` require no content. Owner abort deletes the row and rejects the
 waiter with that owner's cancellation reason. An executor's waiter follows its
 execution signal, including KILL and deadline, not just its enclosing loop.
 Scheme and executor interaction requests may supply a narrower signal; Core
@@ -4208,6 +4211,7 @@ operation, message sender, or attrs.
 | Server `accept` | accept |
 | Server `reject` | reject, `policy_veto` |
 | Server `review`, a person's client operation ({§connection-lifecycle}) | accept, `client_operation` |
+| Server `review`, pre-approved by capability `allow` ({§capability-policy-cascade}) | accept, `capability_allow` |
 | Server `review`, owner implements `request_approval` | review |
 | Server `review`, owner has no reviewer | reject, `no_review_channel` |
 
@@ -5736,7 +5740,7 @@ bound worker and returns the complete fresh projection.
 | Facet | Rule |
 | --- | --- |
 | Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; an optional literal target is a descriptive label only, which neither routes the question nor changes the body or recipient |
-| Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content }` or `{ action: "cancel" }`): the executor maps `requestedSchema` to the contracts-owned `ClientInteractionRequest.responseSchema` (toolName `question`), the client returns that exact answer object, and the executor constructs the `ElicitResult`; answer fields are data, including fields named `action` or `content` |
+| Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`): the executor submits the contracts-owned form `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), the client returns the exact `ClientInteractionResolution`, and the executor writes it verbatim to `results`; answer fields are data, including fields named `action` or `content` |
 | Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§client-interactions}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
 | Effect | `read`: the tool observes the human's answer and is never proposal-gated |
 | Admission | its runtime declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny it; the ordinary executor policy also applies, `PLURNK_EXECS_QUESTION=0` disabling registration and teaching ({§executor-policy}) |
@@ -6593,7 +6597,7 @@ retain distinct contracts and lifetimes.
   engine-internal faults crash and never mint model-facing rows.
 - **Asynchronous work does not weaken the contract.** A stream-producing operation returns its initial `102` after acquisition. At conclusion the subscription stores the exact universal terminal result; `stream/concluded` carries it unchanged; the next ambient terminal READ merges it with the stream payload and preserves its Problem instance, assigning the committed `log:///.../READ` URI only when absent. Timeouts and service cancellations replace the complete terminal result with a new valid 504/499 Problem—they never mutate a status while retaining a contradictory Problem.
 - **Self-explaining rows.** A problem `title` names the stable class and `detail` states the occurrence-specific cause. Producer-known operands belong in factual extensions. `stage` appears only when neighboring stages imply different recovery; `recovery` states one generally valid next action; `retryable` is true only when the producer recommends automatically retrying the identical request. Unknown recovery or retryability is omitted rather than guessed. General workflow teaching stays in the packet rather than being duplicated into every failure. The runtime-neutral writing contract is owned by `@plurnk/plurnk-contracts`.
-- **Exact Problems cross durable and external boundaries.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, ACP, clients, digests, and benchmark records preserve the originating Problem object. The model packet alone derives `{§problem-projection}` without mutating that object. An adapter may add a missing durable `instance`, never replace an existing one; it must not rebuild failure truth from `status`, `detail`, `RUN_ERROR`, or a scheduler projection. A failed boundary without a valid Problem is a contract violation and fails hard.
+- **Exact Problems cross durable and external boundaries.** Scheme capabilities, proposal application, subscription conclusion, loop settlement, ACP, clients, digests, and benchmark records preserve the originating Problem object. The model packet alone derives `{§problem-projection}` without mutating that object. An adapter may add a missing durable `instance`, never replace an existing one; it must not rebuild failure truth from `status`, `detail`, a transport error envelope, or a scheduler projection. A failed boundary without a valid Problem is a contract violation and fails hard.
 - **Caught diagnostics are bounded.** Core-owned Problems may include a bounded preview of a caught runtime diagnostic when it states the occurrence-specific cause. `PLURNK_SERVICE_ERROR_DETAIL_LIMIT` owns that model-facing character bound; complete errors remain in daemon diagnostics. Input validation and stable contract failures do not spend this allowance on implementation text.
 - §notice-drain-on-read **Notices** - the few observations that are not log rows render one callout each under their distinct `## Notices` section ({§notice-callout}), never a JSON dump. Packet rendering normalizes whitespace, bounds the producer message with the shared preview limits, and appends any typed position. The notice buffer drains on read; event Notices appear on at most one packet. Parking preserves pending notices for that loop's next packet; another loop cannot consume them. Terminal cleanup, including cancellation while parked, discards undelivered notices. This buffer is process-local, not restart-persistent. Stateful derivation progress and provider availability coalesce in the buffer, so clients observe every checkpoint live while a later model packet receives only the current state under ordinary level filtering.
 - §rail-accounting-private **Rail accounting is private.** Visibility is owned by {§engine-rails}: the model sees concrete failures from admitted turns, never rejected emissions, attempt counts, the strike streak, or cycle detection. Surfacing internal state creates a gamification surface where the model optimizes for engine metrics instead of the task.

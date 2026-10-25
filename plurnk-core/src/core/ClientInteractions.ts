@@ -181,13 +181,21 @@ export default class ClientInteractions {
                 "Only the interaction's recipient may answer it.", {}, { interactionId }));
         }
         const exact = structuredClone(Validator.assertClientInteractionResolution(resolution));
-        if (exact.status === "resolved") {
-            const validation = Validator.validateJsonSchemaInstance(waiter.request.responseSchema, exact.payload);
-            if (!validation.valid) {
+        if (exact.action === "accept") {
+            if (waiter.request.mode === "form") {
+                const validation = Validator.validateJsonSchemaInstance(waiter.request.requestedSchema, exact.content);
+                if (!validation.valid) {
+                    throw new OperationFailureError(Results.failure(
+                        "interaction:resolution", "interaction-response-invalid", 400,
+                        "Response does not satisfy the pending interaction's schema.", {},
+                        { interactionId, issues: validation.errors, retryable: false },
+                    ));
+                }
+            } else if (exact.content !== undefined) {
                 throw new OperationFailureError(Results.failure(
                     "interaction:resolution", "interaction-response-invalid", 400,
-                    "Response does not satisfy the pending interaction's schema.", {},
-                    { interactionId, issues: validation.errors, retryable: false },
+                    "URL elicitation accepts no content.", {},
+                    { interactionId, retryable: false },
                 ));
             }
         }

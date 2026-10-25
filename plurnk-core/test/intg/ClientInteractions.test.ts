@@ -11,9 +11,9 @@ import { openMigrated, seedEnvelope } from "./_db.ts";
 
 const request = {
     toolName: "choose_repository",
-    arguments: { owner: "plurnk" },
+    mode: "form",
     message: "Choose the repository to inspect.",
-    responseSchema: {
+    requestedSchema: {
         type: "object",
         properties: { repository: { type: "string" } },
         required: ["repository"],
@@ -37,7 +37,7 @@ test("{§message-envelope-evidence} {§problems-client}: competing interaction a
         return resolution;
     });
     const { interactionId } = await observed.promise;
-    const resolution = { status: "resolved", payload: { repository: "plurnk-service" } } as const;
+    const resolution = { action: "accept", content: { repository: "plurnk-service" } } as const;
     const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, respondent, {
         body: messageId, source: "a2a://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
     })));
@@ -80,16 +80,16 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
     }]);
 
     await interactions.resolve(pending.interactionId, {
-        status: "resolved",
-        payload: { repository: "plurnk-service" },
+        action: "accept",
+        content: { repository: "plurnk-service" },
     }, respondent);
     assert.deepEqual(await awaiting, {
-        status: "resolved",
-        payload: { repository: "plurnk-service" },
+        action: "accept",
+        content: { repository: "plurnk-service" },
     });
     assert.deepEqual(await interactions.list(ids.workspaceId), []);
     await assert.rejects(
-        interactions.resolve(pending.interactionId, { status: "cancelled" }, respondent),
+        interactions.resolve(pending.interactionId, { action: "cancel" }, respondent),
         /Client interaction .* is not pending/,
     );
 });
@@ -125,7 +125,7 @@ test("{§client-interactions}: invalid response content leaves the same interact
     const pending = await observed.promise;
     try {
         await assert.rejects(interactions.resolve(pending.interactionId, {
-            status: "resolved", payload: { repository: 42 },
+            action: "accept", content: { repository: 42 },
         }, respondent), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
@@ -134,12 +134,12 @@ test("{§client-interactions}: invalid response content leaves the same interact
         });
         assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, pending.interactionId);
         await interactions.resolve(pending.interactionId, {
-            status: "resolved", payload: { repository: "plurnk-service" },
+            action: "accept", content: { repository: "plurnk-service" },
         }, respondent);
-        assert.deepEqual(await awaiting, { status: "resolved", payload: { repository: "plurnk-service" } });
+        assert.deepEqual(await awaiting, { action: "accept", content: { repository: "plurnk-service" } });
     } finally {
         if ((await interactions.list(ids.workspaceId)).length) {
-            await interactions.resolve(pending.interactionId, { status: "cancelled" }, respondent);
+            await interactions.resolve(pending.interactionId, { action: "cancel" }, respondent);
         }
         await awaiting;
         await db.close();
@@ -156,17 +156,17 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a retired 
     interactions.onPending((event) => observed.resolve(event));
     const first = interactions.request(request, ids);
     const firstId = (await observed.promise).interactionId;
-    await interactions.resolve(firstId, { status: "cancelled" }, respondent);
+    await interactions.resolve(firstId, { action: "cancel" }, respondent);
     await first;
     observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     const second = interactions.request(request, ids);
     const secondId = (await observed.promise).interactionId;
     try {
         assert.notEqual(secondId, firstId);
-        await assert.rejects(interactions.resolve(firstId, { status: "cancelled" }, respondent), /is not pending/u);
+        await assert.rejects(interactions.resolve(firstId, { action: "cancel" }, respondent), /is not pending/u);
         assert.equal((await interactions.list(ids.workspaceId))[0]?.interactionId, secondId);
     } finally {
-        await interactions.resolve(secondId, { status: "cancelled" }, respondent);
+        await interactions.resolve(secondId, { action: "cancel" }, respondent);
         await second;
         await db.close();
     }

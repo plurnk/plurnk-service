@@ -18,7 +18,8 @@ const input: InputRequiredResult = {
     },
 };
 const answer: ClientInteractionResolution = {
-    status: "resolved", payload: { profile: { action: "accept", content: { name: "Ada" } } },
+    action: "accept",
+    content: { name: "Ada" },
 };
 
 test("{§mcp-input-deadline}: another MRTR round consumes the original budget and a late answer cannot retry", async (t) => {

@@ -120,12 +120,11 @@ test("{§mcp-core-matrix} resource materialization routes MCP elicitation throug
         const { ctx, entries } = context();
         ctx.interactions.request = async (request) => {
             assert.equal(request.toolName, "mcp_input_required");
-            assert.equal(request.arguments.operation, "resources/read");
+            assert.equal(request.mode, "form");
+            assert.equal(request.message, "Read the guarded resource?");
             return {
-                status: "resolved",
-                payload: {
-                    read: { action: "accept", content: { confirm: true } },
-                },
+                action: "accept",
+                content: { confirm: true },
             };
         };
         const pathname = "/resources/fixture%3A%2F%2Fguarded";
