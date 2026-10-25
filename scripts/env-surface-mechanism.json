@@ -1,5 +1,4 @@
 {
-    "plurnk-a2a/src/HostedTasks.ts:UNSPECIFIED_PAGE": "the A2A protocol's own page size for a ListTasks request that names none",
     "plurnk-auth/src/OAuthServer.ts:CODE_TTL_MS": "an authorization code is one hop between the redirect and its exchange; RFC 6749 §4.1.2 bounds a code's life at ten minutes and this keeps it to one",
     "plurnk-auth/src/OAuthServer.ts:MAX_BODY_BYTES": "the bound on a token, revocation, registration or sign-in form, every one of which is a few hundred bytes by the protocol",
     "plurnk-auth/src/OAuthServer.ts:MAX_REGISTERED_CLIENTS": "bounds the anonymous in-memory registry of RFC 7591 public clients; a daemon serves a handful",

@@ -81,7 +81,6 @@
     },
     "dependencies": {
         "@opentelemetry/api": "^1.10.0",
-        "@plurnk/plurnk-a2a": "4.0.2",
         "@plurnk/plurnk-acp": "1.0.0",
         "@plurnk/plurnk-auth": "1.0.0",
         "@plurnk/plurnk-contracts": "6.0.1",
@@ -151,7 +150,6 @@
         "@plurnk/plurnk-otel": "1.0.0"
     },
     "devDependencies": {
-        "@a2a-js/sdk": "1.3.0",
         "@modelcontextprotocol/server": "2.4.0",
         "@opentelemetry/sdk-trace": "^3.0.0",
         "marked": "^18.1.1",

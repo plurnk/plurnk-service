@@ -107,7 +107,7 @@ test("{§operator-config-undeclared-key} the installed panels declare every fami
         "PLURNK_MODEL_fixture", "PLURNK_BASEURL_fixture",
         "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_ON_BODY",
         "PLURNK_EXECS_NODE",
-        ...["MCP", "A2A", "SCHEDULE", "MEMBERS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
+        ...["MCP", "SCHEDULE", "MEMBERS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
         "PLURNK_MCP_fixture_TOOLS", "PLURNK_SKILLS_分析", "PLURNK_SKILLS_分析_ENABLED",
     ];
     assert.deepEqual(computed.filter((key) => !declares(key)), [], "a key a package reads by a computed name belongs to a declared family");

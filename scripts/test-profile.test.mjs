@@ -22,7 +22,6 @@ const expectedProfile = {
     PLURNK_AUTH: "0",
     PLURNK_MCP_EXPANDED: "[]",
     PLURNK_MCP_ENABLED: "0",
-    PLURNK_A2A_ENABLED: "0",
     PLURNK_SCHEDULE_ENABLED: "0",
 };
 

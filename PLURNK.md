@@ -12,7 +12,7 @@ and one algebra of selection.
 
 Six claims describe the interior of such a machine. A seventh describes its edges: a radical interior
 is best paired with a conventional exterior that adopts the ecosystem's standards (MCP, Agent Skills,
-A2A, ACP and Agent Plugins), because those standards govern exactly the boundaries the interior
+ACP and Agent Plugins), because those standards govern exactly the boundaries the interior
 leaves alone. Plurnk is a working instance of the argument. Watch the user, and it looks like any
 terminal agent. Watch the model, and it looks like nothing else.
 
@@ -315,7 +315,6 @@ Everything a person, a tool or another agent touches is the ecosystem's own stan
 - MCP servers come from an ordinary `mcp.json`.
 - Agent Skills are discovered in `.agents/skills`.
 - Agent Plugins install as plugins.
-- Other agents talk to it over A2A.
 - Applications reach it over ACP.
 - Models are reached through the common provider APIs, hosted and local.
 - Configuration lives in plain environment files.
@@ -328,7 +327,6 @@ flowchart LR
     MCP["MCP<br/>tools · resources"] --- core
     SKILLS["Agent Skills"] --- core
     PLUGINS["Agent Plugins"] --- core
-    A2A["A2A<br/>other agents"] --- core
     ACP["ACP<br/>applications"] --- core
     MODELS["Model APIs<br/>hosted · local"] --- core
     core["Plurnk interior<br/><br/>instruction set · address space<br/>selection · journal · processes"]
@@ -338,7 +336,6 @@ This is more than politeness toward the ecosystem. The standards and the bets oc
 territory. Each standard governs one boundary between systems:
 
 - MCP, between tools and agents;
-- A2A, between agents;
 - ACP, between an agent and its interface;
 - Agent Skills and Agent Plugins, the packaging of knowledge and capability.
 
@@ -354,7 +351,6 @@ applied outward:
 | An MCP tool | A statement: a fence with the tool's name and a JSON body |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
-| An A2A task | An ordinary worker with its own journal |
 | An ACP client | A view of a durable worker that outlives the connection |
 
 Every standard Plurnk adopts becomes one more factor in the multiplication. Integration is not a
@@ -363,7 +359,7 @@ built to multiply.
 
 The practical consequence is the one that matters most to anyone deciding whether to try it. A Plurnk
 user installs it, points it at a model, gives it the MCP servers and skills they already have, and
-talks to it in a terminal. Other agents call it the way they call any A2A agent, and applications
+talks to it in a terminal. Applications
 drive it the way they drive any ACP agent. In daily use it is as ordinary as any popular harness,
 and more ordinary than those that depend on one vendor's conventions.
 
@@ -484,7 +480,6 @@ Plurnk is open source under the MIT license:
 4. J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan and O. Press. *SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering.* NeurIPS 2024. arXiv:2405.15793.
 5. mini-SWE-agent. <https://github.com/SWE-agent/mini-swe-agent>
 6. Model Context Protocol. <https://modelcontextprotocol.io>
-7. Agent2Agent (A2A) Protocol. <https://a2a-protocol.org>
-8. Agent Client Protocol (ACP). <https://agentclientprotocol.com>
-9. Agent Skills. <https://agentskills.io/specification>
-10. Agent Plugins. <https://agent-plugins.org/specification>
+7. Agent Client Protocol (ACP). <https://agentclientprotocol.com>
+8. Agent Skills. <https://agentskills.io/specification>
+9. Agent Plugins. <https://agent-plugins.org/specification>

@@ -222,27 +222,25 @@ test("{§db-migrations} {§packet-wire-envelope}: role evolution retains histori
     } finally { after.close(); }
 });
 
-test("{§a2a-worker-ownership}: migration reparents A2A contexts without adopting ordinary roots or losing task evidence", async (t) => {
+test("{§db-migrations} {§worker-owner-creation}: migration adds worker owners and drops loop policy without losing workers or loops", async (t) => {
     const path = await released(t, V2_0_0);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
-            INSERT INTO workspaces (id, name) VALUES (1, 'a2aUpgrade');
+            INSERT INTO workspaces (id, name) VALUES (1, 'ownerUpgrade');
             INSERT INTO workers (id, workspace_id, name, origin, parent_worker_id)
-                VALUES (1, 1, 'context', 'model', NULL), (2, 1, 'task', 'model', 1), (3, 1, 'ordinary', 'model', NULL);
+                VALUES (1, 1, 'parent', 'model', NULL), (2, 1, 'task', 'model', 1), (3, 1, 'ordinary', 'model', NULL);
             INSERT INTO loops (id, worker_id, sequence, prompt, prompt_source, policy, max_turns)
-                VALUES (1, 2, 1, 'Retain this task', 'a2a://anonymous/contexts/context/tasks/task/messages/message', '{"proposals":"accept","attended":true}', -1);
+                VALUES (1, 2, 1, 'Retain this task', 'acp://session/1', '{"proposals":"accept","attended":true}', -1);
         `);
     } finally { before.close(); }
     const db = await openMigrated(path);
     await db.close();
     const after = new DatabaseSync(path);
     try {
-        const context = after.prepare("SELECT parent_worker_id, owner FROM workers WHERE id = 1").get()!;
-        const runtime = after.prepare("SELECT id, owner FROM workers WHERE origin = '_plurnk'").get()!;
-        assert.equal(context.parent_worker_id, runtime.id);
-        assert.equal(context.owner, "_plurnk");
-        assert.equal(runtime.owner, "_plurnk");
+        const parent = after.prepare("SELECT parent_worker_id, owner FROM workers WHERE id = 1").get()!;
+        assert.equal(parent.parent_worker_id, null);
+        assert.equal(parent.owner, "_plurnk");
         assert.equal(after.prepare("SELECT parent_worker_id FROM workers WHERE id = 2").get()!.parent_worker_id, 1);
         assert.equal(after.prepare("SELECT parent_worker_id FROM workers WHERE id = 3").get()!.parent_worker_id, null);
         assert.equal(after.prepare("SELECT prompt FROM loops WHERE id = 1").get()!.prompt, "Retain this task");

@@ -7,7 +7,7 @@ import { McpServer, ResourceTemplate, completable, createMcpHandler } from "@mod
 import { z } from "zod/v4";
 import type { FunctionalityListResult, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";

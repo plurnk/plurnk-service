@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 
 const { values: { suites: showSuites } } = parseArgs({ options: { suites: { type: "boolean", default: false } } });
 const dir = resolve(import.meta.dirname, "../../plurnk-core/test/intg");
-const harness = ["_db.ts", "_scheme.ts", "_execs.ts", "_packet.ts", "_provider.ts", "_rpc.ts", "_mock.ts", "_dsl.ts", "_seam.ts", "_find.ts", "_entry-scheme.ts", "_stream-mock.ts", "_a2a.ts", "_launcher.ts", "_observe-memory.ts"];
+const harness = ["_db.ts", "_scheme.ts", "_execs.ts", "_packet.ts", "_provider.ts", "_rpc.ts", "_mock.ts", "_dsl.ts", "_seam.ts", "_find.ts", "_entry-scheme.ts", "_stream-mock.ts", "_http.ts", "_launcher.ts", "_observe-memory.ts"];
 const suites = readdirSync(dir).filter((name) => name.endsWith(".test.ts")).toSorted();
 
 // suite → module → Set of imported names ("*" for a namespace or default import).

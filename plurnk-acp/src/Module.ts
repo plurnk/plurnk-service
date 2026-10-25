@@ -70,7 +70,6 @@ const OWNER_ADDRESS = "acp:///owner";
 const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
     { name: "mcp", description: "Manage workspace MCP servers" },
     { name: "skills", description: "Manage workspace skills" },
-    { name: "a2a", description: "Manage workspace A2A agents" },
     { name: "members", description: "Manage workspace members" },
     { name: "env", description: "Manage workspace environment variables" },
     { name: "schedule", description: "Manage workspace schedules" },
@@ -270,6 +269,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         await Promise.allSettled(closingPeers.map((peer) => peer.closeWithProblem(stopping)));
         await this.#acpServer.close();
         await new Promise<void>((resolve) => this.#wss.close(() => resolve()));
+        // {§module-route-settlement} Join admitted route work before returning from close().
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
     }
 
@@ -1718,8 +1718,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         : null;
                 if (definitions !== null) {
                     if (definitions.length === 0) {
-                        const label = cmd === "a2a" ? "A2A agents" : cmd;
-                        return `${label}: none`;
+                        return `${cmd}: none`;
                     }
                     return definitions
                         .map((item) => {
@@ -2465,7 +2464,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             const family = colonIdx > 0 ? ctx.params.configId.slice(0, colonIdx) : "";
                             const alias = colonIdx > 0 ? ctx.params.configId.slice(colonIdx + 1) : "";
                             if (
-                                (family === "mcp" || family === "skills" || family === "a2a" || family === "schedule") &&
+                                (family === "mcp" || family === "skills" || family === "schedule") &&
                                 alias.length > 0
                             ) {
                                 const enabled =

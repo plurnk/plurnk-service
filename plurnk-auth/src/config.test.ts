@@ -21,7 +21,7 @@ test("[{§auth-configuration}] plurnk-auth consumes and validates its package-ow
         clients: {},
         allowOrigin: "*",
     });
-    assert.deepEqual(SCOPES, ["acp", "a2a"]);
+    assert.deepEqual(SCOPES, ["acp"]);
 });
 
 test("[{§auth-configuration}] explicit in-process options override the assembled environment", () => {
@@ -66,14 +66,14 @@ test("[{§auth-oauth-clients}] every PLURNK_AUTH_CLIENT_<id> line declares one c
     const declared = resolveModuleOptions({ env: {
         ...floor,
         PLURNK_AUTH_CLIENT_researcher: JSON.stringify({ secret: "r-secret", scopes: ["acp", "acp"] }),
-        "PLURNK_AUTH_CLIENT_web.lane-2": JSON.stringify({ secret: "w", scopes: ["a2a"] }),
+        "PLURNK_AUTH_CLIENT_web.lane-2": JSON.stringify({ secret: "w", scopes: ["acp"] }),
     } }).clients;
-    assert.deepEqual(declared, { "researcher": { secret: "r-secret", scopes: ["acp"] }, "web.lane-2": { secret: "w", scopes: ["a2a"] } });
+    assert.deepEqual(declared, { "researcher": { secret: "r-secret", scopes: ["acp"] }, "web.lane-2": { secret: "w", scopes: ["acp"] } });
     const resolve = (key: string, value: string) => () => resolveModuleOptions({ env: { ...floor, [key]: value } });
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "not json"), /PLURNK_AUTH_CLIENT_bad must be a JSON object/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", "[]"), /must be a JSON object/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ scopes: ["acp"] })), /needs a non-empty "secret"/u);
-    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["acp","a2a"\]/u);
+    assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s" })), /needs "scopes", a non-empty array from \["acp"\]/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_bad", JSON.stringify({ secret: "s", scopes: ["root"] })), /needs "scopes"/u);
     assert.throws(resolve("PLURNK_AUTH_CLIENT_operator", JSON.stringify({ secret: "s", scopes: ["acp"] })), /"operator" is the operator's own client/u);
     assert.throws(() => resolveModuleOptions({ clients: { operator: { secret: "s", scopes: ["acp"] } }, env: floor }), /"operator" is not a client id/u);

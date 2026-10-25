@@ -5,18 +5,18 @@ import test from "node:test";
 import type { JsonSchema } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { insertWorkspace, openMigrated } from "./_db.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
-test("{§mcp-module} {§schedule-module} {§a2a-module} a bare daemon discovers the MCP, schedule and A2A families", async (t) => {
+test("{§mcp-module} {§schedule-module} a bare daemon discovers the MCP and schedule families", async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const names = daemon.listModuleActions().map(({ name }) => name);
-    for (const family of ["mcp", "schedule", "a2a"]) {
+    for (const family of ["mcp", "schedule"]) {
         assert.deepEqual(
             names.filter((name) => name.startsWith(`workspace.${family}.`)).map((name) => name.slice(`workspace.${family}.`.length)).filter((verb) => VERBS.includes(verb)).toSorted(),
             VERBS,
@@ -31,7 +31,6 @@ const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; r
     "workspace.skills.discover": { inputs: ["source"] },
     "workspace.schedule.discover": { inputs: ["source"] },
     "workspace.mcp.discover": { inputs: ["query"] },
-    "workspace.a2a.discover": { inputs: ["source", "configuration"] },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "worker.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.members.discover": { inputs: ["query"] },
@@ -127,18 +126,18 @@ test("{§acp-daemon-client} {§module-http-mounts} a bare daemon with a listener
     assert.ok(rpc?.result?.actions !== undefined, "the discovered client interface answers discover");
 });
 
-test("{§a2a-module} {§module-contained-configuration} an invalid exposure setting is reported and outbound A2A keeps working", async (t) => {
-    const prior = process.env.PLURNK_A2A_EXPOSE;
-    process.env.PLURNK_A2A_EXPOSE = "yes";
-    t.after(() => { if (prior === undefined) delete process.env.PLURNK_A2A_EXPOSE; else process.env.PLURNK_A2A_EXPOSE = prior; });
+test("{§mcp-module} {§module-contained-configuration} an invalid registry setting is reported and MCP management keeps working", async (t) => {
+    const prior = process.env.PLURNK_MCP_REGISTRY_URL;
+    process.env.PLURNK_MCP_REGISTRY_URL = "ftp://example";
+    t.after(() => { if (prior === undefined) delete process.env.PLURNK_MCP_REGISTRY_URL; else process.env.PLURNK_MCP_REGISTRY_URL = prior; });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
-    assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.a2a.list"), "the outbound family is registered");
+    assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "the MCP family is registered");
     assert.deepEqual(
-        daemon.configurationNotices().filter(({ owner }) => owner === "module:@plurnk/plurnk-a2a").map(({ key }) => key),
-        ["PLURNK_A2A_EXPOSE"],
+        daemon.configurationNotices().filter(({ owner }) => owner === "module:@plurnk/plurnk-mcp").map(({ key }) => key),
+        ["PLURNK_MCP_REGISTRY_URL"],
         "the contained setting is the module's own configuration notice",
     );
 });

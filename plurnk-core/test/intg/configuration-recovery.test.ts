@@ -205,7 +205,6 @@ for (const [family, key, value] of [
     ["mcp", "PLURNK_MCP_broken", "{}"],
     ["mcp", "PLURNK_MCP_ENABLED", "invalid"],
     ["mcp", "PLURNK_MCP_future_TOOLS", "invalid"],
-    ["a2a", "PLURNK_A2A_broken", "{}"],
     ["schedule", "PLURNK_SCHEDULE_broken", "{}"],
     ["members", "PLURNK_MEMBERS_broken", "!"],
     ["skills", "PLURNK_SKILLS_broken", "{}"],

@@ -10,7 +10,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
@@ -276,7 +276,7 @@ test("{§module-action-registration} Daemon: module actions register once during
         await daemon.start();
         // {§functionality-scope} Core families and the discovered default modules register beside the
         // module's own action.
-        const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp.", "workspace.a2a."];
+        const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp."];
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
             name: "example.inspect",
             scope: "daemon",

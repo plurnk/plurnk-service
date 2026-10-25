@@ -18,8 +18,7 @@ before it cannot do:
 - **An MCP server** when X has an API the model calls as tools. A server X already
   publishes needs only its definition.
 - **A plugin** when skills and MCP servers install together, or travel to other agents.
-- **A client** when X drives Plurnk from outside: an application through ACP, an
-  agent through A2A.
+- **A client** when X drives Plurnk from outside through ACP.
 - **A hook** when X hears about Plurnk's lifecycle events and answers nothing.
 - **An extension** only when the model needs something new inside the daemon that
   none of the above can add: a runtime, an address scheme, a media-type reader, a
@@ -34,13 +33,12 @@ before it cannot do:
 | --- | --- | --- | --- |
 | Skill | a directory holding `SKILL.md` | `skill://<name>/` | none |
 | MCP server | one MCP definition | a runtime named for the server, its tools as invocation targets, and its resources as an address scheme | none: a process or a URL |
-| A2A agent | one Agent Card URL | `a2a://<alias>`, a peer that takes tasks | none: a remote agent |
 | Plugin | a directory holding `plugin.json`, `skills/` and `mcp.json` | its skills and MCP servers | none, unless it declares an extension |
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
-Skills, MCP servers and A2A agents are definitions. The `skills`, `mcp` and
-`a2a` runtimes add, replace, enable, disable and remove them in the current workspace,
-and `worker:///_plurnk/plurnk/skills.md`, `mcp.md` and `a2a.md` show each
+Skills and MCP servers are definitions. The `skills` and
+`mcp` runtimes add, replace, enable, disable and remove them in the current workspace,
+and `worker:///_plurnk/plurnk/skills.md` and `mcp.md` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 
@@ -49,7 +47,6 @@ the daemon starts.
 | Surface | Shape | Code in the daemon |
 | --- | --- | --- |
 | Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`) | none |
-| Agent | an A2A client of the exposure that `PLURNK_A2A_EXPOSE` mounts | none |
 | Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none |
 | Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon |
 

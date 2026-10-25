@@ -450,10 +450,10 @@ plane.**
   Every session advertises `SessionConfigOption[]` entries for `model` (`category: "model"`),
   `thought_level` (`category: "thought_level"`), `spawn_model` (`category: "model_config"`), and `mode`
   (`category: "mode"`, workspace capability policy `propose` | `allow` | `deny`), plus boolean
-  toggles `<family>:<alias>` (`mcp`, `skills`, `a2a`, `schedule`) and `providers/list`,
+  toggles `<family>:<alias>` (`mcp`, `skills`, `schedule`) and `providers/list`,
   `providers/set`, and `providers/disable`.
 - **Available Slash Commands (`availableCommands` on `session/prompt`):**
-  Every session advertises `AvailableCommand[]` entries for `/mcp`, `/skills`, `/a2a`, `/members`,
+  Every session advertises `AvailableCommand[]` entries for `/mcp`, `/skills`, `/members`,
   `/env`, `/schedule`, `/rollback`, `/share`, and `/script`. Submitting `/<command> ...` via
   `session/prompt` executes the command under ACP v2's local-command lifecycle
   (`state_update: { state: "running" }` → `agent_message_chunk` / `notice` →
@@ -504,7 +504,7 @@ durable effort policy via `ApplicationPort.readWorkerEffort` and `setWorkerEffor
 
 §acp-module-action-scope **Extension module actions share the same schema-validated dispatch plane.**
 `ApplicationPort.listModuleActions()` supplies `{ name, scope, inputSchema, outputSchema }`
-descriptors ({§acp-discovery-contract}) for `workspace.mcp.*`, `worker.skills.*`, `worker.a2a.*`,
+descriptors ({§acp-discovery-contract}) for `workspace.mcp.*`, `worker.skills.*`,
 `worker.members.*`, `workspace.env.*`, `worker.env.*`, and `worker.schedule.*`. Workspace and
 session identities come from the bound session context, never from untrusted client parameters.
 

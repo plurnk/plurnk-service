@@ -56,7 +56,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
-    assert.equal(ClientInput.assertOptionalSource("loop.run", "a2a://session42"), "a2a://session42");
+    assert.equal(ClientInput.assertOptionalSource("loop.run", "acp://session42"), "acp://session42");
     assert.equal(ClientInput.assertOptionalSource("loop.run", undefined), undefined);
     assert.equal(ClientInput.assertSelector("worker.model.set", "selector", "google/gemini"), "google/gemini");
     assert.equal(ClientInput.assertChildSelector("worker.child.set", null), null);

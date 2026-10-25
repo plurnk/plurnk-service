@@ -45,7 +45,6 @@
         "plurnk-execs-sqlite",
         "plurnk-providers",
         "plurnk-digest",
-        "plurnk-a2a",
         "plurnk-schedule",
         "plurnk-skills",
         "plurnk-auth",

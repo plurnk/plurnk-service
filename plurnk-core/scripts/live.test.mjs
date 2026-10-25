@@ -32,10 +32,9 @@ test("{§live-harness-deadline} live and demo deadline reads the existing env kn
 test("{§tier-census} the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 42);
+    assert.equal(names.length, 41);
     // {§tier-census} — the surfaces that were flags and scripts are specimens with requirements.
     assert.ok(names.includes("live mcp: current third-party stdio and HTTP servers compose through the assembled product"));
-    assert.ok(names.includes("live a2a: the upstream TCK's HTTP+JSON requirement tiers find only the ruled divergences in the assembled daemon"));
     assert.ok(names.includes("live client: the terminal client's real-model TUI tier passes against this service"));
     assert.ok(names.includes("live llama-server honors PLURNK's request-scoped reasoning allowance"));
     assert.ok(names.includes("live: the ACP client accepts the complete model response stream"));
@@ -105,22 +104,22 @@ test("{§tier-census} an unmet requirement is named with what the route or host 
     const probes = {
         url: async (url) => url.endsWith("/up"),
         bin: (name) => name === "npx",
-        checkout: (name) => (name === "client" ? present : join(present, "missing")),
+        checkout: () => join(present, "missing"),
     };
-    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up", "bin:npx", "checkout:client"], facts, env, probes), []);
-    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down", "bin:uv", "checkout:a2a-tck"], facts, env, probes), [
+    assert.deepEqual(await unmetRequirements(["input:image", "env:PRESENT", "url:https://example.test/up", "bin:npx", "checkout:client"], facts, env, { ...probes, checkout: () => present }), []);
+    assert.deepEqual(await unmetRequirements(["input:pdf", "reasoning", "output-budget", "env:ABSENT", "url:https://example.test/down", "bin:uv", "checkout:client"], facts, env, probes), [
         "requires input:pdf: the route advertises image input",
         "requires reasoning: the route's efforts are off, adaptive",
         "requires output-budget: the route resolved no output budget",
         "requires env:ABSENT: ABSENT is not in the operator environment",
         "requires url:https://example.test/down: https://example.test/down did not answer within 10 s",
         "requires bin:uv: uv is not on PATH",
-        `requires checkout:a2a-tck: no a2a-tck checkout at ${join(present, "missing")}; PLURNK_A2A_TCK_CHECKOUT names one`,
+        `requires checkout:client: no client checkout at ${join(present, "missing")}; PLURNK_CLIENT_CHECKOUT names one`,
     ]);
     assert.equal(onPath("node"), true, "the running node is on PATH");
     assert.equal(onPath("no-such-binary-plurnk"), false);
     assert.equal(checkoutPath("client", { PLURNK_CLIENT_CHECKOUT: "/elsewhere/plurnk" }), "/elsewhere/plurnk");
-    assert.ok(checkoutPath("a2a-tck", {}).endsWith("/a2a-tck"), "the TCK's default is the sibling checkout");
+    assert.ok(checkoutPath("client", {}).endsWith("/plurnk"), "the client's default is the sibling checkout");
     assert.deepEqual(requirementsOfSkip("requires input:pdf: the route advertises image input; requires reasoning: the route's efforts are off, adaptive"), ["input:pdf", "reasoning"]);
     assert.deepEqual(requirementsOfSkip("The selected route does not advertise native pdf input."), []);
 });

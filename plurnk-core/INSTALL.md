@@ -155,7 +155,7 @@ outside the package.
 | --- | --- |
 | Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
-| MCPs, skills, outbound agents, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Workers share the workspace's current selection. |
+| MCPs, skills, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Workers share the workspace's current selection. |
 | Command environment | `env` manages worker overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
 | External capabilities | Service policy is a ceiling; workspace policy can narrow it for every worker. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
@@ -166,7 +166,7 @@ The [`@plurnk/plurnk-providers` README](https://github.com/plurnk/plurnk-service
 budgets, local endpoints, caching, and connectivity; the
 [model chapter](skill://plurnk/references/models.md) is what a model is told.
 The defaults catalog groups the remaining settings by their owning subsystem:
-permissions, loop limits, residency, execution, context, indexing, MCP, A2A,
+permissions, loop limits, residency, execution, context, indexing, MCP,
 hooks, HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
 
@@ -204,7 +204,7 @@ PLURNK_MCP_ENABLED=1
 PLURNK_MCP_docs_ENABLED=0
 ```
 
-MCP, skills, outbound A2A, schedule, and members use this same naming pattern;
+MCP, skills, schedule, and members use this same naming pattern;
 their `.env.defaults` entries describe each family's definition and controls.
 Aliases use lowercase names, with `_` encoding `-`; skills retain their standard
 Unicode and digit-leading names. An empty definition is invalid, not a disable

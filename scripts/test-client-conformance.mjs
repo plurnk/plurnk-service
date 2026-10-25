@@ -324,8 +324,6 @@ try {
     await tui.waitFor(/source=PLURNK_MCP_sourcecheck/);
     tui.write("/skills\r");
     await tui.waitFor(/plurnk\s+dormant/);
-    tui.write("/a2a\r");
-    await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
@@ -468,7 +466,7 @@ try {
     }
     process.stdout.write(`plurnk conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
 
-    for (const family of ["mcp", "skills", "a2a"]) {
+    for (const family of ["mcp", "skills"]) {
         const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
             throw new Error(`workspace.${family}.list returned no Functionality definitions`);

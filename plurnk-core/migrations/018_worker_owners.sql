@@ -56,31 +56,6 @@ END;
 
 CREATE INDEX workers_owner ON workers (workspace_id, owner);
 
--- {§a2a-worker-ownership} Released A2A contexts were roots. Retained causal
--- message identities distinguish them from ordinary root model workers.
-CREATE TEMP TABLE a2a_context_parents AS
-SELECT DISTINCT context.id, context.workspace_id
-FROM workers context
-JOIN workers task ON task.parent_worker_id = context.id
-JOIN loops l ON l.worker_id = task.id
-WHERE context.origin = 'model' AND context.parent_worker_id IS NULL
-  AND context.default_conversation = 0 AND task.origin = 'model'
-  AND l.prompt_source GLOB 'a2a://*'
-  AND instr(l.prompt_source, '/contexts/' || context.name || '/tasks/' || task.name || '/messages/') > 0
-  AND substr(l.prompt_source, -1) != '/';
-
-INSERT INTO workers (workspace_id, name, origin)
-SELECT DISTINCT context.workspace_id, '_plurnk', '_plurnk'
-FROM a2a_context_parents context
-WHERE NOT EXISTS (SELECT 1 FROM workers runtime WHERE runtime.workspace_id = context.workspace_id AND runtime.origin = '_plurnk');
-
-UPDATE workers SET parent_worker_id = (
-    SELECT runtime.id FROM workers runtime
-    WHERE runtime.workspace_id = workers.workspace_id AND runtime.origin = '_plurnk'
-)
-WHERE id IN (SELECT id FROM a2a_context_parents);
-DROP TABLE a2a_context_parents;
-
 -- Old process-local interaction waiters cannot survive a daemon restart; ordinary
 -- orphan recovery settles these rows without inventing a client for them.
 ALTER TABLE client_interactions ADD COLUMN recipient TEXT NOT NULL DEFAULT '_plurnk';

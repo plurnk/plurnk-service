@@ -9,7 +9,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { authorizationDocumentSpecimens } from "./AuthorizationDocuments.ts";
 import Module, { type AuthPort, type AuthSetupSeam, type ModuleOptions } from "./Module.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as { default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"] };
 const { default: HttpListener } = await import("../../plurnk-core/src/server/HttpListener.ts") as {
@@ -127,10 +126,10 @@ test("{§auth-oauth-endpoints} discovery names the issuer's endpoints, grants an
             token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
             code_challenge_methods_supported: ["S256"],
-            scopes_supported: ["acp", "a2a"],
+            scopes_supported: ["acp"],
         });
         assert.deepEqual(await json(await fetch(`${mod.base}/.well-known/oauth-protected-resource`)), {
-            resource: mod.base, authorization_servers: [mod.base], scopes_supported: ["acp", "a2a"], bearer_methods_supported: ["header"], resource_name: "Plurnk",
+            resource: mod.base, authorization_servers: [mod.base], scopes_supported: ["acp"], bearer_methods_supported: ["header"], resource_name: "Plurnk",
         });
         const preflight = await fetch(`${mod.base}/oauth/token`, { method: "OPTIONS" });
         assert.equal(preflight.status, 204);
@@ -155,7 +154,6 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
         for (const init of [
             { ...form({ grant_type: "client_credentials" }), headers: { "content-type": "application/x-www-form-urlencoded", ...basic("operator", "s3cret") } },
             form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "acp", resource: `${mod.base}/acp` }),
-            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "a2a", resource: `${mod.base}/a2a` }),
         ]) {
             const response = await fetch(`${mod.base}/oauth/token`, init);
             const text = await response.text();
@@ -164,8 +162,7 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
             const body = JSON.parse(text) as { access_token: string; token_type: string; expires_in: number; scope: string; refresh_token?: string };
             assert.equal(body.token_type, "Bearer");
             assert.equal(body.expires_in, 1);
-            const bodyText = requestBody(init);
-            const expectedScope = bodyText.includes("scope=acp") ? "acp" : bodyText.includes("scope=a2a") ? "a2a" : "acp a2a";
+            const expectedScope = "acp";
             assert.equal(body.scope, expectedScope, "the operator holds every scope; a request may narrow");
             assert.equal(body.refresh_token, undefined, "client credentials renew with the secret, not a refresh token");
             admitted(mod, body.access_token, expectedScope.split(" ")[0]);
@@ -630,7 +627,7 @@ test("{§auth-oauth-clients} a module's client is refused without its secret, wi
         const own = await post({ grant_type: "client_credentials", scope: "acp" }, basic("web", secret()));
         assert.equal(own.status, 400);
         assert.deepEqual(await json(own), { error: "unauthorized_client", error_description: "A module's client obtains tokens through the operator's authorization." });
-        const wide = await authorize({ scope: "a2a" });
+        const wide = await authorize({ scope: "other" });
         assert.equal(new URL(wide.response.headers.get("location")!).searchParams.get("error"), "invalid_scope", "a scope the module did not register");
     } finally { await mod.close(); }
 });

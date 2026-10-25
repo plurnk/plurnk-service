@@ -6,7 +6,7 @@ import { delimiter, join, resolve } from "node:path";
 import { resolveModel } from "@plurnk/plurnk-models";
 
 export type InputModality = "image" | "pdf" | "audio" | "video";
-export type SiblingCheckout = "client" | "a2a-tck";
+export type SiblingCheckout = "client";
 export type LiveRequirement =
     | `input:${InputModality}`
     | "reasoning"
@@ -39,7 +39,7 @@ export interface HostProbes {
 }
 
 const MODALITIES: ReadonlySet<string> = new Set(["image", "pdf", "audio", "video"]);
-const CHECKOUTS: ReadonlySet<string> = new Set(["client", "a2a-tck"]);
+const CHECKOUTS: ReadonlySet<string> = new Set(["client"]);
 const NO_REASONING: ReadonlySet<string> = new Set(["off", "adaptive"]);
 const PROBE_TIMEOUT_MS = 10_000;
 const REPOSITORY = resolve(import.meta.dirname, "../..");
@@ -55,7 +55,7 @@ export const parseRequirement = (requirement: string): ParsedRequirement => {
     if (head === "url" && /^https?:\/\//u.test(rest)) return { kind: "url", url: rest };
     if (head === "bin" && /^[a-z0-9][a-z0-9._-]*$/u.test(rest)) return { kind: "bin", name: rest };
     if (head === "checkout" && CHECKOUTS.has(rest)) return { kind: "checkout", name: rest as SiblingCheckout };
-    throw new TypeError(`'${requirement}' is not a live requirement; the forms are input:<image|pdf|audio|video>, reasoning, output-budget, env:<NAME>, url:<http(s) URL>, bin:<name> and checkout:<client|a2a-tck>`);
+    throw new TypeError(`'${requirement}' is not a live requirement; the forms are input:<image|pdf|audio|video>, reasoning, output-budget, env:<NAME>, url:<http(s) URL>, bin:<name> and checkout:<client>`);
 };
 
 // Whether a URL answers at all; the probe is a HEAD with a bounded wait and any response counts.
@@ -77,13 +77,12 @@ export const onPath = (name: string, path: string = process.env.PATH ?? ""): boo
 
 // Where a sibling checkout is: its knob, else beside this repository. The path is the resolver's;
 // whether anything is there is the probe's.
-export const checkoutPath = (name: SiblingCheckout, env: NodeJS.ProcessEnv = process.env): string => {
-    const knob = name === "client" ? "PLURNK_CLIENT_CHECKOUT" : "PLURNK_A2A_TCK_CHECKOUT";
-    const configured = env[knob]?.trim();
-    return resolve(REPOSITORY, configured === undefined || configured.length === 0 ? `../${name === "client" ? "plurnk" : "a2a-tck"}` : configured);
+export const checkoutPath = (_name: SiblingCheckout, env: NodeJS.ProcessEnv = process.env): string => {
+    const configured = env.PLURNK_CLIENT_CHECKOUT?.trim();
+    return resolve(REPOSITORY, configured === undefined || configured.length === 0 ? "../plurnk" : configured);
 };
 
-export const checkoutKnob = (name: SiblingCheckout): string => (name === "client" ? "PLURNK_CLIENT_CHECKOUT" : "PLURNK_A2A_TCK_CHECKOUT");
+export const checkoutKnob = (_name: SiblingCheckout): string => "PLURNK_CLIENT_CHECKOUT";
 
 export const HOST_PROBES: HostProbes = { url: reachable, bin: onPath, checkout: checkoutPath };
 

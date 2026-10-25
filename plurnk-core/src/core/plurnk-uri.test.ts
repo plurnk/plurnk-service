@@ -28,16 +28,16 @@ test("{§scheme-address-namespace-fold} foldAuthorityIntoPath folds a namespace 
 
 test("{§manifest-authority} {§scheme-address-namespace-fold} entryCoordinateOf distinguishes namespace and resource authority", () => {
     const notes = parsePath("notes://docs/fact.md");
-    const agent = parsePath("a2a://researcher/tasks/t-1");
+    const mcp = parsePath("mcp://researcher/tasks/t-1");
     const worker = parsePath("worker://ada/task");
     assert.ok(notes);
-    assert.ok(agent);
+    assert.ok(mcp);
     assert.ok(worker);
     assert.deepEqual(entryCoordinateOf(notes, "namespace"), {
         authority: "",
         pathname: "/docs/fact.md",
     });
-    assert.deepEqual(entryCoordinateOf(agent, "resource"), {
+    assert.deepEqual(entryCoordinateOf(mcp, "resource"), {
         authority: "researcher",
         pathname: "/tasks/t-1",
     });
@@ -58,7 +58,7 @@ test("{§scheme-address-network} resource entry identity preserves canonical aut
 
 test("{§scheme-address} renderAddress renders only the durable entry coordinate", () => {
     assert.equal(renderAddress({ scheme: "notes", authority: "", pathname: "/docs/x.md" }), "notes:///docs/x.md");
-    assert.equal(renderAddress({ scheme: "a2a", authority: "researcher", pathname: "/tasks/t-1" }), "a2a://researcher/tasks/t-1");
+    assert.equal(renderAddress({ scheme: "mcp", authority: "researcher", pathname: "/tasks/t-1" }), "mcp://researcher/tasks/t-1");
     assert.equal(renderAddress({ scheme: "https", authority: "example.org:8443", pathname: "/a(b)?x=1" }), "https://example.org:8443/a%28b%29?x=1");
 });
 

@@ -16,7 +16,7 @@ import { testArtifactPath } from "../../scripts/lib/test-artifacts.ts";
 
 // Mock fixtures declare their own resources after bootstrap, never operator services or schedules.
 for (const key of Object.keys(process.env)) {
-    if (/^PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS|SKILLS)_/u.test(key)) delete process.env[key];
+    if (/^PLURNK_(?:MCP|SCHEDULE|MEMBERS|SKILLS)_/u.test(key)) delete process.env[key];
 }
 
 // {§test-artifact-retention} — a lane that bootstraps through this file writes under its own run

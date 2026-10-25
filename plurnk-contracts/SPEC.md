@@ -31,7 +31,6 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Exterior adapter application calls                                             | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}) |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpOAuth` |
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
-| Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
 | Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | ACP discovery, client accounting, and shared conformance specimens             | `AcpDiscovery`, `AcpClientConformance`, `AcpConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
@@ -1786,18 +1785,11 @@ the schema's name grammar is exposed as `SKILL_NAME` for loaders and discovery
 ({§agent-skills-name}). Core owns source resolution and lifecycle
 ({§skills-functionality}).
 
-`A2aAgentDefinition` is the one definition the Worker `a2a` Functionality
-family accepts and persists: the local alias `name` (the `a2a://<name>`
-authority), the remote `url` whose standard Agent Card remains the protocol
-authority, and optional local `cardPath`, `headers`, and bearer
-`authorization` whose token is a symbolic `${NAME}` reference.
-`Validator.assertA2aAgentDefinition` is the family's admission boundary.
-
 ### §application-port 13.9 Exterior application port
 
 `ApplicationPort` is the single transport-neutral TypeScript contract through
 which an exterior adapter drives and observes the Plurnk application. Core
-implements it; ACP, A2A, and other interface modules consume it from
+implements it; ACP and other interface modules consume it from
 `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}). The port
 contains typed application calls and a scoped event subscription, not wire
 route names, protocol framing, persistence access, or adapter-specific methods.

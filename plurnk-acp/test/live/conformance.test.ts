@@ -17,7 +17,7 @@ test("live: the ACP client accepts the complete model response stream", async (t
     serverProposals(t, "accept");
     const { liveProvider, liveRun } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { openMigrated } = await import(join(SERVICE, "test/intg/_db.ts"));
-    const { bindListener } = await import(join(SERVICE, "test/intg/_a2a.ts"));
+    const { bindListener } = await import(join(SERVICE, "test/intg/_http.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
     // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,

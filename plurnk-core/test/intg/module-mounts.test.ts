@@ -7,7 +7,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { Module as AcpModule } from "@plurnk/plurnk-acp";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 import type { ApplicationPort, HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 

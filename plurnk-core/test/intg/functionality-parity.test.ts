@@ -1,7 +1,7 @@
 import { ownWorker, TEST_OWNER } from "./_approval.ts";
-// {§functionality-coordinator} — lifecycle parity across the three real
-// families. One family-neutral matrix runs against Agent Skills, MCP, and
-// outbound A2A agents with their representative standards peers beneath: the
+// {§functionality-coordinator} — lifecycle parity across the real
+// families. One family-neutral matrix runs against Agent Skills and MCP
+// with their representative standards peers beneath: the
 // same client verbs, the same model verbs through the real proposal boundary,
 // the same hotload/withdrawal at the next packet, the same persistence,
 // shared visibility, workspace isolation, concurrency, and rollback. No step encodes a family's
@@ -17,20 +17,17 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Validator } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement, ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
-import { OutboundModule as A2aOutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import type { OperationFailureError } from "../../src/core/results.ts";
-import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
-import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
 import { modelOperation } from "./_workers.ts";
@@ -94,11 +91,6 @@ const documentPresent = async (context: Context, pathname: string): Promise<numb
     const target = pathname.includes("://") ? pathname : `worker://${pathname}`;
     return (await dispatch(context, parseOne(`\`\`\`\`READ (${target})\`\`\`\``))).status;
 };
-
-const a2aTarget = (alias: string): UrlPath => ({
-    kind: "url", raw: `a2a://${alias}`, scheme: "a2a", username: null, password: null,
-    hostname: alias, port: null, pathname: "", query: null, fragment: null,
-});
 
 const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
     try { await run(); } catch (error) {
@@ -225,36 +217,6 @@ const mcpFamily = async (): Promise<Family> => {
             await new Promise<void>((resolve) => registry.close(() => resolve()));
             await rm(home, { recursive: true, force: true });
         },
-    };
-};
-
-const agentsFamily = async (): Promise<Family> => {
-    const agentA = await startDemoAgent();
-    const agentB = await startDemoAgent();
-    // {§http-outbound-proposes} — an outbound SEND proposes; this probe is a person's, so its proposal is that
-    // person's decision already ({§proposal-disposition}). An alias that is not configured refuses before any proposal.
-    const send = (alias: string) => async (context: Context) =>
-        (await dispatch(context, sendStmt(a2aTarget(alias), "parity"))).status;
-    return {
-        family: "a2a",
-        documentOf: (alias) => `/_plurnk/a2a/${alias}.md`,
-        teaching: /## Working with an added agent/u,
-        service: { alias: "researcher", definition: { name: "researcher", url: agentA.baseUrl }, probe: send("researcher") },
-        addable: { alias: "extra", definition: { name: "extra", url: agentA.baseUrl }, probe: send("extra") },
-        conflicting: { alias: "extra", definition: { name: "extra", url: agentB.baseUrl }, probe: send("extra") },
-        unreachable: { alias: "ghost", definition: { name: "ghost", url: "http://127.0.0.1:9" }, probe: send("ghost") },
-        replacementUnavailable: { name: "extra", url: "http://127.0.0.1:9" },
-        discover: { source: agentB.baseUrl },
-        boot: async (db, provider) => {
-            const daemon = new Daemon({ db, provider });
-            daemon.registerModule(A2aOutboundModule.init({
-                PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
-                PLURNK_A2A_researcher: JSON.stringify({ name: "researcher", url: agentA.baseUrl }),
-                PLURNK_A2A_ENABLED: "1",
-            }), "@plurnk/plurnk-a2a");
-            return { daemon };
-        },
-        close: async () => { await agentA.close(); await agentB.close(); },
     };
 };
 
@@ -558,7 +520,7 @@ ${JSON.stringify({ alias: family.addable.alias })}
     }
 };
 
-for (const make of [skillsFamily, mcpFamily, agentsFamily]) {
+for (const make of [skillsFamily, mcpFamily]) {
     test(`{§functionality-coordinator} lifecycle parity: ${make.name.replace("Family", "")}`, async () => {
         const family = await make();
         try {

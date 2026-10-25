@@ -16,7 +16,6 @@ export {
     InvalidClientDisplayCapabilitiesError,
     InvalidMcpServerDefinitionError,
     InvalidSkillDefinitionError,
-    InvalidA2aAgentDefinitionError,
     InvalidMcpOAuthError,
     InvalidClientInteractionRequestError,
     InvalidClientInteractionProjectionError,

@@ -15,7 +15,6 @@ test("{§operator-config-real-model-profile} personal resources stay inspectable
         'PLURNK_MCP_web_search={"name":"web-search","type":"stdio","command":"node"}',
         "PLURNK_MCP_web_search_ENABLED=1",
         'PLURNK_MCP_future_TOOLS=["search"]',
-        'PLURNK_A2A_peer={"name":"peer","url":"https://example.com"}',
         'PLURNK_SCHEDULE_check={"unused":"fixture"}',
         "PLURNK_MEMBERS_docs=docs/**",
         'PLURNK_SKILLS_3d_tools={"name":"3d-tools","source":"/srv/3d-tools"}',
@@ -31,7 +30,6 @@ test("{§operator-config-real-model-profile} personal resources stay inspectable
     const environment = { PLURNK_MCP_web_search_ENABLED: "1", PLURNK_MODEL: "explicit" };
     assert.deepEqual(await gateResourceEnvironment(path, environment), {
         PLURNK_MCP_future_ENABLED: "0",
-        PLURNK_A2A_peer_ENABLED: "0",
         PLURNK_SCHEDULE_check_ENABLED: "0",
         PLURNK_MEMBERS_docs_ENABLED: "0",
         PLURNK_SKILLS_3d_tools_ENABLED: "0",

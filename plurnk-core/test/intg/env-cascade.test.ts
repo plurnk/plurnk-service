@@ -324,10 +324,6 @@ test("{§operator-config-discovery} config check validates capability definition
         { PLURNK_MCP_future_TOOLS: "[1]" },
         { PLURNK_MCP_disabled: "{}", PLURNK_MCP_disabled_ENABLED: "0" },
         { PLURNK_MCP_REQUEST_TIMEOUT: "0" },
-        { PLURNK_A2A_disabled: "{}", PLURNK_A2A_disabled_ENABLED: "0" },
-        { PLURNK_A2A_future_ENABLED: "yes" },
-        { PLURNK_A2A_REQUEST_TIMEOUT: "0" },
-        { PLURNK_A2A_EXPOSE: "yes" },
         { PLURNK_SCHEDULE_disabled: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}', PLURNK_SCHEDULE_disabled_ENABLED: "0" },
         { PLURNK_SCHEDULE_future_ENABLED: "yes" },
         { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0" },
@@ -414,7 +410,6 @@ for (const built of [false, true]) {
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
-            PLURNK_A2A_broken: "{}", PLURNK_A2A_broken_ENABLED: "0",
             PLURNK_MCP_GH_BEARER: "fixture-secret",
         };
         delete env.PLURNK_MODEL;
@@ -441,8 +436,6 @@ for (const built of [false, true]) {
             PLURNK_HOOKS_COMMAND: process.execPath,
             PLURNK_HOOKS_ARGS: "[1]",
             PLURNK_HOOKS_EVENTS: "Stop",
-            PLURNK_A2A_EXPOSE: "1",
-            PLURNK_A2A_ENDPOINT_PATH: "relative",
             OTEL_TRACES_EXPORTER: "unknown-exporter",
             PLURNK_MODEL: "missing-alias",
             PLURNK_MODEL_CHILD: "missing-child",
@@ -469,7 +462,6 @@ for (const built of [false, true]) {
             .map(({ update }) => update?._meta?.plurnk?.notice as Notice);
         for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
-            ["module:@plurnk/plurnk-a2a", "PLURNK_A2A_ENDPOINT_PATH"],
             ["module:@plurnk/plurnk-otel", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],
             ["model-child", "PLURNK_MODEL_CHILD"],
@@ -605,7 +597,6 @@ test("{§configuration-repair-path} config check rejects optional startup errors
     t.after(() => rm(fx.root, { recursive: true, force: true }));
     const cases: Array<{ key: string; env: Record<string, string> }> = [
         { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "Stop" } },
-        { key: "PLURNK_A2A_ENDPOINT_PATH", env: { PLURNK_A2A_EXPOSE: "1", PLURNK_A2A_ENDPOINT_PATH: "relative" } },
         { key: "OTEL_TRACES_EXPORTER", env: { OTEL_TRACES_EXPORTER: "unknown-exporter" } },
         { key: "PLURNK_SERVICE_EFFECT_HOST", env: { PLURNK_SERVICE_EFFECT_HOST: "invalid" } },
         { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
@@ -644,9 +635,6 @@ test("{§operator-config-discovery} config check accepts future controls without
         PLURNK_MCP_remote: JSON.stringify({ name: "remote", type: "streamable-http", url }),
         PLURNK_MCP_remote_ENABLED: "1",
         PLURNK_MCP_future_TOOLS: '["search"]',
-        PLURNK_A2A_peer: JSON.stringify({ name: "peer", url }),
-        PLURNK_A2A_peer_ENABLED: "1",
-        PLURNK_A2A_future_ENABLED: "0",
         PLURNK_SCHEDULE_future_ENABLED: "1",
         PLURNK_MEMBERS_future_ENABLED: "0",
         PLURNK_SKILLS_future_ENABLED: "0",
@@ -658,7 +646,7 @@ test("{§operator-config-discovery} config check accepts future controls without
     } });
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /configuration valid/u);
-    assert.equal(requests, 0, "neither MCP discovery nor A2A card fetching occurs");
+    assert.equal(requests, 0, "MCP discovery does not occur during config check");
     await assert.rejects(() => stat(marker), { code: "ENOENT" }, "neither MCP nor hooks start");
     await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "no database, skill or attachment state is created");
 });

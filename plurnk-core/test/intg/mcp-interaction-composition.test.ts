@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";

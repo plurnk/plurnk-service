@@ -39,7 +39,7 @@ test("{§message-envelope-evidence} {§problems-client}: competing interaction a
     const { interactionId } = await observed.promise;
     const resolution = { action: "accept", content: { repository: "plurnk-service" } } as const;
     const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, respondent, {
-        body: messageId, source: "a2a://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
+        body: messageId, source: "acp://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
     })));
     assert.equal(outcomes[0].status, "fulfilled");
     const rejected = outcomes[1];

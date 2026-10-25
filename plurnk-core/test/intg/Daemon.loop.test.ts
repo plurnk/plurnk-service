@@ -64,7 +64,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
                 workspaceId: workspace.workspaceId,
                 workerId,
                 prompt: "external work",
-                source: "a2a://session42",
+                source: "acp://session42",
             });
             await waitFor(
                 () => terminated,
@@ -76,7 +76,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
                 loopId: accepted.loopId,
             })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
             assert.equal(prompt?.origin, "_plurnk", "the harness remains the arrival-row producer");
-            assert.equal(prompt?.source, "a2a://session42", "the external actor remains its causal source");
+            assert.equal(prompt?.source, "acp://session42", "the external actor remains its causal source");
         } finally {
             unsubscribe();
         }

@@ -104,7 +104,6 @@ test("{§plurnk-skill} the module example loads from its export subpath as one d
 test("{§plurnk-skill} the definition pages' add examples conform to their families' definition schemas", async () => {
     for (const [packageName, docName, fence, schema] of [
         ["@plurnk/plurnk-mcp", "mcp.md", "mcp (add)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
-        ["@plurnk/plurnk-a2a", "a2a.md", "a2a (add)", "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json"],
     ] as const) {
         const examples = fences(await page(packageName, docName)).filter(({ info }) => info === fence);
         assert.ok(examples.length > 0, `${docName} shows an add example`);

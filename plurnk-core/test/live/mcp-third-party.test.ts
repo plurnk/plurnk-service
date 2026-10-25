@@ -10,7 +10,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { liveTest as test } from "../live-test.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { serverProposals } from "../intg/_approval.ts";
-import { bindListener } from "../intg/_a2a.ts";
+import { bindListener } from "../intg/_http.ts";
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 import { httpEntry, mcpFixture } from "../intg/_mcp-config.ts";

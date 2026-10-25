@@ -11,7 +11,7 @@ import type { SkillTree } from "@plurnk/plurnk-agent-skills";
 import { Mock } from "@plurnk/plurnk-providers";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 
 // The witness reads its own knob and stays inert without it ({§module-self-activation}); configured,

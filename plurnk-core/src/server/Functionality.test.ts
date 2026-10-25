@@ -261,7 +261,7 @@ for (const scope of ["workspace", "worker"] as const) {
 
 const QUERY = { type: "string", minLength: 1 };
 const CONFIGURATION = {
-    description: "Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_A2A_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.",
+    description: "Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_SCHEDULE_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.",
     type: "object",
 };
 

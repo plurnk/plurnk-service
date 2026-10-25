@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 
 test("{§model-catalog}: ACP delivers route reasoning choices without creating a workspace or worker", async (t) => {

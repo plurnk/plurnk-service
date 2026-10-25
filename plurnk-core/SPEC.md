@@ -133,7 +133,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | --- | --- |
 | {§observability-boundary} | Observability boundary |
 | {§observability-genai-conventions} | GenAI convention projection. |
-| {§service-worker-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover ACP, A2A, MCP,… |
+| {§service-worker-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover ACP, MCP,… |
 | {§service-package-exports} | Package export surface |
 | {§startup-admission} | Startup admission |
 | {§service-runtime-floor} | Before any other module of the `plurnk-service` executable evaluates, it compares the running Node.js with… |
@@ -192,7 +192,7 @@ The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps 
 owners. Capability-specific behavior remains with the owning plug point.
 
 §service-worker-composition The service launcher composes no module: it and the live/demo
-workspace helper both discover ACP, A2A, MCP, Schedule and command hooks ({§module-discovery}). The
+workspace helper both discover ACP, MCP, Schedule and command hooks ({§module-discovery}). The
 management families and readable reference documents are
 present even with no enabled definitions. Workspace capability policy controls every actor's
 surface; registering a family does not enable its definitions. The real-model
@@ -240,7 +240,7 @@ durable storage. Core owns the socket continuously; it answers 503 until daemon
 activation admits it after every module has started ({§module-http-mounts}), so
 early ownership introduces neither traffic nor a close/rebind race.
 
-§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): ACP mounts `/acp`, and A2A the well-known card and its endpoint path, on the same address.
+§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): ACP mounts `/acp` on that address.
 
 | Routing | Rule |
 | --- | --- |
@@ -254,8 +254,8 @@ early ownership introduces neither traffic nor a close/rebind race.
 
 §http-request-origin **A request's origin is the address the caller used, and what the daemon advertises follows it.** A request's
 origin is the address its `Host` names, over http, or the listener's own for a request that names
-none (`requestOrigin`). Every address the daemon advertises to a caller, the authority's issuer
-({§auth-oauth-endpoints}) and the A2A card's endpoint, is its configured public origin or the origin
+none (`requestOrigin`). Every address the daemon advertises to a caller, such as the authority's issuer
+({§auth-oauth-endpoints}), is its configured public origin or the origin
 of the request that asked, so a daemon bound to every interface answers each caller at the address
 that caller used; a module that asks with no request in hand, as one reading the issuer at its
 start does, is answered with the configured origin or the listener's own. A configured origin is for
@@ -324,7 +324,7 @@ plurnk-service may be starting there, and only `discover` says which.
 | `lifetime` | The daemon |
 | --- | --- |
 | `"private"` (the default) | is its launcher's child and ends with it under managed shutdown; both streams pipe to the launcher |
-| `"shared"` | survives the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it): its own process group, both streams appended to the caller's `logFile`, else to the service's `<state dir>/service.log`, which the result names as `logFile`; readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
+| `"shared"` | survives the launcher that started it (scheduled deliveries and other clients depend on it): its own process group, both streams appended to the caller's `logFile`, else to the service's `<state dir>/service.log`, which the result names as `logFile`; readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
 
 §service-stop **`plurnk-service stop` ends the service that holds the configured database.** It reads the owning process from the database's lock, sends it SIGTERM, and returns once that process has exited; the service bounds its own shutdown (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, {§crash-only-stop}). A database that no live process holds is reported as not running, and that is success. A clean stop exits 0, so the systemd unit's `Restart=on-failure` leaves it stopped.
 
@@ -423,9 +423,8 @@ different owner. Capability admission remains independent and precedes approval.
 only a person can answer it. The owner receives it while it is interactive and declares
 the requested tool; otherwise the request fails at once as unsupported and never parks.
 The pending interaction records that recipient and accepts a response only from it,
-through the ordinary response-schema validation and settlement path. A protocol caller,
-such as an A2A client, converses by message and is never a recipient
-({§a2a-worker-ownership}).
+through the ordinary response-schema validation and settlement path. A non-interactive owner
+converses by message and is never a recipient.
 
 ### Worker boundaries
 
@@ -538,7 +537,6 @@ capabilities may narrow or omit the reference catalogs under {§capability-admis
 | Agent Skills | FIND `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
 | Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
 | Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
-| Enabled agents | `worker:///_plurnk/a2a/*.md` | `<1,-1>`; {§a2a-catalog} |
 | Enabled members | `worker:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
 | Project filesystem | `*` | File cap below; `project root member files` |
 | Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
@@ -1906,7 +1904,7 @@ The read resolves through the registered scheme's {§entry-address-resolution} a
 | `log:///<loop>/<turn>/<item>/<op>` | Implicit observing worker | KILL curates the projection, not its source | Snapshot projection; explicit source addresses stay unchanged |
 | `<executor>:///<id>` | Empty, workspace output namespace | Executor stream contract | Shared live; no copied process |
 | `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
-| HTTP, WebSocket, executor/MCP, A2A resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
+| HTTP, WebSocket, executor/MCP resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
 
 Copied bodies and log references remain verbatim. Explicit source addresses continue to name the source; only copied scratch/evidence resources' own authority becomes the child's name ({§machine-processes-entry-inheritance}).
 
@@ -2140,7 +2138,7 @@ scheme result extensions cannot supply these counts.
 Targetless and exact-message SENDs follow the reply accounting at
 {§send-response-receipt}. Other directed SENDs route to the recipient scheme's
 `send`: the body is the message — a WebSocket frame, exec stdin, an HTTP POST,
-an A2A message, or new work for a worker.
+or new work for a worker.
 
 §send-dispatch-entry-schemes-501 A SEND aimed at a resource entry, rather than a
 message or actor endpoint, returns 501. Its recovery distinguishes replying to
@@ -2148,7 +2146,7 @@ Open Messages from sending new work to a worker, without assuming either intent.
 
 #### §send-resource-attachments Explicit message attachments
 
-Targetless replies, worker messages, and A2A messages accept
+Targetless replies and worker messages accept
 `[{"attachments":["report.pdf","worker://alice/result.json"]}]` on SEND.
 The body remains the authored message, not an attachment envelope.
 
@@ -3573,7 +3571,7 @@ accounting and model-visible failure evidence remain separately owned by
 {§engine-rails} and {§rail-accounting-private}.
 
 - §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
-  addresses a worker (```` ```SEND (worker://<name>) ````), an outbound agent (`a2a://`),
+  addresses a worker (```` ```SEND (worker://<name>) ````)
   or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the
   log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
   rule. The detail states only that the addressed scheme is not a recipient;
@@ -4738,7 +4736,6 @@ names the offending variable or file/entry and retains its cause.
 |---|---|
 | Core | Model selection, file-creation/effect/approval policy, members definitions and controls, skill-fetch settings and root selection |
 | MCP | Whole definitions from the environment and selected files (cwd is the project for this check), future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
-| A2A | Whole outbound definitions and controls, timeout/diagnostic bounds, configured inbound exposure |
 | Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
 | Hooks | Command/argument/event configuration and delivery bounds |
 | Discovered modules | Each module's own configuration, as its factory constructs it ({§module-self-activation}) |
@@ -4761,7 +4758,7 @@ and environment adjustments instead of introducing a service-management command.
 the unit and under the same terms. Hardening belongs there, not in the daemon: TLS, security
 headers, sign-in throttling by real client address and an optional network allow-list. The
 daemon answers every caller at the address it used ({§http-request-origin}); behind TLS it is
-told the public origin (`PLURNK_AUTH_ISSUER`, and `PLURNK_A2A_ENDPOINT_URL` when it exposes A2A),
+told the public origin (`PLURNK_AUTH_ISSUER`),
 which it cannot see.
 
 Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
@@ -4897,7 +4894,7 @@ construction.
 - ambient operator-file docs/packet notes cleared;
 - the operator's installed skills and plugins left unread ({§agent-roots});
 - server approval set to accept ({§worker-owner-resolution});
-- ambient MCP/A2A and schedules default disabled; the drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file, and Mock-tier bootstrap clears these ambient families before loading its fixture floor.
+- ambient MCP and schedules default disabled; the drivers also project per-alias `ENABLED=0` overrides for named MCP, schedule, membership, and skill resources in the operator's config file, and Mock-tier bootstrap clears these ambient families before loading its fixture floor.
 
 Configuration with a narrower or variable owner stays outside it:
 
@@ -5263,7 +5260,6 @@ family's own refusal.
 | `skills` | `source` ({§skills-functionality}) | Refused |
 | `schedule` | `source` ({§schedule-clock}) | Refused |
 | `mcp` | `query`, while a registry is configured; otherwise no discovery ({§mcp-registry-discovery}) | Refused |
-| `a2a` | `source`, `configuration` ({§a2a-functionality}) | Refused |
 | `env` | `query`, `source` ({§env-functionality}) | The whole catalog |
 | `members` | `query` ({§members-functionality}) | Refused |
 
@@ -5302,7 +5298,7 @@ composition boundaries, not arbitrary exceptions:
 
 | Boundary | Outcome |
 |---|---|
-| Optional startup integration (hooks, hosted A2A, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
+| Optional startup integration (hooks, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
 | Invalid default model or child selector | Retain its diagnostic at startup; keep client inspection and explicit selection available. A request relying on the invalid selector fails with `daemon:configuration/configuration-invalid` (503), naming its key. Never substitute another model or silently inherit a child model. |
 | Model construction or endpoint verification fails | Reject selection/use before inference or committing the selection. Keep the client available; a later selection can retry or choose another route. |
 | Invalid effect, file-creation, or server approval policy | Retain the startup diagnostic. Reject the affected operation as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations remain usable. |
@@ -5453,7 +5449,7 @@ not from a live process or a cached worker environment.
 
 | Scope | Describes | Own entries' origin |
 | --- | --- | --- |
-| **workspace** (Skills, MCP, members and outbound A2A) | what exists in a workspace: a capability, resident or installable, that every Worker there shares | `workspace` |
+| **workspace** (Skills, MCP and members) | what exists in a workspace: a capability, resident or installable, that every Worker there shares | `workspace` |
 | **worker** (Environment) | how one Worker works — context rather than capability — with worker overrides above workspace defaults; a context family's definitions are read where they are used, so a change at either scope holds nothing resident and takes no workspace exclusivity: it serializes on the family's lane | `worker` |
 
 A family projects `<scope>.<family>.<verb>` for each verb it serves, in each supported scope. The action's
@@ -5962,8 +5958,7 @@ Functionality ({§actor-boundary-attached-functionality}). Binding a workspace m
 
 One client operation owns one administrative loop, and its statements become ordered
 `client` operation turns inside it. The loop carries its own cancellation scope, and
-nothing else in `_plurnk` (another person's operation, the daemon's narration, a hosted A2A
-task) shares it. `cancelLoop` cancels that operation alone: a dispatch still running
+nothing else in `_plurnk` (another person's operation, the daemon's narration) shares it. `cancelLoop` cancels that operation alone: a dispatch still running
 ends `operation-cancelled`, as does its loop, and every attached execution its rows started
 that still runs is reaped ({§worker-lifecycle-total-reap}), its stream concluding aborted even
 after the loop settled. A detached execution is nobody's obligation, and `cancelLoop` leaves it
@@ -6527,7 +6522,7 @@ producers notify the same settlement path after durable execution; reply wake-up
 §message-short-identity **The model addresses a message by its short name.** Every message carries
 `message://<worker>/<key>` (`key_path`), the form the worker docs teach, and that is what the packet
 shows in Open Messages and in an arrival row's `resource`. A client's own identity for the same
-message — an ACP message UUID, an A2A address — stays the durable `path` that correlation,
+message — an ACP message UUID — stays the durable `path` that correlation,
 delivery and reply accounting use, and remains addressable in its own scheme; the short form is an
 additional alias. Answering either reaches the same message.
 
@@ -6536,7 +6531,7 @@ additional alias. Answering either reaches the same message.
 | Arrival | `source` |
 | --- | --- |
 | Native WORK, FORK, and directed worker SEND | `worker://<sender>`, derived from the authenticated sender worker ID |
-| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the ACP module names the client's message under `acp://` ({§acp-run-source}), the inbound A2A adapter under `a2a://` |
+| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the ACP module names the client's message under `acp://` ({§acp-run-source}) |
 | Absent | the operator |
 
 The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers.
@@ -7214,7 +7209,7 @@ stable ones, never with weakened assertions.
 
 §tier-census **A real-model tier run is one directory with its census.** The live and demo drivers stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every worker the run claims lands inside `PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests, tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the workers it claimed, turns, requests and cost; a run never deletes or moves any of it. `tier:history` ledgers every census under the home: per specimen, its verdicts over runs and its last reason. `npm run digest:missing` re-digests only a run's interrupted specimens, replacing a partial digest with a complete one and touching no other.
 
-A specimen declares what it requires of the route and the host; an unmet requirement is a skip, before anything boots or is spent, whose reason names the requirement and what was observed, and the census answers each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No test surface is an opt-in flag or a script of its own: the third-party MCP composition, the llama-server rails, the upstream A2A TCK and the client's real-model TUI tier are live specimens that run wherever their requirements hold.
+A specimen declares what it requires of the route and the host; an unmet requirement is a skip, before anything boots or is spent, whose reason names the requirement and what was observed, and the census answers each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No test surface is an opt-in flag or a script of its own: the third-party MCP composition, the llama-server rails and the client's real-model TUI tier are live specimens that run wherever their requirements hold.
 
 | Requirement | Form |
 | --- | --- |
@@ -7224,7 +7219,7 @@ A specimen declares what it requires of the route and the host; an unmet require
 | an environment variable | `env:<NAME>` |
 | a URL | `url:<http(s) URL>` |
 | a binary on PATH | `bin:<name>` |
-| a checkout | `checkout:<client\|a2a-tck>`, at `PLURNK_CLIENT_CHECKOUT` or `PLURNK_A2A_TCK_CHECKOUT`, else beside the repository |
+| a checkout | `checkout:<client>`, at `PLURNK_CLIENT_CHECKOUT`, else beside the repository |
 
 §fs-resource-state **The resource-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting resource state. `ResourceState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 

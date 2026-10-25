@@ -207,18 +207,18 @@ test("{§log-address-metadata}: COPY and MOVE operands do not overwrite the obse
 });
 
 test("{§operation-resource-receipt}: returned resource addresses remain distinct from authored targets without duplicate stream links", () => {
-    const target = { scheme: "a2a", hostname: "peer", pathname: "" };
-    const resource = "a2a://peer/messages/reply";
+    const target = { scheme: "worker", hostname: "peer", pathname: "" };
+    const resource = "message://peer/1";
     const row = {
         coordinate: "1/2/3", op: "SEND", status: 200,
         target, tx: { body: "Please inspect this." }, rx: { resource },
     };
     const projected = parseLogRecords(PacketWire.renderLog([row], tok))[0];
     assert.equal(projected.resource, resource);
-    assert.equal(projected.path, "a2a://peer");
+    assert.equal(projected.path, "worker://peer");
     assert.equal(typeof projected.body, "string");
     assert.match(String(projected.body), /Please inspect this\./u);
-    for (const absent of [undefined, "", "a2a://peer"]) {
+    for (const absent of [undefined, "", "worker://peer"]) {
         assert.equal(parseLogRecords(PacketWire.renderLog([{ ...row, rx: { resource: absent } }], tok))[0].resource, undefined);
     }
     const stream = "sh:///abcdef12";
@@ -247,15 +247,15 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
 });
 
 test("{§log-address-metadata}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
-    const attachments = [{ name: "report.pdf", mediaType: "application/pdf", target: "a2a://peer/tasks/task1/artifacts/report.pdf" }];
+    const attachments = [{ name: "report.pdf", mediaType: "application/pdf", target: "worker://peer/artifacts/report.pdf" }];
     const before = structuredClone(attachments);
     const output = PacketWire.renderLog([{
         coordinate: "1/2/3", op: "SEND", status: 200,
-        target: { scheme: "a2a", hostname: "peer", pathname: "" },
+        target: { scheme: "worker", hostname: "peer", pathname: "" },
         tx: { body: "Here is the report." }, rx: { attachments },
     }], tok);
     const metadata = parseLogRecords(output)[0];
-    assert.equal(metadata.path, "a2a://peer");
+    assert.equal(metadata.path, "worker://peer");
     assert.deepEqual(metadata.attachments, [{ name: "report.pdf", mediaType: "application/pdf", path: attachments[0].target }]);
     assert.deepEqual(attachments, before, "the durable/exterior attachment descriptor keeps its owning contract");
 });

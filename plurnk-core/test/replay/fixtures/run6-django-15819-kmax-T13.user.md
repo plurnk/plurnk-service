@@ -26,9 +26,6 @@
 ### log:///1/1/5/FIND → worker:///_plurnk/tools/*.md · 50
 {"origin":"_plurnk","range":"0 resources"}
 
-### log:///1/1/6/FIND → worker:///_plurnk/a2a/*.md · 49
-{"origin":"_plurnk","range":"0 resources"}
-
 ### log:///1/1/7/FIND → worker:///_plurnk/members/*.md · 51
 {"origin":"_plurnk","range":"0 resources"}
 
@@ -94,9 +91,6 @@
 11:```FIND (worker:///_plurnk/tools/*.md) <1,-1>
 12:```
 13:
-14:```FIND (worker:///_plurnk/a2a/*.md) <1,-1>
-15:```
-16:
 17:```FIND (worker:///_plurnk/members/*.md) <1,-1>
 18:```
 19:

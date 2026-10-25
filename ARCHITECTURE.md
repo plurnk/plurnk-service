@@ -19,8 +19,6 @@ flowchart LR
     PLUGINS["Agent Plugins Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
     EXTENSION["Plurnk extension<br/>(exec · scheme · mimetype · provider · http-materializer · module)<br/>plurnk-owned interface"] --- PLURNK
-
-    PLURNK --- A2A["A2A Specification"]
 ```
 
 ### Which standards earn a place
@@ -48,7 +46,6 @@ flowchart LR
     providers["Provider framework"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
-    a2a["A2A exterior adapter<br/>client + agent"] --> core
     schedule["Schedule family<br/>recurring worker messages"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
@@ -83,7 +80,6 @@ package; this root document does not restate their teaching.
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
-| A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
 | Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md); core supplies canonical evidence interpretation. |
 | CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume ACP; they do not own daemon scheduling or persisted truth.                                           |
@@ -155,16 +151,16 @@ links each kind's contract.
 flowchart TD
     Q{{"Which way does it point?"}}
     Q -->|"X watches plurnk"| H["hook: the operator's command, one event on stdin"]
-    Q -->|"X drives plurnk"| F["client of a face: ACP for applications, A2A for agents"]
+    Q -->|"X drives plurnk"| F["client of a face: ACP for applications"]
     Q -->|"plurnk uses X"| U{{"data or code?"}}
-    U -->|data| D["definition: skill, MCP server, A2A agent, member rule, env entry, schedule rule"]
+    U -->|data| D["definition: skill, MCP server, member rule, env entry, schedule rule"]
     U -->|code| E["extension: exec, scheme, mimetype, provider, http-materializer, module"]
 ```
 
 | Surface | What it is | Code in the daemon |
 | --- | --- | --- |
 | Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill roots | none |
-| Definition | a skill, MCP server, A2A agent, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server or A2A agent runs elsewhere |
+| Definition | a skill, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
 | Plugin | an Agent Plugin carrying skills and MCP servers, from npm or a plugin root | none, unless it declares an extension |
 | Hook | the operator's command on lifecycle events (`plurnk-hooks`) | none |
 | Client | an application or agent driving an existing face | none |
@@ -216,9 +212,9 @@ One word per concept, defined here.
 | framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the host loads | A capability, which is what policy admits |
 | grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
 | module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
-| family | Core's shared manager of one definition kind: skills, MCP, A2A, schedule, members, env | An extension kind or its framework; a runtime or its document |
+| family | Core's shared manager of one definition kind: skills, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
-| face | A module role that serves a protocol: ACP, inbound A2A | |
+| face | A module role that serves a protocol: ACP | |
 | hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |
 | organ | A subsystem that is not an extension point | |
 | capability | The admission policy's word, and what it admits | A package or framework |
@@ -351,7 +347,6 @@ re-validation ({§validation-topology}).
 ```mermaid
 flowchart LR
     clients["Thin clients"] <-->|ACP over HTTP / SSE / WebSocket| daemon["One @plurnk/plurnk-service process<br/><br/>ACP · core · daemon modules<br/>provider and capability adapters"]
-    agents["Remote agents"] <-->|A2A HTTP+JSON| daemon
     daemon <-->|Provider protocols| endpoints["Local or remote model endpoints"]
     daemon <-->|Filesystem / Git| project["Project filesystem + Git"]
     daemon <-->|SQLite file I/O| database[(Durable database)]

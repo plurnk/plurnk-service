@@ -941,15 +941,6 @@ export default class TurnRunner {
             },
             ...this.#toolExpansions(workspaceId, initializationPolicies),
             {
-                // {§a2a-catalog} — enabled outbound agents survey at
-                // alias level; each row's summary is the agent's identity line,
-                // the exact card stays pullable through READ a2a://<alias>.
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: "worker:///_plurnk/a2a/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/a2a/*.md"), query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            {
                 // {§members-projection} — enabled members definitions survey at alias
                 // level; each row's summary is what its glob resolved to.
                 op: "FIND", aside: null,

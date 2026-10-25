@@ -50,8 +50,7 @@ The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
 `jq` is capability-dependent. Every other surface is a live specimen that declares what it
 requires and skips by name ({§tier-census}): the third-party MCP composition (`npx`, the npm
 registry, the remote server), the llama-server rails (`PLURNK_LLAMA_URL`, `127.0.0.1:11435` unless
-set, with `PLURNK_LLAMA_RAIL_PROFILE` naming the template, `qwen` or `gemma`), the upstream A2A TCK
-(`uv` and the pinned checkout at `PLURNK_A2A_TCK_CHECKOUT`, `../a2a-tck` unless set) and the
+set, with `PLURNK_LLAMA_RAIL_PROFILE` naming the template, `qwen` or `gemma`) and the
 terminal client's real-model TUI tier (`PLURNK_CLIENT_CHECKOUT`).
 
 | Boundary | Required evidence |

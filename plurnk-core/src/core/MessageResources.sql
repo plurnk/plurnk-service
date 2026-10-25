@@ -18,7 +18,7 @@ WHERE w.workspace_id = $workspace_id AND w.id = $worker_id
        OR json_array_length(e.rx, '$.attachments') > 0)
 ORDER BY loop_id, id;
 -- PREP: message_source_resources
--- A message keeps the address its minter gave it (`a2a://…`, `acp://…`), and {§message-short-identity}
+-- A message keeps the address its minter gave it (`acp://…`), and {§message-short-identity}
 -- adds the short `message://<worker>/<key>` alias the worker docs teach.
 SELECT path, body FROM message_sources
 WHERE workspace_id = $workspace_id AND path LIKE $scheme || '://%'

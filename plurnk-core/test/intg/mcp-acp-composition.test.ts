@@ -12,7 +12,7 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { actionResult, type Event, packet, PacketCapturingMock, post, runInput, sessionUpdates, terminalMeta } from "./_acp-run.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
-import { bindListener } from "./_a2a.ts";
+import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";

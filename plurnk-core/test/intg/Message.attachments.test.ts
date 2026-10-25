@@ -1,10 +1,8 @@
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OutboundModule } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
@@ -15,44 +13,41 @@ const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
 const done = "````SEND [200]\nAttachment handling verified.\n````";
 
-test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
+test("{§send-resource-attachments}: worker SEND snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    const remote = await startDemoAgent("direct-message");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
         turn(`\`\`\`\`EDIT (worker:///selected.md)\noriginal\n\`\`\`\`\n\`\`\`\`EDIT (worker:///private.md)\nunselected\n\`\`\`\`\n${next}`),
-        turn(`\`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md","worker:///missing.md"]}]\nDo not deliver a partial message.\n\`\`\`\`\n${next}`),
-        turn(`\`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md"]}]\nReview this.\n\`\`\`\`\n\`\`\`\`EDIT (worker:///selected.md) <1,-1>\nchanged\n\`\`\`\`\n${next}`),
+        turn(`\`\`\`\`SEND (worker://receiver) [{"attachments":["worker:///selected.md","worker:///missing.md"]}]\nDo not deliver a partial message.\n\`\`\`\`\n${next}`),
+        turn(`\`\`\`\`SEND (worker://receiver) [{"attachments":["worker:///selected.md"]}]\nReview this.\n\`\`\`\`\n\`\`\`\`EDIT (worker:///selected.md) <1,-1>\nchanged\n\`\`\`\`\n\`\`\`\`WAIT\n\`\`\`\``),
+        turn(done),
         turn(done),
     ] });
     const daemon = new Daemon({ db, provider });
-    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_peer: JSON.stringify({ name: "peer", url: remote.baseUrl }), PLURNK_A2A_ENABLED: "1" }), "@plurnk/plurnk-a2a");
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "message-export", projectRoot: null });
         const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        // {§http-outbound-proposes} — the outbound SEND proposes; this loop states that it approves
-        // its own delegation, which is what a caller that means to send is saying.
+        const receiver = await daemon.createWorker({ workspaceId, name: "receiver" });
         const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report." });
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400), 200);
-        assert.equal(remote.executor.received.length, 1, "no dispatch occurs on partial acquisition failure");
-        const parts = remote.executor.received[0].userMessage.parts;
-        assert.equal(parts.length, 2, "the unselected resource was never exported");
-        assert.deepEqual(parts[0].content, { $case: "text", value: "Review this." });
-        assert.equal(parts[1].content?.$case, "raw");
-        assert.equal(parts[1].filename, "selected.md");
-        assert.equal(parts[1].mediaType, "text/markdown");
-        assert.deepEqual(parts[1].content?.value, new Uint8Array(Buffer.from("original")));
+        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), (loops) => loops.some((loop) => loop.status === 200));
+        const received = (await daemon.readMessages({ workspaceId, workerId: receiver.workerId })).filter(({ direction }) => direction === "inbound");
+        assert.equal(received.length, 1, "no dispatch occurs on partial acquisition failure");
+        assert.match(received[0].body, /^Review this\.\n\n<worker:\/\/receiver\/attachments\/[^/]+\/selected\.md>$/u);
+        assert.equal(received[0].attachments.length, 1, "the unselected resource was never exported");
+        assert.equal(received[0].attachments[0].name, "selected.md");
+        assert.equal(received[0].attachments[0].mediaType, "text/markdown");
+        assert.equal(Buffer.from(received[0].attachments[0].bytes).toString(), "original");
         const rows = await daemon.readLog({ workspaceId, workerId, loopId: started.loopId });
         const failed = rows.filter((row) => row.op === "SEND" && row.status_rx === 404);
         assert.equal(failed.length, 1, "the source failure is a visible ordinary SEND failure");
-        const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
-        assert.match(packet, /"attachments":\[\{"name":"selected.md","mediaType":"text\/markdown","path":"worker:\/\/\/selected.md"\}\]/u);
+        const senderPackets = provider.received.map((messages) => messages.map(chatMessageText).join("\n")).join("\n");
+        assert.match(senderPackets, /"attachments":\[\{"name":"selected\.md","mediaType":"text\/markdown","path":"worker:\/\/\/selected\.md"\}\]/u);
     } finally {
         await daemon.stop();
         await db.close();
-        await remote.close();
     }
 });
 

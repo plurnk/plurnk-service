@@ -32,11 +32,11 @@ test("{§module-http-mounts} until the daemon admits the listener every request 
         // Mounting does not admit, whatever the order: a root mounted first does not swallow a
         // prefix mounted after it, because nothing is served until admission.
         listener.registerHttpRoute("/", reply("root"));
-        assert.equal((await get(port, "/a2a/tasks/1")).status, 503);
-        listener.registerHttpRoute("/a2a", reply("a2a"));
+        assert.equal((await get(port, "/ext/tasks/1")).status, 503);
+        listener.registerHttpRoute("/ext", reply("ext"));
         assert.equal((await get(port, "/")).status, 503);
         listener.admit();
-        assert.equal((await get(port, "/a2a/tasks/1")).body, "a2a");
+        assert.equal((await get(port, "/ext/tasks/1")).body, "ext");
         assert.equal((await get(port, "/elsewhere")).body, "root");
     } finally { await listener.close(); }
 });
@@ -47,16 +47,16 @@ test("{§http-host} the longest mounted prefix wins, a prefix claims only its ow
         const { port } = listener.httpAddress();
         listener.registerHttpRoute("/", reply("root"));
         listener.registerHttpRoute("/acp", reply("acp"));
-        listener.registerHttpRoute("/.well-known/agent-card.json", reply("card"));
-        listener.registerHttpRoute("/a2a", reply("a2a"));
+        listener.registerHttpRoute("/.well-known/oauth-authorization-server", reply("card"));
+        listener.registerHttpRoute("/ext", reply("ext"));
         listener.admit();
         assert.equal((await get(port, "/")).body, "root");
         assert.equal((await get(port, "/acp")).body, "acp");
         assert.equal((await get(port, "/acp/run?x=1")).body, "acp");
         assert.equal((await get(port, "/acpx")).body, "root", "a sibling name that merely starts with the prefix is not under it");
-        assert.equal((await get(port, "/.well-known/agent-card.json")).body, "card");
+        assert.equal((await get(port, "/.well-known/oauth-authorization-server")).body, "card");
         assert.equal((await get(port, "/.well-known/other")).body, "root");
-        assert.equal((await get(port, "/a2a/message:send")).body, "a2a");
+        assert.equal((await get(port, "/ext/action")).body, "ext");
         assert.equal((await get(port, "/nowhere/deep")).body, "root");
     } finally { await listener.close(); }
 });
@@ -257,7 +257,7 @@ test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission,
             { stage: "startup", retryable: true },
         ));
         listener.registerHttpUpgrade("/", acceptUpgrade("root-ws"));
-        listener.registerHttpRoute("/a2a", reply("a2a-http"));
+        listener.registerHttpRoute("/ext", reply("ext-http"));
         listener.registerHttpRoute("/acp", reply("acp-http"));
         listener.registerHttpUpgrade("/acp", acceptUpgrade("acp-ws"));
         assert.throws(() => listener.registerHttpUpgrade("/acp", acceptUpgrade("again")), /upgrade is already mounted/u);
@@ -269,9 +269,9 @@ test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission,
         assert.match(acpWs.status, /^HTTP\/1\.1 101 /u);
         assert.equal(acpWs.body, "acp-ws");
 
-        const a2aWs = await rawUpgrade(port, "/a2a");
-        assert.match(a2aWs.status, /^HTTP\/1\.1 404 /u, "a mounted prefix without an upgrade handler never falls through to root");
-        assert.deepEqual(JSON.parse(a2aWs.body), Problems.create(
+        const extWs = await rawUpgrade(port, "/ext");
+        assert.match(extWs.status, /^HTTP\/1\.1 404 /u, "a mounted prefix without an upgrade handler never falls through to root");
+        assert.deepEqual(JSON.parse(extWs.body), Problems.create(
             "http", "route-not-found", 404, "The requested HTTP route does not exist.",
             { stage: "routing", retryable: false },
         ));

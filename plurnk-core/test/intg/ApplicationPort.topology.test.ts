@@ -97,7 +97,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
                 workspaceId: workspace.workspaceId,
                 workerId: task.workerId,
                 prompt: "produce the composed result",
-                source: `a2a://peer/contexts/${contextId}/tasks/${taskId}`,
+                source: `acp://peer/contexts/${contextId}/tasks/${taskId}`,
             });
             await waitFor(
                 () => terminated,
@@ -115,7 +115,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
                 sequence: own?.sequence,
                 status: 200,
                 prompt: "produce the composed result",
-                promptSource: `a2a://peer/contexts/${contextId}/tasks/${taskId}`,
+                promptSource: `acp://peer/contexts/${contextId}/tasks/${taskId}`,
                 claimedAt: own?.claimedAt,
                 terminatedAt: own?.terminatedAt,
                 terminalResult: {

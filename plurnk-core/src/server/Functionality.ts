@@ -1,5 +1,5 @@
 // {§functionality-coordinator} — the one owner of the workspace Functionality
-// lifecycle above the family adapters (Agent Skills, MCP, outbound A2A). It owns
+// lifecycle above the family adapters (Agent Skills, MCP). It owns
 // durable workspace state, lifecycle ordering, serialization, atomic
 // publication, and both projections: workspace-scoped client actions and a
 // generated runtime whose host verbs propose. An explicit

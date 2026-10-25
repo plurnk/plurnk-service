@@ -15,7 +15,6 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "CapabilityAdmission",
         "EFFORTS",
         "INTERNAL_ROW_OPS",
-        "InvalidA2aAgentDefinitionError",
         "InvalidAcpClientConformanceError",
         "InvalidAcpConformanceKitError",
         "InvalidAcpDiscoveryError",
