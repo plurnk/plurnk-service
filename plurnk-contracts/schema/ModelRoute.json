@@ -27,7 +27,7 @@
             "$ref": "https://schemas.plurnk.xyz/v0/Effort.json"
         },
         "effortSource": {
-            "description": "Whether effort was chosen through worker.effort.set (explicit) or seeded from the alias configuration (default). Present exactly when effort is.",
+            "description": "Whether effort was chosen through setWorkerEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.",
             "type": "string",
             "enum": ["default", "explicit"]
         }

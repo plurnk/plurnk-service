@@ -274,7 +274,7 @@ export interface ApplicationPort extends HttpHost {
         readonly workerId: number;
     }): Promise<{
         readonly effort: Effort | null;
-        // {§worker-effort-source} — `explicit` only after worker.effort.set.
+        // {§worker-effort-source} — `explicit` only after setWorkerEffort.
         readonly source: "default" | "explicit";
         readonly supportedEfforts: readonly Effort[];
     }>;

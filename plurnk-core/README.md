@@ -30,7 +30,7 @@ Clients use ACP management actions and ACP Run streams exposed by
 a second client transport.
 
 `models.list` locally lists catalog routes, configuration readiness, and each
-route's accepted `capabilities.efforts`. `worker.effort.get`
+route's accepted `capabilities.efforts`. The `thought_level` session config option (`readWorkerEffort`)
 reports the choices shared by a worker's selected model and spawn override.
 
 ## Start

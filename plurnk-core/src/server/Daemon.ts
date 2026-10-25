@@ -393,7 +393,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§methods-proposal-resolve} — proposal HITL. A transport module reads the stopped-world
-    // proposals for a workspace (rendering each as a TOOL_CALL) and feeds back the human's decision. The
+    // proposals for a workspace (presenting each via session/request_permission) and feeds back the human's decision. The
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
     async pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
@@ -1428,7 +1428,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // {§notifications-worker-policy} A worker's generation policy, as worker.model.get reads it, to its workspace.
+    // {§notifications-worker-policy} A worker's generation policy, as readWorkerModel reads it, to its workspace.
     async #announceWorkerPolicy(workerId: number): Promise<void> {
         const workspaceId = (await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId }))?.workspace_id;
         if (workspaceId === undefined) return;

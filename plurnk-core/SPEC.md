@@ -1352,7 +1352,7 @@ observe their terminal results. No effect is replayed across an unknown
 boundary.
 
 - §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. Fresh-loop sequence allocation and insertion are one mutation under that same lock; fresh loops receive distinct increasing sequence numbers. Recipient selection follows {§worker-message-admission}, not whether callers started concurrently.
-- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel` and worker `KILL` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment.
+- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `cancelLoop` (`session/cancel`) and worker `KILL` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment.
 
   | Fact | Rule |
   | --- | --- |
@@ -4112,7 +4112,7 @@ filter those explicit bindings or create a second approval path.
 
 - **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; ACP uses standard resume entries ({§acp-proposal-resolve}).
 - **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
-- §proposal-timeout-cancels **Timeout is OPT-IN; an empty deadline WAITS** - an empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `loop.cancel`, worker `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
+- §proposal-timeout-cancels **Timeout is OPT-IN; an empty deadline WAITS** - an empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `cancelLoop` (`session/cancel`), worker `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
 
 §proposal-decision-evidence Each proposal has at most one immutable decision record,
 committed before application. It contains the original accept/reject/cancel,
@@ -5800,7 +5800,7 @@ live policy link to the source worker.
 
 §worker-effort-source **The effort source: a default never masquerades as a choice.** The worker row records
 `effort_source` beside `effort`: `default` when the value was seeded from the alias
-or provider configuration, `explicit` only after `worker.effort.set`. `worker.effort.get`
+or provider configuration, `explicit` only after `setWorkerEffort`. `readWorkerEffort`
 returns `source`, and a projected `ModelRoute` carries `effortSource` exactly when it carries
 `effort`, so a client can render `deepdumb[low]` differently from a seeded `low` without
 inferring anything. Selecting a new model keeps an explicit policy (validated against the new

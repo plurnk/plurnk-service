@@ -1022,7 +1022,7 @@ provider: string
 model: string
 effort?: Effort
 /**
- * Whether effort was chosen through worker.effort.set (explicit) or seeded from the alias configuration (default). Present exactly when effort is.
+ * Whether effort was chosen through setWorkerEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.
  */
 effortSource?: ("default" | "explicit")
 }
