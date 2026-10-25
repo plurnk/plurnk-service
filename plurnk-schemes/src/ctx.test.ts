@@ -192,7 +192,7 @@ const makeCtx = () => {
 
     const ctx = schemeCtx({
         entries, channels, notify, projection, subscriptions,
-        interactions: { request: async () => ({ status: "cancelled" }) },
+        interactions: { request: async () => ({ action: "cancel" }) },
     });
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };

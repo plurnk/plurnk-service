@@ -9,7 +9,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
-import { actionResult, type Event, packet, PacketCapturingMock, parseEvents, post, runInput } from "./_acp-run.ts";
+import { actionResult, type Event, packet, PacketCapturingMock, post, runInput, sessionUpdates, terminalMeta } from "./_acp-run.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_a2a.ts";
@@ -50,46 +50,70 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     const workspace = "preparation-visibility";
     await daemon.createWorkspace({ name: workspace });
     const inspect = () => post(port, runInput(workspace, crypto.randomUUID(), {
-        forwardedProps: { plurnk: { workspace, action: { kind: "workspace.mcp.list" } } },
+        action: { kind: "workspace.mcp.list" },
     }));
     const cold = actionResult(await inspect());
     assert.equal(cold.ok, true);
     assert.equal((cold.result!.definitions as { state: string }[])[0].state, "dormant");
     assert.equal(served.requests.length, 0, "inspection never connects to the MCP server");
-    const response = await fetch(`http://127.0.0.1:${port}/acp`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(runInput(workspace, "prompt", { messages: [{ id: "m", role: "user", content: "Reply OK." }] })),
-    });
-    assert.equal(response.status, 200);
     const events: Event[] = [];
-    const finished = (async () => {
-        let buffer = "";
-        const decoder = new TextDecoder();
-        for await (const chunk of response.body!) {
-            buffer += decoder.decode(chunk, { stream: true });
-            const frames = buffer.split("\n\n");
-            buffer = frames.pop()!;
-            for (const frame of frames) {
-                for (const event of parseEvents(`${frame}\n\n`)) {
-                    events.push(event);
-                    if (event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"alias":"fixture"')) visible.resolve();
-                }
+    const finished = new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/acp`);
+        ws.addEventListener("open", () => {
+            ws.send(JSON.stringify({
+                jsonrpc: "2.0",
+                id: "init",
+                method: "initialize",
+                params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+            }));
+        });
+        ws.addEventListener("message", (msg) => {
+            const event = JSON.parse(String(msg.data)) as Event & {
+                id?: string;
+                method?: string;
+                params?: { update?: { sessionUpdate?: string; state?: string; stopReason?: string } };
+            };
+            if (event.id === "init") {
+                ws.send(JSON.stringify(runInput(workspace, "prompt", { prompt: "Reply OK." })));
+                return;
             }
-        }
-    })();
+            events.push(event);
+            if (event.method === "session/update" && JSON.stringify(event.params).includes('"alias":"fixture"')) {
+                visible.resolve();
+            }
+            if (event.method === "session/update" && event.params?.update?.sessionUpdate === "state_update" && event.params.update.state === "idle") {
+                events.push({
+                    jsonrpc: "2.0",
+                    id: "prompt",
+                    result: {
+                        stopReason: event.params.update.stopReason ?? "end_turn",
+                        _meta: { plurnk: { stopReason: event.params.update.stopReason ?? "end_turn" } },
+                    },
+                });
+                ws.close();
+                resolve();
+            }
+        });
+        ws.addEventListener("error", (err) => reject(err));
+    });
     await Promise.race([entered.promise, finished.then(() => assert.fail(`The run ended before catalog preparation: ${JSON.stringify(events)}`))]);
     await Promise.race([visible.promise, finished.then(() => assert.fail(`The run ended without preparation visibility: ${JSON.stringify(events)}`))]);
     assert.equal(provider.requests.length, 0, "the client can see startup before the provider is called");
     const during = await inspect();
     assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
-    // {§acp-workspace-state} Preparation is the workspace's, so a Run that binds no worker carries it too.
-    const snapshot = during.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { workspace: { preparation: { family: string; alias: string | null }[] } } } };
-    assert.ok(snapshot.snapshot.plurnk.workspace.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
+    // {§acp-workspace-state} Preparation is the workspace's, so an action that binds no worker carries it too.
+    const wsUpdate = sessionUpdates(during).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+        _meta?: { plurnk?: { workspace?: { preparation: { family: string; alias: string | null }[] } } };
+    } | undefined;
+    assert.ok(wsUpdate?._meta?.plurnk?.workspace?.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
     release.resolve();
     await finished;
     assert.equal(provider.requests.length, 1);
-    assert.ok(events.some((event) => event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"path":"/plurnk/workspace/preparation","value":[]')));
-    assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+    assert.ok(sessionUpdates(events).some((u) => {
+        const prep = (u._meta as { plurnk?: { preparation?: unknown[] } } | undefined)?.plurnk?.preparation;
+        return u.sessionUpdate === "notice" && u.title === "workspace:preparation" && Array.isArray(prep) && prep.length === 0;
+    }));
+    assert.equal(terminalMeta(events)?.stopReason, "end_turn");
     assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);
 });
 
@@ -148,7 +172,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
         const listed = actionResult(await post(port, runInput(workspace, "list", {
-            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.list" } } },
+            projectRoot,
+            action: { kind: "workspace.mcp.list" },
         })));
         assert.equal(listed.ok, true, JSON.stringify(listed.problem));
         if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
@@ -159,7 +184,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         );
         // Enabling the installed server activates the workspace, registering its tools before any turn.
         const enabled = actionResult(await post(port, runInput(workspace, "enable", {
-            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.enable", alias: "fixture" } } },
+            projectRoot,
+            action: { kind: "workspace.mcp.enable", alias: "fixture" },
         })));
         assert.equal(enabled.ok, true, JSON.stringify(enabled.problem));
         assert.equal((enabled.result?.definition as { state?: string } | undefined)?.state, "active");
@@ -169,15 +195,10 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         // space as every other capability. One workspace restriction removes only
         // the denied tool from both dispatch and the model's generated contract.
         const attenuated = actionResult(await post(port, runInput(workspace, "deny-fail-tool", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    projectRoot,
-                    action: {
-                        kind: "workspace.capabilities.set",
-                        policy: { deny: [{ runtime: "fixture", tool: "fail" }] },
-                    },
-                },
+            projectRoot,
+            action: {
+                kind: "workspace.capabilities.set",
+                policy: { deny: [{ runtime: "fixture", tool: "fail" }] },
             },
         })));
         assert.equal(attenuated.ok, true, JSON.stringify(attenuated.problem));
@@ -185,13 +206,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             deny: [{ runtime: "fixture", tool: "fail" }],
         });
         const deniedTool = actionResult(await post(port, runInput(workspace, "invoke-denied-tool", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    projectRoot,
-                    action: { kind: "op.parse", text: "````fixture (fail)\n{}\n````" },
-                },
-            },
+            projectRoot,
+            action: { kind: "op.parse", text: "````fixture (fail)\n{}\n````" },
         })));
         assert.equal(deniedTool.ok, true, JSON.stringify(deniedTool.problem));
         if (deniedTool.result === undefined) throw new Error("op.parse returned no result");
@@ -206,16 +222,17 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(deniedResult?.problem?.policyScope, "workspace");
 
         const observed = await post(port, runInput(workspace, "read-tool", {
-            messages: [{ id: "prompt-read", role: "user", content: "Use the attached echo tool, then report its result." }],
+            prompt: "Use the attached echo tool, then report its result.",
         }));
-        assert.equal(observed.at(-1)?.type, "RUN_FINISHED");
-        assert.equal((observed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+        assert.equal(terminalMeta(observed)?.stopReason, "end_turn");
         const workspaceRow = (await daemon.listWorkspaces()).find((row) => row.name === workspace);
         assert.ok(workspaceRow !== undefined);
         const [producer] = await daemon.listWorkers(workspaceRow.id, { origin: "model" });
         assert.ok(producer !== undefined);
-        const streamEvents = observed.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.stream")
-            .map((event) => event.value as { workerId: number; target: string; result?: { status: number } });
+        const streamEvents = sessionUpdates(observed)
+            .filter((u) => u.sessionUpdate === "terminal_update")
+            .map((u) => (u._meta as { plurnk?: { workerId: number; target: string; result?: { status: number } } } | undefined)?.plurnk)
+            .filter((m): m is { workerId: number; target: string; result?: { status: number } } => m !== undefined);
         assert.ok(streamEvents.some((event) => event.result?.status === 200), "the producer's ACP Run receives its actual MCP conclusion");
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through ACP before its conclusion");
         assert.ok(streamEvents.every((event) => event.workerId === producer.id), "stream provenance identifies the producing worker, not a storage owner");
@@ -262,13 +279,14 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo"],
             "the catalog excludes both capability-denied fail and non-allowlisted where");
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
-            forwardedProps: { plurnk: { workspace, action: { kind: "op.parse",
+            action: {
+                kind: "op.parse",
                 text: PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
-            } } },
+            },
         })));
         assert.equal(found.ok, true, JSON.stringify(found.problem));
         const [match] = found.result!.results as { status: number; matchingPathCount: number; matchLocationCount: number }[];
-        assert.equal(match?.status, 200);
+        assert.equal(match?.status, 200, JSON.stringify(match));
         assert.equal(match.matchingPathCount, 1);
         assert.equal(match.matchLocationCount, 1, "ordinary FIND locates the requested tool in the JSON catalog");
         const failedInvocation = packet(provider.requests, 3);
@@ -289,20 +307,15 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             /invalid-tool-arguments/,
             "an explicit source query still composes its exact terminal producer failure after receipt curation",
         );
-        const observedSpeech = observed
-            .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
+        const observedSpeech = sessionUpdates(observed)
+            .filter((u) => u.sessionUpdate === "agent_message_chunk")
+            .map((u) => ((u.content as { text?: string } | undefined)?.text ?? ""))
             .join("");
         assert.match(observedSpeech, /echo returned hello from MCP/);
 
         const restored = actionResult(await post(port, runInput(workspace, "restore-fail-tool", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    projectRoot,
-                    action: { kind: "workspace.capabilities.set", policy: {} },
-                },
-            },
+            projectRoot,
+            action: { kind: "workspace.capabilities.set", policy: {} },
         })));
         assert.equal(restored.ok, true, JSON.stringify(restored.problem));
         assert.deepEqual(restored.result?.workspace, {});
@@ -310,33 +323,25 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "policy reconciliation restores only the configured tools");
 
         const interrupted = await post(port, runInput(workspace, "host-tool-a", {
-            messages: [{ id: "prompt-fail", role: "user", content: "Call the attached fail tool and recover from its result." }],
+            prompt: "Call the attached fail tool and recover from its result.",
         }));
-        const terminal = interrupted.at(-1);
-        assert.equal(terminal?.type, "RUN_FINISHED");
-        const outcome = terminal?.outcome as {
-            readonly type?: string;
-            readonly interrupts?: ReadonlyArray<{ readonly id: string; readonly toolCallId?: string }>;
-        } | undefined;
-        assert.equal(outcome?.type, "interrupt");
-        assert.equal(outcome?.interrupts?.length, 1);
-        const interruptId = outcome?.interrupts?.[0]?.id;
-        assert.ok(interruptId);
+        const interruptedMeta = terminalMeta(interrupted);
+        assert.equal(interruptedMeta?.stopReason, "requires_action");
+        const proposal = interruptedMeta?.proposal as { readonly logEntryId: number; readonly coordinate: string } | undefined;
+        assert.ok(proposal !== undefined);
         // {§acp-proposal-resolve} The gate names the operation's own call, which its Run presented before it.
-        const gated = outcome?.interrupts?.[0]?.toolCallId;
-        assert.match(gated ?? "", /^\d+\/\d+\/\d+$/);
-        assert.ok(interrupted.some((event) => event.type === "TOOL_CALL_START" && (event as { toolCallId?: unknown }).toolCallId === gated),
-            "the gated call precedes its interrupt");
+        const gated = proposal.coordinate;
+        assert.match(gated, /^\d+\/\d+\/\d+$/);
+        assert.ok(sessionUpdates(interrupted).some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === `proposal:${proposal.logEntryId}`),
+            "the gated call precedes its proposal gate");
 
         const resumed = await post(port, runInput(workspace, "host-tool-b", {
-            resume: [{
-                interruptId,
-                status: "resolved",
-                payload: { decision: "accept" },
-            }],
+            proposalResolve: {
+                logEntryId: proposal.logEntryId,
+                optionId: "allow_once",
+            },
         }));
-        assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
-        assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+        assert.equal(terminalMeta(resumed)?.stopReason, "end_turn");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
         assert.match(failContract, /```fixture \(fail\)/);
@@ -344,27 +349,22 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
         assert.match(recoveryPacket, /"diagnostic":"fixture failure"/, "the durable observed result retains the server's explanation");
-        const toolFailure = resumed.find((event) => event.type === "CUSTOM" && event.name === "plurnk.stream"
-            && (event.value as { result?: { problem?: { tool?: string } } } | undefined)?.result?.problem?.tool === "fail");
+        const toolFailure = sessionUpdates(resumed).find((u) => u.sessionUpdate === "terminal_update"
+            && (u._meta as { plurnk?: { result?: { problem?: { tool?: string } } } } | undefined)?.plurnk?.result?.problem?.tool === "fail");
         assert.ok(toolFailure, "the actual ACP stream conclusion carries the tool failure");
-        const toolResult = (toolFailure.value as { result: { status: number; problem: { diagnostic?: string } } }).result;
+        const toolResult = (toolFailure._meta as { plurnk: { result: { status: number; problem: { diagnostic?: string } } } }).plurnk.result;
         assert.equal(toolResult.status, 502);
         assert.equal(toolResult.problem.diagnostic, "fixture failure");
-        const recoveredSpeech = resumed
-            .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
+        const recoveredSpeech = sessionUpdates(resumed)
+            .filter((u) => u.sessionUpdate === "agent_message_chunk")
+            .map((u) => ((u.content as { text?: string } | undefined)?.text ?? ""))
             .join("");
         assert.match(recoveredSpeech, /reported its expected tool error; recovery is complete/);
 
         // {§mcp-authority} — a legacy peer negotiates below the pin and serves its
         // standard catalog instead of being rejected.
         const legacyList = actionResult(await post(port, runInput(workspace, "legacy-list", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    action: { kind: "workspace.mcp.list" },
-                },
-            },
+            action: { kind: "workspace.mcp.list" },
         })));
         const legacyServer = (legacyList.result?.definitions as ReadonlyArray<Readonly<Record<string, unknown>>> | undefined)
             ?.find((server) => server.alias === "legacy");

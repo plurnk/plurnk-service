@@ -97,9 +97,88 @@ const migratedPath = (result: { code: number | null; stdout: string; stderr: str
     return match[1];
 };
 
-// {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
-const outcomeOf = <Outcome>(events: ReadonlyArray<{ type?: string; result?: Outcome }>): Outcome | undefined =>
-    events.find(({ type }) => type === "RUN_FINISHED")?.result;
+// {§acp-plurnk-metadata} A JSON-RPC request returns result or error.data.problem.
+const acpCall = async (
+    url: string,
+    method: string,
+    params: Readonly<Record<string, unknown>> = {},
+): Promise<{
+    readonly ok: boolean;
+    readonly result?: Record<string, unknown>;
+    readonly problem?: { readonly status: number; readonly key?: string };
+    readonly notifications: ReadonlyArray<{
+        readonly update?: {
+            readonly sessionUpdate?: string;
+            readonly _meta?: { readonly plurnk?: { readonly notice?: Notice; readonly problem?: { readonly key?: string } } };
+        };
+    }>;
+}> => {
+    const ws = new WebSocket(url.replace(/^http:/u, "ws:"));
+    const reqId = crypto.randomUUID();
+    const notifications: Array<{
+        readonly update?: {
+            readonly sessionUpdate?: string;
+            readonly _meta?: { readonly plurnk?: { readonly notice?: Notice; readonly problem?: { readonly key?: string } } };
+        };
+    }> = [];
+    return await new Promise((resolvePromise, rejectPromise) => {
+        ws.addEventListener("open", () => {
+            ws.send(JSON.stringify({
+                jsonrpc: "2.0",
+                id: "init",
+                method: "initialize",
+                params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+            }));
+        });
+        ws.addEventListener("message", (event) => {
+            const frame = JSON.parse(String(event.data)) as {
+                id?: string;
+                method?: string;
+                params?: {
+                    update?: {
+                        sessionUpdate?: string;
+                        _meta?: { plurnk?: { notice?: Notice; problem?: { key?: string } } };
+                    };
+                };
+                result?: Record<string, unknown>;
+                error?: { data?: { status?: number; key?: string; problem?: { status: number; key?: string } } };
+            };
+            if (frame.id === "init") {
+                ws.send(JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: reqId,
+                    method,
+                    params,
+                }));
+                return;
+            }
+            if (frame.method === "session/update") {
+                notifications.push(frame.params ?? {});
+                return;
+            }
+            if (frame.id === reqId) {
+                ws.close();
+                if (frame.error !== undefined) {
+                    const problem = frame.error.data?.problem
+                        ?? (typeof frame.error.data?.status === "number"
+                            ? { status: frame.error.data.status, key: frame.error.data.key }
+                            : undefined);
+                    resolvePromise({ ok: false, problem, notifications });
+                    return;
+                }
+                resolvePromise({ ok: true, result: frame.result, notifications });
+            }
+        });
+        ws.addEventListener("error", (err) => rejectPromise(err));
+    });
+};
+
+const acpAction = async (
+    url: string,
+    kind: string,
+    params: Readonly<Record<string, unknown>> = {},
+    envelope: Readonly<Record<string, unknown>> = {},
+) => acpCall(url, "_plurnk/action", { ...envelope, kind, params });
 
 test("{§operator-config-precedence} launcher cascade: the working directory's .env is ignored; the XDG user config supplies values; the derived DB uses XDG data", async () => {
     const fx = await fixture();
@@ -309,25 +388,19 @@ for (const built of [false, true]) {
         });
         t.after(() => daemon.stop());
         const action = async (kind: string, params = {}) => {
-            const response = await fetch(daemon.url, {
-                method: "POST", headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    threadId: "file-configuration", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                    forwardedProps: { plurnk: { workspace: "file-configuration", projectRoot: fx.cwd, action: { kind, ...params } } },
-                }),
+            const outcome = await acpAction(daemon.url, kind, params, {
+                sessionId: "file-configuration",
+                workspace: "file-configuration",
+                projectRoot: fx.cwd,
             });
-            assert.equal(response.status, 200);
-            const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-                .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean; result: unknown } });
-            const outcome = outcomeOf(events);
-            assert.equal(outcome?.ok, true, JSON.stringify(outcome));
-            return outcome?.result;
+            assert.equal(outcome.ok, true, JSON.stringify(outcome));
+            return outcome.result;
         };
-        const listed = await action("workspace.mcp.list") as FunctionalityListResult;
+        const listed = await action("workspace.mcp.list") as unknown as FunctionalityListResult;
         assert.equal(listed.definitions[0]?.alias, "fixture");
         assert.equal(listed.definitions[0]?.state, "dormant");
         assert.deepEqual(listed.definitions[0]?.provenance, { kind: "file", source: file, reference: "/mcpServers/fixture" });
-        const enabled = await action("workspace.mcp.enable", { alias: "fixture" }) as FunctionalityMutationResult;
+        const enabled = await action("workspace.mcp.enable", { alias: "fixture" }) as unknown as FunctionalityMutationResult;
         assert.equal(enabled.definition?.state, "active", "the assembled product starts and discovers the file-backed MCP server");
         assert.equal(await readFile(file, "utf8"), contents);
         assert.equal(daemon.child.exitCode, null);
@@ -352,21 +425,9 @@ for (const built of [false, true]) {
         });
         t.after(() => daemon.stop());
         assert.equal(daemon.route, "no model");
-        const response = await fetch(daemon.url, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "configuration-repair", runId: crypto.randomUUID(),
-                state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { action: { kind: "discover" } } },
-            }),
-        });
-        assert.equal(response.status, 200, "the actual client interface remains available for repair");
-        const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean; result: { actions: object } } });
-        const result = outcomeOf(events);
-        assert.equal(result?.ok, true);
-        assert.ok(result?.result.actions && "workspace.mcp.list" in result.result.actions,
+        const result = await acpAction(daemon.url, "discover", {}, { sessionId: "configuration-repair" });
+        assert.equal(result.ok, true, "the actual client interface remains available for repair");
+        assert.ok(typeof result.result?.actions === "object" && result.result.actions !== null && "workspace.mcp.list" in result.result.actions,
             "the broken family's inspection action is still advertised to the client");
         assert.equal(daemon.child.exitCode, null, "configuration diagnostics did not terminate the process");
     });
@@ -402,17 +463,10 @@ for (const built of [false, true]) {
             cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
         });
         t.after(() => daemon.stop());
-        const response = await fetch(daemon.url, {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "startup-repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { action: { kind: "discover" } } },
-            }),
-        });
-        assert.equal(response.status, 200);
-        const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; name?: string; value?: unknown; result?: unknown });
-        const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
+        const discovered = await acpAction(daemon.url, "discover", {}, { sessionId: "startup-repair" });
+        const notices = discovered.notifications
+            .filter(({ update }) => update?.sessionUpdate === "notice" && update._meta?.plurnk?.notice !== undefined)
+            .map(({ update }) => update?._meta?.plurnk?.notice as Notice);
         for (const [owner, key] of [
             ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
             ["module:@plurnk/plurnk-a2a", "PLURNK_A2A_ENDPOINT_PATH"],
@@ -432,34 +486,32 @@ for (const built of [false, true]) {
             assert.equal(notice?.level, "warn");
             assert.ok(notice?.message?.includes(key));
         }
-        const result = outcomeOf(events) as { ok: boolean; result: { actions: object } };
-        assert.equal(result.ok, true);
-        assert.ok("providers.list" in result.result.actions, "model selection remains discoverable without a working default model");
-        // {§acp-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
-        // worker creates it, and inheriting the child model needs no model.
-        const created = await fetch(daemon.url, {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, action: { kind: "worker.child.set", selector: null } } },
-            }),
+        assert.equal(discovered.ok, true);
+        assert.ok(typeof discovered.result?.actions === "object" && discovered.result.actions !== null && "models.list" in discovered.result.actions, "model selection remains discoverable without a working default model");
+        // {§acp-action-binding} A sync attaches only to an existing worker; creating the session and
+        // inheriting the child model needs no model.
+        const created = await acpCall(daemon.url, "session/new", {
+            cwd: fx.cwd,
+            _meta: { plurnk: { workspace: "startup-repair", workerName: "repair", projectRoot: fx.cwd } },
         });
-        assert.equal(created.status, 200);
-        const creation = (await created.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { type?: string; result?: { ok: boolean } });
-        assert.equal(outcomeOf(creation)?.ok, true, JSON.stringify(creation));
-        const sync = await fetch(daemon.url, {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                // {§acp-sync} A client attaches to the worker it owns, as the terminal client does.
-                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, control: true } },
-            }),
+        assert.equal(created.ok, true, JSON.stringify(created));
+        const childSet = await acpCall(daemon.url, "session/set_config_option", {
+            sessionId: String(created.result?.sessionId),
+            configId: "spawn_model",
+            type: "id",
+            value: "inherit",
         });
-        assert.equal(sync.status, 200);
-        const synchronized = await sync.text();
+        assert.equal(childSet.ok, true, JSON.stringify(childSet));
+        // {§acp-sync} A client attaches to the worker it owns, as the terminal client does.
+        const sync = await acpCall(daemon.url, "session/resume", {
+            sessionId: "repair",
+            cwd: fx.cwd,
+            _meta: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd } },
+        });
+        assert.equal(sync.ok, true, JSON.stringify(sync));
+        const synchronized = JSON.stringify(sync.notifications);
         for (const notice of notices) assert.ok(synchronized.includes(String(notice.key)), `a client attaching without inference also sees the diagnostic: ${synchronized}`);
-        assert.match(synchronized, /RUN_FINISHED/u, "passive attachment completes normally");
+        assert.match(synchronized, /state_update/u, "passive attachment completes normally");
         assert.equal(daemon.child.exitCode, null);
     });
 }
@@ -490,41 +542,59 @@ for (const built of [false, true]) {
             cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
         });
         t.after(() => daemon.stop());
-        const request = async (extra: object) => {
-            const response = await fetch(daemon.url, {
-                method: "POST", headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                    threadId: "lazy-model", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                    forwardedProps: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd, ...extra } },
-                }),
-            });
-            assert.equal(response.status, 200);
-            return (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-                .map((frame) => JSON.parse(frame.slice(6)) as {
-                    type: string; name?: string; snapshot?: { providers?: unknown }; value?: { key?: string };
-                    result?: { ok: boolean; result: unknown; problem?: { status: number; key?: string } };
-                });
-        };
-        // {§acp-action-binding} A sync attaches only to an existing worker; an act addressed to the thread's
-        // worker creates it, and inheriting the child model resolves no provider.
-        const created = await request({ action: { kind: "worker.child.set", selector: null } });
-        assert.equal(outcomeOf(created)?.ok, true, JSON.stringify(created));
-        const sync = await request({ control: true });
-        assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
-        assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
-        const snapshot = sync.find(({ type }) => type === "STATE_SNAPSHOT")?.snapshot;
-        assert.ok(snapshot);
-        assert.equal(Object.hasOwn(snapshot, "providers"), false, "unavailable is not a fabricated empty catalog");
+        // {§acp-action-binding} A sync attaches only to an existing worker; creating a session and
+        // inheriting the child model resolves no provider.
+        const created = await acpCall(daemon.url, "session/new", {
+            cwd: fx.cwd,
+            _meta: { plurnk: { workspace: "lazy-model", workerName: "lazy-model", projectRoot: fx.cwd } },
+        });
+        assert.equal(created.ok, true, JSON.stringify(created));
+        const sessionId = String(created.result?.sessionId);
+        const childSet = await acpCall(daemon.url, "session/set_config_option", {
+            sessionId,
+            configId: "spawn_model",
+            type: "id",
+            value: "inherit",
+        });
+        assert.equal(childSet.ok, true, JSON.stringify(childSet));
+        const sync = await acpCall(daemon.url, "session/resume", {
+            sessionId: "lazy-model",
+            cwd: fx.cwd,
+            _meta: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd } },
+        });
+        assert.equal(sync.ok, true, "the client attaches despite alias failure");
+        assert.ok(
+            sync.notifications.some(
+                (f) => f.update?.sessionUpdate === "notice" && f.update._meta?.plurnk?.problem?.key === "PLURNK_BASEURL_orphan",
+            ),
+        );
+        const plurnkMeta = (sync.result?._meta as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        assert.ok(plurnkMeta);
+        assert.equal(Object.hasOwn(plurnkMeta, "providers"), false, "unavailable is not a fabricated empty catalog");
         assert.deepEqual(requests, [], "startup, creating the worker and passive attachment perform no provider I/O");
-        const rejected = await request({ action: { kind: "worker.model.set", selector: "missing/model" } });
-        const failure = outcomeOf(rejected);
-        assert.equal(failure?.ok, false);
-        assert.equal(failure?.problem?.status, 503);
-        const unchanged = await request({ action: { kind: "worker.model.get" } });
-        assert.deepEqual(outcomeOf(unchanged)?.result, { model: null, spawnModel: null });
+        const rejected = await acpCall(daemon.url, "session/set_config_option", {
+            sessionId,
+            configId: "model",
+            type: "id",
+            value: "missing/model",
+        });
+        assert.equal(rejected.ok, false);
+        assert.equal(rejected.problem?.status, 503);
+        const unchanged = await acpCall(daemon.url, "session/resume", {
+            sessionId: "lazy-model",
+            cwd: fx.cwd,
+            _meta: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd } },
+        });
+        const unchangedMeta = (unchanged.result?._meta as { plurnk?: { status?: unknown } } | undefined)?.plurnk;
+        assert.deepEqual(unchangedMeta?.status, { model: null, spawnModel: null });
         for (let attempt = 0; attempt < 2; attempt++) {
-            const selected = await request({ action: { kind: "worker.model.set", selector: "openai/lazy-fixture" } });
-            assert.equal(outcomeOf(selected)?.ok, true, JSON.stringify(selected));
+            const selected = await acpCall(daemon.url, "session/set_config_option", {
+                sessionId,
+                configId: "model",
+                type: "id",
+                value: "openai/lazy-fixture",
+            });
+            assert.equal(selected.ok, true, JSON.stringify(selected));
         }
         assert.deepEqual(requests, ["/v1/models"], "selection verifies once; repeated selection reuses the existing provider cache");
     });
@@ -677,17 +747,10 @@ for (const built of [false, true]) {
             cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
         });
         t.after(() => daemon.stop());
-        const response = await fetch(daemon.url, {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "undeclared-key", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
-                forwardedProps: { plurnk: { action: { kind: "discover" } } },
-            }),
-        });
-        assert.equal(response.status, 200);
-        const notices = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown })
-            .filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice)
+        const discovered = await acpAction(daemon.url, "discover", {}, { sessionId: "undeclared-key" });
+        const notices = discovered.notifications
+            .filter(({ update }) => update?.sessionUpdate === "notice" && update._meta?.plurnk?.notice !== undefined)
+            .map(({ update }) => update?._meta?.plurnk?.notice as Notice)
             .filter(({ kind }) => kind === "configuration_undeclared");
         assert.deepEqual(notices, [{
             source: "engine:configuration", kind: "configuration_undeclared", level: "info", key: "PLURNK_UNDECLARED_FIXTURE", message,

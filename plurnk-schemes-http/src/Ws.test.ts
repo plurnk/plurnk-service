@@ -174,7 +174,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const ctx = schemeCtx({
         workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1,
         entries, channels, notify, projection, subscriptions,
-        interactions: { request: async () => ({ status: "cancelled" }) },
+        interactions: { request: async () => ({ action: "cancel" }) },
     });
     return {
         ctx,

@@ -128,10 +128,10 @@ test("{§a2a-worker-ownership}: the parent owner approves operations and answers
         const [interaction] = await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (items) => items.length === 1);
         assert.equal(interaction.recipient, owner.address, "the Task's question goes to its owner, never the A2A caller");
         await assert.rejects(daemon.resolveClientInteraction(interaction.interactionId,
-            { status: "resolved", payload: { branch: "wrong-authority" } }, { workspaceId, address: "a2a://anonymous/caller" }),
+            { action: "accept", content: { branch: "wrong-authority" } }, { workspaceId, address: "a2a://anonymous/caller" }),
         (error: unknown) => error instanceof OperationFailureError && error.result.problem.type.endsWith("/recipient-mismatch"));
         await daemon.resolveClientInteraction(interaction.interactionId,
-            { status: "resolved", payload: { branch: "main" } }, { workspaceId, address: owner.address });
+            { action: "accept", content: { branch: "main" } }, { workspaceId, address: owner.address });
         const answered = await running;
         const states = answered.events.flatMap((event) => {
             const update = payload(event);

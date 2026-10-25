@@ -1215,7 +1215,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                     (u) =>
                         u.sessionUpdate === "subagent_update" &&
                         u.sessionId === "1#helper" &&
-                        u.capabilities?.cancel !== undefined,
+                        (u.capabilities as { cancel?: unknown } | undefined)?.cancel !== undefined,
                 ),
             );
             assert.ok(
@@ -1223,7 +1223,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                     (u) =>
                         u.sessionUpdate === "subagent_update" &&
                         u.sessionId === "1#helper" &&
-                        u.state?.state === "idle",
+                        (u.state as { state?: string } | undefined)?.state === "idle",
                 ),
             );
             assert.ok(

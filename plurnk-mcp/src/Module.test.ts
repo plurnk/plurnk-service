@@ -274,7 +274,7 @@ const serveChallenge = (t: TestContext, refused: RequestKind) => serveMcpHttp(t,
 
 const callArgs = (runtime: string, target: string, body: string) => ({
     metadata: null, runtime, body, cwd: null, target, signal: new AbortController().signal,
-    write: () => {}, setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" as const }),
+    write: () => {}, setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" as const }),
 });
 
 // One request of a kind through the alias's published runtime, as the status and Problem type it settles with.

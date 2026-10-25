@@ -174,7 +174,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const ctx = schemeCtx({
         signal: overrides.signal,
         entries, channels, notify, projection, subscriptions,
-        interactions: { request: async () => ({ status: "cancelled" }) },
+        interactions: { request: async () => ({ action: "cancel" }) },
     });
     return {
         ctx,

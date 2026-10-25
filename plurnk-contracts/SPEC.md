@@ -6,7 +6,7 @@
 | Tag | Promise |
 | --- | --- |
 | {§contract-representations} | JSON Schema is authoritative for shared data shapes. |
-| {§acp-discovery-contract} | `AcpDiscovery` is the complete installed ACP+ surface at one instant. |
+| {§acp-discovery-contract} | `AcpDiscovery` is the complete installed ACP v2 surface at one instant. |
 | {§acp-action-schema-enforcement} | The JSON Schema values in {§acp-discovery-contract} are executable boundary contracts, not prose or hints. |
 | {§acp-client-conformance} | `AcpClientConformance` is a language-neutral JSON document accounting for every action and notification in… |
 | {§acp-conformance-kit} | `AcpConformanceKit` is the one versioned, language-neutral corpus of raw SSE boundary specimens and ACP… |
@@ -43,7 +43,7 @@ generated from the schemas; ANTLR is authoritative for accepted model-language
 syntax. An operator's own GBNF is carried verbatim to a llama-server route by
 the providers package.
 
-§acp-discovery-contract `AcpDiscovery` is the complete installed ACP+
+§acp-discovery-contract `AcpDiscovery` is the complete installed ACP v2
 surface at one instant. `schemaVersion` identifies its discovery shape;
 `actions` maps each unique public name to exactly one `scope`, `inputSchema`,
 and `outputSchema`; `notifications` maps each unique event-family name to one
@@ -109,7 +109,7 @@ metadata retain their deliberate layouts.
 | --- | --- |
 | {§contract-proposal-projection} | Admission policy and stopped-world projection |
 | {§capability-policy-matching} | A selector is an exact conjunction: every field it declares must equal the descriptor, while every selected… |
-| {§capability-policy-cascade} | Capability layers are purely subtractive and order-independent: a descriptor is admitted only when every… |
+| {§capability-policy-cascade} | Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every… |
 | {§capability-policy-projection} | A `CapabilityProjection` reports every durable workspace layer and their normalized intersection: `service`,… |
 | {§proposal-policy} | `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES` is its schema-owned vocabulary. |
 | {§effort-wire} | `Effort` is exactly `off \| adaptive \| low \| medium \| high \| xhigh \| max`. |
@@ -165,12 +165,12 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | Contract                  | Shape invariant                                                                 | Runtime responsibility                                                                 |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
-| `CapabilityPolicy`        | Exact `only`/`deny` selectors; omitted `only` is unrestricted and present empty `only` denies all | Intersect service and workspace layers |
+| `CapabilityPolicy`        | Exact `allow`/`only`/`deny` selectors; omitted `only` is unrestricted, present empty `only` denies all, and `allow` pre-approves admitted proposals | Intersect service and workspace layers |
 | `CapabilityProjection`    | Exact service, workspace, and normalized effective policies | Expose the resolver's workspace cascade without claiming one layer is effective authority |
 | `WorkerOwner` | Nonempty address, unique client-tool names, and whether it is interactive | Persist by workspace; inherit through worker creation |
 | `ProposalPolicy` | `review`, `accept`, or `reject` | Read the server's disposition knob at the proposal boundary |
 | `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
-| `ProposalProjection` | Identity, review target, body/attrs, owner, stale signal, disposition | One validated projection for live delivery and reconnect |
+| `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 | `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
 | `ProviderCost`            | Exact charged, estimated, or unknown monetary evidence                           | Normalize one monetary disposition for each physical provider request                    |
 | `ProviderRequestAccounting` | Usage and cost evidence for one physical provider request                      | Preserve request order across retries, failover, success, and failure                    |
@@ -180,12 +180,15 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 declares must equal the descriptor, while every selected `trait` must occur in
 the descriptor's trait set. `deny` wins within a layer. When `only` is present, at
 least one selector must match. An empty policy admits everything and an empty
-`only` list admits nothing.
+`only` list admits nothing. `allow` pre-approves matching demands that survive
+`deny` and `only`.
 
-§capability-policy-cascade Capability layers are purely subtractive and
+§capability-policy-cascade Capability admission is purely subtractive and
 order-independent: a descriptor is admitted only when every layer admits it.
 Workspace policy cannot restore authority denied by the service. A
-composed operation is admitted only when every routed demand survives. These
+composed operation is admitted only when every routed demand survives. A demand
+is pre-approved across layers only when it is admitted across every layer and
+matches at least one layer's `allow` selector. These
 descriptors govern routed external authority, not every grammar statement:
 log/program control such as log KILL, the native dispositions, and
 targetless SEND creates no capability demand. A known interactive runtime is represented by
@@ -232,9 +235,9 @@ for structured input without transferring private protocol continuation state.
 
 | Contract | Shape invariant |
 |---|---|
-| `ClientInteractionRequest` | Non-empty `toolName`, object `arguments`, optional non-empty `message`, and object `responseSchema` |
+| `ClientInteractionRequest` | Non-empty `toolName`, `mode: "form"` with non-empty `message` and object `requestedSchema`, or `mode: "url"` with non-empty `message`, non-empty `elicitationId`, and URI `url` |
 | `ClientInteractionProjection` | Positive interaction, worker, loop, and turn identities plus the exact request; workspace scope remains the containing transport envelope |
-| `ClientInteractionResolution` | Exactly `{ status: "resolved", payload? }` or `{ status: "cancelled" }` |
+| `ClientInteractionResolution` | Exactly `{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }` |
 
 Opaque upstream request identities, retry state, credentials, and callbacks are
 not members of these schemas. The operation owner retains and interprets those

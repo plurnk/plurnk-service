@@ -67,27 +67,40 @@ test("{§acp-run-endpoint} ACP serves /acp without occupying the root", async (t
     assert.deepEqual(client.mounts, ["/acp"]);
     const { daemon, get, port } = await fixture(t, client);
     await daemon.start();
-    const input = JSON.stringify({
-        threadId: "routing", runId: "discover", state: {}, messages: [], tools: [], context: [],
-        forwardedProps: { plurnk: { action: { kind: "discover" } } },
+    const rootResponse = await fetch(`http://127.0.0.1:${port}/`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{}",
     });
-    for (const path of ["/", "/acp"]) {
-        const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-            method: "POST", headers: { "content-type": "application/json" }, body: input,
+    assert.equal(rootResponse.status, 404);
+    const problem = await rootResponse.json() as { type: string };
+    assert.equal(problem.type, "https://problems.plurnk.xyz/http/route-not-found");
+
+    const rpc = await new Promise<{ result?: { actions?: Record<string, unknown> } }>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/acp`);
+        ws.addEventListener("open", () => {
+            ws.send(JSON.stringify({
+                jsonrpc: "2.0",
+                id: 0,
+                method: "initialize",
+                params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+            }));
         });
-        if (path === "/") {
-            assert.equal(response.status, 404);
-            const problem = await response.json() as { type: string };
-            assert.equal(problem.type, "https://problems.plurnk.xyz/http/route-not-found");
-        } else {
-            assert.equal(response.status, 200);
-            assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/u);
-            const frames = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-                .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { kind?: string } });
-            // {§acp-plurnk-metadata} The Run finishes with the action's outcome as its result.
-            assert.equal(frames.find(({ type }) => type === "RUN_FINISHED")?.result?.kind, "discover");
-        }
-    }
+        ws.addEventListener("message", (event) => {
+            const parsed = JSON.parse(String(event.data)) as { id?: number; result?: { actions?: Record<string, unknown> } };
+            if (parsed.id === 0) {
+                ws.send(JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: 1,
+                    method: "_plurnk/action",
+                    params: { kind: "discover", params: {} },
+                }));
+            } else if (parsed.id === 1) {
+                ws.close();
+                resolve(parsed);
+            }
+        });
+        ws.addEventListener("error", (err) => reject(err));
+    });
+    assert.ok(rpc.result?.actions !== undefined);
     assert.equal((await get("/")).status, 404);
 });
 

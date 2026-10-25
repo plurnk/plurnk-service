@@ -29,7 +29,7 @@ for (const [runtime, body, message, expected] of cases) {
         const completion = executor.run({ runtime, body, metadata: ['{"stdin": "open"}'], cwd: null, target: null,
             signal: controller.signal, registerInput: (input) => { receiver = input; },
             write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; else stderr += chunk; },
-            setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
+            setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
         });
         t.after(async () => { controller.abort({ signal: "SIGKILL" }); await completion; });
         assert.ok(receiver, "open stdin registers an invocation-local receiver");

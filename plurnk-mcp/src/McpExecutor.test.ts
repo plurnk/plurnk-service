@@ -68,7 +68,7 @@ const harness = (
             },
             setState: (channel, state) => { if (channel === "body") states.push(state); },
             emit: (notice) => notices.push(notice),
-            interact: async () => ({ status: "cancelled" }),
+            interact: async () => ({ action: "cancel" }),
             ...overrides,
         },
     };

@@ -22,7 +22,7 @@ const run = async (command: string, signal: AbortSignal): Promise<ExecResult> =>
         metadata: null,
         runtime: "sh", body: command, cwd: null, target: null, signal,
         write: () => {}, setState: () => {}, emit: () => {},
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     return new SubprocessExecutor({ runtime: "sh", glyph: "🐚" }).run(args);
 };

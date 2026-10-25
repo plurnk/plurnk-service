@@ -351,7 +351,7 @@ test(`{§db-migrations}: a ${V3_3_0.release} database renames its worker flag co
 
 test(`{§db-migrations} {§connection-lifecycle}: a ${V3_3_0.release} database's client workers become their runtime worker's history, losing no row anything names`, async (t) => {
     const path = await released(t, V3_3_0);
-    const person = "agui://operator/threads/first";
+    const person = "acp://operator/threads/first";
     const json = "'{}', 'application/json', '{\"status\":200}', 'application/json', 200";
     const before = new DatabaseSync(path);
     try {
@@ -684,17 +684,17 @@ test(`{§db-migrations} {§worker-ownership}: a ${V4_3_0.release} database colla
             INSERT INTO workspaces (id, name) VALUES (1, 'operatorOwners');
             INSERT INTO worker_owners (workspace_id, address, tools, interactive) VALUES
                 (1, '_plurnk', '[]', 0),
-                (1, 'agui://anonymous/threads/1%23user', '["request_approval","question"]', 1),
-                (1, 'agui://operator/threads/1%23child', '["request_approval"]', 0),
+                (1, 'acp://anonymous/threads/1%23user', '["request_approval","question"]', 1),
+                (1, 'acp://operator/threads/1%23child', '["request_approval"]', 0),
                 (1, 'acp://operator', '["request_approval"]', 0);
             INSERT INTO workers (id, workspace_id, name, origin, owner) VALUES
-                (1, 1, 'user', 'model', 'agui://anonymous/threads/1%23user'),
-                (2, 1, 'child', 'model', 'agui://operator/threads/1%23child'),
+                (1, 1, 'user', 'model', 'acp://anonymous/threads/1%23user'),
+                (2, 1, 'child', 'model', 'acp://operator/threads/1%23child'),
                 (3, 1, 'peer', 'model', 'acp://operator');
             INSERT INTO loops (id, worker_id, sequence, prompt, max_turns) VALUES (1, 2, 1, 'Ask', -1);
             INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 102);
             INSERT INTO client_interactions (id, worker_id, loop_id, turn_id, recipient, request)
-                VALUES (1, 2, 1, 1, 'agui://operator/threads/1%23child', '{"tool":"question"}');
+                VALUES (1, 2, 1, 1, 'acp://operator/threads/1%23child', '{"tool":"question"}');
         `);
     } finally { before.close(); }
     const upgraded = await openMigrated(path);

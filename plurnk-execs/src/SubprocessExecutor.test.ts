@@ -34,7 +34,7 @@ const exec = async (runtime: string, command: string, opts: { signal?: AbortSign
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => states.push({ channel, state }),
         emit: (event) => events.push(event),
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     const result: ExecResult = await new SubprocessExecutor({ runtime, glyph: "🐚" }).run(args);
     return { result, out, states, events };
@@ -98,7 +98,7 @@ test("{§executor-stdin}: a script's initial body precedes later input without i
         runtime: "node", body: "initial\n", target, cwd: directory, metadata: ['{"stdin": "open"}'],
         signal: controller.signal, registerInput: (input) => { receiver = input; },
         write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; },
-        setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
+        setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
     });
     t.after(async () => { controller.abort({ signal: "SIGKILL" }); await result; });
     assert.ok(receiver);
@@ -150,7 +150,7 @@ test("{§problems-executor-input} command-tokenization failures return a durable
         write: () => {},
         setState: (channel, state) => states.push({ channel, state }),
         emit: () => {},
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     });
     assert.equal(result.status, 400);
     assert.equal(result.exitCode, -1);
@@ -171,7 +171,7 @@ test("{§executor-subprocess} spawnArgs override + stdin: command fed via stdin 
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     const result = await new StdinExec({ runtime: "x", glyph: "•" }).run(args);
     assert.deepEqual(result, { status: 200, exitCode: 0 });
@@ -332,7 +332,7 @@ test("{§executor-exit-code} stdin end() racing a fast-exiting child never escap
             runtime: "x", body: "ignored", cwd: null, target: null,
             signal: new AbortController().signal,
             write: () => {}, setState: () => {}, emit: () => {},
-            interact: async () => ({ status: "cancelled" }),
+            interact: async () => ({ action: "cancel" }),
         };
         const result = await new HeadC0({ runtime: "x", glyph: "•" }).run(args);
         assert.equal(result.status, 200, `iteration ${i}: settled on the exit code, no escaped EPIPE`);

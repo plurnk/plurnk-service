@@ -1447,7 +1447,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                     return;
                 }
                 // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
-                // here (plurnk-acp renders to ACP+). Each subscriber owns its own fan-out; core just emits.
+                // here (plurnk-acp renders to ACP v2). Each subscriber owns its own fan-out; core just emits.
                 // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
                 // is each subscriber's edge concern; the seam hands (workspaceId, method, params) raw.
                 this.#emitTo(target.workspaceId, method, params);

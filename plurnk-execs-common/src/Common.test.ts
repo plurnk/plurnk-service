@@ -20,7 +20,7 @@ const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
         ...options,
     };
     const result = await make(tag).run(args);
@@ -125,7 +125,7 @@ test("{§executor-subprocess-routing} a file target runs without +x; transient e
             signal: new AbortController().signal,
             write: (_c, chunk) => { out.push(chunk); },
             setState: () => {}, emit: () => {},
-            interact: async () => ({ status: "cancelled" }),
+            interact: async () => ({ action: "cancel" }),
         };
         const result = await make("sh").run(args);
         assert.equal(result.status, 200);

@@ -138,36 +138,52 @@ const action = async (
     threadId = "startup-specimen",
     workspace?: string,
 ): Promise<unknown> => {
-    const response = await fetch(booted.url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-            runId: crypto.randomUUID(),
-            threadId,
-            state: {},
-            messages: [],
-            tools: [],
-            context: [],
-            forwardedProps: {
-                plurnk: {
-                    ...(workspace === undefined ? {} : { workspace }),
-                    action: { kind, ...params },
-                },
-            },
-        }),
-    });
-    assert.equal(response.status, 200);
-    const frames = (await response.text())
-        .split("\n\n")
-        .filter((frame) => frame.startsWith("data: "))
-        .map((frame) => JSON.parse(frame.slice(6)) as {
-            type?: string;
-            result?: { ok?: boolean; result?: unknown; problem?: unknown };
+    const wsUrl = booted.url.replace(/^http:/u, "ws:");
+    const id = crypto.randomUUID();
+    const rpc = await new Promise<{
+        result?: unknown;
+        error?: { message?: string; data?: { problem?: unknown } };
+    }>((settle, reject) => {
+        const ws = new WebSocket(wsUrl);
+        ws.addEventListener("open", () => {
+            ws.send(JSON.stringify({
+                jsonrpc: "2.0",
+                id: "init",
+                method: "initialize",
+                params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+            }));
         });
-    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
-    const outcome = frames.find(({ type }) => type === "RUN_FINISHED")?.result;
-    assert.equal(outcome?.ok, true, `action ${kind} failed: ${JSON.stringify(outcome?.problem)}`);
-    return outcome?.result;
+        ws.addEventListener("message", (event) => {
+            const parsed = JSON.parse(String(event.data)) as {
+                id?: string;
+                result?: unknown;
+                error?: { message?: string; data?: { problem?: unknown } };
+            };
+            if (parsed.id === "init") {
+                ws.send(JSON.stringify(
+                    kind === "providers/list"
+                        ? { jsonrpc: "2.0", id, method: "providers/list", params: {} }
+                        : {
+                            jsonrpc: "2.0",
+                            id,
+                            method: "_plurnk/action",
+                            params: {
+                                sessionId: threadId,
+                                ...(workspace === undefined ? {} : { workspace }),
+                                kind,
+                                params,
+                            },
+                        },
+                ));
+            } else if (parsed.id === id) {
+                ws.close();
+                settle(parsed);
+            }
+        });
+        ws.addEventListener("error", (err) => reject(err));
+    });
+    assert.equal(rpc.error, undefined, `action ${kind} failed: ${JSON.stringify(rpc.error)}`);
+    return rpc.result;
 };
 
 // {§mcp-configuration}
@@ -529,8 +545,16 @@ test("{§startup-admission-order} bin: an unavailable provider is not constructe
         PLURNK_MODEL_broken: "missing/model",
     }));
     try {
-        const result = await action(booted, "providers.list") as { aliases: Array<{ alias: string; active: boolean }> };
-        assert.deepEqual(result.aliases.map(({ alias, active }) => ({ alias, active })), [{ alias: "broken", active: true }]);
+        const result = await action(booted, "providers/list") as {
+            providers: Array<{ providerId: string; _meta?: { plurnk?: { alias: string; active: boolean } } }>;
+        };
+        assert.deepEqual(
+            result.providers.map((p) => ({
+                alias: p._meta?.plurnk?.alias ?? p.providerId,
+                active: p._meta?.plurnk?.active ?? false,
+            })),
+            [{ alias: "broken", active: true }],
+        );
         assert.equal(booted.child.exitCode, null);
     } finally {
         assert.equal((await stopDaemon(booted)).code, 0);

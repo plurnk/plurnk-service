@@ -32,7 +32,7 @@ const harness = () => {
         write: (channel, chunk, mimetype) => writes.push({ channel, chunk, ...(mimetype !== undefined ? { mimetype } : {}) }),
         setState: (channel, state) => states.push({ channel, state }),
         emit: (event) => events.push(event),
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
         ...overrides,
     });
     return { writes, states, events, args };

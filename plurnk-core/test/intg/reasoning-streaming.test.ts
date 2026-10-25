@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
-import { Translator } from "@plurnk/plurnk-acp";
+import { SessionTranslator } from "@plurnk/plurnk-acp";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
@@ -14,13 +14,14 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
         const workspaceId = await insertWorkspace(db, "streaming-reasoning");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Report the finding.");
-        const translator = new Translator({ origin: "http://acp.test", workspaceId, threadId: "streaming", runId: "streaming", modelWorkerId: workerId });
-        const events: ReturnType<Translator["reasoning"]> = [];
+        const translator = new SessionTranslator({ sessionId: "streaming", workspaceId, workerId, origin: "http://acp.test" });
+        const events: ReturnType<SessionTranslator["reasoning"]> = [];
         const ready = Promise.withResolvers<void>();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), reasoningEventNotify(_workspace, payload) {
             const translated = translator.reasoning(payload);
             events.push(...translated);
-            if (translated.some((event) => event.type === "REASONING_MESSAGE_CONTENT" && event.delta === "Visible now.")) ready.resolve();
+            if (translated.some(({ update }) => update.sessionUpdate === "agent_thought_chunk"
+                && (update.content as { text?: string } | undefined)?.text === "Visible now.")) ready.resolve();
         } });
         let controller!: ReadableStreamDefaultController<Uint8Array>;
         const send = (content: string, finish: string | null = null): void => controller.enqueue(new TextEncoder().encode(
@@ -42,7 +43,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
         try {
             await ready.promise;
             assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), [], "the live signal cannot originate from a not-yet-created copy");
-            assert.ok(!events.some(({ type }) => type === "REASONING_MESSAGE_END"));
+            assert.equal(events.filter(({ update }) => update.sessionUpdate === "agent_thought_chunk").length, 1);
         } finally {
             clearTimeout(timer);
             send("</think>````SEND [200]\nDone.\n````", "stop");
@@ -50,8 +51,12 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
             controller.close();
             assert.equal((await run).status, 200);
         }
-        assert.deepEqual(events.filter((event) => event.type === "REASONING_MESSAGE_CONTENT").map((event) => event.delta), ["Visible now."]);
-        assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_END").length, 1);
+        assert.deepEqual(
+            events
+                .filter(({ update }) => update.sessionUpdate === "agent_thought_chunk")
+                .map(({ update }) => (update as { content?: { text?: string } }).content?.text),
+            ["Visible now."],
+        );
         const rows = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
         assert.equal(rows[0].content, "Visible now.");
     } finally {

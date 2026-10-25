@@ -23,7 +23,7 @@ const run = async (command: string, target: string | null = null, env?: NodeJS.P
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
         emit: (e) => events.push(e),
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     const result = await new Jq({ runtime: "jq", glyph: "🧰" }).run(args);
     return { result, out, states, events };
@@ -152,7 +152,7 @@ test("{§executor-spawn-account}: an account the daemon may not assume fails the
         const args: ExecArgs = {
             metadata: null, runtime: "jq", body: ".", cwd: null, target: null, env: { PATH: process.env.PATH },
             signal: new AbortController().signal, write: () => { wrote = true; }, setState: () => {}, emit: () => {},
-            interact: async () => ({ status: "cancelled" }),
+            interact: async () => ({ action: "cancel" }),
         };
         await assert.rejects(new Jq({ runtime: "jq", glyph: "🧰" }).run(args), /EPERM/u);
         assert.equal(wrote, false, "no output: nothing ran");

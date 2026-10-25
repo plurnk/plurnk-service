@@ -26,8 +26,8 @@
         },
         "event": {
             "type": "object",
-            "required": ["type"],
-            "properties": { "type": { "type": "string", "minLength": 1 } },
+            "required": ["sessionUpdate"],
+            "properties": { "sessionUpdate": { "type": "string", "minLength": 1 } },
             "additionalProperties": true
         },
         "transportSpecimen": {

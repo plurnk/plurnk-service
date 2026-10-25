@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
+import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
+import { PROTOCOL_VERSION, client as createAcpClient, methods as acpMethods } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import { Policy } from "@plurnk/plurnk-execs";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./lib/installed-grammars.mjs";
@@ -235,30 +237,37 @@ const accessToken = async (address, secret) => {
 
 const acpRun = async (address, plurnk, extra = {}) => {
     const secret = seededSecret();
-    const response = await fetch(address, {
-        method: "POST",
-        headers: {
-            "content-type": "application/json",
-            ...(secret.length === 0 ? {} : { authorization: `Bearer ${await accessToken(address, secret)}` }),
-        },
-        body: JSON.stringify({
-            runId: crypto.randomUUID(),
-            threadId: "installation-probe",
-            workerId: "installation-probe",
-            state: {},
-            messages: [],
-            tools: [],
-            context: [],
-            forwardedProps: { plurnk },
-            ...extra,
-        }),
+    const token = secret.length === 0 ? "" : await accessToken(address, secret);
+    const { action: rawAction, ...envelope } = plurnk ?? {};
+    const { kind, ...actionParams } = rawAction ?? {};
+    const app = createAcpClient({ name: "test-installation" });
+    const stream = createHttpStream(address, {
+        headers: token.length === 0 ? {} : { authorization: `Bearer ${token}` },
     });
-    const body = await response.text();
-    const events = body
-        .split("\n\n")
-        .filter((frame) => frame.startsWith("data: "))
-        .map((frame) => JSON.parse(frame.slice(6)));
-    return { response, body, events };
+    const conn = app.connect(stream);
+    try {
+        await conn.agent.request(acpMethods.agent.initialize, {
+            protocolVersion: PROTOCOL_VERSION,
+            info: { name: "test-installation", version: "1.0.0" },
+        });
+        const result = await conn.agent.request("_plurnk/action", {
+            ...envelope,
+            ...extra,
+            kind,
+            params: actionParams,
+        });
+        const body = JSON.stringify({ jsonrpc: "2.0", result });
+        return { response: { ok: true, status: 200 }, body, events: [{ result }] };
+    } catch (error) {
+        const body = JSON.stringify({ jsonrpc: "2.0", error: { message: error?.message ?? String(error), data: error?.data } });
+        return { response: { ok: false, status: 500 }, body, events: [{ error }] };
+    } finally {
+        try {
+            conn.close();
+        } catch {
+            // ignore close error
+        }
+    }
 };
 
 const acpAction = async (address, kind, params = {}, workspace) => {
@@ -266,12 +275,11 @@ const acpAction = async (address, kind, params = {}, workspace) => {
         ...(workspace === undefined ? {} : { workspace }),
         action: { kind, ...params },
     });
-    // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
-    const outcome = events.find((event) => event.type === "RUN_FINISHED")?.result;
-    if (!response.ok || outcome?.ok !== true) {
+    const terminal = events.find((event) => event.result !== undefined || event.error !== undefined);
+    if (!response.ok || terminal?.error !== undefined || terminal?.result === undefined) {
         throw new Error(`packed ${kind} failed (${response.status}): ${body}`);
     }
-    return outcome.result;
+    return terminal.result;
 };
 
 const markerCount = (path) => existsSync(path)
@@ -591,7 +599,7 @@ ok(
 );
 const dormantWorkspaceId = skillBoot.probeResult?.primary?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
-    throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
+    throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)} (probeError: ${skillBoot.probeError?.stack ?? skillBoot.probeError})`);
 }
 const readPackedCapabilityDocs = async () => {
     // Same registration requirement as the digest fixture: the schema's indexes call `sha256`.
@@ -663,14 +671,14 @@ raw stdin
         },
     });
     // {§acp-client-operation}: a person's explicit operation is their decision, not an approval request.
-    const terminal = executed.events.find((event) => event.type === "RUN_FINISHED");
+    const terminal = executed.events.find((event) => event.result !== undefined || event.error !== undefined);
     const completed = terminal?.result;
-    if (!executed.response.ok || terminal?.outcome?.type !== "success" || completed?.ok !== true
-        || completed.result.results[0]?.status !== 200
-        || completed.result.results[0]?.outcome !== "client_operation") {
+    if (!executed.response.ok || terminal?.error !== undefined || completed === undefined
+        || completed.results[0]?.status !== 200
+        || completed.results[0]?.outcome !== "client_operation") {
         throw new Error(`packed Skill client operation failed: ${executed.body}`);
     }
-    const skillExec = completed.result.results[0];
+    const skillExec = completed.results[0];
     const deadline = Date.now() + 5000;
     while (!existsSync(packedSkillMarker) && Date.now() < deadline) await delay(20);
     const skillExecution = existsSync(packedSkillMarker) ? JSON.parse(readFileSync(packedSkillMarker, "utf8")) : null;
@@ -776,7 +784,7 @@ ok(
 const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
 });
-ok(boot.listening === true, "{§acp-daemon-client}: `start` boots the daemon with its ACP+ listener");
+ok(boot.listening === true, "{§acp-daemon-client}: `start` boots the daemon with its ACP v2 listener");
 // {§operator-config-shipped-defaults}: a fresh install resolves no model and names
 // the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");

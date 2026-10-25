@@ -25,7 +25,7 @@ const run = async (command: string, target: string | null = null, cwd: string | 
         write: (_channel, chunk) => { out = (out ?? "") + chunk; },
         setState: (_channel, state) => states.push(state),
         emit: (event) => events.push(event),
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     const result = await new Sqlite({ runtime: "sqlite", glyph: "🗃" }).run(args);
     return { result, out, states, events };
@@ -169,7 +169,7 @@ test("{§problems-executor-sqlite} pre-aborted signal → 499 errored, file muta
         write: () => { wrote = true; },
         setState: (_channel, state) => states.push(state),
         emit: () => {},
-        interact: async () => ({ status: "cancelled" }),
+        interact: async () => ({ action: "cancel" }),
     };
     const result = await new Sqlite({ runtime: "sqlite", glyph: "🗃" }).run(args);
     assert.equal(result.status, 499);

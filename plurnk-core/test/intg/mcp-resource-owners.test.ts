@@ -260,7 +260,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
     assert.equal(interaction.loopId, run.loopId);
     assert.match(JSON.stringify(interaction), /Read bob's resource/);
     await f.daemon.resolveClientInteraction(interaction.interactionId, {
-        status: "resolved", payload: { read: { action: "accept", content: { confirm: true } } },
+        action: "accept", content: { confirm: true },
     }, { workspaceId: f.workspaceId, address: TEST_OWNER });
     const lifecycle = new LoopLifecycle(f.db);
     await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200);

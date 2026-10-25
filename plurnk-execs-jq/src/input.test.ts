@@ -18,7 +18,7 @@ test("{§executor-stdin}: jq receives SEND values and publishes results before E
     const completion = executor.run({ runtime: "jq", body: ".value * 2", metadata: ['{"stdin": "open"}'], cwd: null, target: null,
         signal: controller.signal, registerInput: (input) => { receiver = input; ready.resolve(); },
         write: (_channel, body) => { resultBody += body; if (resultBody.includes("42\n")) output.resolve(); },
-        setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
+        setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
     });
     t.after(async () => { controller.abort(); await completion; });
     await ready.promise;
@@ -44,7 +44,7 @@ test("{§executor-stdin}: jq processes a target file before subsequent live valu
     const completion = executor.run({ runtime: "jq", body: ".value * 2", metadata: ['{"stdin": "open"}'], cwd: directory, target,
         signal: controller.signal, registerInput: ready.resolve,
         write: (_channel, body) => { output += body; },
-        setState: () => {}, emit: () => {}, interact: async () => ({ status: "cancelled" }),
+        setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
     });
     t.after(async () => { controller.abort(); await completion; });
     const receiver = await ready.promise;

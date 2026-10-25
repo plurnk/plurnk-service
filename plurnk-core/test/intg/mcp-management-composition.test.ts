@@ -36,44 +36,103 @@ const setup = async (
     } }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const url = `http://127.0.0.1:${http.httpAddress().port}/acp`;
+    const wsUrl = `ws://127.0.0.1:${http.httpAddress().port}/acp`;
     const post = async (
         workspace: string, action?: Record<string, unknown>, prompt?: string, onEvent?: (event: Event) => void,
     ): Promise<Event[]> => {
-        const response = await fetch(url, {
-            method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-                threadId: "operator", runId: crypto.randomUUID(), state: {}, tools: [], context: [],
-                messages: prompt === undefined ? [] : [{ id: crypto.randomUUID(), role: "user", content: prompt }],
-                forwardedProps: { plurnk: { workspace, projectRoot: null, ...(action === undefined ? {} : { action }) } },
-            }),
-            signal: AbortSignal.timeout(10000),
-        });
-        assert.equal(response.status, 200);
-        assert.ok(response.body);
+        const reqId = crypto.randomUUID();
+        const rpcBody = action !== undefined
+            ? (() => {
+                const { kind, ...params } = action;
+                return {
+                    jsonrpc: "2.0",
+                    id: reqId,
+                    method: "_plurnk/action",
+                    params: { sessionId: "operator", workspace, projectRoot: null, kind, params },
+                };
+            })()
+            : {
+                jsonrpc: "2.0",
+                id: reqId,
+                method: "session/prompt",
+                params: {
+                    sessionId: "operator",
+                    prompt: [{ type: "text", text: prompt ?? "" }],
+                    _meta: { plurnk: { workspace, projectRoot: null } },
+                },
+            };
+        const ws = new WebSocket(wsUrl);
         const events: Event[] = [];
-        const decoder = new TextDecoder();
-        let pending = "";
-        for await (const chunk of response.body) {
-            pending += decoder.decode(chunk, { stream: true });
-            const frames = pending.split("\n\n");
-            pending = frames.pop()!;
-            for (const frame of frames) {
-                if (!frame.startsWith("data: ")) continue;
-                const event = JSON.parse(frame.slice(6)) as Event;
-                events.push(event);
-                onEvent?.(event);
-            }
-        }
-        assert.equal(pending.trim(), "", "the ACP response ends on a complete frame");
-        return events;
+        return await new Promise<Event[]>((resolve, reject) => {
+            let settled = false;
+            const finish = (terminal?: Event) => {
+                if (settled) return;
+                settled = true;
+                if (terminal !== undefined) {
+                    events.push(terminal);
+                    onEvent?.(terminal);
+                }
+                ws.close();
+                resolve(events);
+            };
+            ws.addEventListener("open", () => {
+                ws.send(JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: "init",
+                    method: "initialize",
+                    params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+                }));
+            });
+            ws.addEventListener("message", (msg) => {
+                const event = JSON.parse(String(msg.data)) as Event & {
+                    id?: string;
+                    method?: string;
+                    params?: { update?: { sessionUpdate?: string; state?: string; stopReason?: string } };
+                    error?: unknown;
+                };
+                if (event.id === "init") {
+                    ws.send(JSON.stringify(rpcBody));
+                    return;
+                }
+                if (event.method === "session/update") {
+                    events.push(event);
+                    onEvent?.(event);
+                    if (rpcBody.method === "session/prompt" && event.params?.update?.sessionUpdate === "state_update" && event.params.update.state === "idle") {
+                        finish({
+                            jsonrpc: "2.0",
+                            id: reqId,
+                            result: {
+                                stopReason: event.params.update.stopReason ?? "end_turn",
+                                _meta: { plurnk: { stopReason: event.params.update.stopReason ?? "end_turn" } },
+                            },
+                        });
+                    }
+                    return;
+                }
+                if (event.id === reqId && (rpcBody.method === "_plurnk/action" || event.error !== undefined)) {
+                    finish(event);
+                }
+            });
+            ws.addEventListener("error", (err) => {
+                if (!settled) {
+                    settled = true;
+                    reject(err);
+                }
+            });
+        });
     };
     const action = async (workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<ActionResult> => {
         const events = await post(workspace, { kind, ...params });
-        // {§acp-plurnk-metadata} An action Run finishes with the action's outcome as its result.
-        const result = events.find((event) => event.type === "RUN_FINISHED")?.result;
-        assert.ok(result, `no action result for ${kind}: ${JSON.stringify(events)}`);
-        return result as ActionResult;
+        // {§acp-plurnk-metadata} A JSON-RPC _plurnk/action response carries result or error.data.problem.
+        const terminal = events.find((event) => "result" in event || "error" in event) as {
+            result?: Record<string, unknown>;
+            error?: { data?: { problem?: ProblemDetails } };
+        } | undefined;
+        assert.ok(terminal, `no action result for ${kind}: ${JSON.stringify(events)}`);
+        if (terminal.error !== undefined) {
+            return { ok: false, problem: terminal.error.data?.problem };
+        }
+        return { ok: true, result: terminal.result };
     };
     return { provider, post, action, hostPaths };
 };
@@ -252,7 +311,7 @@ test(`{§oauth-continuation}: ACP accepts authorization in an ${busy ? "active" 
     assert.equal(replay.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-not-pending");
     assert.equal(exchanges, 1);
     const events = await post("authorization", undefined, "Call the authorized echo and report its result.");
-    assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+    assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
     assert.equal(provider.received.length, busy ? 3 : 2);
     const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
     assert.match(packet, /Authorized response: management proof/);
@@ -328,7 +387,7 @@ test("{§oauth-client-credentials}: ACP application credentials and SDK refresh 
     assert.equal(served.grants(), 1);
     served.expire();
     const events = await post(workspace, undefined, "Call the application echo and report its result.");
-    assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+    assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
     assert.equal(served.grants(), 2, "the same attachment re-acquires after its access token is rejected");
     assert.equal(served.calls(), 1, "the server executes the tool once, after authorization succeeds");
     assert.equal(provider.received.length, 2);
@@ -397,25 +456,30 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches ACP
         makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````SEND [200]\nThe observation completed.\n````"),
     ]);
-    const received = Promise.withResolvers<Event>();
+    const received = Promise.withResolvers<Record<string, unknown>>();
     const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
-        if (event.type === "CUSTOM" && event.name === "plurnk.notice"
-            && (event.value as { kind?: string })?.kind === "mcp_progress") received.resolve(event);
+        const update = (event.params as { update?: { sessionUpdate?: string; _meta?: { plurnk?: { notice?: Record<string, unknown> } } } } | undefined)?.update;
+        const notice = update?._meta?.plurnk?.notice;
+        if (event.method === "session/update" && update?.sessionUpdate === "notice" && notice?.kind === "mcp_progress") {
+            received.resolve(notice);
+        }
     });
     try {
         const first = await Promise.race([received.promise, running.then(() => {
             throw new Error("The run ended without delivering live MCP progress.");
         })]);
-        assert.deepEqual(first.value, { source: "exec:fixture", kind: "mcp_progress", level: "info",
+        assert.deepEqual(first, { source: "exec:fixture", kind: "mcp_progress", level: "info",
             message: "Observed first half.", tool: "observe", progress: 1, total: 2 });
         assert.equal(provider.received.length, 1, "progress is observation, not a signal to resume inference");
         finish.resolve();
         const events = await running;
-        assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+        assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
         assert.equal(provider.received.length, 2);
         assert.match(provider.received[1].map(chatMessageText).join("\n"), /Complete observation result/);
-        assert.equal(events.filter((event) => event.type === "CUSTOM" && event.name === "plurnk.notice"
-            && (event.value as { kind?: string })?.kind === "mcp_progress").length, 1);
+        assert.equal(events.filter((event) => {
+            const update = (event.params as { update?: { sessionUpdate?: string; _meta?: { plurnk?: { notice?: Record<string, unknown> } } } } | undefined)?.update;
+            return event.method === "session/update" && update?.sessionUpdate === "notice" && update._meta?.plurnk?.notice?.kind === "mcp_progress";
+        }).length, 1);
     } finally {
         finish.resolve();
         await running;
@@ -468,7 +532,7 @@ Observe the result.
                 makeMockResponse("````SEND [200]\nInspected the result.\n````"),
             ]);
             const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
-            assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
+            assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
             assert.equal(calls, 1, "validation never replays the remote operation");
             assert.equal(provider.received.length, 2);
             const packet = provider.received[1].map(chatMessageText).join("\n");

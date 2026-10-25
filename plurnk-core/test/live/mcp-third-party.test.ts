@@ -14,7 +14,7 @@ import { bindListener } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_db.ts";
 import { makeMockResponse } from "../intg/_mock.ts";
 import { httpEntry, mcpFixture } from "../intg/_mcp-config.ts";
-import { actionResult, packet, PacketCapturingMock, post, runInput } from "../intg/_acp-run.ts";
+import { actionResult, packet, PacketCapturingMock, post, runInput, sessionUpdates, terminalMeta } from "../intg/_acp-run.ts";
 
 const GOJI = "https://mcp.goji.agency/mcp";
 const KUBERNETES_SERVER = "kubernetes-mcp-server@0.0.66";
@@ -92,24 +92,24 @@ test("live mcp: current third-party stdio and HTTP servers compose through the a
         const workspace = `mcp-third-party-${crypto.randomUUID()}`;
 
         const kubernetes = actionResult(await post(port, runInput(workspace, "enable-kubernetes", {
-            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.enable", alias: "kubernetes" } } },
+            projectRoot,
+            action: { kind: "workspace.mcp.enable", alias: "kubernetes" },
         })));
         assert.equal(kubernetes.ok, true, JSON.stringify(kubernetes.problem));
         const kubernetesSummary = kubernetes.result?.definition as { readonly detail?: { readonly tools?: readonly string[] } } | undefined;
         assert.equal(kubernetesSummary?.detail?.tools?.length, 14, "the real server advertises a larger catalog");
 
         const goji = actionResult(await post(port, runInput(workspace, "enable-goji", {
-            forwardedProps: { plurnk: { workspace, action: { kind: "workspace.mcp.enable", alias: "goji" } } },
+            action: { kind: "workspace.mcp.enable", alias: "goji" },
         })));
         assert.equal(goji.ok, true, JSON.stringify(goji.problem));
         // {§mcp-model-projection} These third-party tools may omit readOnlyHint.
         serverProposals(t, "accept");
 
         const kubernetesRun = await post(port, runInput(workspace, "call-kubernetes", {
-            messages: [{ id: "prompt-kubernetes", role: "user", content: "Use the attached Kubernetes configuration tool and report the current context." }],
-            forwardedProps: { plurnk: { workspace } },
+            prompt: "Use the attached Kubernetes configuration tool and report the current context.",
         }));
-        assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+        assert.equal(terminalMeta(kubernetesRun)?.stopReason, "end_turn");
         // {§mcp-model-projection} is witnessed shape by shape in the intg tier under the Mock profile;
         // this specimen witnesses the composition: the real server's catalog, its tool's result in a
         // packet, the run's outcome and the model's speech.
@@ -119,15 +119,14 @@ test("live mcp: current third-party stdio and HTTP servers compose through the a
         assert.ok(anyPacket(/current-context: specimen/), "the real server's kubeconfig reached the model");
 
         const gojiRun = await post(port, runInput(workspace, "call-goji", {
-            messages: [{ id: "prompt-goji", role: "user", content: "Ask GOJI to explain AEO and read its about resource." }],
-            forwardedProps: { plurnk: { workspace } },
+            prompt: "Ask GOJI to explain AEO and read its about resource.",
         }));
-        assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+        assert.equal(terminalMeta(gojiRun)?.stopReason, "end_turn");
         assert.ok(anyPacket(/Answer Engine Optimisation/), "GOJI's tool result reached the model");
         assert.ok(anyPacket(/Melbourne-based full-service digital agency/), "GOJI's about resource reached the model");
-        const speech = gojiRun
-            .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
-            .map((event) => (typeof event.delta === "string" ? event.delta : ""))
+        const speech = sessionUpdates(gojiRun)
+            .filter((u) => u.sessionUpdate === "agent_message_chunk")
+            .map((u) => ((u.content as { text?: string } | undefined)?.text ?? ""))
             .join("");
         assert.match(speech, /GOJI defines AEO as Answer Engine Optimisation/);
     } finally {

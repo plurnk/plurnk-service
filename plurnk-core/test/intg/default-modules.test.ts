@@ -74,20 +74,57 @@ test("{§acp-daemon-client} {§module-http-mounts} a bare daemon with a listener
     const daemon = new Daemon({ db, provider: null, http });
     t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
     await daemon.start();
-    const response = await fetch(`http://127.0.0.1:${http.httpAddress().port}/acp`, {
+    const url = `http://127.0.0.1:${http.httpAddress().port}/acp`;
+    const initRes = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-            threadId: "discover", runId: "discover", state: {}, messages: [], tools: [], context: [],
-            forwardedProps: { plurnk: { action: { kind: "discover" } } },
+            jsonrpc: "2.0",
+            id: "init",
+            method: "initialize",
+            params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
         }),
     });
-    assert.equal(response.status, 200);
-    // {§acp-plurnk-metadata} The Run finishes with the action's outcome as its result.
-    const finished = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
-        .map((frame) => JSON.parse(frame.slice(6)) as { type: string; result?: { ok?: boolean } })
-        .find(({ type }) => type === "RUN_FINISHED");
-    assert.equal(finished?.result?.ok, true, "the discovered client interface answers discover");
+    assert.equal(initRes.status, 200);
+    const connId = initRes.headers.get("acp-connection-id");
+    assert.ok(connId);
+    const sseAbort = new AbortController();
+    t.after(() => sseAbort.abort());
+    const sseRes = await fetch(url, {
+        method: "GET",
+        headers: { accept: "text/event-stream", "acp-connection-id": connId },
+        signal: sseAbort.signal,
+    });
+    assert.equal(sseRes.status, 200);
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "acp-connection-id": connId },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "_plurnk/action",
+            params: { kind: "discover", params: {} },
+        }),
+    });
+    assert.equal(response.status, 202);
+    // {§acp-plurnk-metadata} The JSON-RPC response returns the action's result on the SSE stream.
+    let rpc: { id?: number; result?: { actions?: Record<string, unknown> } } | undefined;
+    const decoder = new TextDecoder();
+    let buf = "";
+    for await (const chunk of sseRes.body!) {
+        buf += decoder.decode(chunk, { stream: true });
+        for (const frame of buf.split("\n\n")) {
+            if (!frame.startsWith("data: ")) continue;
+            const parsed = JSON.parse(frame.slice(6)) as { id?: number; result?: { actions?: Record<string, unknown> } };
+            if (parsed.id === 1) {
+                rpc = parsed;
+                break;
+            }
+        }
+        if (rpc !== undefined) break;
+    }
+    sseAbort.abort();
+    assert.ok(rpc?.result?.actions !== undefined, "the discovered client interface answers discover");
 });
 
 test("{§a2a-module} {§module-contained-configuration} an invalid exposure setting is reported and outbound A2A keeps working", async (t) => {

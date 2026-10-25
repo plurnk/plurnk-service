@@ -5,7 +5,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Translator } from "@plurnk/plurnk-acp";
+import { SessionTranslator } from "@plurnk/plurnk-acp";
 import Engine from "../../src/core/Engine.ts";
 import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -180,10 +180,21 @@ Branch-only decision.
         assert.equal((await clientDispatch(`\`\`\`\`KILL (${target})\`\`\`\``)).status, 403);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
-        const snapshot = new Translator({ origin: "http://acp.test", workspaceId, threadId: "history", runId: "reattach" }).replay(journal)
-            .find(({ type }) => type === "MESSAGES_SNAPSHOT");
-        assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
-        assert.deepEqual(snapshot.messages.filter(({ role }) => role === "reasoning").map((message) => "content" in message ? message.content : null), [original]);
+        const replayed = SessionTranslator.replay(
+            new SessionTranslator({ sessionId: "history", workspaceId, workerId, origin: "http://acp.test" }),
+            journal,
+            [],
+            { historyLoops: 5 },
+        );
+        assert.deepEqual(
+            replayed.updates
+                .filter(({ update }) => update.sessionUpdate === "agent_thought_chunk")
+                .map(({ update }) => {
+                    const content = (update as { content?: { type?: string; text?: string } }).content;
+                    return content?.type === "text" ? content.text : null;
+                }),
+            [original],
+        );
         const digestDir = join(dir, "digest");
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir, workerId });
         const evidence = await readFile(join(digestDir, "reasoning.md"), "utf8");

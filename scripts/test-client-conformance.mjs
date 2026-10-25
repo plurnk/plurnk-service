@@ -375,20 +375,27 @@ try {
     }
     process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
 
-    const { AcpTransport } = await import(pathToFileURL(join(
-        install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
-    )).href);
-    const { actionViaAcp } = await import(pathToFileURL(join(
-        install, "node_modules", "@plurnk", "plurnk", "dist", "acp.js",
+    const { AcpClient } = await import(pathToFileURL(join(
+        install, "node_modules", "@plurnk", "plurnk", "dist", "acp-client.js",
     )).href);
     // {§auth-oauth-clients} — the installed client exchanges the operator's secret for its access tokens.
     const { default: Credential } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "credential.js",
     )).href);
     const acpToken = await seededToken();
-    const credential = () => ({ acpUrl: `http://127.0.0.1:${port}/acp`, credential: new Credential(acpToken) });
+    const acpUrl = `http://127.0.0.1:${port}/acp`;
     // One access token for a raw request, minted the way the client mints its own.
-    const bearer = async () => (await new Credential(acpToken).headers(`http://127.0.0.1:${port}/acp`)).authorization;
+    const bearer = async () => (await new Credential(acpToken).headers(acpUrl)).authorization;
+    const clientFor = (context = {}) => ({
+        rpc: async (kind, params = {}) => {
+            const client = new AcpClient({ url: acpUrl, credential: new Credential(acpToken) });
+            try {
+                return await client.action(kind, params, context);
+            } finally {
+                client.close();
+            }
+        },
+    });
 
     // {§subscription-finalization}: a real failed SQLite commit, with no production fault-injection seam.
     const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
@@ -407,10 +414,8 @@ try {
         if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
-        const recoveryWorkspace = await actionViaAcp(credential(), {
-            threadId: "bootstrap", kind: "workspace.attach", params: { name: "installed-recovery" },
-        });
-        const retained = await new AcpTransport(credential(), { workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
+        const recoveryWorkspace = await clientFor().rpc("workspace.attach", { name: "installed-recovery" });
+        const retained = await clientFor({ workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
             .rpc("entry.read", { target: `sh://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
@@ -446,11 +451,9 @@ try {
 
     fixture.assertComplete();
 
-    const sharedWorkspace = await actionViaAcp(credential(), {
-        threadId: "bootstrap", kind: "workspace.create", params: { name: workspace },
-    });
+    const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
     const binding = { workspaceId: sharedWorkspace.id, worker: "user" };
-    const terminal = new AcpTransport(credential(), binding);
+    const terminal = clientFor(binding);
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
 
@@ -485,10 +488,7 @@ try {
         }
     }
 
-    const observer = new AcpTransport(
-        credential(),
-        { workspaceId: sharedWorkspace.id, worker: "independent-observer" },
-    );
+    const observer = clientFor({ workspaceId: sharedWorkspace.id, worker: "independent-observer" });
     const observedCapabilities = await observer.rpc("workspace.capabilities.get");
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
         throw new Error("a second client connection did not observe the workspace's durable capabilities");
@@ -507,20 +507,14 @@ try {
     await daemon.stop();
     daemon = await boot();
     // The read takes the perspective of the worker the CLI journey created ({§acp-action-binding}).
-    const persistedFiles = new AcpTransport(
-        credential(),
-        { workspaceId: fileRecord.workspace.id, worker: "File_Worker" },
-    );
+    const persistedFiles = clientFor({ workspaceId: fileRecord.workspace.id, worker: "File_Worker" });
     const persistedFile = await persistedFiles.rpc("entry.read", { target: pathToFileURL(join(project, "integrity.txt")).href });
     if (persistedFile.status !== 200 || persistedFile.entry?.channels.body?.content !== "after"
         || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
         throw new Error(`installed file projection did not survive reconstruction: ${JSON.stringify(persistedFile)}`);
     }
     process.stdout.write("installed file journey GREEN: create, replace, accept, reopen and READ agree with disk\n");
-    const afterRestart = new AcpTransport(
-        credential(),
-        binding,
-    );
+    const afterRestart = clientFor(binding);
     const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
     const persistedMembers = await afterRestart.rpc("workspace.members.list");
     if (JSON.stringify(persistedCapabilities.workspace) !== JSON.stringify(durableCapabilities)
