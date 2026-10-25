@@ -115,6 +115,57 @@
         "disposition": {
             "$ref": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json"
         },
+        "selector": {
+            "description": "The capability selector for the proposed operation, persisted on allow_always / reject_always.",
+            "$ref": "https://schemas.plurnk.xyz/v0/CapabilitySelector.json"
+        },
+        "subject": {
+            "description": "Structured ACP v2 permission subject for the proposed operation.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "required": ["type", "command", "cwd"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": { "const": "command" },
+                        "command": { "type": "string" },
+                        "cwd": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "required": ["type", "kind", "title"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": { "const": "tool_call" },
+                        "kind": {
+                            "enum": ["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "switch_mode", "other"]
+                        },
+                        "title": { "type": "string", "minLength": 1 },
+                        "locations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["path"],
+                                "additionalProperties": false,
+                                "properties": {
+                                    "path": { "type": "string", "minLength": 1 }
+                                }
+                            }
+                        },
+                        "diff": {
+                            "type": "object",
+                            "required": ["path", "patch"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "path": { "type": "string" },
+                                "patch": { "type": "string" }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
         "expiresAt": {
             "description": "When the gate stops waiting and core cancels it (ISO 8601); absent while it waits indefinitely.",
             "type": "string",

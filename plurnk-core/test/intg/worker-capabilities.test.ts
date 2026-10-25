@@ -73,7 +73,7 @@ test("{§client-interaction-routing}: unsupported requests fail without parking;
     const turnId = await insertTurn(db, loopId, 1);
     const ids = { workspaceId, workerId, loopId, turnId };
     const interactions = new ClientInteractions(db);
-    const request = { toolName: "question", arguments: {}, responseSchema: { type: "object" } };
+    const request = { toolName: "question" as const, mode: "form" as const, message: "Answer?", requestedSchema: { type: "object" } };
     await assert.rejects(interactions.request(request, ids), (error: unknown) => {
         const result = (error as { result: { status: number; problem: { detail: string } } }).result;
         assert.equal(result.status, 501);
@@ -90,10 +90,10 @@ test("{§client-interaction-routing}: unsupported requests fail without parking;
     const response = interactions.request(request, ids);
     const [pending] = await waitForDb(() => interactions.list(workspaceId), (items) => items.length === 1);
     assert.equal(pending.recipient, TEST_OWNER);
-    await assert.rejects(interactions.resolve(pending.interactionId, { status: "resolved", payload: {} }, { workspaceId, address: "test://other" }), /Only the interaction's recipient/);
+    await assert.rejects(interactions.resolve(pending.interactionId, { action: "accept", content: {} }, { workspaceId, address: "test://other" }), /Only the interaction's recipient/);
     assert.equal((await interactions.list(workspaceId)).length, 1);
-    await interactions.resolve(pending.interactionId, { status: "resolved", payload: { answer: "main" } }, { workspaceId, address: TEST_OWNER });
-    assert.deepEqual(await response, { status: "resolved", payload: { answer: "main" } });
+    await interactions.resolve(pending.interactionId, { action: "accept", content: { answer: "main" } }, { workspaceId, address: TEST_OWNER });
+    assert.deepEqual(await response, { action: "accept", content: { answer: "main" } });
     assert.deepEqual(await interactions.list(workspaceId), []);
 });
 

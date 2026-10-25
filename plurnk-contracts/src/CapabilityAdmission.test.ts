@@ -82,3 +82,23 @@ test("{§capability-policy-projection} policy intersection preserves conjunctive
         );
     }
 });
+
+test("{§capability-policy-matching} {§capability-policy-cascade} allow pre-approves admitted demands and never overrides service deny or only ceilings", () => {
+    const service: CapabilityPolicy = {
+        only: [{ scheme: "file" }, { runtime: "brave" }],
+        deny: [{ tool: "brave_web_search" }],
+    };
+    const workspace: CapabilityPolicy = {
+        allow: [{ operation: "EDIT", scheme: "file" }, { runtime: "brave" }],
+    };
+    const effective = CapabilityAdmission.intersect([service, workspace]);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], editFile), true);
+    assert.equal(CapabilityAdmission.preapproves(effective, editFile), true);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], readFile), false);
+    assert.equal(CapabilityAdmission.preapproves(effective, readFile), false);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], search), false);
+    assert.equal(CapabilityAdmission.preapproves(effective, search), false);
+});

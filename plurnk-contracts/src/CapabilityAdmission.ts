@@ -29,10 +29,21 @@ export default class CapabilityAdmission {
         return policies.every((policy) => CapabilityAdmission.allows(policy, descriptor));
     }
 
+    static preapproves(policy: CapabilityPolicy, descriptor: CapabilityDescriptor): boolean {
+        if (!CapabilityAdmission.allows(policy, descriptor)) return false;
+        return policy.allow?.some((selector) => CapabilityAdmission.matches(selector, descriptor)) === true;
+    }
+
+    static preapprovesAcross(policies: readonly CapabilityPolicy[], descriptor: CapabilityDescriptor): boolean {
+        if (!CapabilityAdmission.allowsAcross(policies, descriptor)) return false;
+        return policies.some((policy) => policy.allow?.some((selector) => CapabilityAdmission.matches(selector, descriptor)) === true);
+    }
+
     // Lossless normalization of an intersection into one policy. `only` is an
     // OR-list, so intersecting two lists is their compatible Cartesian product;
-    // deny lists simply union.
+    // deny lists and allow lists union.
     static intersect(policies: readonly CapabilityPolicy[]): CapabilityPolicy {
+        const allow = CapabilityAdmission.#unique(policies.flatMap((policy) => policy.allow ?? []));
         const deny = CapabilityAdmission.#unique(policies.flatMap((policy) => policy.deny ?? []));
         let only: CapabilitySelector[] | undefined;
         for (const policy of policies) {
@@ -46,6 +57,7 @@ export default class CapabilityAdmission {
             only = CapabilityAdmission.#unique(only);
         }
         return {
+            ...(allow.length === 0 ? {} : { allow }),
             ...(only === undefined ? {} : { only }),
             ...(deny.length === 0 ? {} : { deny }),
         };

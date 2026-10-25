@@ -7,9 +7,10 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
-    t.producer AS turn_producer
+    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
+JOIN workspaces w ON w.id = r.workspace_id
 JOIN worker_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
@@ -24,9 +25,10 @@ SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
-    t.producer AS turn_producer
+    t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
+JOIN workspaces w ON w.id = r.workspace_id
 JOIN worker_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id

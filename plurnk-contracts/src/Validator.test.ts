@@ -217,15 +217,22 @@ test("{§effort-wire}: effort is the exact shared portable vocabulary", () => {
 });
 
 test("{§client-interaction-wire} client interactions carry one generic tool contract without owner-private continuation state", () => {
-    const request = {
-        toolName: "request_user_input",
-        arguments: { message: "Choose a repository.", choices: ["one", "two"] },
+    const formRequest = {
+        toolName: "question",
+        mode: "form" as const,
         message: "The operation needs more information.",
-        responseSchema: {
+        requestedSchema: {
             type: "object",
             required: ["repository"],
             properties: { repository: { type: "string" } },
         },
+    };
+    const urlRequest = {
+        toolName: "mcp_input_required",
+        mode: "url" as const,
+        message: "Authorize the service in a browser.",
+        elicitationId: "auth-1",
+        url: "https://example.test/authorize",
     };
     const projection = {
         interactionId: 1,
@@ -233,20 +240,25 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
         workerId: 2,
         loopId: 3,
         turnId: 4,
-        request,
+        request: formRequest,
     };
-    const resolution = { status: "resolved" as const, payload: { repository: "one" } };
+    const resolution = { action: "accept" as const, content: { repository: "one" } };
 
-    assert.equal(Validator.assertClientInteractionRequest(request), request);
+    assert.equal(Validator.assertClientInteractionRequest(formRequest), formRequest);
+    assert.equal(Validator.assertClientInteractionRequest(urlRequest), urlRequest);
     assert.equal(Validator.assertClientInteractionProjection(projection), projection);
     assert.equal(Validator.assertClientInteractionResolution(resolution), resolution);
     assert.equal(
-        Validator.assertClientInteractionResolution({ status: "cancelled" as const }).status,
-        "cancelled",
+        Validator.assertClientInteractionResolution({ action: "decline" as const }).action,
+        "decline",
+    );
+    assert.equal(
+        Validator.assertClientInteractionResolution({ action: "cancel" as const }).action,
+        "cancel",
     );
 
     assert.throws(
-        () => Validator.assertClientInteractionRequest({ ...request, requestState: "private" }),
+        () => Validator.assertClientInteractionRequest({ ...formRequest, requestState: "private" }),
         InvalidClientInteractionRequestError,
     );
     assert.throws(
@@ -254,7 +266,11 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
         InvalidClientInteractionProjectionError,
     );
     assert.throws(
-        () => Validator.assertClientInteractionResolution({ status: "cancelled", payload: {} }),
+        () => Validator.assertClientInteractionResolution({ action: "cancel", content: {} }),
+        InvalidClientInteractionResolutionError,
+    );
+    assert.throws(
+        () => Validator.assertClientInteractionResolution({ action: "decline", content: {} }),
         InvalidClientInteractionResolutionError,
     );
 });
@@ -715,6 +731,26 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
     assert.equal(Validator.assertProposalProjection(proposal), proposal);
     const timed = { ...proposal, expiresAt: "2026-10-16T12:00:00.000Z" };
     assert.equal(Validator.assertProposalProjection(timed), timed, "a gate that times out names its deadline");
+    const withCommandSubject = {
+        ...proposal,
+        op: "sh" as const,
+        selector: { operation: "sh" as const, scheme: "exec", runtime: "sh", access: "execute" as const },
+        subject: { type: "command" as const, command: "npm test", cwd: "/workspace" },
+    };
+    assert.equal(Validator.assertProposalProjection(withCommandSubject), withCommandSubject);
+    const withToolSubject = {
+        ...proposal,
+        op: "EDIT" as const,
+        selector: { operation: "EDIT" as const, scheme: "file", access: "mutate" as const },
+        subject: {
+            type: "tool_call" as const,
+            kind: "edit" as const,
+            title: "EDIT (README.md)",
+            locations: [{ path: "README.md" }],
+            diff: { path: "README.md", patch: "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new" },
+        },
+    };
+    assert.equal(Validator.assertProposalProjection(withToolSubject), withToolSubject);
 
     for (const invalid of [
         { ...proposal, coordinate: "1/4" },

@@ -1,4 +1,5 @@
 import {
+    CapabilityAdmission,
     InvalidOperationResultError,
     isPlurnkOp,
     TurnDisposition,
@@ -6,6 +7,9 @@ import {
     isExecution,
     isExecutionOp,
     isRecord,
+    type CapabilityDescriptor,
+    type CapabilityPolicy,
+    type CapabilitySelector,
     type OperationResult,
     type PlurnkStatement,
     type ProposalDisposition,
@@ -21,6 +25,8 @@ import type { EngineNotifications } from "./notifications.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
 import ProposalPolicies from "./ProposalPolicies.ts";
+import CapabilityPolicies from "./CapabilityPolicies.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { entryCoordinateOf, foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -47,6 +53,8 @@ export interface AppliedProposalResolution extends ProposalResolution {
 }
 interface ProposalWaiter {
     disposition: ProposalDisposition | null;
+    workspaceId?: number;
+    selector?: CapabilitySelector;
     // {§proposal-timeout-cancels} When the armed timeout cancels it; null while it waits indefinitely.
     readonly expiresAt: string | null;
     resolve: (resolution: AppliedProposalResolution) => void;
@@ -125,6 +133,8 @@ interface ProposalRow {
     owner_interactive: number;
     turn_kind: string;
     turn_producer: string;
+    project_root?: string | null;
+    workspace_settings?: string;
 }
 
 
@@ -246,16 +256,62 @@ export default class ProposalLifecycle {
         }
         waiter.release();
         this.#pending.delete(logEntryId);
-        const decision = Object.freeze({ ...resolution });
-        const recorded = this.recordDecision(logEntryId, decision, resolver);
+        const effectiveOutcome = resolution.outcome ?? (
+            resolution.scope === "always"
+                ? (resolution.decision === "accept" ? "allow_always" : resolution.decision === "reject" ? "reject_always" : undefined)
+                : undefined
+        );
+        const decision = Object.freeze({
+            ...resolution,
+            ...(effectiveOutcome === undefined ? {} : { outcome: effectiveOutcome }),
+        });
+        const recorded = this.recordDecision(logEntryId, decision, resolver, {
+            ...(waiter.workspaceId === undefined ? {} : { workspaceId: waiter.workspaceId }),
+            ...(waiter.selector === undefined ? {} : { selector: waiter.selector }),
+        });
         // The dispatch owner receives persistence failures even when resolution
         // came from a timer or shutdown, rather than a waiting client.
         void recorded.then(() => waiter.resolve(decision), waiter.reject);
         return recorded;
     }
 
-    async recordDecision(logEntryId: number, resolution: ProposalResolution, resolver: string = "_plurnk"): Promise<void> {
+    async recordDecision(
+        logEntryId: number,
+        resolution: ProposalResolution,
+        resolver: string = "_plurnk",
+        standing?: { readonly workspaceId?: number; readonly selector?: CapabilitySelector },
+    ): Promise<void> {
         try {
+            if (
+                resolution.scope === "always"
+                && (resolution.decision === "accept" || resolution.decision === "reject")
+                && standing?.workspaceId !== undefined
+                && standing.selector !== undefined
+                && this.#db.workspace_get_settings !== undefined
+                && this.#db.workspace_capability_policy_update !== undefined
+            ) {
+                const current = await WorkspaceSettings.read(this.#db, standing.workspaceId);
+                const selectorKey = (s: CapabilitySelector): string =>
+                    JSON.stringify(Object.fromEntries(Object.entries(s).toSorted(([a], [b]) => a.localeCompare(b))));
+                const targetKey = selectorKey(standing.selector);
+                const remainingAllow = (current.capabilities.allow ?? []).filter((s) => selectorKey(s) !== targetKey);
+                const remainingDeny = (current.capabilities.deny ?? []).filter((s) => selectorKey(s) !== targetKey);
+                const nextPolicy: CapabilityPolicy = resolution.decision === "accept"
+                    ? {
+                        ...(current.capabilities.only !== undefined ? { only: current.capabilities.only } : {}),
+                        ...(remainingDeny.length > 0 ? { deny: remainingDeny } : {}),
+                        allow: [...remainingAllow, standing.selector],
+                    }
+                    : {
+                        ...(current.capabilities.only !== undefined ? { only: current.capabilities.only } : {}),
+                        deny: [...remainingDeny, standing.selector],
+                        ...(remainingAllow.length > 0 ? { allow: remainingAllow } : {}),
+                    };
+                await this.#db.workspace_capability_policy_update.run({
+                    workspace_id: standing.workspaceId,
+                    policy: JSON.stringify(nextPolicy),
+                });
+            }
             await this.#db.proposal_record_decision.run({
                 log_entry_id: logEntryId, resolver, decision: resolution.decision,
                 body: resolution.body ?? null, outcome: resolution.outcome ?? null,
@@ -368,14 +424,23 @@ export default class ProposalLifecycle {
     #project(row: ProposalRow, waiter: ProposalWaiter): ProposalPendingEvent {
         const tools: unknown = JSON.parse(row.owner_tools);
         const owner = Validator.assertWorkerOwner({ address: row.owner, tools, interactive: row.owner_interactive === 1 });
-        waiter.disposition ??= ProposalPolicies.disposition(owner.tools, {
-            maintenance: row.turn_kind === "maintenance",
-            clientOperation: row.turn_producer === "client",
-        });
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
         const target = this.#target(row, op, attrs);
+        const demand = this.#capabilityDemand(row, op, target, attrs);
+        waiter.workspaceId = row.workspaceId;
+        if (demand !== null) {
+            waiter.selector = demand.selector;
+        }
+        const preapproved = demand === null ? false : ProposalLifecycle.#isPreapproved(row, demand.descriptor);
+        waiter.disposition ??= ProposalPolicies.disposition(owner.tools, {
+            maintenance: row.turn_kind === "maintenance",
+            clientOperation: row.turn_producer === "client",
+            preapproved,
+        });
+        const body = typeof result.body === "string" ? result.body : "";
+        const subject = ProposalLifecycle.#subject(row, op, target, attrs, body);
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
             workerId: row.workerId,
@@ -385,13 +450,185 @@ export default class ProposalLifecycle {
             coordinate: `${row.loopSeq}/${row.turnSeq}/${row.sequence}`,
             op,
             target,
-            body: typeof result.body === "string" ? result.body : "",
+            body,
             attrs,
             owner: row.owner,
             disposition: waiter.disposition,
+            ...(demand === null ? {} : { selector: demand.selector }),
+            subject,
             ...(waiter.expiresAt === null ? {} : { expiresAt: waiter.expiresAt }),
         });
         return { ...proposal, workspaceId: row.workspaceId };
+    }
+
+    #capabilityDemand(
+        row: ProposalRow,
+        op: ProposalProjection["op"],
+        target: { scheme: string | null; authority: string | null; pathname: string | null },
+        attrs: Record<string, unknown>,
+    ): { selector: CapabilitySelector; descriptor: CapabilityDescriptor } | null {
+        if (op === "NOTE" || op === "WAIT") return null;
+        if (isExecutionOp(op)) {
+            const registry = this.#executors()?.toolRegistry(op, row.workspaceId) ?? null;
+            const tool = registry !== null && typeof attrs.target === "string" && attrs.target.length > 0
+                ? attrs.target
+                : undefined;
+            const traits = [...new Set([
+                ...(this.#schemes.manifestFor("exec", row.workspaceId)?.traits ?? []),
+                ...(this.#schemes.manifestFor(op, row.workspaceId)?.traits ?? []),
+            ])].toSorted();
+            const access = traits.includes("interaction") ? "interact" : "execute";
+            return {
+                selector: {
+                    operation: op,
+                    scheme: "exec",
+                    runtime: op,
+                    access,
+                    ...(tool === undefined ? {} : { tool }),
+                },
+                descriptor: {
+                    operation: op,
+                    scheme: "exec",
+                    runtime: op,
+                    access,
+                    traits,
+                    ...(tool === undefined ? {} : { tool }),
+                },
+            };
+        }
+        const scheme = target.scheme ?? "file";
+        const traits = [...(this.#schemes.manifestFor(scheme, row.workspaceId)?.traits ?? [])].toSorted();
+        const access = op === "READ" || op === "FIND"
+            ? "observe"
+            : op === "WORK" || op === "FORK"
+                ? "control"
+                : op === "BARE"
+                    ? "execute"
+                    : (op === "KILL" || op === "SEND") && (scheme === "worker" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
+                        ? "control"
+                        : "mutate";
+        return {
+            selector: {
+                operation: op,
+                scheme,
+                access,
+            },
+            descriptor: {
+                operation: op,
+                scheme,
+                access,
+                traits,
+            },
+        };
+    }
+
+    static #isPreapproved(row: ProposalRow, descriptor: CapabilityDescriptor): boolean {
+        let workspaceCapabilities: CapabilityPolicy = {};
+        if (typeof row.workspace_settings === "string" && row.workspace_settings.length > 0) {
+            const parsedSettings = ProposalLifecycle.#objectJson(row.logEntryId, "workspace_settings", row.workspace_settings);
+            if (parsedSettings.capabilities !== undefined) {
+                workspaceCapabilities = Validator.assertCapabilityPolicy(parsedSettings.capabilities);
+            }
+        }
+        let serviceCapabilities: CapabilityPolicy = {};
+        try {
+            serviceCapabilities = CapabilityPolicies.service();
+        } catch {
+            serviceCapabilities = {};
+        }
+        return CapabilityAdmission.preapprovesAcross([serviceCapabilities, workspaceCapabilities], descriptor);
+    }
+
+    static #subject(
+        row: ProposalRow,
+        op: ProposalProjection["op"],
+        target: { scheme: string | null; authority: string | null; pathname: string | null },
+        attrs: Record<string, unknown>,
+        body: string,
+    ): NonNullable<ProposalProjection["subject"]> {
+        const isCommand = op === "sh"
+            || target.scheme === "sh"
+            || attrs.runtime === "sh"
+            || attrs.tag === "sh"
+            || typeof attrs.command === "string";
+        if (isCommand) {
+            const command = typeof attrs.command === "string"
+                ? attrs.command
+                : typeof attrs.body === "string" && attrs.body.length > 0
+                    ? attrs.body
+                    : typeof attrs.target === "string" && attrs.target.length > 0
+                        ? attrs.target
+                        : body.length > 0
+                            ? body
+                            : op;
+            const cwd = typeof attrs.cwd === "string" && attrs.cwd.length > 0
+                ? attrs.cwd
+                : typeof row.project_root === "string" && row.project_root.length > 0
+                    ? row.project_root
+                    : "/";
+            return { type: "command", command, cwd };
+        }
+        const targetPath = target.pathname
+            ?? target.scheme
+            ?? (typeof attrs.path === "string" ? attrs.path : null);
+        const title = targetPath === null ? op : `${op} (${targetPath})`;
+        const kind = ProposalLifecycle.#toolKindOf(op, target.scheme);
+        const locations = targetPath !== null ? [{ path: targetPath }] : undefined;
+        const diff = typeof attrs.original === "string" && typeof attrs.patched === "string"
+            ? {
+                path: targetPath ?? "",
+                patch: ProposalLifecycle.#buildUnifiedDiff(targetPath ?? "", attrs.original, attrs.patched),
+            }
+            : undefined;
+        return {
+            type: "tool_call",
+            kind,
+            title,
+            ...(locations === undefined ? {} : { locations }),
+            ...(diff === undefined ? {} : { diff }),
+        };
+    }
+
+    static #toolKindOf(
+        op: string,
+        scheme: string | null,
+    ): Extract<NonNullable<ProposalProjection["subject"]>, { type: "tool_call" }>["kind"] {
+        switch (op) {
+            case "READ":
+                return scheme === "http" || scheme === "https" ? "fetch" : "read";
+            case "EDIT":
+            case "COPY":
+                return "edit";
+            case "MOVE":
+                return "move";
+            case "KILL":
+                return "delete";
+            case "FIND":
+                return "search";
+            case "NOTE":
+            case "WAIT":
+                return "think";
+            case "SEND":
+                return "other";
+            case "WORK":
+            case "FORK":
+                return "execute";
+            default:
+                return "execute";
+        }
+    }
+
+    static #buildUnifiedDiff(filePath: string, oldText: string, newText: string): string {
+        const oldLines = oldText.length === 0 ? [] : oldText.split("\n");
+        const newLines = newText.length === 0 ? [] : newText.split("\n");
+        const header = [
+            `--- a/${filePath}`,
+            `+++ b/${filePath}`,
+            `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+        ];
+        const removed = oldLines.map((line) => `-${line}`);
+        const added = newLines.map((line) => `+${line}`);
+        return [...header, ...removed, ...added].join("\n");
     }
 
     static #op(row: ProposalRow): ProposalProjection["op"] {

@@ -324,3 +324,107 @@ test("{§methods-proposal-resolve} applyResolution rejects projected fields that
         /cannot override reserved operation result field 'status'/,
     );
 });
+
+test("{§proposal-projection} {§proposal-disposition}: capability allow pre-approves matching proposals and scope='always' persists standing workspace capability rules", async () => {
+    let settingsJson = JSON.stringify({ capabilities: {} });
+    const decisions: Array<{ log_entry_id: number; decision: string; outcome: string | null }> = [];
+    const baseRow = {
+        logEntryId: 101,
+        workspaceId: 11,
+        workerId: 12,
+        worker: "user",
+        loopId: 13,
+        turnId: 14,
+        loopSeq: 1,
+        turnSeq: 1,
+        sequence: 1,
+        op: "sh",
+        signal: null,
+        scheme: "exec",
+        hostname: null,
+        port: null,
+        pathname: "/1/1/1/sh",
+        query: null,
+        rx: JSON.stringify({ status: 202, body: "[sh] echo hello" }),
+        attrs: JSON.stringify({ runtime: "sh", body: "echo hello", cwd: "/work" }),
+        owner: "acp://operator",
+        owner_tools: JSON.stringify(["request_approval"]),
+        owner_interactive: 1,
+        turn_kind: "model",
+        turn_producer: "model",
+        project_root: "/work",
+    };
+    const db = {
+        proposal_get_pending: {
+            get: async ({ log_entry_id }: { log_entry_id: number }) => ({
+                ...baseRow,
+                logEntryId: log_entry_id,
+                workspace_settings: settingsJson,
+            }),
+        },
+        workspace_get_settings: {
+            get: async () => ({ settings: settingsJson }),
+        },
+        workspace_capability_policy_update: {
+            run: async ({ policy }: { workspace_id: number; policy: string }) => {
+                settingsJson = JSON.stringify({ capabilities: JSON.parse(policy) as unknown });
+                return { changes: 1 };
+            },
+        },
+        proposal_record_decision: {
+            run: async (row: { log_entry_id: number; decision: string; outcome: string | null }) => {
+                decisions.push(row);
+                return { changes: 1 };
+            },
+        },
+    } as unknown as Db;
+
+    const lifecycle = lifecycleWithDb(db);
+
+    // 1. First proposal requires review and carries selector + command subject
+    const wait1 = lifecycle.awaitResolution(101);
+    const pending1 = await lifecycle.pending(101);
+    assert.ok(pending1);
+    assert.deepEqual(pending1.disposition, { decision: "review" });
+    assert.deepEqual(pending1.selector, {
+        operation: "sh",
+        scheme: "exec",
+        runtime: "sh",
+        access: "execute",
+    });
+    assert.deepEqual(pending1.subject, {
+        type: "command",
+        command: "echo hello",
+        cwd: "/work",
+    });
+
+    // Resolve with allow_always (decision: accept, scope: always)
+    await lifecycle.resolve(101, { decision: "accept", scope: "always" }, "acp://operator");
+    const res1 = await wait1;
+    assert.equal(res1.outcome, "allow_always");
+    assert.equal(decisions[0]?.outcome, "allow_always");
+
+    // 2. Subsequent matching proposal in the same workspace is pre-approved by capability_allow
+    const wait2 = lifecycle.awaitResolution(102);
+    const pending2 = await lifecycle.pending(102);
+    assert.ok(pending2);
+    assert.deepEqual(pending2.disposition, { decision: "accept", outcome: "capability_allow" });
+    lifecycle.settleOwned(pending2);
+    const res2 = await wait2;
+    assert.deepEqual(res2, { decision: "accept", outcome: "capability_allow" });
+
+    // 3. Reject with scope: always moves the selector from allow to deny
+    const wait3 = lifecycle.awaitResolution(103);
+    await lifecycle.pending(103);
+    await lifecycle.resolve(103, { decision: "reject", scope: "always" }, "acp://operator");
+    const res3 = await wait3;
+    assert.equal(res3.outcome, "reject_always");
+    const persistedPolicy = (JSON.parse(settingsJson) as { capabilities: { allow?: unknown[]; deny?: unknown[] } }).capabilities;
+    assert.equal(persistedPolicy.allow, undefined);
+    assert.deepEqual(persistedPolicy.deny, [{
+        operation: "sh",
+        scheme: "exec",
+        runtime: "sh",
+        access: "execute",
+    }]);
+});

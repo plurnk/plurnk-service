@@ -3,6 +3,7 @@ import type { JsonSchema, ModelRoute, OperationResult } from "./types.ts";
 import type { RequestHeaders } from "./HttpOrigin.ts";
 
 export type ProposalDecision = "accept" | "reject" | "cancel";
+export type ProposalScope = "once" | "always";
 
 export interface ApplicationOwnerIdentity {
     readonly workspaceId: number;
@@ -11,6 +12,7 @@ export interface ApplicationOwnerIdentity {
 
 export interface ProposalResolution {
     readonly decision: ProposalDecision;
+    readonly scope?: ProposalScope;
     readonly body?: string;
     readonly outcome?: string;
 }
