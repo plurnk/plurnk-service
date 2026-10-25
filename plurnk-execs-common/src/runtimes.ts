@@ -23,7 +23,7 @@ const SH: Omit<RuntimeDecl, "summary"> = {
 
 const FIXED: readonly RuntimeDecl[] = [
     {
-        name: "node",
+        name: "js",
         glyph: "⬢",
         summary: "Run JavaScript code or scripts with Node.js.",
         invocation: {

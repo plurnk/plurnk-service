@@ -73,4 +73,4 @@ the command is loop-bound; see `env.md` for other lifetime values.
 
 `[{"stdin": "open"}]` keeps stdin open for later SENDs to the returned execution
 address; `[{"eof": true}]` closes it. The worked example, including newline
-framing, is on `node.md`.
+framing, is on `js.md`.

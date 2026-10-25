@@ -1,5 +1,5 @@
 // Runtime executor contract. Each `@plurnk/plurnk-execs-*` sibling declares
-// one or more runtime tags (`sh`, `node`, `python3`, `jq`, …) in
+// one or more runtime tags (`sh`, `js`, `python3`, …) in
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //
@@ -47,8 +47,8 @@ export interface ExecArgs {
     // The parsed `(target)` slot — a referenced file or entry, interpreted
     // according to the runtime's invocation declaration. The framework has
     // already realized its declared literal/path/resource representation.
-    // Resolved relative to `cwd`; null when the op names none (bare
-    // a shell fence, an inline jq fence, and `:memory:` SQLite). Kept distinct from
+    // Resolved relative to `cwd`; null when the op names none (e.g., an inline
+    // shell or js fence). Kept distinct from
     // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child
@@ -115,9 +115,9 @@ export interface ExecResult extends ChannelProducerResult {
 // Side-effect class of an executor invocation, for the consumer's per-runtime
 // proposal-gating policy ({§executor-effect}). The executor declares the fact; the
 // consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
-//   - host  : runs code / mutates the host (subprocess, file-backed sqlite) → propose
+//   - host  : runs code / mutates the host (subprocess, mutating tools)     → propose
 //   - read  : observes external state, no host mutation                     → auto
-//   - pure  : no observable side effect (sqlite :memory:, transforms)        → auto
+//   - pure  : no observable side effect (pure transforms)                   → auto
 export type Effect = "pure" | "read" | "host";
 
 // Environment availability of a runtime, reported by `BaseExecutor.probe()`.

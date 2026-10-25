@@ -16,7 +16,7 @@
 {"itemsTokenTotal":14846,"origin":"_plurnk","range":"8 resources"}
 1:[[{"path":"worker:///_plurnk/plurnk/env.md","mimetype":"text/markdown","tokens":1863,"lines":92,"aside":"```env (list|discover|add|enable|disable|remove) <!-- Read and shape the environment your commands run in -->\\n```"}],
 2:[{"path":"worker:///_plurnk/plurnk/members.md","mimetype":"text/markdown","tokens":2591,"lines":118,"aside":"```members (list|discover|add|enable|disable|remove) <!-- Manage file membership -->\\n```"}],
-3:[{"path":"worker:///_plurnk/plurnk/node.md","mimetype":"text/markdown","tokens":1013,"lines":59,"aside":"```node <!-- Run JavaScript code or scripts with Node.js. -->\\nconsole.log(42)\\n```"}],
+3:[{"path":"worker:///_plurnk/plurnk/js.md","mimetype":"text/markdown","tokens":1013,"lines":59,"aside":"```js <!-- Run JavaScript code or scripts with Node.js. -->\\nconsole.log(42)\\n```"}],
 4:[{"path":"worker:///_plurnk/plurnk/python3.md","mimetype":"text/markdown","tokens":473,"lines":33,"aside":"```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```"}],
 5:[{"path":"worker:///_plurnk/plurnk/schedule.md","mimetype":"text/markdown","tokens":1744,"lines":83,"aside":"```schedule (list|discover|add|enable|disable|remove) <!-- Manage scheduled messages -->\\n```"}],
 6:[{"path":"worker:///_plurnk/plurnk/sh.md","mimetype":"text/markdown","tokens":1767,"lines":92,"aside":"```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```"}],
@@ -1242,7 +1242,7 @@
 @FA48N 89:
 @E2mIQ 90:`[{"stdin": "open"}]` keeps stdin open for later SENDs to the returned execution
 @xXAnA 91:address; `[{"eof": true}]` closes it. The worked example, including newline
-@aRqfy 92:framing, is on `node.md`.
+@aRqfy 92:framing, is on `js.md`.
 
 ### log:///1/5/3/READ → worker:///_plurnk/plurnk/python3.md · 681
 {"range":"33 lines"}
@@ -1277,7 +1277,7 @@
 @zFz2O 29:```
 @irZQf 30:
 @Qt5wM 31:Native skill files retain their sibling imports and source-relative assets.
-@NS4Rj 32:Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md`
+@NS4Rj 32:Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md`
 @RHeND 33:shows.
 
 ### log:///1/5/4/READ → tests/inspectdb/models.py · 2993

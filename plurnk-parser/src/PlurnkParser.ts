@@ -248,14 +248,7 @@ export default class PlurnkParser {
         lexer.reasoning = tier === "reasoning";
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
         lexer.wellFormed = options.wellFormed;
-        const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
-        const node = spellings.get("node");
-        if (node !== undefined && !spellings.has("js")) {
-            // {§executor-js-spelling}: canonicalize before runtime admission, without another registration.
-            lexer.knownExecutors.add("js");
-            spellings.set("js", node);
-        }
-        AstBuilder.executorSpellings = spellings;
+        AstBuilder.executorSpellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));

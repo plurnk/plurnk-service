@@ -5,7 +5,7 @@ import { PlurnkParseError, Validator, isExecution, writtenOp } from "@plurnk/plu
 
 
 // {§fence-heading-in-body} — the executors these witnesses invoke, as the host would name them.
-const EXECUTORS = ["sh", "bash", "node", "python3", "gitea", "brave", "search-api", "example", "plurnk", "crm", "c++", "jq"];
+const EXECUTORS = ["sh", "bash", "js", "python3", "gitea", "brave", "search-api", "example", "plurnk", "crm", "c++"];
 const section = (op: string, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
 
 const sections = (...values: string[]): string => values.join("\n\n");
@@ -565,7 +565,7 @@ test("{§fence-heading-in-body} scheme metadata is an opaque ordered modifier ou
 });
 
 test("{§slot-order}: target and scope precede opaque metadata in every scoped heading", () => {
-    for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "node"] as const) {
+    for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "js"] as const) {
         const header = `${op} (worker:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
         const statement = oneStatement(PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
         if (isExecution(statement)) assert.equal(statement.runtime, op);
@@ -617,7 +617,7 @@ test("{§scheme-metadata-modifier}: quoted brackets and escapes remain exact met
         JSON.stringify({ args: ["]", "[", 'quote"]here', "\\]", "line\nbreak"] }),
         JSON.stringify({ request: { nested: { value: "]" } } }),
     ]) {
-        const statement = oneStatement(`\`\`\`\`node (script.js) [${metadata}] [{"cwd": "sub"}]
+        const statement = oneStatement(`\`\`\`\`js (script.js) [${metadata}] [{"cwd": "sub"}]
 stdin
 \`\`\`\``);
         if (!isExecution(statement)) assert.fail("expected an execution");
@@ -794,7 +794,7 @@ test("{§send-wait-scope} WAIT retains a positive duration while execution keeps
     if (appended.op !== "WAIT") assert.fail("expected WAIT");
     assert.equal(appended.lineMarker, null);
     assert.equal(appended.seconds, null);
-    const exec = oneStatement("````node (./) <60,5>\ncommand\n````");
+    const exec = oneStatement("````js (./) <60,5>\ncommand\n````");
     if (!isExecution(exec)) assert.fail("expected an execution");
     assert.deepEqual(exec.lineMarker, { marks: [60, 5] });
 });
@@ -1251,17 +1251,17 @@ test("{§bracket-metadata-slot} the fence name selects the execution while its m
     if (!isExecution(bare)) assert.fail("expected an execution");
     assert.equal(bare.runtime, "sh", "the default shell is explicit: a bare form is the sh runtime");
     assert.equal(bare.target, null);
-    const alone = oneStatement("````node\nconsole.log(1)\n````");
+    const alone = oneStatement("````js\nconsole.log(1)\n````");
     if (!isExecution(alone)) assert.fail("expected an execution");
-    assert.equal(alone.runtime, "node");
+    assert.equal(alone.runtime, "js");
     assert.equal(alone.target, null);
     const plus = oneStatement("````c++ (main.cpp)````");
     if (!isExecution(plus)) assert.fail("expected an execution");
     assert.equal(plus.runtime, "c++");
-    const unspaced = oneStatement("````jq(data.json)\n.a\n````");
+    const unspaced = oneStatement("````js(script.js)\n.a\n````");
     if (!isExecution(unspaced)) assert.fail("expected an execution");
-    assert.equal(unspaced.runtime, "jq");
-    assert.equal(unspaced.target?.raw, "data.json");
+    assert.equal(unspaced.runtime, "js");
+    assert.equal(unspaced.target?.raw, "script.js");
     // {§bracket-metadata-slot} — a bracket after the program or leading an executor fence is metadata
     // for that executor; the fence name selects the executor.
     for (const [input, executor] of [
@@ -1281,7 +1281,7 @@ test("{§bracket-metadata-slot} the fence name selects the execution while its m
     assert.equal(cwdOnly.runtime, "sh", "the default shell is explicit");
     assert.deepEqual(cwdOnly.metadata, ['{"cwd": "sub"}']);
     assert.equal(cwdOnly.body, "make test");
-    const executorCwd = oneStatement('````node [{"cwd": "sub"}]\nconsole.log(process.cwd())\n````');
+    const executorCwd = oneStatement('````js [{"cwd": "sub"}]\nconsole.log(process.cwd())\n````');
     if (!isExecution(executorCwd)) assert.fail("expected an execution");
     assert.deepEqual(executorCwd.metadata, ['{"cwd": "sub"}']);
     const read = oneStatement("````READ [python3] (tool.py)````");

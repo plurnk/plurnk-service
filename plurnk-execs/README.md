@@ -84,8 +84,8 @@ The execution's `(target)` slot is runtime-specific:
 
 | Runtime shape  | Typical mapping                                                   |
 | -------------- | ----------------------------------------------------------------- |
-| Data           | Target is input; body is the program (`jq`, SQLite, WebAssembly). |
-| Executable     | Target is the program; body is its stdin (shell, Python 3).       |
+| Tool / service | Target is the tool name; body is its input (MCP, logical tools).  |
+| Executable     | Target is the program; body is its stdin (shell, JS, Python 3).   |
 
 The consumer supplies both `cwd` and a resolved `target`; the executor maps them
 to its tool rather than reconstructing filesystem or scheme policy.
@@ -117,7 +117,7 @@ batch EOF. See [the live-input contract](SPEC.md#executor-live-input-invocation-
 
 The runtime tag is also the output scheme. A subprocess result is therefore
 read at an address such as `sh:///ab3d5678#stdout`, while a structured result may
-be `sqlite:///f2c49a10#results`. Executors only produce channels; the consumer
+be `mcp:///f2c49a10#results`. Executors only produce channels; the consumer
 owns storage and every later READ/FIND. See {§executor-output-address}.
 
 ## Discovery and policy

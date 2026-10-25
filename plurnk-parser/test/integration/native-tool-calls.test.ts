@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PlurnkParser } from "../../src/index.ts";
 
-const EXECUTORS = ["sh", "node"];
+const EXECUTORS = ["sh", "js"];
 const read = (input: string) => PlurnkParser.parse(input, { executors: EXECUTORS });
 const ops = (input: string) => read(input).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const canonical = (fence: string) => PlurnkParser.parse(fence, { executors: EXECUTORS }).items.flatMap((item) => item.kind === "statement" ? [{ ...item.statement, position: undefined }] : []);

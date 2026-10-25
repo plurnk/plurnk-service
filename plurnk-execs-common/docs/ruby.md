@@ -17,4 +17,4 @@ exception or `exit 1` is a nonzero `exitCode` with the backtrace on stderr. Gems
 resolve from the project's ordinary Ruby environment; `[{"cwd": "<directory>"}]`
 selects the working directory when the project's `Gemfile` lives elsewhere.
 Environment metadata is every subprocess executor's (`sh.md`). Live input
-(`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md` shows.
+(`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md` shows.

@@ -84,11 +84,11 @@ test("{§executor-output-address} BaseExecutor.run: matched tag flows through to
 // {§executor-output-address} Executor-as-scheme projection.
 
 test("{§executor-output-address} BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
-    const executor = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" });
+    const executor = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const m = executor.manifest;
-    assert.equal(m.name, "sqlite", "scheme name is the tag");
-    assert.equal(executor.glyph, "🗃", "executor presentation remains executor-owned");
-    assert.equal(m.glyph, "🗃", "the runtime's addressable scheme face retains its intrinsic presentation metadata");
+    assert.equal(m.name, "search", "scheme name is the tag");
+    assert.equal(executor.glyph, "🔎", "executor presentation remains executor-owned");
+    assert.equal(m.glyph, "🔎", "the runtime's addressable scheme face retains its intrinsic presentation metadata");
     assert.deepEqual(m.channels, { results: "application/json" }, "channels derive from the declared output channels");
     assert.equal(m.defaultChannel, "results");
     // the read-only-output default an executor-scheme inherits
@@ -122,7 +122,7 @@ test("{§executor-sinks} ExecArgs.write: an executor stamps the real per-call ou
         }
     }
     const h = harness();
-    await new TypedExec({ runtime: "sqlite", glyph: "🗃" }).run(h.args());
+    await new TypedExec({ runtime: "search", glyph: "🔎" }).run(h.args());
     assert.deepEqual(h.writes[0], { channel: "results", chunk: "[1,2,3]", mimetype: "application/json" });
 });
 

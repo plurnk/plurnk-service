@@ -3,22 +3,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, tierFiles } from "./drill.mjs";
 
-const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-jq"];
+const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-common"];
 
 describe("drill scopeIntg — changed-workspace intg scoping", () => {
     it("{§drill-scope} scopes to the single workspace whose files changed", () => {
-        assert.deepEqual([...scopeIntg(["plurnk-execs-jq/src/x.ts"], DIRS)], ["plurnk-execs-jq"]);
+        assert.deepEqual([...scopeIntg(["plurnk-execs-common/src/x.ts"], DIRS)], ["plurnk-execs-common"]);
     });
 
     it("{§drill-scope} scopes to every changed workspace", () => {
-        const s = scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
-        assert.deepEqual([...s].toSorted(), ["plurnk-execs-jq", "plurnk-mimetypes-text-html"]);
+        const s = scopeIntg(["plurnk-execs-common/src/x.ts", "plurnk-mimetypes-text-html/src/y.ts"], DIRS);
+        assert.deepEqual([...s].toSorted(), ["plurnk-execs-common", "plurnk-mimetypes-text-html"]);
     });
 
     it("{§drill-scope} returns null (full intg) on a change under a framework package", () => {
         assert.equal(scopeIntg(["plurnk-core/src/x.ts"], DIRS), null);
         assert.equal(scopeIntg(["plurnk-contracts/plurnk.md"], DIRS), null);
-        assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "plurnk-core/SPEC.md"], DIRS), null);
+        assert.equal(scopeIntg(["plurnk-execs-common/src/x.ts", "plurnk-core/SPEC.md"], DIRS), null);
     });
 
     it("{§drill-scope} returns null (full intg) on any root-level change", () => {
@@ -28,7 +28,7 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
     });
 
     it("{§drill-scope} a root change alongside a workspace change → full (conservative)", () => {
-        assert.equal(scopeIntg(["plurnk-execs-jq/src/x.ts", "package.json"], DIRS), null);
+        assert.equal(scopeIntg(["plurnk-execs-common/src/x.ts", "package.json"], DIRS), null);
     });
 
     it("{§drill-scope} an empty diff scopes to nothing (lint+unit already ran full)", () => {

@@ -214,11 +214,11 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
     } finally { executor.finished.resolve(); await f.close(); }
 });
 
-test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the dispatcher", async (t) => {
+test("{§exec-input}: real js launch, SEND, EOF, and READ compose through the dispatcher", async (t) => {
     serverProposals(t, "accept");
-    const f = await fixture(new Common({ runtime: "node", glyph: "n" }));
+    const f = await fixture(new Common({ runtime: "js", glyph: "j" }));
     try {
-        const start = await f.dispatch("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
+        const start = await f.dispatch("````js [{\"stdin\": \"open\"}]\nprocess.stdin.on('data', d => process.stdout.write(d));\n````");
         assert.equal(start.status, 200);
         // {§exec-input}: the launch declared input, so a SEND that lands before the real process has spawned
         // waits for the receiver within the input timeout instead of being refused.

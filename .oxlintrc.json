@@ -132,14 +132,6 @@
     "overrides": [
         {
             "files": [
-                "plurnk-execs-sqlite/src/Sqlite.ts"
-            ],
-            "rules": {
-                "eslint/no-restricted-imports": "off"
-            }
-        },
-        {
-            "files": [
                 "**/*.test.js",
                 "**/*.test.mjs",
                 "**/*.test.ts",

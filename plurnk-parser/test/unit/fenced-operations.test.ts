@@ -4,7 +4,7 @@ import { PlurnkParser } from "../../src/index.ts";
 import { Validator, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Registered tags are lowercase ({§executor-runtime-declaration}); the fence may spell them in any case.
-const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "tostring", "valueof"];
+const EXECUTORS = ["sh", "bash", "js", "gitea", "constructor", "tostring", "valueof"];
 const statements = (source: string) => {
     const result = PlurnkParser.parseStatements(source, { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);

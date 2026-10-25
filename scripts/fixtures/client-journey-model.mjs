@@ -36,7 +36,7 @@ const journeys = Object.freeze({
                 "````READ (worker:///_plurnk/plurnk/worker.md) <1,-1>````",
                 "````READ (worker:///_plurnk/plurnk/pattern.md) ~quotes````",
                 "````READ (worker:///_plurnk/plurnk/delegation.md) <1,16>````",
-                "````READ (worker:///_plurnk/plurnk/node.md) <1,-1>````",
+                "````READ (worker:///_plurnk/plurnk/js.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
                 "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
@@ -186,7 +186,7 @@ export const startClientJourneyModel = async () => {
                 assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
                 for (const witness of [
                     /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```BARE\n *\d+<@[0-9A-Za-z]{5}>A self-contained prompt, with everything it needs pasted in\./u,
-                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```node <!--/u,
+                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```js <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);

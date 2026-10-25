@@ -35,7 +35,7 @@ interface Declaration {
 
 export default class EnvCatalog {
     // Declarations in file order, each carrying the comment lines that introduce it. A commented
-    // declaration (`# PLURNK_EXECS_ONLY=sh,jq`) is an optional knob, not prose, so it is a
+    // declaration (`# PLURNK_EXECS_ONLY=sh,js`) is an optional knob, not prose, so it is a
     // declaration in its own right and stays findable by name.
     static declarations(text: string): readonly Declaration[] {
         const out: Declaration[] = [];

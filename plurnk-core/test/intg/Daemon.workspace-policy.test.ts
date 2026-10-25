@@ -112,14 +112,14 @@ test("{§workspace-capability-inspection}: existing workers reconcile their tool
         const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
         const reference = (workerId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, workerId,
             statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "node")).status, 200);
-        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "node" }] } });
+        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "js")).status, 200);
+        await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "js" }] } });
         for (const workerId of [model, sibling.workerId]) {
-            assert.equal((await reference(workerId, "node")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
+            assert.equal((await reference(workerId, "js")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
             assert.equal((await reference(workerId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
         }
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "node")).status, 200);
+        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "js")).status, 200);
     } finally {
         await daemon.stop();
         await db.close();

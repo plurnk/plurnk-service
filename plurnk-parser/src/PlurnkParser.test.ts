@@ -66,7 +66,7 @@ test("{§fence-heading-in-body} an unfinished wider body ends at the next known 
 });
 
 test("{§response-text}: prose and operation-shaped text stay literal, without guessing intent", () => {
-    const executors = ["sh", "node"];
+    const executors = ["sh", "js"];
     for (const source of [
         "The answer is 42.\n\n```ts\nconst x = 1;\n```",
         "Example:\n\n```text\n````READ (x.md\n````\n```",
@@ -89,7 +89,7 @@ test("{§unfenced-operation}: an operation written without its fence is not resp
         ["Let me look.\nREAD (x.md)", ["Let me look.\n"]],
         ["READ the file first, then decide.\nsh is a shell.", ["sh is a shell."]],
     ] as const) {
-        const parsed = PlurnkParser.parse(source, { executors: ["sh", "node"] });
+        const parsed = PlurnkParser.parse(source, { executors: ["sh", "js"] });
         assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), [], source);
         assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [...texts], source);
         assert.deepEqual(parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []),

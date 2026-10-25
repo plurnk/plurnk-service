@@ -10,7 +10,7 @@
         "subprocess",
         "repl",
         "shell",
-        "node",
+        "js",
         "python3"
     ],
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-common#readme",
@@ -66,6 +66,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
+        "@plurnk/plurnk-contracts": "^6.0.0",
         "@plurnk/plurnk-execs": "^4.0.0"
     }
 }

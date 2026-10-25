@@ -8,7 +8,7 @@ const FILES = [
         parsed: {},
         text: [
             "# Comma-separated allowlist; unset = all discovered runtimes.",
-            "# PLURNK_EXECS_ONLY=sh,jq",
+            "# PLURNK_EXECS_ONLY=sh,js",
             "# A pager that waits for a keypress hangs a spawn that has no terminal.",
             "PAGER=cat",
             "# Colour escapes are noise in a captured channel.",

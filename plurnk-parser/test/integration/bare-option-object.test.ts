@@ -10,7 +10,7 @@ const RECEIPT = (tag: string) => `\`${tag}\` took a bare option object; the taug
 const MATCHER_ADVISORY = "`{…}` was read as the matcher.";
 
 test("{§bare-option-object}: SEND reads one JSON object after the target as its option block, the body beneath intact", () => {
-    const result = PlurnkParser.parse("````SEND (node:///40968898) {\"eof\": true}\noranges\n````\n");
+    const result = PlurnkParser.parse("````SEND (js:///40968898) {\"eof\": true}\noranges\n````\n");
     const [send] = statements(result);
     assert.equal(send?.op, "SEND");
     if (send?.op !== "SEND") return;
@@ -18,7 +18,7 @@ test("{§bare-option-object}: SEND reads one JSON object after the target as its
     assert.equal(send.body?.raw, "oranges", "the body is what stood beneath the heading");
     assert.deepEqual(warnings(result), [RECEIPT("SEND")], "one receipt, and no inline-body advisory");
     assert.deepEqual(errors(result), []);
-    assert.equal(PlurnkParser.heading(send), "SEND (node:///40968898) [{\"eof\": true}]", "consumers see the taught shape");
+    assert.equal(PlurnkParser.heading(send), "SEND (js:///40968898) [{\"eof\": true}]", "consumers see the taught shape");
 });
 
 test("{§bare-option-object}: BARE and WORK lift the same way as SEND", () => {

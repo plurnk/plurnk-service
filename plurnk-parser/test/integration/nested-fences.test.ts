@@ -17,11 +17,11 @@ for (const [name, parse] of [
     test(`{§statement-rendering}: ${name} keeps a report holding same-width blocks intact under a framed SEND`, () => {
         const body = [
             "The process reversed the supplied bytes.",
-            '````node [{"stdin": "open"}]',
+            '````js [{"stdin": "open"}]',
             'process.stdin.on("data", value => process.stdout.write(value));',
             "````",
             "The input was delivered with:",
-            '````SEND (node:///ab3d5678) [{"eof": true}]',
+            '````SEND (js:///ab3d5678) [{"eof": true}]',
             "oranges",
             "````",
             "Observed stdout: segnaro. No further input is needed.",
@@ -119,12 +119,12 @@ test("{§balanced-fences}: a complete three-backtick executor block inside a fou
 });
 
 test("{§fence-heading-in-body}: the host names its executors and unknown tags stay body", () => {
-    const source = "````EDIT (notes.md)\n````node\nconsole.log(1)\n````\n" + task;
+    const source = "````EDIT (notes.md)\n````js\nconsole.log(1)\n````\n" + task;
     const unknown = PlurnkParser.parse(source);
     assert.deepEqual(statements(unknown).map(writtenOp), ["EDIT", "WAIT"]);
-    assert.equal(bodyText(statements(unknown)[0]), "````node\nconsole.log(1)");
-    const known = PlurnkParser.parse(source, { executors: ["node"] });
-    assert.deepEqual(statements(known).map(writtenOp), ["EDIT", "node", "WAIT"]);
+    assert.equal(bodyText(statements(unknown)[0]), "````js\nconsole.log(1)");
+    const known = PlurnkParser.parse(source, { executors: ["js"] });
+    assert.deepEqual(statements(known).map(writtenOp), ["EDIT", "js", "WAIT"]);
 });
 
 test("{§closer-fallback}: a block ended by a heading or the end of input keeps its body up to its last bare fence", () => {

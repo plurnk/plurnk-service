@@ -15,8 +15,8 @@ test("{§executor-shell} sh supplies the untouched command to the resolved shell
     assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: shell, args: ["-c", "ls -la"], useShell: false });
 });
 
-test("{§executor-shell} node uses its eval flag", () => {
-    assert.deepEqual(Runtime.resolve("node", "console.log(1)"), {
+test("{§executor-shell} js uses its eval flag", () => {
+    assert.deepEqual(Runtime.resolve("js", "console.log(1)"), {
         cmd: "node", args: ["-e", "console.log(1)"], useShell: false,
     });
 });
@@ -43,13 +43,13 @@ test("{§executor-shell} an interpreter target is the script with body on stdin"
     assert.deepEqual(Runtime.resolve("python3", "data", "t.py"), {
         cmd: "python3", args: ["t.py"], useShell: false, stdin: "data",
     });
-    assert.deepEqual(Runtime.resolve("node", "data", "t.js"), {
+    assert.deepEqual(Runtime.resolve("js", "data", "t.js"), {
         cmd: "node", args: ["t.js"], useShell: false, stdin: "data",
     });
 });
 
 test("{§executor-shell} spawn recipe resolution is total", () => {
-    for (const runtime of ["", "sh", "node", "python3", "ruby", "🐍", "with spaces"]) {
+    for (const runtime of ["", "sh", "js", "python3", "ruby", "🐍", "with spaces"]) {
         for (const command of ["", "echo hi", "rm -rf /", "1 && 2"]) {
             assert.doesNotThrow(() => Runtime.resolve(runtime, command));
         }

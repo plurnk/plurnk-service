@@ -12,7 +12,7 @@ import { namedModelWorker } from "./_workers.ts";
 test("{§exec-input}: the production loop sends stdin, waits for EOF completion, and observes the real result", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on(\"data\", d => process.stdout.write(\"received:\" + d));\n````\n\n````NOTE\nDeliver input to the process.\n````", 10),
+        makeMockResponse("````js [{\"stdin\": \"open\"}]\nprocess.stdin.on(\"data\", d => process.stdout.write(\"received:\" + d));\n````\n\n````NOTE\nDeliver input to the process.\n````", 10),
         makeMockResponse("````SEND ($STREAM) [{\"eof\": true}]\ninput-witness\n````\n\n````WAIT\nObserve the output.\n````", 10),
         makeMockResponse("````SEND [200]\nVerified the process response.\n````", 10),
     ] });
@@ -42,7 +42,7 @@ for (const reply of ["authored", "recovered"] as const) {
         const prefix = reply === "authored" ? "````SEND\nStarting the exchange.\n````" : "Starting the exchange.";
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(`${prefix}\n\n\`\`\`\`NOTE\nStart the process, then deliver its input.\n\`\`\`\``),
-            makeRawMockResponse("````node [{\"stdin\":\"open\"}]\nlet input = \"\"; process.stdin.on(\"data\", d => input += d); process.stdin.on(\"end\", () => console.log(\"received:\" + input));\n````"),
+            makeRawMockResponse("````js [{\"stdin\":\"open\"}]\nlet input = \"\"; process.stdin.on(\"data\", d => input += d); process.stdin.on(\"end\", () => console.log(\"received:\" + input));\n````"),
             makeRawMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nlater-witness\n````\n\n````WAIT\n````"),
             makeRawMockResponse("````SEND [200]\nVerified later-witness in the process response.\n````"),
         ] });
@@ -60,7 +60,7 @@ for (const reply of ["authored", "recovered"] as const) {
                 assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: launch }))?.status, 102,
                     "a clean launch continues without a stream poll or external wake even after an earlier reply");
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: launch });
-                assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["node", 200]],
+                assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["js", 200]],
                     "the continuing launch contains no recovery, WAIT or reply");
                 const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds[3] });
                 assert.ok(input.some(({ op, status_rx, rx }) => op === "SEND" && status_rx === 200 && JSON.parse(rx).bytesAccepted === 13));
@@ -79,7 +79,7 @@ for (const cause of ["operation", "parser"] as const) {
             ? "````EDIT (worker:///broken.md) <bad>\ninvalid scope\n````\n\n"
             : "````READ (worker:///missing)\n````\n\n");
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
-            makeRawMockResponse(`${prefix}\`\`\`\`node [{"stdin":"open"}]\nlet input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => console.log("received:" + input));\n\`\`\`\``),
+            makeRawMockResponse(`${prefix}\`\`\`\`js [{"stdin":"open"}]\nlet input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => console.log("received:" + input));\n\`\`\`\``),
             makeMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nrecovery-witness\n````\n\n````WAIT\nObserve the response.\n````"),
             makeMockResponse("````SEND [200]\nVerified recovery-witness in the process response.\n````"),
         ] });
@@ -114,7 +114,7 @@ for (const action of ["cancel", "stop"] as const) {
     test(`{§exec-input}: daemon ${action} reaps a real input-open process without a spurious model wake`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
-            makeMockResponse("````node [{\"stdin\": \"open\"}]\nconsole.log(process.pid); process.stdin.resume();\n````\n\n````WAIT\nAwait process input.\n````"),
+            makeMockResponse("````js [{\"stdin\": \"open\"}]\nconsole.log(process.pid); process.stdin.resume();\n````\n\n````WAIT\nAwait process input.\n````"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `stdin-${action}` });
@@ -125,7 +125,7 @@ for (const action of ["cancel", "stop"] as const) {
             assert.ok(turn);
             const stream = await executionAddress(db, turn.id, 2);
             const channel = await waitForDb(() => db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({
-                pathname: new URL(stream).pathname, scheme: "node", name: "stdout",
+                pathname: new URL(stream).pathname, scheme: "js", name: "stdout",
             }), (value) => /^\d+\s*$/.test(value?.content ?? ""));
             const pid = Number(channel!.content.trim());
             assert.ok(Number.isSafeInteger(pid) && pid > 0);

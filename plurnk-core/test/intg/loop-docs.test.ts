@@ -17,9 +17,6 @@ import { testExecutors } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
-process.env.PLURNK_EXECS_JQ = "1";
-process.env.PLURNK_EXECS_SQLITE = "1";
-
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
 
@@ -148,7 +145,7 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
     }
 });
 
-for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
+for (const runtime of ["sh", "js", "python3"]) test(`{§exec-executor-slot}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
     const executors = await testExecutors();
     if (!executors.availableRuntimes().includes(runtime)) return t.skip(`${runtime} is not installed`);
     const db = await openMigrated();
@@ -162,7 +159,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
             pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "worker", name: "body",
         });
         assert.ok(doc, "the installed executor's documentation reaches the worker");
-        const readme = await readFile(new URL("README.md", import.meta.resolve(`@plurnk/plurnk-execs-${runtime}/package.json`)), "utf8");
+        const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
         const examples = [doc.content, readme].flatMap((content) => Lexer.lex(content)
             .filter((token) => token.type === "code" && token.lang?.split(/[ \t]/)[0] === runtime));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
@@ -176,12 +173,7 @@ for (const runtime of ["jq", "sqlite"]) test(`{§exec-executor-slot}: installed 
         assert.ok(execs.length > 0);
         assert.ok(execs.every((statement) => statement.runtime === runtime), `${runtime} is the runtime, never the input target`);
         assert.ok(execs.some(({ target }) => target === null), `${runtime} demonstrates the no-target form`);
-        assert.ok(execs.some(({ target }) => target?.kind === "local"), `${runtime} demonstrates a data file target`);
-        const runtimeSources = execs.flatMap(({ target }) => target?.kind === "url" && executors.availableRuntimes().includes(target.scheme) ? [target] : []);
-        if (runtime === "jq") assert.ok(runtimeSources.length > 0, "jq demonstrates filtering another runtime's output");
-        for (const target of runtimeSources) {
-            assert.match(target.pathname, /^\/[a-f0-9]{8}$/, `${runtime} uses an address independent of log coordinates`);
-        }
+        if (runtime !== "js") assert.ok(execs.some(({ target }) => target?.kind === "local"), `${runtime} demonstrates a local script target`);
     } finally { await db.close(); }
 });
 

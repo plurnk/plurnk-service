@@ -42,7 +42,7 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     // The executable this runtime depends on, for probe(). `null` = nothing to
-    // check (always available — e.g. node, where the daemon already IS the
+    // check (always available — e.g. js, where the daemon already IS the
     // runtime). Subclasses naming an external interpreter override this.
     protected get binary(): string | null {
         return null;
@@ -80,7 +80,7 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     // Translate the matched tag + command + target into spawn args. Default
-    // delegates to Runtime.resolve (sh/node/python3); subclasses with their own
+    // delegates to Runtime.resolve (sh/js/python3); subclasses with their own
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
     // reimplementing it. When `target` is set, the body becomes the program's
@@ -182,7 +182,7 @@ export default class SubprocessExecutor extends BaseExecutor {
 
             // Filter-style runtimes feed their program/input via stdin; closing
             // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.
-            // A fast-exiting child (`jq` on a small file — dead in milliseconds)
+            // A fast-exiting child (dead in milliseconds)
             // can already be gone when this write lands; the end() then EPIPEs,
             // and with no 'error' listener the rejection escapes and fails the
             // consumer even though the exec succeeded. The child's exit code is

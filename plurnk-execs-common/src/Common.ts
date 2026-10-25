@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import { SubprocessExecutor, SpawnAccounts, Shell } from "@plurnk/plurnk-execs";
 import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 
@@ -21,7 +22,7 @@ interface Recipe {
 const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
     // Subprocess floor. `sh`'s bin is the shell the environment names ({§executor-shell}), resolved at use.
     sh: { bin: "sh", arg: (c) => ["-c", c] },
-    node: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
+    js: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
     python3: { bin: "python3", arg: (c) => ["-c", c] },
     // Detected host interpreters.
     perl: { bin: "perl", arg: (c) => ["-e", c] },
@@ -35,7 +36,7 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
 });
 
 // Exposed for tests / consumers wanting the candidate set.
-export const RUNTIME_TAGS: readonly string[] = Object.freeze(Object.keys(RECIPES));
+export const RUNTIME_TAGS: readonly RuntimeTag[] = Object.freeze(Object.keys(RECIPES).filter(isExecutionOp));
 
 // PATH presence via POSIX `command -v` — robust across interpreters that don't
 // support `--version` (tclsh, bc, some awks). bin is from the fixed table above.

@@ -16,7 +16,7 @@ detects every other interpreter, so one executor adapts to the host.
 | Tag                              | Binary            | Inline body via                          |
 | -------------------------------- | ----------------- | ---------------------------------------- |
 | `sh` 🐚                          | sh                | `-c <body>`                              |
-| `node` ⬢                         | node              | `-e <body>` (always available)           |
+| `js` ⬢                           | node              | `-e <body>` (always available)           |
 | `python3` 🐍                     | python3           | `-c <body>`                              |
 | `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <body>`                              |
 | `deno` 🦕                        | deno              | `eval <body>`                            |
@@ -54,10 +54,7 @@ no
 The first operation answers a shell script's prompts through stdin. The second
 feeds records to a Python script.
 
-All declared tags run host code, so every invocation is proposal-gated. The
-current installed in-process evaluators are jq and SQLite; their
-`pure` or `read` invocations bypass the proposal gate but still return through
-the same next-turn stream path ({§executor-effect}). Inline programs have no
+All declared tags run host code, so every invocation is proposal-gated ({§executor-effect}). Inline programs have no
 separate input channel; script targets receive stdin from the body.
 
 ## Configuration

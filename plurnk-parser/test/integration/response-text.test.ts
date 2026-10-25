@@ -58,7 +58,7 @@ test("{§response-text}: statement and client tiers still ignore outside text", 
 });
 
 test("{§unfenced-operation}: a prose line that opens with an operation's name draws one warning; quoted, offset and mid-sentence names draw none", () => {
-    const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "node"] }).items
+    const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "js"] }).items
         .flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [[item.error.line, item.error.column, item.error.message]] : []);
     assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "Unfenced `KILL` ignored."]]);
     assert.deepEqual(warnings("Let me look.\nREAD (worker:///notes.md)\nSEND"), [
@@ -70,7 +70,7 @@ test("{§unfenced-operation}: a prose line that opens with an operation's name d
         "Example:\n\t````KILL (notes.md)\n\t````\n    KILL (notes.md)",
         "To delete it you would issue KILL (notes.md) yourself.",
         "NOTE: remember the hash.",
-        "node is installed; sh works too.",
+        "js is installed; sh works too.",
         "````SEND\nKILL (worker:///inside-a-body.md)\n````",
     ]) assert.deepEqual(warnings(quiet), [], JSON.stringify(quiet));
 });

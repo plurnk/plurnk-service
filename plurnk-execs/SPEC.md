@@ -186,7 +186,7 @@ without registering closes input when the run settles.
 `SubprocessExecutor` accepts `[{"stdin": "open"}]` at invocation, and its preparation
 then declares `input: "open"` ({§executor-live-input}). The initial recipe
 input precedes SEND bodies and stdin remains open; without this option, existing
-batch input and EOF behavior is unchanged. The same input adapter serves `jq`.
+batch input and EOF behavior is unchanged.
 
 | SEND input | Effect |
 | --- | --- |
@@ -199,8 +199,8 @@ batch input and EOF behavior is unchanged. The same input adapter serves `jq`.
 A successful receipt reports `bytesAccepted` and `inputClosed`, with those facts
 in the ordinary model-visible `detail`. It acknowledges the writable pipe, not
 application processing. Subprocess executors inherit this
-contract; logical executors need not offer a receiver. In particular, SQLite,
-client-interaction tools, and MCP transports do not gain stdin through this API.
+contract; logical executors need not offer a receiver. In particular,
+client-interaction tools and MCP transports do not gain stdin through this API.
 
 ### §executor-channels Channels
 
@@ -329,7 +329,7 @@ channels, and default channel. The executor authors no second scheme manifest.
 | Workspace execution stream   | `<tag>:///<id>#<channel>`                 |
 | Fragmentless read         | `<tag>:///<id>` → the declared default channel |
 | Example subprocess stdout | `sh:///ab3d5678#stdout`                                          |
-| Example structured result | `sqlite:///c2d45678#results`                                     |
+| Example structured result | `mcp:///c2d45678#results`                                        |
 
 The executor only produces through `write` and `setState`. The consumer stores
 the entry and serves every later READ/FIND through uniform entry machinery.
@@ -638,16 +638,14 @@ tags are offered in a particular workspace ({§bundled-set}).
 
 | Package  | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
-| `common` | `sh`, `node`, `python3`, `perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
-| `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
-| `sqlite` | `sqlite`                                                                                                   | memory `pure`; file `host`      | `results` / `application/json`     |
+| `common` | `sh`, `js`, `python3`, `perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
 
 Optional executor packages are not part of this installed set merely because
 they exist in the workspace.
 
 The package-owned `.env.defaults` disable `perl`, `ruby`, `lua`, `deno`, `bun`,
-`tcl`, `bc`, `awk`, `jq`, and `sqlite`. The default admitted tags are `sh`,
-`node`, and `python3`, subject to availability. An operator can enable any
+`tcl`, `bc`, and `awk`. The default admitted tags are `sh`,
+`js`, and `python3`, subject to availability. An operator can enable any
 optional executor through {§executor-installation}; disabled tags contribute
 no discovery teaching or executor scheme ({§executor-policy}).
 
@@ -677,7 +675,7 @@ interface SpawnArgs {
 | Runtime                    | No-target spawn                                                      |
 | -------------------------- | -------------------------------------------------------------------- |
 | `sh`                       | `<shell> -c <body>`, the environment's shell ({§executor-shell}).    |
-| `node`                     | `node -e <body>`.                                                    |
+| `js`                       | `node -e <body>`.                                                    |
 | `python3`                  | `python3 -c <body>`.                                                 |
 | Other default-base runtime | `<runtime> -c <body>`; specialized executors override this fallback. |
 

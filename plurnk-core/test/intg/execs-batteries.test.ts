@@ -4,17 +4,14 @@
 // the captured output channel), not sh alone.
 //
 // Two axes: each runtime's output lands on its OWN
-// declared channel (subprocess -> stdout; jq/sqlite -> a JSON `results` channel), and host-effecting
+// declared channel (subprocess -> stdout), and host-effecting
 // runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census requires
 // every available self-contained tag to be covered and fails when a default tag is undiscovered
 // ({§exec-registry-resolves}).
 
-import test, { after } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { ownWorker } from "./_approval.ts";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
@@ -26,13 +23,13 @@ import { localPath } from "./_dsl.ts";
 
 // Exercise optional implementations too; executor-defaults.test.ts covers their
 // shipped admission and model-facing survey. {§executor-default-inventory}
-for (const tag of ["AWK", "BC", "PERL", "JQ", "SQLITE"]) process.env[`PLURNK_EXECS_${tag}`] = "1";
+for (const tag of ["AWK", "BC", "PERL"]) process.env[`PLURNK_EXECS_${tag}`] = "1";
 
 // The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
 // oxlint-disable-next-line eslint/no-control-regex
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-// {§exec-executor-slot} — the battery's third column is the program path (a db file for sqlite), never a cwd.
+// {§exec-executor-slot} — the battery's third column is the program path, never a cwd.
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
     metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : localPath(target),
@@ -46,7 +43,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 // Drive one executor through the full Exec path and return its captured, ANSI-stripped output —
-// from the executor's OWN default channel (subprocess runtimes → stdout; jq/sqlite → results) —
+// from the executor's OWN default channel (subprocess runtimes → stdout) —
 // plus the one effect fact that drove automatic admission or proposal review.
 const runExec = async (tag: string, body: string, cwd: string | null): Promise<{ status: number; out: string; effect: Effect; mimetype: string; declaredMimetype: string | undefined }> => {
     const db = await openMigrated();
@@ -99,9 +96,6 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 };
 
 
-const tmp = mkdtempSync(join(tmpdir(), "plurnk-batt-"));
-after(() => rmSync(tmp, { recursive: true, force: true }));
-
 // One deterministic specimen per bundled runtime. `gate` verifies its
 // executor-owned effect fact through core admission. {§executor-effect}
 const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
@@ -111,19 +105,13 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
     { tag: "bc", body: "scale=4; 22/7", cwd: null, expect: "3.1428\n", gate: "propose" },
     { tag: "perl", body: "print join(',', 1..5)", cwd: null, expect: "1,2,3,4,5", gate: "propose" },
     { tag: "python3", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "propose" },
-    { tag: "node", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
-    // Sandboxed/in-process computational runtimes earn `pure` when the target implies no host mutation.
-    { tag: "jq", body: "[1,2,3] | add", cwd: null, expect: "6\n", gate: "auto" }, // inline filter → pure
-    { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: null, expect: '[{"n":4}]', gate: "auto" }, // :memory: → pure; rows as JSON
-    // The boundary is TARGET-driven, not executor-driven: the SAME sqlite executor flips to `host` (gated)
-    // the moment its target is a real db FILE it could mutate — the security line that the gate exists to draw.
-    { tag: "sqlite", body: "SELECT 2 + 2 AS n", cwd: join(tmp, "app.db"), expect: '[{"n":4}]', gate: "propose" },
+    { tag: "js", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
 ];
 
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
 // covered by Exec.scheme.test.ts).
-const SELF_CONTAINED = ["sh", "node", "awk", "bc", "perl", "python3", "jq", "sqlite"] as const;
+const SELF_CONTAINED = ["sh", "js", "awk", "bc", "perl", "python3"] as const;
 
 test("{§exec-registry-resolves} execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
@@ -139,20 +127,13 @@ test("{§exec-registry-resolves} execs batteries: coverage census — every self
     console.log(`  self-contained, exercised: ${exercised.join(", ")}`);
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
-    assert.ok(available.has("jq") && available.has("sqlite"), "the core batteries executors (jq and sqlite) are discovered and available");
 
-    // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
-    // so consumers route jsonpath/render correctly — sqlite emits one document and jq is a
-    // streaming filter that emits newline-delimited values
-    // ({§executor-default-inventory}: application/jsonl).
     // Subprocess runtimes declare text/stream on stdout.
     const declMime = (tag: string): string | undefined => {
         const e = reg.entry(tag);
         return e?.executor?.channels[e.executor.defaultChannel]?.mimetype;
     };
-    assert.equal(declMime("sqlite"), "application/json", "sqlite results channel is application/json (single document)");
-    assert.equal(declMime("jq"), "application/jsonl", "jq results channel is application/jsonl (newline-delimited stream)");
-    for (const t of ["node", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `${t} stdout channel is text/stream`);
+    for (const t of ["js", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `${t} stdout channel is text/stream`);
 });
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
@@ -166,9 +147,8 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         const { status, out, effect, mimetype, declaredMimetype } = await runExec(tag, body, cwd);
         assert.equal(status, 200, `${label} dispatch returns 200`);
         assert.equal(out, expect, `${label} output`);
-        // The stream entry's channel carries the executor's OWN declared mimetype — so a JSON-returning
-        // runtime (sqlite/jq → JSON) is routed by mimetype-aware consumers (jsonpath,
-        // render), never mislabelled text/stream. The Exec seed honors the declaration; the write never overwrites it.
+        // The stream entry's channel carries the executor's OWN declared mimetype.
+        // The Exec seed honors the declaration; the write never overwrites it.
         assert.equal(mimetype, declaredMimetype, `${label} channel carries the executor's declared mimetype`);
         // The security boundary: effect→gate must match. A host runtime MUST propose (be review-gated);
         // a pure/read one MUST auto-run. A regression that automatically admits

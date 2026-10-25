@@ -317,7 +317,6 @@ and parse diagnostics are separate contracts.
 | {§inline-chain} | A closer on a heading line, or on a body's closing line, may be followed on that same line by the next… |
 | {§transparent-inline-closer} | A closer mid-heading is read as if it were not written. |
 | {§executor-case} | An executor tag in any case. |
-| {§executor-js-spelling} | When `node` is registered and `js` is not, `js` names `node` under {§executor-case}. |
 | {§one-line-turn} | A whole turn on one line. |
 | {§anchor-digits} | In a text scope, `@` followed by one to four digits cannot be a hash and is read as that line number, with… |
 | {§unclosed-aside} | A heading whose aside opens with `<!--` and never closes on its line takes the rest of the line as the aside,… |
@@ -562,13 +561,6 @@ known executor's name case-insensitively (`SH` opens `sh`); its AST carries the
 registered spelling when known, otherwise the lowercase name. Native operation
 names remain case-sensitive. Recognition follows {§executor-heading}; availability
 and permission are checked at dispatch, not granted by a recognized spelling.
-
-§executor-js-spelling When `node` is registered and `js` is not, `js` names
-`node` under {§executor-case}. Parsing normalizes the runtime before admission
-and dispatch; execution, policy, receipts, and output addresses remain Node's.
-The authored source remains unchanged. This spelling adds no executor, discovery
-entry, or model-facing teaching. An explicitly registered `js` retains its own
-identity; absent `node`, the shorthand grants no executable capability.
 
 §one-line-turn **A whole turn on one line.** A model may emit a turn as a single
 line: prose, then heading after heading with no line ending anywhere. Two

@@ -23,8 +23,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
-process.env.PLURNK_EXECS_JQ = "1";
-
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [JSON.stringify({ cwd })],
@@ -295,10 +293,34 @@ test("{§exec-executor-slot} bare execution defaults to sh and proposes with {ru
 
 test("{§exec-target-routing} the target slot remains distinct from cwd", async () => {
     await withWorkspace(async (ctx) => {
+        const executor: Executor = {
+            runtime: "filter",
+            glyph: "?",
+            get manifest(): SchemeManifest { return { ...schemeManifest("filter", { results: "application/json" }, "results"), volatile: true }; },
+            get defaultChannel() { return "results"; },
+            get channels() { return { results: { mimetype: "application/json" } }; },
+            async run({ setState }) { setState("results", "closed"); return { status: 200 }; },
+            async probe() { return { available: true }; },
+            effect() { return "read"; },
+        };
+        ctx.engine.registerRuntime("filter", {
+            executor,
+            namespaceOwner: { kind: "module", name: "filter fixture" },
+            glyph: "?",
+            summary: "filter fixture.",
+            invocation: {
+                body: { role: "filter expression", required: true },
+                target: { role: "data resource", required: false, kind: "resource" },
+                example: { body: "length" },
+            },
+            details: "",
+            available: true,
+            detail: undefined,
+        });
         const idDeferred = deferred<number>();
-        // The jq target supplies input data; cwd independently supplies its resolution base.
+        // The resource target supplies input data; cwd independently supplies its resolution base.
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt("jq", "data/users.json", "length"),
+            statement: execStmt("filter", "data/users.json", "length"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -308,8 +330,8 @@ test("{§exec-target-routing} the target slot remains distinct from cwd", async 
         const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; body: string };
         assert.equal(attrs.target, "data/users.json", "the (target) slot is the data source, in attrs.target");
         assert.equal(attrs.cwd, process.cwd(), "cwd is the workspace, or the shell's own cwd when headless — never the target");
-        assert.equal(attrs.body, "length", "the body is the jq program");
-        await dispatchPromise; // jq(read) auto-runs inline (no proposal); let it settle
+        assert.equal(attrs.body, "length", "the body is the filter program");
+        await dispatchPromise; // read effect auto-runs inline (no proposal); let it settle
         await ctx.exec.idle();
     });
 });
@@ -379,7 +401,7 @@ for (const source of ["local", "file", "worker"] as const) {
                 const argv = ["ARGUMENT_SENTINEL", "two words", "", "$(touch unwanted)"];
                 const input = "raw stdin\nsecond line";
                 const statement: ExecStatement = {
-                    ...execStmt("node", null, input),
+                    ...execStmt("js", null, input),
                     target: source === "local" ? localPath(filename)
                         : source === "file" ? urlPath("file", join(cwd, filename))
                         : urlPath("worker", "/script.mjs"),
@@ -399,7 +421,7 @@ for (const source of ["local", "file", "worker"] as const) {
                 assert.doesNotMatch(row?.attrs ?? "", /ARGUMENT_SENTINEL/, "raw metadata is not copied into proposal attrs");
                 const { pathname } = JSON.parse(row!.attrs) as { pathname: string };
                 const read = await ctx.engine.dispatch({
-                    statement: readStmt(urlPath("node", pathname)),
+                    statement: readStmt(urlPath("js", pathname)),
                     workspaceId: ctx.workspaceId, workerId: ctx.workerId,
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
                 });
@@ -625,11 +647,11 @@ test("{§exec-executor-slot} execution: cwd defaults to workspace.project_root w
     }
 });
 
-test("{§exec-env-scoped} node: runs code via -e and captures stdout", async () => {
+test("{§exec-env-scoped} js: runs code via -e and captures stdout", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt("node", null, "console.log(2 + 3)"),
+            statement: execStmt("js", null, "console.log(2 + 3)"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -642,7 +664,7 @@ test("{§exec-env-scoped} node: runs code via -e and captures stdout", async () 
         const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-            scheme: "node", pathname,
+            scheme: "js", pathname,
         });
         assert.ok(entryRow);
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({

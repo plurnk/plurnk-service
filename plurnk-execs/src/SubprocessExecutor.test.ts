@@ -61,7 +61,7 @@ test("{§executor-effect} effect: subprocess is always host (regardless of targe
 
 test("{§executor-subprocess-routing} cwd is the process working dir when there is no target", async () => {
     const dir = realpathSync(tmpdir());
-    const { result, out } = await exec("node", "process.stdout.write(process.cwd())", { cwd: dir });
+    const { result, out } = await exec("js", "process.stdout.write(process.cwd())", { cwd: dir });
     assert.equal(result.status, 200);
     assert.equal(realpathSync(out.stdout.trim()), dir);
 });
@@ -94,8 +94,8 @@ test("{§executor-stdin}: a script's initial body precedes later input without i
     const controller = new AbortController();
     let receiver: ExecInputReceiver | undefined;
     let stdout = "";
-    const result = new SubprocessExecutor({ runtime: "node", glyph: "n" }).run({
-        runtime: "node", body: "initial\n", target, cwd: directory, metadata: ['{"stdin": "open"}'],
+    const result = new SubprocessExecutor({ runtime: "js", glyph: "j" }).run({
+        runtime: "js", body: "initial\n", target, cwd: directory, metadata: ['{"stdin": "open"}'],
         signal: controller.signal, registerInput: (input) => { receiver = input; },
         write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; },
         setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
@@ -309,7 +309,7 @@ test("{§executor-cancellation} loop-end housekeeping marker: SIGHUP then SIGKIL
     const dir = await mkdtemp(join(tmpdir(), "executor-hup-"));
     const ignoring = join(dir, "ignoring");
     try {
-        const promise = exec("node", `process.on('SIGHUP', () => {}); process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(ignoring)}, ''); setInterval(() => {}, 1e9)`, { signal: controller.signal });
+        const promise = exec("js", `process.on('SIGHUP', () => {}); process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(ignoring)}, ''); setInterval(() => {}, 1e9)`, { signal: controller.signal });
         await until("the process to ignore SIGHUP", () => existsSync(ignoring));
         controller.abort({ housekeeping: true, graceMs: 100 });
         const { result } = await promise;

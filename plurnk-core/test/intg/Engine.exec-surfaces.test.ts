@@ -11,8 +11,6 @@ import { logEntries, packetSection } from "./_packet.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
-process.env.PLURNK_EXECS_SQLITE = "1";
-
 test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const runtime = "search-api2";
@@ -118,9 +116,9 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
 // because it fits, with the extent; the channel itself stays complete and typed.
 test("{§exec-stream-page} a generated JSON result publishes whole with the extent through the next-turn packet", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
+    const program = "process.stdout.write(Array.from({ length: 30 }, (_, i) => JSON.stringify({ n: i + 1, payload: String(i + 1).padStart(100, '0') })).join('\\n'))";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sqlite\n" + query + "\n````\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse("````js\n" + program + "\n````\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
 
@@ -143,11 +141,11 @@ test("{§exec-stream-page} a generated JSON result publishes whole with the exte
                 weight: number;
             }>({ turn_id: turn2 });
             const observation = rows.find((row) =>
-                row.scheme === "sqlite" && row.op === "READ" && row.origin === "_plurnk");
+                row.scheme === "js" && row.op === "READ" && row.origin === "_plurnk");
             assert.ok(observation, "the structured executor result reaches the ambient READ path");
 
             const result = JSON.parse(observation.rx) as { content: string; mimetype: string; startLine: number; range: { total: number; returned: [number, number] } };
-            assert.equal(result.mimetype, "application/json", "a markerless READ keeps the channel's mimetype");
+            assert.equal(result.mimetype, "text/stream", "a markerless READ keeps the channel's mimetype");
             assert.equal(result.content.split("\n").length, 30, "the 30-line document is published whole: it fits");
             assert.equal(result.startLine, 1);
             assert.deepEqual([result.range.total, result.range.returned], [30, [1, 30]], "the extent names the whole document");
@@ -156,10 +154,10 @@ test("{§exec-stream-page} a generated JSON result publishes whole with the exte
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                candidate.logPath.endsWith("/READ") && (candidate.path ?? "").startsWith("sqlite:///"));
+                candidate.logPath.endsWith("/READ") && (candidate.path ?? "").startsWith("js:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.preview, undefined, "nothing is previewed on the model's behalf");
-            assert.match(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is what the model sees");
+            assert.match(packetSection(packet, "log"), /1:\{"n":1,/, "the document's head is what the model sees");
             assert.match(packetSection(packet, "log"), /30:\{"n":30,/, "and so is its tail: whole when it fits");
         } finally {
             ws.close();

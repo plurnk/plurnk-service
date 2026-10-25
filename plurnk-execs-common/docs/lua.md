@@ -17,4 +17,4 @@ print(table.concat(t, ","))
 `os.exit(1)` is a nonzero `exitCode`. The standalone interpreter is the host's
 `lua` on PATH; project modules resolve through its ordinary `package.path` from
 the working directory. Live input (`[{"stdin": "open"}]`, SEND,
-`[{"eof": true}]`) is as `node.md` shows.
+`[{"eof": true}]`) is as `js.md` shows.

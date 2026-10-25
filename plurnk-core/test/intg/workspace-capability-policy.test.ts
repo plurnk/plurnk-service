@@ -62,7 +62,7 @@ test("{§operator-config-workspace-capabilities} {§capability-policy-cascade}: 
 });
 
 test("{§capability-policy-cascade}: workspace only makes every omitted runtime unavailable", async () => {
-    const result = await runWithPolicy({ only: [{ runtime: "jq" }] }, "sh");
+    const result = await runWithPolicy({ only: [{ runtime: "js" }] }, "sh");
     assert.equal(result.status, 403);
     assert.equal(result.problem?.runtime, "sh");
     assert.equal(result.problem?.policyScope, "workspace");
@@ -76,14 +76,14 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const before = await engine.referenceEntries(workspaceId);
-        assert.ok(before.some((doc) => doc.pathname === "/_plurnk/plurnk/node.md"));
+        assert.ok(before.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
 
         await db.test_set_workspace_settings.run({
             id: workspaceId,
-            settings: JSON.stringify({ capabilities: { deny: [{ runtime: "node" }] } }),
+            settings: JSON.stringify({ capabilities: { deny: [{ runtime: "js" }] } }),
         });
         const after = await engine.referenceEntries(workspaceId);
-        assert.ok(!after.some((doc) => doc.pathname === "/_plurnk/plurnk/node.md"));
+        assert.ok(!after.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
         assert.ok(after.some((doc) => doc.pathname === "/_plurnk/plurnk/sh.md"));
 
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");

@@ -64,7 +64,7 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
 
     // Channels this executor writes to. The consuming scheme seeds the exec
     // entry from this declaration ({§executor-channels}): subprocess runtimes
-    // declare `{ stdout, stderr }`; structured runtimes such as sqlite declare `{ results }`.
+    // declare `{ stdout, stderr }`; structured runtimes declare `{ results }`.
     // Implemented as a getter so executors may branch on `this.runtime` when a
     // tag dictates a different shape; most return a constant map.
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;
@@ -81,8 +81,8 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
     abstract run(args: ExecArgs): Promise<ExecResult>;
 
     // Whether this runtime's execution environment is usable in the current
-    // deployment. Default: available (pure / in-process runtimes — e.g. node,
-    // sqlite, where the daemon itself satisfies the dependency). Subclasses
+    // deployment. Default: available (pure / in-process runtimes — e.g. js,
+    // where the daemon itself satisfies the dependency). Subclasses
     // that depend on an external binary or external config override.
     //
     // The consumer probes once at boot, per runtime tag, runs probes concurrently

@@ -197,7 +197,7 @@ test("{§send-wait-scope} PlurnkStatement: structured WAIT carries its duration 
 });
 
 test("{§exec-executor-slot} PlurnkStatement: an execution accepts a lineMarker (timeout,poll)", () => {
-    const stmt = { ...execFields(), runtime: "node", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } };
+    const stmt = { ...execFields(), runtime: "js", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true);
 });

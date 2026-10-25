@@ -18,12 +18,12 @@ test("{§env-surface-policy} a knob read in shipped source must be declared on a
 
 test("{§env-surface-policy} a computed name is a family, covered by one declared example of it", () => {
     const panels = [panel("PLURNK_X_LIVE=1\n# PLURNK_EXECS_PYTHON3=0\n")];
-    const family = source("const on = env[`PLURNK_EXECS_${runtime}`]; const known = env.PLURNK_EXECS_JQ; use(env.PLURNK_X_LIVE);");
+    const family = source("const on = env[`PLURNK_EXECS_${runtime}`]; const known = env.PLURNK_EXECS_JS; use(env.PLURNK_X_LIVE);");
     assert.deepEqual(run({ panels, sources: [family] }), []);
     // A family nothing declares an example of is as hidden as a single key.
     assert.deepEqual(
         run({ panels: [panel("PLURNK_X_LIVE=1\n")], sources: [family] }),
-        ["undeclared: PLURNK_EXECS_JQ — 1 found, allowance 0"],
+        ["undeclared: PLURNK_EXECS_JS — 1 found, allowance 0"],
     );
 });
 

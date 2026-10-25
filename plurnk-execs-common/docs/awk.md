@@ -17,5 +17,5 @@ alpha,1
 beta,2
 ```
 
-Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md`
+Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md`
 shows.

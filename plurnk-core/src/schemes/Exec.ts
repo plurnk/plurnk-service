@@ -44,7 +44,7 @@ type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 type ApplyOutcome = SchemeResultBase & { outcome?: string; body?: string; result?: object };
 
 interface ExecAttrs {
-    runtime: string;        // "" (default shell), "sh", "node", "python3", etc.
+    runtime: string;        // "" (default shell), "sh", "js", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
     input?: "open";         // the preparation declared that the invocation registers an input receiver ({§executor-live-input})
     target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-sinks})
@@ -887,7 +887,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             };
         }
         const seed: EntryData = { channels: seedChannels };
-        // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
+        // {§exec} — the stream entry's scheme IS the runtime tag (sh/js), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
         const { entryId } = await EntryCrud.writeEntry({ authority: "", pathname }, seed, core, runtime, {
             defaultChannel: resolved.executor.defaultChannel, output: true,

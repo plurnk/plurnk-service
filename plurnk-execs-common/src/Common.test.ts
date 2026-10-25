@@ -36,7 +36,7 @@ test("{§executor-dynamic-runtimes} the runtimes module declares the candidate c
     const manifest = declared.map((r) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
-        "sh", "node", "python3", "perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk",
+        "sh", "js", "python3", "perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
     const [shell, ...alternatives] = declared as Array<{
         name: string;
@@ -70,11 +70,11 @@ test("{§executor-tool-document}: declared interpreter examples execute as raw i
     }
 });
 
-test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/node/python3)", () => {
+test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/js/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error
-    assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
+    assert.deepEqual(make("js").spawnArgs("js", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
@@ -98,12 +98,12 @@ test("{§executor-subprocess-routing}: awk reads the target script and consumes 
     assert.equal(out.stdout, "READ:first\nREAD:second\n");
 });
 
-for (const [tag, body] of [
-    ["sh", 'printf "%s\\n" "$0" "$1" "$2" "$3"'],
-    ["node", 'console.log(process.argv.slice(1).join("\\n"))'],
-    ["python3", 'import sys; print("\\n".join(sys.argv[1:]))'],
+for (const [tag, bin, body] of [
+    ["sh", "sh", 'printf "%s\\n" "$0" "$1" "$2" "$3"'],
+    ["js", "node", 'console.log(process.argv.slice(1).join("\\n"))'],
+    ["python3", "python3", 'import sys; print("\\n".join(sys.argv[1:]))'],
 ] as const) {
-    test(`{§executor-metadata}: inline ${tag} preserves arguments using native interpreter conventions`, { skip: !present(tag) }, async () => {
+    test(`{§executor-metadata}: inline ${tag} preserves arguments using native interpreter conventions`, { skip: !present(bin) }, async () => {
         const argv = ["first", "two words", "", "$(touch forbidden)"];
         const { result, out } = await run(tag, body, { metadata: [JSON.stringify({ args: argv })] });
         assert.equal(result.status, 200, out.stderr);
@@ -136,8 +136,8 @@ test("{§executor-subprocess-routing} a file target runs without +x; transient e
     }
 });
 
-test("{§executor-probe} probe: node is always available (not PATH-gated) and reports its version", async () => {
-    const r = await make("node").probe();
+test("{§executor-probe} probe: js is always available (not PATH-gated) and reports its version", async () => {
+    const r = await make("js").probe();
     assert.equal(r.available, true);
     assert.equal(r.detail, process.version);
 });

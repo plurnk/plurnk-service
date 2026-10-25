@@ -24,9 +24,9 @@ test("{§fence-boundary}: preamble text does not promote headings or inline body
 
 test("{§response-text}: the topology witness retains a model-written result between intact operations", () => {
     const source = [
-        "I'll confirm the count exactly with jq, then reply.",
-        "````jq (data/users.json)",
-        "length",
+        "I'll confirm the count exactly with js, then reply.",
+        "````js (tools/count.js)",
+        "data/users.json",
         "````",
         "3",
         "````SEND",
@@ -36,12 +36,12 @@ test("{§response-text}: the topology witness retains a model-written result bet
         task,
         "Postscript: finished.",
     ].join("\n");
-    const parsed = PlurnkParser.parse(source, { executors: ["jq"] });
+    const parsed = PlurnkParser.parse(source, { executors: ["js"] });
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.map((item) => item.kind), ["text", "statement", "text", "statement", "statement", "text"]);
     const ops = statements(parsed);
-    assert.deepEqual(ops.map(writtenOp), ["jq", "SEND", "WAIT"]);
-    assert.equal(isExecution(ops[0]) ? ops[0].body : null, "length");
+    assert.deepEqual(ops.map(writtenOp), ["js", "SEND", "WAIT"]);
+    assert.equal(isExecution(ops[0]) ? ops[0].body : null, "data/users.json");
     assert.equal(ops[1].op === "SEND" ? ops[1].body?.raw : null, "3\nTop-level JSON array.");
     assert.deepEqual(ops[1].position, { line: 6, column: 0 });
 });

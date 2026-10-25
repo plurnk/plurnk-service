@@ -149,7 +149,7 @@ for (const specimen of [
     serverProposals(approvalContext, "accept");
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`\`\`\`\`node
+        makeMockResponse(`\`\`\`\`js
 process.stdout.write(${JSON.stringify(content)});
 \`\`\`\`
 \`\`\`\`WAIT

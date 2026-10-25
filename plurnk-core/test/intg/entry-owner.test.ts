@@ -13,8 +13,6 @@ import { executionAddress, testExecutors } from "./_execs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { clientRead } from "./_client-read.ts";
 
-process.env.PLURNK_EXECS_JQ = "1";
-
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
@@ -29,15 +27,17 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
 });
 
 test("{§exec} fan-out: equal causal coordinates create distinct outputs shared by the workspace", async () => {
+    const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
+    process.env.PLURNK_SERVICE_EFFECT_HOST = "auto";
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes });
         const executors = await testExecutors();
         engine.setExecutors(executors);
-        schemes.registerRuntimeSchemes(executors); // {§exec} — per-tag faces let READ jq:// resolve
+        schemes.registerRuntimeSchemes(executors); // {§exec} — per-tag faces let READ js:// resolve
         const exec = schemes.get("exec") as Exec;
-        assert.ok(schemes.get("jq"));
+        assert.ok(schemes.get("js"));
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);
 
         const parent = await insertWorker(db, ws, null, "parent");
@@ -48,8 +48,8 @@ test("{§exec} fan-out: equal causal coordinates create distinct outputs shared 
         const pLoop = await insertLoop(db, pool, 1, "pool");
         const pTurn = await insertTurn(db, pLoop, 1, 102);
 
-        await engine.dispatch({ statement: execStmt("jq", '"db.internal"'), workspaceId: ws, workerId: host, loopId: hLoop, turnId: hTurn, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: execStmt("jq", "5"), workspaceId: ws, workerId: pool, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: execStmt("js", 'console.log("db.internal")'), workspaceId: ws, workerId: host, loopId: hLoop, turnId: hTurn, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: execStmt("js", "console.log(5)"), workspaceId: ws, workerId: pool, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
         await exec.idle();
 
         const hostPath = new URL(await executionAddress(db, hTurn)).pathname;
@@ -61,22 +61,26 @@ test("{§exec} fan-out: equal causal coordinates create distinct outputs shared 
             return result as EntryReadResult;
         };
         for (const workerId of [host, pool, parent]) {
-            const hostRead = await read(workerId, streamRead("jq", null, hostPath));
-            const poolRead = await read(workerId, streamRead("jq", null, poolPath));
+            const hostRead = await read(workerId, streamRead("js", null, hostPath));
+            const poolRead = await read(workerId, streamRead("js", null, poolPath));
             assert.equal(hostRead.status, 200);
             assert.match(hostRead.content ?? "", /db\.internal/);
             assert.equal(poolRead.status, 200);
             assert.match(poolRead.content ?? "", /^5$/m);
         }
         await db.test_delete_worker.run({ id: host });
-        assert.match((await read(parent, streamRead("jq", null, hostPath))).content ?? "", /db\.internal/,
+        assert.match((await read(parent, streamRead("js", null, hostPath))).content ?? "", /db\.internal/,
             "deleting the producer leaves its workspace output readable");
         const foreignWorkspace = await insertWorkspace(db, "foreign-output");
         const foreignWorker = await insertWorker(db, foreignWorkspace);
-        const foreign = await clientRead(engine, db, { statement: streamRead("jq", null, hostPath),
+        const foreign = await clientRead(engine, db, { statement: streamRead("js", null, hostPath),
             workspaceId: foreignWorkspace, workerId: foreignWorker });
         assert.equal(foreign.status, 404, "the same address does not cross workspace boundaries");
-    } finally { await db.close(); }
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_HOST;
+        else process.env.PLURNK_SERVICE_EFFECT_HOST = prior;
+        await db.close();
+    }
 });
 
 test("{§execution-output-identity}: simultaneous claims retry collisions instead of reusing an output", async (t) => {
@@ -106,9 +110,9 @@ test("{§entry-owner} shared entries require only a workspace, not a synthetic W
 
         // The identity index holds ON the commons: a second insert at the same key conflicts —
         // the exact fragmentation a NULL owner would have allowed (NULLs are distinct under UNIQUE).
-        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "jq", authority: "", pathname: "/1/1/1/jq" });
+        await db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "js", authority: "", pathname: "/1/1/1/js" });
         await assert.rejects(
-            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "jq", authority: "", pathname: "/1/1/1/jq" }),
+            db.test_seed_entry_workspace.get({ workspace_id: ws, scheme: "js", authority: "", pathname: "/1/1/1/js" }),
             /UNIQUE/,
             "the same (workspace, owner, scheme, authority, pathname) key conflicts — no silent duplicate",
         );

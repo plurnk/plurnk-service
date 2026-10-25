@@ -17,4 +17,4 @@ puts [dict get $count alpha]
 or `exit 1` is a nonzero `exitCode` with the Tcl error info on stderr. tclsh
 evaluates the script line by line, so an incomplete command at the end is an
 error, not a silent no-op. Live input (`[{"stdin": "open"}]`, SEND,
-`[{"eof": true}]`) is as `node.md` shows.
+`[{"eof": true}]`) is as `js.md` shows.

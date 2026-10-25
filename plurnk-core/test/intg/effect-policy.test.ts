@@ -1,5 +1,5 @@
 // {§effect-policy-tunable} — the deployment override routes an otherwise-auto
-// execution through the human gate: with `pure:propose`, an inline jq invocation (whose
+// execution through the human gate: with `pure:propose`, a pure invocation (whose
 // default admission is auto) lands in the proposed state and completes only
 // after an explicit accept.
 
@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ownWorker } from "./_approval.ts";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
+import { BaseExecutor, type Effect, type ExecArgs, type Executor } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
@@ -16,8 +17,6 @@ import { waitForDb } from "./_rpc.ts";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-process.env.PLURNK_EXECS_JQ = "1";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
@@ -32,7 +31,31 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
         const schemes = new SchemeRegistry();
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
-        engine.setExecutors(await testExecutors());
+        const executors = await testExecutors();
+        engine.setExecutors(executors);
+        const pureExe: Executor = new class extends BaseExecutor {
+            get channels() { return { results: { mimetype: "application/json" } }; }
+            async run({ write, setState }: ExecArgs) {
+                write("results", "6\n", "application/json");
+                setState("results", "closed");
+                return { status: 200 };
+            }
+            override effect(): Effect { return "pure"; }
+        }({ runtime: "calc", glyph: "∑" });
+        engine.registerRuntime("calc", {
+            executor: pureExe,
+            namespaceOwner: { kind: "module", name: "calc fixture" },
+            glyph: "∑",
+            summary: "Pure calculation fixture.",
+            invocation: {
+                body: { role: "expression", required: true },
+                example: { body: "1 + 2 + 3" },
+            },
+            details: "",
+            available: true,
+            detail: undefined,
+        });
+        schemes.registerRuntimeSchemes(executors);
         const workspaceId = await insertWorkspace(db, `effect-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         await ownWorker(db, workspaceId, workerId);
@@ -41,7 +64,7 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
 
         let logEntryId = -1;
         const dispatched = engine.dispatch({
-            statement: execStmt("jq", "[1,2,3] | add"),
+            statement: execStmt("calc", "1 + 2 + 3"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => { logEntryId = id; },
         });
@@ -79,7 +102,7 @@ test("{§configuration-repair-path}: invalid effect policy settles the operation
     const turnId = await insertTurn(db, loopId, 1, 102);
     let logEntryId = -1;
     const result = await engine.dispatch({
-        statement: execStmt("node", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        statement: execStmt("js", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         onDispatch: (id) => { logEntryId = id; },
     });
     assert.equal(result.status, 503);

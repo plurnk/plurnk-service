@@ -665,7 +665,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`\`node (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
+            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
 raw stdin
 \`\`\`\``,
         },
@@ -842,14 +842,14 @@ try {
 
 process.stdout.write("-- executor inventory --\n");
 // {§executor-default-inventory} {§executor-policy}: installed is not enabled.
-const defaultTags = ["sh", "node", "python3"];
+const defaultTags = ["sh", "js", "python3"];
 const declaredRuntimes = (await Promise.all(defaultExecPackages.map(async (packageName) =>
     (await installedRuntimes(packageName)).map(({ name }) => [name, packageName])))).flat();
 const packedExecs = packedExecInventory();
 ok(
     isDeepStrictEqual(Object.keys(packedExecs.owners).toSorted(), defaultTags.toSorted())
         && isDeepStrictEqual(packedExecs.registered.toSorted(), defaultTags.toSorted()),
-    "the packed default registers only sh, node and python3",
+    "the packed default registers only sh, js and python3",
 );
 const optIn = Object.fromEntries(declaredRuntimes.map(([tag]) => [`PLURNK_EXECS_${tag.toUpperCase()}`, "1"]));
 const enabledExecs = packedExecInventory(optIn);
@@ -868,11 +868,11 @@ for (const [tag, packageName] of declaredRuntimes) {
         `runtime ${tag} explicitly enables and loads from the service-owned ${packageName} extension`,
     );
 }
-const restrictedExecs = packedExecInventory({ ...optIn, PLURNK_EXECS_ONLY: "node,sqlite", PLURNK_EXECS_SQLITE: "0" });
+const restrictedExecs = packedExecInventory({ ...optIn, PLURNK_EXECS_ONLY: "js,perl", PLURNK_EXECS_PERL: "0" });
 ok(
-    isDeepStrictEqual(Object.keys(restrictedExecs.owners), ["node"])
-        && isDeepStrictEqual(restrictedExecs.registered, ["node"])
-        && isDeepStrictEqual(restrictedExecs.advertised, ["node"]),
+    isDeepStrictEqual(Object.keys(restrictedExecs.owners), ["js"])
+        && isDeepStrictEqual(restrictedExecs.registered, ["js"])
+        && isDeepStrictEqual(restrictedExecs.advertised, ["js"]),
     "the packed allowlist and per-tag disable compose after explicit opt-in",
 );
 

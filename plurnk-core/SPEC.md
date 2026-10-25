@@ -3854,7 +3854,7 @@ from execution lifetime. Wait expiry permits inspection of still-running work;
 closure remains an independent wake edge. Active loops already receive ambient
 stream deltas. Calendar recurrence remains a schedule ({§schedule-delivery}).
 
-§exec-host-proposes **An executor's declared effect gates it: a host effect proposes.** Each executor — and each scheme operation that mutates something outside this process — declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). The declarer states the FACT, the panel decides the POLICY, and one rule covers every operation: nothing that changes the world runs on nobody's authority. A `host` runtime (subprocess; file-backed sqlite) proposes under {§proposal}, and so does an outbound request that mutates a remote resource ({§http-outbound-proposes}). Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channel-state}).
+§exec-host-proposes **An executor's declared effect gates it: a host effect proposes.** Each executor — and each scheme operation that mutates something outside this process — declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). The declarer states the FACT, the panel decides the POLICY, and one rule covers every operation: nothing that changes the world runs on nobody's authority. A `host` runtime (subprocess; mutating tool) proposes under {§proposal}, and so does an outbound request that mutates a remote resource ({§http-outbound-proposes}). Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channel-state}).
 
 §entry-owner **Every entry belongs directly to one workspace.** Its immutable identity is `(workspace_id, scheme, authority, pathname)`. The workspace foreign key supplies lifetime; URI authority supplies the literal resource namespace. Core binds one canonical coordinate through {§entry-address-resolution} for every operation and consumer. Producer and subscriber Worker ids describe causal activity, not ownership.
 
@@ -3930,7 +3930,7 @@ neither from its own home.
 
 §workspace-auto-name **A workspace with neither name nor project root gets five alphanumeric characters, at least one a letter.** Such a `workspace.create` draws uniformly from the {§line-anchors} alphabet `0-9A-Za-z` using a cryptographic source, redrawing digit-only names and collisions. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from.
 
-§exec-readpure-ungated **A read or pure runtime runs ungated.** A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). Admission does not determine settlement: external executions background and stream, while subsystem commands settle under {§functionality-model-mutation}. Both expose output through ordinary environment observation ({§exec-stream}), not a second inline body path.
+§exec-readpure-ungated **A read or pure runtime runs ungated.** A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). Admission does not determine settlement: external executions background and stream, while subsystem commands settle under {§functionality-model-mutation}. Both expose output through ordinary environment observation ({§exec-stream}), not a second inline body path.
 
 §effect-policy-tunable **Effect admission is one knob per effect.**
 `PLURNK_SERVICE_EFFECT_HOST`, `PLURNK_SERVICE_EFFECT_READ` and
@@ -4358,8 +4358,7 @@ SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-ali
 
 §persistence-via-sqlrite Every daemon read and write of a plurnk database goes through a SqlRite
 statement owned by the package that owns the table ({§sql-ts-boundary}). `node:sqlite` is imported
-only by the `plurnk-execs-sqlite` executor, which operates the model's own databases, and by a
-witness that inspects a database's catalog after the daemon has closed it; the lint gate refuses
+only by a witness that inspects a database's catalog after the daemon has closed it; the lint gate refuses
 every other import ({§lint-gate}), and each permitted one states its reason at the import.
 
 ### §db-durability Connection durability
@@ -4536,7 +4535,7 @@ freshness remains the owning package's concern.
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format extensions.                            |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format extensions.             |
 |           |                                    | The `image` and `application-pdf` (header-only, {§mimetype-pdf-facts}) extensions, and every `grammar-{slug}` grammar package in the framework's tree-sitter registry ({§mimetype-grammar-packages}), all under `@plurnk/plurnk-mimetypes-*`. |
-| Executors | `@plurnk/plurnk-execs`             | `common`, `jq`, and `sqlite` extensions under the `@plurnk/plurnk-execs-*` prefix.                                           |
+| Executors | `@plurnk/plurnk-execs`             | `common` extension under the `@plurnk/plurnk-execs-*` prefix.                                                                |
 
 The independently published `tokenizers` artifact is an opt-in package. Installing
 it beside the service admits it through ordinary package resolution without

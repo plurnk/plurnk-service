@@ -30,14 +30,14 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
-        const node = groups.flat().find(({ path }) => path.endsWith("/node.md"));
-        const aside = node?.aside;
-        assert.ok(typeof aside === "string" && aside.includes("\n"), "Node's aside includes its inline body, not just an empty invocation");
+        const jsEntry = groups.flat().find(({ path }) => path.endsWith("/js.md"));
+        const aside = jsEntry?.aside;
+        assert.ok(typeof aside === "string" && aside.includes("\n"), "js aside includes its inline body, not just an empty invocation");
         const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.ok(item?.kind === "statement" && isExecution(item.statement));
-        assert.equal(item.statement.runtime, "node");
+        assert.equal(item.statement.runtime, "js");
         assert.equal(item.statement.target, null, "the program is not a script path or metadata modifier");
         assert.ok(typeof item.statement.body === "string" && item.statement.body.length > 0);
         assert.ok(item.statement.aside?.includes("JavaScript"), "the description stays on the invocation line");

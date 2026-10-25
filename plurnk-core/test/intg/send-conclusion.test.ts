@@ -220,9 +220,9 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
                     assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 1);
                     if (obligation === "child") await holdChild(db, ids.workspaceId, ids.workerId);
                     else {
-                        const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "node", pathname: "/12345678",
+                        const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "js", pathname: "/12345678",
                             channel: "stdout", content: "Ready for input.", mimetype: "text/plain", state: "active" });
-                        await ChannelWrite.openSubscription(db, { workerId: ids.workerId, entryId, scheme: "node", handle: "/12345678", publishedChannel: "stdout" });
+                        await ChannelWrite.openSubscription(db, { workerId: ids.workerId, entryId, scheme: "js", handle: "/12345678", publishedChannel: "stdout" });
                     }
                     const memory = await turn();
                     assert.equal(memory.status, 102, "an earlier delivery is not an instruction to park a later NOTE");

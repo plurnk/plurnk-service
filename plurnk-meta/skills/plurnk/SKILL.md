@@ -16,7 +16,7 @@ description: Plurnk harness configurations, extensions, and definitions.
 | Worker hierarchy, messaging, and delegation | [Worker reference](worker:///_plurnk/plurnk/worker.md) |
 | Which project files you can see, and why a file is missing | [Membership](worker:///_plurnk/plurnk/members.md) |
 | Agent Skills and MCP servers: what each is and how one is added | `worker:///_plurnk/plurnk/skills.md`, `mcp.md` |
-| Running code: the shell and each interpreter's body, stdin, arguments, exit status | `worker:///_plurnk/plurnk/sh.md`, `node.md`, `python3.md`, … |
+| Running code: the shell and each interpreter's body, stdin, arguments, exit status | `worker:///_plurnk/plurnk/sh.md`, `js.md`, `python3.md`, … |
 | Enabled MCP server invocations and schemas | `worker:///_plurnk/tools/` |
 | Built-in executors and scheme references | `worker:///_plurnk/plurnk/` |
 

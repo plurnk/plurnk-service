@@ -41,8 +41,6 @@
         "plurnk-mcp",
         "plurnk-hooks",
         "plurnk-otel",
-        "plurnk-execs-jq",
-        "plurnk-execs-sqlite",
         "plurnk-providers",
         "plurnk-digest",
         "plurnk-schedule",

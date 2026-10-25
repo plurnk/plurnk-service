@@ -1,7 +1,6 @@
 // {§exec-host-proposes} {§exec-readpure-ungated} The executor declares its effect; the
-// service owns the policy. `host` runtimes (sh/node/python3, file-backed
-// sqlite) propose — a human gate. `read`/`pure` runtimes (search, :memory:
-// sqlite) auto-run ungated: no proposal, no notification — but, like every
+// service owns the policy. `host` runtimes (sh/js/python3) propose — a human gate.
+// `read`/`pure` runtimes auto-run ungated: no proposal, no notification — but, like every
 // exec, they background and stream their output ({§exec-stream}), not in-band.
 
 import test from "node:test";
@@ -22,8 +21,6 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { BaseExecutor, type Effect, type ExecArgs, type Executor } from "@plurnk/plurnk-execs";
 import { localPath } from "./_dsl.ts";
 
-process.env.PLURNK_EXECS_SQLITE = "1";
-
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
     // The default shell is explicit: a fixture with no runtime is an `sh` execution (plurnk-service #659).
@@ -37,29 +34,56 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
+let pureToolN = 0;
 const wire = async () => {
+    const tag = `puretool${++pureToolN}`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
     const engine = new Engine({ db, schemes });
     const executors = await testExecutors();
     engine.setExecutors(executors);
+    const pureExe: Executor = new class extends BaseExecutor {
+        get channels() { return { results: { mimetype: "application/json" } }; }
+        async run({ write, setState }: ExecArgs) {
+            write("results", '[{"n":1}]', "application/json");
+            setState("results", "closed");
+            return { status: 200 };
+        }
+        override effect(target: string | null): Effect {
+            return target === null ? "pure" : "read";
+        }
+    }({ runtime: tag, glyph: "🔧" });
+    engine.registerRuntime(tag, {
+        executor: pureExe,
+        namespaceOwner: { kind: "module", name: "pure fixture" },
+        glyph: "🔧",
+        summary: "Pure fixture.",
+        invocation: {
+            body: { role: "query", required: true },
+            target: { role: "resource", required: false, kind: "resource" },
+            example: { body: "SELECT 1;" },
+        },
+        details: "",
+        available: true,
+        detail: undefined,
+    });
     schemes.registerRuntimeSchemes(executors); // {§executor-scheme-output} Register per-tag READ faces as daemon boot does.
     const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     await ownWorker(db, workspaceId, workerId);
     const loopId = await insertLoop(db, workerId, 1, "effect test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, exec, workspaceId, workerId, loopId, turnId };
+    return { db, engine, exec, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("{§exec-stream} effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+test("{§exec-stream} effect-gating: pure runtime auto-runs ungated — no proposal, no in-band body", async () => {
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
     try {
-        // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
+        // No target → pure → auto. dispatch resolves WITHOUT any
         // external resolveProposal call (the host path would hang here).
         const result = await engine.dispatch({
-            statement: execStmt("sqlite", null, "SELECT 1 AS n;"),
+            statement: execStmt(tag, null, "SELECT 1 AS n;"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal — it skips the gate");
@@ -72,7 +96,7 @@ test("{§exec-stream} effect-gating: sqlite :memory: (pure) auto-runs ungated �
 });
 
 test("{§exec-target-routing} effect-gating: a pure execution being applied is never discoverable as a client proposal", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
     const applyEntered = deferred<void>();
     const releaseApply = deferred<void>();
     const originalApply = exec.applyResolution.bind(exec);
@@ -83,7 +107,7 @@ test("{§exec-target-routing} effect-gating: a pure execution being applied is n
     };
     const idDeferred = deferred<number>();
     const dispatched = engine.dispatch({
-        statement: execStmt("sqlite", null, "SELECT 1 AS n;"),
+        statement: execStmt(tag, null, "SELECT 1 AS n;"),
         workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         onDispatch: (id) => idDeferred.resolve(id),
     });
@@ -114,18 +138,18 @@ test("{§exec-target-routing} effect-gating: a pure execution being applied is n
 });
 
 // {§exec-target-routing} {§executor-sinks}: cwd and target remain distinct inputs.
-test("{§exec-target-routing}: targetless sqlite ignores workspace cwd and opens an in-memory database", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-sqlite-ws-"));
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+test("{§exec-target-routing}: targetless pure runtime ignores workspace cwd and keeps a null target", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-pure-ws-"));
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
     try {
         await rootWorkspace(db, workspaceId, root);  // cwd now defaults to this dir
         const result = await engine.dispatch({
-            statement: execStmt("sqlite", null, "SELECT 'Paris' AS capital;"),
+            statement: execStmt(tag, null, "SELECT 'Paris' AS capital;"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
-        // The output streams like every execution; a project directory never becomes the SQLite target.
+        // The output streams like every execution; a project directory never becomes the runtime's target.
         await exec.idle();
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

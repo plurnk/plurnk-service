@@ -9,9 +9,9 @@ import InvocationMetadata from "./InvocationMetadata.ts";
 import type { ExecInput } from "./types.ts";
 
 const input = (metadata: readonly string[] | null, overrides: Partial<ExecInput> = {}): ExecInput => ({
-    runtime: "node", body: "unchanged stdin", target: "script.mjs", cwd: process.cwd(), metadata, ...overrides,
+    runtime: "js", body: "unchanged stdin", target: "script.mjs", cwd: process.cwd(), metadata, ...overrides,
 });
-const executor = new SubprocessExecutor({ runtime: "node", glyph: "n" });
+const executor = new SubprocessExecutor({ runtime: "js", glyph: "j" });
 
 test("{§executor-metadata} script arguments preserve exact strings without interpreting shell syntax", async () => {
     const args = ["--help", "two words", "", "$(touch forbidden)", "'quoted'", "}", "line\nbreak", "snowman ☃"];

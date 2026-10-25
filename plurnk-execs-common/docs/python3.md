@@ -14,5 +14,5 @@ print(json.dumps({"python": list(sys.version_info[:2])}))
 ```
 
 Native skill files retain their sibling imports and source-relative assets.
-Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md`
+Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md`
 shows.
