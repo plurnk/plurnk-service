@@ -37,7 +37,7 @@ test("{§executor-runtime-declaration} fenced operations: executor and MCP names
 });
 
 test("{§executor-runtime-declaration} fenced operations: native keywords take precedence over executor names", () => {
-    const [find, edit] = statements('````FIND (src/**) [{"pattern": "~retry"}]````\n````EDIT (example.txt) <@abcde>\napples\n````');
+    const [find, edit] = statements("````FIND (src/**) ~retry````\n````EDIT (example.txt) <@abcde>\napples\n````");
     assert.equal(find.op, "FIND");
     assert.equal(edit.op, "EDIT");
     if (edit.op !== "EDIT") return;

@@ -1,4 +1,4 @@
-// {§scheme-metadata-modifier} {§matcher-option}
+// {§scheme-metadata-modifier}
 import test from "node:test";
 import assert from "node:assert/strict";
 import MetadataOptions from "./MetadataOptions.ts";
@@ -15,11 +15,6 @@ test("{§scheme-metadata-modifier} MetadataOptions.read retains ordered scalars 
 test("{§scheme-metadata-modifier} MetadataOptions.parse merges option objects left to right", () => {
     const read = MetadataOptions.parse(['{"a": 1}, {"b": 2, "a": 3}'], "scheme:test");
     assert.deepEqual(read, { options: { a: 3, b: 2 } });
-});
-
-test("{§scheme-metadata-modifier} MetadataOptions.parse drops the language's `pattern` key so an owner never interprets it", () => {
-    const read = MetadataOptions.parse(['{"pattern": "/needle/", "remote": true}'], "scheme:test");
-    assert.deepEqual(read, { options: { remote: true } });
 });
 
 test("{§pinned-wording-schemes} MetadataOptions.parse fails malformed blocks as the owner's 400 without echoing the input", () => {

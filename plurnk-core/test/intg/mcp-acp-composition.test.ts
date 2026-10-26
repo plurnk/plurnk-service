@@ -132,7 +132,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             ].join("\n\n")),
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
-            makeMockResponse("\n````FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
+            makeMockResponse("\n````FIND (fixture:///**) <1,-1> invalid-tool-arguments````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
             makeMockResponse("````SEND [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
             makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
             makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),

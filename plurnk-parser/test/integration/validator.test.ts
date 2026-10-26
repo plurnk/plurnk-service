@@ -110,7 +110,7 @@ test("{§parser-position} Round-trip: AST.position from parsed statement validat
 });
 
 test("{§scope-slot} Round-trip: AST.lineMarker (single) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) <5> [{"pattern": "m"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) <5> @m````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -119,7 +119,7 @@ test("{§scope-slot} Round-trip: AST.lineMarker (single) from parsed statement v
 });
 
 test("{§scope-slot} Round-trip: AST.lineMarker (range) from parsed statement validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) <1-10> [{"pattern": "m"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) <1-10> @m````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.lineMarker);
@@ -298,7 +298,7 @@ test("{§matcher-prefix-claims} Validator: MatcherBody rejects regex missing pat
 });
 
 test("{§matcher-prefix-claims} Round-trip: AST.matcher (regex MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "/foo|bar/i"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) /foo|bar/i````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
@@ -307,7 +307,7 @@ test("{§matcher-prefix-claims} Round-trip: AST.matcher (regex MatcherBody) vali
 });
 
 test("{§matcher-prefix-claims} Round-trip: AST.matcher (xpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "//user[@role]"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) //user[@role]````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
@@ -316,7 +316,7 @@ test("{§matcher-prefix-claims} Round-trip: AST.matcher (xpath MatcherBody) vali
 });
 
 test("{§matcher-prefix-claims} Round-trip: AST.matcher (jsonpath MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "$.field"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) $.field````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);
@@ -325,7 +325,7 @@ test("{§matcher-prefix-claims} Round-trip: AST.matcher (jsonpath MatcherBody) v
 });
 
 test("{§matcher-prefix-claims} Round-trip: AST.matcher (glob MatcherBody) validates", () => {
-    const result = PlurnkParser.parseStatements('````FIND (p) [{"pattern": "*.xml"}]````');
+    const result = PlurnkParser.parseStatements("````FIND (p) @*.xml````");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") { assert.fail("expected FIND"); return; }
     assert.ok(item.statement.matcher);

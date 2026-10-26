@@ -2578,14 +2578,14 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   | A selected endpoint neighborhood that changes before mutation | the shared entry mutation owner, which rechecks selected endpoint neighborhoods against its exact snapshot |
   | A representation that changes in the final check/write gap | storage predicates |
 
-- §edit-pattern **A pattern replaces every selected span with the literal body.** ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under the channel's own mimetype, matches, and expands into one atomic batch ({§edit-batch}) of four-coordinate splices, all relative to the same original content under {§slice-semantics-compose-pattern}. The body is literal replacement text, never a template; an absent body deletes only the spans. A numeric scope admits only complete matches inside its resolved source region, including columns; `<0>` and `<-1>` name insertion positions and are refused (400 `pattern-scope-invalid`). A scheme without textual EDIT scopes refuses the pattern before any read (400 `pattern-unsupported`).
+- §edit-pattern **A pattern replaces every selected span with the literal body.** ```` ```EDIT (path) /foo/ ```` reads the resource once under the channel's own mimetype, matches, and expands into one atomic batch ({§edit-batch}) of four-coordinate splices, all relative to the same original content under {§slice-semantics-compose-pattern}. The body is literal replacement text, never a template; an absent body deletes only the spans. A numeric scope admits only complete matches inside its resolved source region, including columns; `<0>` and `<-1>` name insertion positions and are refused (400 `pattern-scope-invalid`). A scheme without textual EDIT scopes refuses the pattern before any read (400 `pattern-unsupported`).
 
   | Dialect | Span |
   | --- | --- |
   | A regex | its match; anchors apply per line (`^`, `$`), and matches may cross line breaks |
   | A literal | each substring occurrence |
   | A glob | matching line content |
-  | A node dialect (`//` xpath, `$` jsonpath) | the selected node's source region, not its enclosing context, across as many lines as the node spans, so ```` ```EDIT (books.xml) [{"pattern": "//book[price > 35]"}] ```` replaces each such element and an empty body removes it |
+  | A node dialect (`//` xpath, `$` jsonpath) | the selected node's source region, not its enclosing context, across as many lines as the node spans, so ```` ```EDIT (books.xml) //book[price > 35] ```` replaces each such element and an empty body removes it |
   | FTS | its located token/phrase occurrences |
   | Graph | the definitions or references selected under {§graph-relations} |
 
@@ -2635,7 +2635,7 @@ READ uses the common resource selector ({§bulk-resource-targeting}, {§read-fan
   channel's as `sourceMimetype`, so a consumer can still run the channel's
   handlers over a whole-resource `<1,-1>` read.
 - §log-range-miss-names-stream A 416 on a log execution item addresses the row's invocation (its authored call body, often empty or one line), while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 carries it as the `stream` extension; its detail and recovery stay the generic slicer's, naming no cause ({§diagnostic-observation}).
-- §read-pattern **A pattern selects the lines a READ renders.** With a heading matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a READ: the matcher runs over the channel's complete text — a regex anchors each line, so `^` and `$` are the line's ends, while matches may span lines — and every line a match touches, in source order, is the visible selection. Full-text and graph matches project their located occurrences through the same line presentation. A matcher its mimetype cannot run answers the matcher's own 415/400 ({§matcher-dispatch}). A selected value with neither exact nor enclosing source coordinates answers 422 `pattern-source-unlocated`; READ does not substitute an unrelated ancestor or the whole resource.
+- §read-pattern **A pattern selects the lines a READ renders.** With a heading matcher ({§naked-pattern} in the contracts SPEC) an exact-target READ stays a READ: the matcher runs over the channel's complete text — a regex anchors each line, so `^` and `$` are the line's ends, while matches may span lines — and every line a match touches, in source order, is the visible selection. Full-text and graph matches project their located occurrences through the same line presentation. A matcher its mimetype cannot run answers the matcher's own 415/400 ({§matcher-dispatch}). A selected value with neither exact nor enclosing source coordinates answers 422 `pattern-source-unlocated`; READ does not substitute an unrelated ancestor or the whole resource.
 
   | Fact | Rule |
   | --- | --- |
@@ -2779,7 +2779,7 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
-AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMarker | null, body: string | null }` ({§kill-scope} and {§matcher-option} in the contracts SPEC own the grammar); the body is a log target's distillation ({§log-kill-distillation}) and null otherwise.
+AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMarker | null, body: string | null }` ({§kill-scope} and {§naked-pattern} in the contracts SPEC own the grammar); the body is a log target's distillation ({§log-kill-distillation}) and null otherwise.
 
 §log-kill-distillation **A log KILL may say what it keeps.** A body on a `log:///` KILL is the model's distillation of what the KILL retires. Whatever the kill's outcome, the body lands as the model's own NOTE row at the next sequence of the same turn — written after the kill's receipt, so it never falls inside the kill's own selection — carrying `attrs.distilled` with the KILL's target as written, so a distillation is distinguishable from a free NOTE while it renders, weighs and curates exactly as one; the dispatch reports two rows written. A kill that misses keeps its distillation beside its visible receipt: what the model wrote about its environment is recorded for the model to possess and retire, never dropped for where the kill aimed. A whitespace-only body is a plain KILL. The kill's own receipt stays hidden as any successful log KILL's does ({§context-verbs}).
 
@@ -2950,7 +2950,7 @@ The packet projects one actionable owner for each retrieval fact:
 | exact matcher FIND | `range` in match locations | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
 | pattern READ ({§read-pattern}) | `range` over the physical lines | selected lines with ordinals and anchors; precise `matches` under {§read-pattern-evidence} | heading pattern and selected-line `matched`; `matchLocationCount` only when the metadata preview omits locations |
 
-Any row whose statement carried a heading pattern ({§matcher-option}) retains it
+Any row whose statement carried a heading pattern ({§naked-pattern}) retains it
 in its H3, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
 {§copy-move-pattern}) carries its `matched` count beside its receipt, so a
 digest can show what a pattern selected and how much it touched.
@@ -3055,7 +3055,7 @@ reads what the model thought and where its content program can be found
   | With no row of that leaf: the row at the coordinate alone (`` The entry at log:///1/25/8 is `log:///1/25/8/sh`. ``) | else the turn's rows, at most six named, else the loop's latest turn |
 
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies and retires its emission ({§emission-row}). A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`.
-- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) [{"pattern": "~stale"}] ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. An emission row is curated whole instead: the scope retires it when it covers every line and otherwise leaves it ({§emission-row}). Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
+- §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) ~stale ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. An emission row is curated whole instead: the scope retires it when it covers every line and otherwise leaves it ({§emission-row}). Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
 §log-kill-meta-operation **A log KILL changes working context, never the underlying resources or execution history.** Receipt visibility depends on the target and result, not the producer, attribution, or age of the turn:
 
@@ -3211,8 +3211,7 @@ Operand syntax: {§transfer-resource-selections}. Result projection: {§copy-mov
    log sources follow {§log-readable-projection}. Binary sources transfer bytes
    under {§binary-parity}; text anchors resolve under {§line-anchors}.
    - §copy-move-pattern **A source pattern selects exact source spans; a
-     destination is a place.** A source operand's heading pattern
-     (```` ```COPY (notes.md) [{"pattern": "TODO"}] (todos.md) <-1> ````) runs
+     destination is a place.** A source operand's matcher runs
      over the addressed source channel, bounded by the source scope and by what
      the source shows ({§log-readable-projection}). The selected fragments are
      concatenated verbatim in source order, without invented separators or
@@ -3322,7 +3321,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 | {§find-candidate-containment} | One candidate's crash is that candidate's problem |
 | {§find-scope-prefix-filter} | The FIND target filters entries within scope. |
 | {§find-channel-selection} | The target selects a channel under {§channel-selection}. |
-| {§find-glob-filter-on-content} | The heading's `pattern` option ({§matcher-option}) matches the selected channel's content or derivation; path… |
+| {§find-glob-filter-on-content} | The heading's pattern ({§naked-pattern}) matches the selected channel's content or derivation; path globs… |
 | {§find-fulltext-selection} | Full-text selection: |
 | {§fts-word-phrase} | A word with inner punctuation is the phrase of its tokens. |
 | {§find-scoped-isolation} | Workspace + scheme scoped — no cross-workspace/cross-scheme leakage. |
@@ -3353,7 +3352,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   identity-bearing: `https://example.com/page` queries
   `(https, example.com, /page)`, never an empty-authority row at `/page`.
 - §find-channel-selection The target selects a channel under {§channel-selection}. That channel controls candidate eligibility, every matcher dialect's content or derivation, match-evidence coordinates, and exact producer-result composition. A selected channel absent from an exact entry is 404; a broad scope simply excludes entries lacking it. Successful resource-mode results remain complete default-first channel groups, so sibling channels are navigable catalog metadata rather than additional matches.
-- §find-glob-filter-on-content The heading's `pattern` option ({§matcher-option})
+- §find-glob-filter-on-content The heading's pattern ({§naked-pattern})
   matches the selected channel's content or derivation; path globs select
   resources through `(target)` ({§path-glob}).
 - §find-fulltext-selection **Full-text selection:** every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search uses {§markerless-first-page}, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
@@ -3623,8 +3622,7 @@ accounting and model-visible failure evidence remain separately owned by
 - §metadata-ignored **Metadata a scheme does not take is ignored, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (a warning,
-  never a refusal). The `pattern` option never reaches this
-  path; it is lifted into the matcher at parse time ({§matcher-option}). SEND recipients,
+  never a refusal). SEND recipients,
   executions, WORK and FORK own their input and receive it whole ({§send-resource-attachments},
   {§env-option}); a key they do not take is their own 400.
 - §send-idle-turn **An idle turn: NOTE is memory, not a yield.** NOTE does not imply parking.
@@ -6872,7 +6870,7 @@ shipped `recap.md` stays empty: it is the extension contract's source, not a hom
 
 Matchers select resources and report evidence; text scopes independently
 address the exact readable text, regardless of mimetype. Syntax belongs to
-{§matcher-option}, {§matcher-prefix-claims}, and {§scope-slot}.
+{§naked-pattern}, {§matcher-prefix-claims}, and {§scope-slot}.
 
 ### §matcher-dispatch Matcher dispatch
 

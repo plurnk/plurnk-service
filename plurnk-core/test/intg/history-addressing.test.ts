@@ -130,7 +130,7 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
         const searched = await perform(frame("FIND (note://*/1/1/1) <1,-1> /child_A/", null)) as FindResult;
         assert.equal(searched.status, 200, JSON.stringify(searched));
         assert.deepEqual(resourcePaths(searched), ["note://child_A/1/1/1"], "authority glob with an exact path retains a resource catalog");
-        const indexed = await perform(frame('FIND (ops://*/1/1) <1,-1> [{"pattern":"~source"}]', null)) as FindResult;
+        const indexed = await perform(frame("FIND (ops://*/1/1) <1,-1> ~source", null)) as FindResult;
         assert.equal(indexed.status, 200, JSON.stringify(indexed));
         assert.deepEqual(resourcePaths(indexed).toSorted(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both workers at identical coordinates");
         for (const address of ["note:///1/1/1", "note://child_A:80/1/1/1", "note://child_A/1/1/1?q=x"]) {

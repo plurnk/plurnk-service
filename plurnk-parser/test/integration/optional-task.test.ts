@@ -19,7 +19,7 @@ for (const [source, expected] of [
 }
 
 test("{§turn-shape} omitted WAIT does not hide a sibling's refused matcher ({§matcher-refusal})", () => {
-    const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*) [{\"pattern\": \"/broken/ trailing\"}]````");
+    const result = PlurnkParser.parse("````READ (notes.md)````\n\n````FIND (*) /broken/ trailing````");
     assert.equal(result.unparsedTail, undefined);
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["READ", "FIND"]);

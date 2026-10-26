@@ -39,7 +39,7 @@ test("{§find-candidate-containment} a body FIND over ~2k members with a handler
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
         const mock = new Mock({ contextWindow: 200_000, responses: [
-            makeMockResponse("````FIND (test/**) [{\"pattern\":\"marker case\"}]````\n\n````NOTE\nlooking\n````", 50),
+            makeMockResponse("````FIND (test/**) marker case````\n\n````NOTE\nlooking\n````", 50),
             makeMockResponse("````SEND [200]\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {

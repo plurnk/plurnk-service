@@ -389,7 +389,7 @@ test("{§exec-entry-sink} search-prefetched https content is matcher-queryable i
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"*large birds*\"}]````"),
+            statement: parseOne("````FIND (https://example.org/turkeys) *large birds*````"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -495,7 +495,7 @@ test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget 
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) [{\"pattern\":\"~birthday cake\"}]````"),
+            statement: parseOne("````FIND (https://example.org/turkeys) ~birthday cake````"),
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);

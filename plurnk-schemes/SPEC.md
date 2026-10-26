@@ -81,8 +81,7 @@ its source acquisition is a separate READ without inherited execution metadata.
 `MetadataOptions.SERVICE_KEYS` names `env` and `lifetime`: the reader strips them from
 every owner's `options` and surfaces them raw beside it, so no scheme or executor
 interprets or refuses them and the service alone owns their shapes — the environment a
-scope opens, and how long its live work may run. `pattern` is the language's, lifted
-before the block reaches the reader ({§matcher-option}).
+scope opens, and how long its live work may run.
 
 {§manifest-capability-traits} `traits` are closed manifest data, not a policy
 channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a

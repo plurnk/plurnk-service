@@ -71,25 +71,6 @@ test("{§matcher-body-redirect}: a non-log KILL never recovers its body as a sel
     ]);
 });
 
-test("{§matcher-option}: the option form is still read, and it is the rendered escape when the bare form could not read back", () => {
-    const option = one('````READ (worker:///a.md) [{"pattern":"(a|b) or [c]"}]\n````\n');
-    assert.deepEqual(option.diagnostics, []);
-    assert.deepEqual(option.op.matcher, { dialect: "glob", raw: "(a|b) or [c]" });
-    assert.equal(option.op.metadata, null);
-    assert.equal(PlurnkParser.stringify([option.op]), '```READ (worker:///a.md) [{"pattern":"(a|b) or [c]"}]\n```', "a matcher opening with `(` cannot ride bare");
-    const commented = one('````FIND (worker:///) [{"pattern":"see <!-- this -->"}]\n````\n');
-    assert.equal(PlurnkParser.stringify([commented.op]), '```FIND (worker:///) [{"pattern":"see <!-- this -->"}]\n```');
-    const reparsed = one(PlurnkParser.stringify([commented.op]) + "\n");
-    assert.deepEqual(reparsed.op.matcher, commented.op.matcher);
-    const kept = one('````FIND (worker:///) [{"pattern":"~stale","limit":3}]\n````\n');
-    assert.deepEqual(kept.op.matcher, { dialect: "fts", raw: "~stale" });
-    assert.deepEqual(kept.op.metadata, ['{"pattern":"~stale","limit":3}'], "a block with other keys stays with its owner verbatim");
-    assert.equal(PlurnkParser.stringify([kept.op]), '```FIND (worker:///) [{"pattern":"~stale","limit":3}]\n```');
-    const transfer = one('````COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n````\n');
-    assert.deepEqual(transfer.diagnostics, []);
-    assert.equal(PlurnkParser.stringify([transfer.op]), '```COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n```', "COPY/MOVE operands keep the option form");
-});
-
 for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
     test(`{§naked-pattern}: ${op} composes owner metadata with a bare matcher and round-trips both`, () => {
         const patterns = ["/needle/i", "^needle", "//item", "$.needle", "~needle", "&needle"];
@@ -121,24 +102,6 @@ test("{§trailing-slots}: canonicalizing trailing owner metadata retains the mat
     const reparsed = one(rendered);
     assert.deepEqual(reparsed.diagnostics, []);
     assert.deepEqual(reparsed.op, parsed.op);
-});
-
-test("{§statement-rendering}: an escaped matcher shares one options block with owner metadata", () => {
-    for (const op of ["READ", "COPY", "MOVE"]) {
-        const metadata = '{"headers":{"Accept":"text/plain"}}';
-        const parsed = one(PlurnkParser.frame(`${op} (opaque:///source) [${metadata},{"pattern":"<!--"}]${op === "READ" ? "" : " (worker:///copy)"}`, null)).op;
-        if (parsed.op === "COPY" || parsed.op === "MOVE") parsed.source.metadata = [metadata];
-        else parsed.metadata = [metadata];
-        const rendered = PlurnkParser.stringify([parsed]);
-        assert.ok(rendered.includes(`[${metadata},{"pattern":"<!--"}]`), rendered);
-        const reparsed = one(rendered);
-        assert.deepEqual(reparsed.diagnostics, []);
-        if (parsed.op === "COPY" || parsed.op === "MOVE") {
-            assert.ok(reparsed.op.op === parsed.op);
-            assert.deepEqual(reparsed.op.source.matcher, parsed.source.matcher);
-            assert.deepEqual(reparsed.op.destination, parsed.destination);
-        } else assert.deepEqual(reparsed.op.matcher, parsed.matcher);
-    }
 });
 
 test("{§scheme-metadata-modifier}: invalid owner blocks do not erase an independent bare matcher", () => {

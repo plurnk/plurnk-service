@@ -91,7 +91,7 @@ for (const pretty of [false, true]) {
             };
             const url = `https://${HOST}/dist/index.json`;
             if (prepared) assert.equal((await run(`READ (${url})`)).status, 200);
-            const found = await run(`FIND (${url}) [${JSON.stringify({ pattern: "$[?(@.lts != false)].version" })}]`);
+            const found = await run(`FIND (${url}) $[?(@.lts != false)].version`);
             assert.equal(found.status, 200);
             assert.ok(found.content);
             const locations = JSON.parse(found.content) as Array<{ channel?: string; region: string }>;
@@ -248,7 +248,7 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
         const acquired = await dispatch("````READ (https://93.184.216.34/channel-facts)````");
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        await dispatch("````FIND (https://93.184.216.34/channel-facts) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
+        await dispatch("````FIND (https://93.184.216.34/channel-facts) /v[0-9.]+/i````");
         const bodyFind = await readContent(db, ids, sequence);
         const bodyLocations = JSON.parse(bodyFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
@@ -256,7 +256,7 @@ test("{§channel-selection-visibility}: a matcher FIND location names its channe
             assert.equal(location.channel, undefined, "{§channel-selection-visibility}: a default-channel match names no channel");
         }
 
-        await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
+        await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) /v[0-9.]+/i````");
         const readableFind = await readContent(db, ids, sequence);
         const readableLocations = JSON.parse(readableFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(readableLocations.length > 0, "the #readable-channel FIND reports match locations");

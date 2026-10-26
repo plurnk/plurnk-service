@@ -93,13 +93,6 @@ export default class AstBuilder {
         }];
     }
 
-    // {§matcher-option} — `pattern` is the language's key inside `[metadata]`: lifted into the
-    // statement's `matcher`, classified exactly as a body matcher was ({§matcher-prefix-claims}).
-    // A block that carries only `pattern` leaves no metadata for the owner; beside other keys the
-    // block stays for the owner, whose reader skips the reserved key. The block's shape stays the
-    // owner's business ({§scheme-metadata-modifier}): a second block or malformed JSON lifts
-    // nothing and reaches the owner's 400 untouched; only a present `pattern` that is not a
-    // string, or a malformed matcher, is the language's own positioned diagnostic.
     // {§naked-pattern} — one line of matcher text, its trailing aside split back out. A sigil
     // (`/`, `//`, `$`, `~`, `&`, `^`) claims its dialect; a sigil-less glob or literal
     // is one only on the heading line of FIND, READ or KILL, where the text can mean nothing else.
@@ -245,7 +238,7 @@ export default class AstBuilder {
         return { metadata: [split.inline.trim()], lifted: true };
     }
 
-    // {§matcher-option} — shared by admission and rendering; invalid blocks remain owner input.
+    // {§trailing-slots} — shared by trailing-block recognition; invalid blocks remain owner input.
     static metadataOptions(metadata: readonly string[] | null | undefined): Record<string, unknown> | null {
         if (metadata?.length !== 1) return null;
         let parsed: unknown;
@@ -278,19 +271,8 @@ export default class AstBuilder {
 
     // `consumed` says whether `raw` was read: as the matcher, or as the target's channel.
     static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, carriedScope = false, target: ParsedPath | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null; consumed: boolean } {
-        const options = AstBuilder.metadataOptions(metadata);
-        if (options === null || !Object.hasOwn(options, "pattern")) {
-            const bare = AstBuilder.#bareMatcher(raw, op, position, { scope: carriedScope, metadata: metadata !== null });
-            return AstBuilder.#liftBareMatcher(bare, metadata, position, target);
-        }
-        const pattern = options.pattern;
-        if (typeof pattern !== "string") {
-            throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher.`, "error",
-                `Write the matcher as a string, \`[{"pattern": "/needle/i"}]\`, or bare on the opening fence line after the path.`);
-        }
-        const matcher = AstBuilder.#parseMatcherBody(pattern, position);
-        const others = Object.keys(options).filter((key) => key !== "pattern");
-        return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null, consumed: false };
+        const bare = AstBuilder.#bareMatcher(raw, op, position, { scope: carriedScope, metadata: metadata !== null });
+        return AstBuilder.#liftBareMatcher(bare, metadata, position, target);
     }
 
     static #liftBareMatcher(bare: { text: string; aside: string | null; scope: string | null; metadata: string | null } | null, metadata: SchemeMetadata, position: Position, target: ParsedPath | null) {
@@ -470,8 +452,7 @@ export default class AstBuilder {
                 "In a target group each `(path)` carries its own scope and option block, and the one shared pattern comes last.");
         }
         const selections = slots.map((selection) => {
-            const own = AstBuilder.#liftMatcher(op, selection.metadata, position, null, false, selection.target);
-            const lifted = own.matcher === null ? AstBuilder.#liftBareMatcher(bare, own.metadata, position, selection.target) : own;
+            const lifted = AstBuilder.#liftBareMatcher(bare, selection.metadata, position, selection.target);
             return { ...selection, metadata: lifted.metadata, matcher: lifted.matcher };
         });
         return { selections, aside: bare?.aside ?? null, consumed: bare !== null };
@@ -481,8 +462,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
-        // replacement (none deletes each match). Any other heading-line text, beside an option block's
-        // pattern too, is the first line of the body.
+        // replacement (none deletes each match). Any other heading-line text is the first line of the body.
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("EDIT", slots.target, split.inline, position);
         const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, slots.lineMarker !== null, slots.target);
@@ -786,15 +766,14 @@ export default class AstBuilder {
             : blocks.map((block) => block.METADATA_TEXT().map((token) => token.getText()).join(""));
     }
 
-    static #resourceSelectionFromCtx(ctx: FirstResourceSelectionContext | ResourceSelectionContext, pos: Position, op = "COPY/MOVE"): ResourceSelection {
+    static #resourceSelectionFromCtx(ctx: FirstResourceSelectionContext | ResourceSelectionContext, pos: Position): ResourceSelection {
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
         if (target === null) throw new Error("resource selection grammar did not produce a target");
-        const lifted = AstBuilder.#liftMatcher(op, AstBuilder.#metadataFromCtx(ctx), pos, null, false, target);
         return {
             target,
-            metadata: lifted.metadata,
+            metadata: AstBuilder.#metadataFromCtx(ctx),
             lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#singleMarker(ctx, pos)),
-            matcher: lifted.matcher,
+            matcher: null,
         };
     }
 

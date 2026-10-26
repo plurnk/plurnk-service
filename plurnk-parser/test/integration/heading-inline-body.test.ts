@@ -22,7 +22,6 @@ const inlineBody = (name: string) => `\`${name}\` body text was on the OP line a
 const ignored = (name: string, inline: boolean) => `${name} takes no body; ${inline ? "the text after its heading on line 1" : "line 2"} was not used.`;
 const objectMatcher = "`{…}` was read as the matcher.";
 const optionObject = (name: string) => `\`${name}\` took a bare option object; the taught form is \`[{…}]\`.`;
-const PATTERN = ' [{"pattern": "/p/"}]';
 
 // Selectors belong to the heading; retrieval annotations become separate NOTEs.
 const matcherOp = (name: string): Read => (kind, text, inline) => inline
@@ -56,12 +55,6 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["NOTE", "NOTE", bodied("NOTE")],
     ["WAIT", "WAIT", bodied("WAIT")],
     ["SEND [200]", "SEND", (kind, text, inline) => ({ ...bodied("SEND")(kind, text, inline), metadata: ["200"] })],
-    // Beside an option block's pattern the heading text is not the matcher.
-    [`FIND (a.md)${PATTERN}`, "FIND", (_kind, text, inline) => ({ matcher: "/p/", ...(inline ? { advisory: ignored("FIND", true) } : { annotation: text }) })],
-    [`READ (a.md)${PATTERN}`, "READ", (_kind, text, inline) => ({ matcher: "/p/", ...(inline ? { advisory: ignored("READ", true) } : { annotation: text }) })],
-    [`KILL (a.md)${PATTERN}`, "KILL", (_kind, _text, inline) => ({ matcher: "/p/", advisory: ignored("This KILL", inline) })],
-    [`KILL (log:///1/2/3)${PATTERN}`, "KILL", (kind, text, inline) => ({ matcher: "/p/", ...bodied("KILL")(kind, text, inline) })],
-    [`EDIT (a.md) <1>${PATTERN}`, "EDIT", (kind, text, inline) => ({ matcher: "/p/", ...bodied("EDIT")(kind, text, inline) })],
 ];
 
 const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] });
@@ -101,7 +94,7 @@ for (const [heading, op, read] of SHAPES) {
 
                 const canonical = PlurnkParser.stringify(statements as never[]);
                 const again = parse(canonical);
-                assert.deepEqual(again.items.filter((item) => item.kind === "error"), [], `${label} — the canonical form ${canonical} reads clean`);
+                assert.deepEqual(again.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), advisory === objectMatcher ? [objectMatcher] : [], `${label} — the canonical form ${canonical} reads clean`);
                 assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [reading(item.statement as unknown as Record<string, unknown>)] : []), statements.map(reading), `${label} — and reads the same`);
             }
         }

@@ -109,7 +109,7 @@ ${FEED}
 ${NOTES}
 \`\`\`\``,
     ].join("\n\n");
-    const finds = PROBES.map(({ target, pattern }) => `\`\`\`\`FIND (${target}) [${JSON.stringify({ pattern })}]\`\`\`\``).join("\n\n");
+    const finds = PROBES.map(({ target, pattern }) => `\`\`\`\`FIND (${target}) ${pattern}\`\`\`\``).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse(`${seed}
 

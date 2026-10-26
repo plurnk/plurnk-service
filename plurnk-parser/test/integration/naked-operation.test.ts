@@ -95,7 +95,7 @@ test("{§naked-operation}: bare native names open, but prose and executor names 
 });
 
 test("{§unfenced-operation}: a name with an operand and no fence still did not run, and says so", () => {
-    for (const line of ["SEND (notes.md)", "READ (a.md) <1,-1>", "EDIT <3>", "FIND [{\"pattern\":\"x\"}]"]) {
+    for (const line of ["SEND (notes.md)", "READ (a.md) <1,-1>", "EDIT <3>", "FIND (src/**) /x/"]) {
         const result = PlurnkParser.parse(`${line}\n`);
         assert.deepEqual(statements(result), [], line);
         assert.deepEqual(warnings(result), [`Unfenced \`${line.split(/[ (<[]/u)[0]}\` ignored.`], line);

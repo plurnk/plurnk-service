@@ -11,7 +11,7 @@ test("{§exec-stream} FIND over an exec stream channel answers the match instead
     serverProposals(approvalContext, "accept");
     const mock = new StreamMock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nprintf 'alpha\\nbeta\\n'\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````FIND ($STREAM#stdout) [{\"pattern\":\"/beta/\"}]````\n\n````NOTE\nlooking\n````", 10),
+        makeMockResponse("````FIND ($STREAM#stdout) /beta/````\n\n````NOTE\nlooking\n````", 10),
         makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

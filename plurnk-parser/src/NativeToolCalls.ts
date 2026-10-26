@@ -662,8 +662,8 @@ export default class NativeToolCalls {
             name,
             slots.path === undefined ? "" : `(${slots.path.trim()})`,
             scope === "" ? "" : scope.startsWith("<") ? scope : `<${scope}>`,
-            slots.pattern === undefined ? "" : `[${JSON.stringify({ pattern: slots.pattern })}]`,
             slots.options === undefined ? "" : `[${JSON.stringify(slots.options)}]`,
+            slots.pattern ?? "",
             slots.extra,
             slots.aside === undefined ? "" : `<!-- ${slots.aside.trim()} -->`,
         ].filter((part) => part.length > 0).join(" ");

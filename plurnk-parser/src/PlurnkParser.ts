@@ -63,19 +63,11 @@ export default class PlurnkParser {
         return statements.map((statement) => {
             const name = writtenOp(statement);
             const modifiers: string[] = [];
-            // {§naked-pattern} — a lifted matcher is written back bare when the bare form reads back
-            // identically and draws nothing; otherwise as its `pattern` option ({§matcher-option}), the escape.
-            const naked = (raw: string): boolean => raw.trim() === raw && raw !== "" && !/[\r\n]/u.test(raw) && !raw.includes("<!--")
-                && (/^(\/|\$|~|&|\^)/u.test(raw) || ((statement.op === "FIND" || statement.op === "READ" || statement.op === "KILL") && !/^[[(<`]/u.test(raw) && !AstBuilder.isJsonObject(raw)));
+            // {§naked-pattern} — a lifted matcher is written back bare on the heading line.
             const metadataOf = (metadata: readonly string[] | null | undefined, matcher: { raw: string } | null | undefined, bare: boolean): string[] => {
                 const blocks = metadata?.map((block) => `[${block}]`) ?? [];
-                if (matcher === null || matcher === undefined) return blocks;
-                const options = AstBuilder.metadataOptions(metadata);
-                if (options?.pattern === matcher.raw) return blocks;
-                if (bare && naked(matcher.raw)) return [...blocks, matcher.raw];
-                const option = JSON.stringify({ pattern: matcher.raw });
-                if (options !== null) return [`[${metadata![0]},${option}]`];
-                return [...blocks, `[${option}]`];
+                if (!bare || matcher === null || matcher === undefined) return blocks;
+                return [...blocks, matcher.raw];
             };
             // {§local-path-fragment} — a bare path renders its channel back as `#channel`.
             const spelled = (target: { kind: string; raw: string; fragment?: string | null }): string =>

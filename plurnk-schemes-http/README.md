@@ -12,7 +12,7 @@ authored against the DB-free
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | ```` ```READ (http(s)://…) ````                       | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
 | ```` ```READ (http(s)://…) <scope> ````               | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
-| ```` ```FIND (http(s)://…) [{"pattern": "…"}] ````     | Materialize an exact URL when required, then use the universal entry query and matcher    |
+| ```` ```FIND (http(s)://…) pattern ````                | Materialize an exact URL when required, then use the universal entry query and matcher    |
 | ```` ```SEND (http(s)://…) ```` with body             | POST the body and stream the response                                                     |
 | ```` ```EDIT (http(s)://…) ```` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | ```` ```KILL (http(s)://…) ````                       | Cancel a live acquisition of the address, or forget its stored response                 |

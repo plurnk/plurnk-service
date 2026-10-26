@@ -50,7 +50,7 @@ export const noteStmt = (body: string | null = null): NoteStatement => ({
 });
 
 // {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a
-// matcher ({§matcher-option}) selects the rows or lines.
+// matcher ({§naked-pattern}) selects the rows or lines.
 export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): KillStatement => ({
     metadata: null,
     op: "KILL", aside: null, target, lineMarker, matcher, body: null,

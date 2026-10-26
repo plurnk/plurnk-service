@@ -43,7 +43,7 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
         assert.equal(whole.content, formatted, "a markerless READ is the whole formatted document ({§markerless-first-page})");
         const scoped = await dispatch(`\`\`\`\`READ (${target}) <20,22>\`\`\`\``);
         assert.equal(scoped.content, formatted.split("\n").slice(19, 22).join("\n"));
-        const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/value19/"}]\`\`\`\``);
+        const found = await dispatch(`\`\`\`\`FIND (${target}) /value19/\`\`\`\``);
         assert.equal(found.status, 200);
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);

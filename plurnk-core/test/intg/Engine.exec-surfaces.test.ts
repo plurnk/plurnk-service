@@ -18,7 +18,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
     const task = "````NOTE\nInspect the failed invocation.\n````";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse(`\`\`\`\`${runtime}\nidentityneedle\n\`\`\`\`\n${task}`, 10),
-        makeMockResponse(`\`\`\`\`READ (${path})\`\`\`\`\n\`\`\`\`FIND (log:///**/${runtime}) [{"pattern":"~identityneedle"}]\`\`\`\`\n${task}`, 10),
+        makeMockResponse(`\`\`\`\`READ (${path})\`\`\`\`\n\`\`\`\`FIND (log:///**/${runtime}) ~identityneedle\`\`\`\`\n${task}`, 10),
         makeMockResponse(`\`\`\`\`KILL (log:///**/${runtime})\`\`\`\`\n${task}`, 10),
         makeMockResponse("````SEND [200]\nReviewed.\n````", 10),
     ] });

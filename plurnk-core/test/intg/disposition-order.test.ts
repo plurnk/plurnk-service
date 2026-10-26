@@ -60,7 +60,7 @@ test("{§matcher-refusal} SEND authored first: later operations run in authored 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Create and inspect the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
+        const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) /[/```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],

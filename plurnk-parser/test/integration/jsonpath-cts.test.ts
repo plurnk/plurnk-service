@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { JSONPathEnvironment, JSONPathError } from "json-p3";
+import { Validator } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
 const corpus = JSON.parse(await readFile(new URL("../fixtures/jsonpath-cts/cts.json", import.meta.url), "utf8")) as {
@@ -25,20 +26,24 @@ for (const item of corpus.tests) {
         if (item.invalid_selector) assert.throws(() => engine.compile(item.selector), JSONPathError);
         else assert.doesNotThrow(() => engine.compile(item.selector));
 
-        const source = PlurnkParser.frame(`READ (data.json) [${JSON.stringify({ pattern: item.selector })}]`, null);
+        if (/[\r\n]/u.test(item.selector)) {
+            assert.equal(Validator.validateMatcherBody({ dialect: "jsonpath", raw: item.selector }).valid, false);
+            return;
+        }
+        // Heading-line syntax separates the pattern from preceding slots and EOL by horizontal whitespace.
+        if (item.selector !== item.selector.trim()) return;
+        const source = PlurnkParser.frame(`READ (data.json) ${item.selector}`, null);
         const parsed = PlurnkParser.parseStatements(source);
         assert.equal(parsed.unparsedTail, undefined);
         const statements = parsed.items.flatMap((entry) => entry.kind === "statement" ? [entry.statement] : []);
-        const errors = parsed.items.flatMap((entry) => entry.kind === "error" ? [entry.error] : []);
-        if (/[\r\n]/u.test(item.selector) || item.invalid_selector && item.selector.startsWith("$")) {
+        const errors = parsed.items.flatMap((entry) => entry.kind === "error" && entry.error.severity === "error" ? [entry.error] : []);
+        if (item.invalid_selector && item.selector.startsWith("$")) {
             // {§matcher-refusal} — the statement is admitted; the matcher carries the refusal and its working form.
             assert.deepEqual(errors, []);
             assert.equal(statements.length, 1);
             const [statement] = statements;
             if (statement.op !== "READ" || statement.matcher?.dialect !== "unreadable") assert.fail(item.name);
-            assert.match(statement.matcher.message, /[\r\n]/u.test(item.selector)
-                ? /^Matcher has \d+ lines; expected 1\.$/u
-                : /^pattern leads with `\$` but is not a valid jsonpath/u);
+            assert.match(statement.matcher.message, /^pattern leads with `\$` but is not a valid jsonpath/u);
             assert.ok(statement.matcher.recovery.length > 0);
             return;
         }

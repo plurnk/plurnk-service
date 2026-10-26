@@ -25,12 +25,12 @@ test("{§log-kill-distillation} a scoped log KILL keeps its scope and its distil
     assert.equal(kill.body, "Lines 17+ were the unrelated fixtures.");
 });
 
-test("{§log-kill-distillation} a pattern option and a distillation ride one log KILL; an inline pattern still lifts", () => {
-    const [withOption] = statements("```KILL (log:///1/**) [{\"pattern\": \"~stale\"}]\nThe stale reads said nothing new.\n```\n");
-    assert.equal(withOption?.op, "KILL");
-    if (withOption?.op !== "KILL") return;
-    assert.equal(withOption.matcher?.raw, "~stale");
-    assert.equal(withOption.body, "The stale reads said nothing new.");
+test("{§log-kill-distillation} a naked pattern and a distillation ride one log KILL", () => {
+    const [withPattern] = statements("```KILL (log:///1/**) ~stale\nThe stale reads said nothing new.\n```\n");
+    assert.equal(withPattern?.op, "KILL");
+    if (withPattern?.op !== "KILL") return;
+    assert.equal(withPattern.matcher?.raw, "~stale");
+    assert.equal(withPattern.body, "The stale reads said nothing new.");
     const [inline] = statements("```KILL (log:///1/**) ~stale\n```\n");
     assert.equal(inline?.op === "KILL" ? inline.matcher?.raw : null, "~stale", "a sigil on the heading line is the matcher");
     assert.equal(inline?.op === "KILL" ? inline.body : "?", null);

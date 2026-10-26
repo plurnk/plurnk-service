@@ -149,7 +149,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
                 },
                 "body": {
                     "type": "null",
@@ -191,7 +191,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
                 },
                 "body": {
                     "type": "null"
@@ -232,7 +232,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
                 },
                 "body": {
                     "type": [
@@ -452,11 +452,11 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
                 },
                 "body": {
                     "type": ["string", "null"],
-                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher is the `pattern` option."
+                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

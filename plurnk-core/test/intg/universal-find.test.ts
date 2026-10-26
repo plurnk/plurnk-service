@@ -104,7 +104,7 @@ test("{§scheme-surface} data schemes inherit standard FIND after their optional
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("````FIND (prepared:///*.md) [{\"pattern\":\"*forty-two*\"}]````"),
+            statement: parseFind("````FIND (prepared:///*.md) *forty-two*````"),
             workspaceId,
             workerId,
             loopId,
@@ -137,7 +137,7 @@ test("{§scheme-surface} exact matcher FIND invokes preparation, then returns fl
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("````FIND (prepared:///fact.md) [{\"pattern\":\"*forty-two*\"}]````"),
+            statement: parseFind("````FIND (prepared:///fact.md) *forty-two*````"),
             workspaceId,
             workerId,
             loopId,
@@ -182,7 +182,7 @@ test("{§find-channel-selection}: exact FIND composes the selected channel's pro
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("````FIND (prepared:///fact.md#details) [{\"pattern\":\"*exact needle*\"}]````"),
+            statement: parseFind("````FIND (prepared:///fact.md#details) *exact needle*````"),
             workspaceId,
             workerId,
             loopId,
@@ -226,7 +226,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind(`\`\`\`\`FIND (${url}) [{"pattern":"/Zhannetta/"}]\`\`\`\``),
+            statement: parseFind(`\`\`\`\`FIND (${url}) /Zhannetta/\`\`\`\``),
             workspaceId,
             workerId,
             loopId,
@@ -255,7 +255,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         assert.doesNotMatch(String(reused.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const surveyed = await engine.dispatch({
-            statement: parseFind("````FIND (https://93.184.216.34/*) [{\"pattern\":\"/spouse/\"}]````"),
+            statement: parseFind("````FIND (https://93.184.216.34/*) /spouse/````"),
             workspaceId,
             workerId,
             loopId,
@@ -356,7 +356,7 @@ update
         assert.equal((await dispatch(parseSend(`\`\`\`\`SEND (${findUrl})
 update
 \`\`\`\``), 3)).status, 102);
-        const found = await dispatch(parseFind(`\`\`\`\`FIND (${findUrl}) [{"pattern":"/current GET/"}]\`\`\`\``), 4);
+        const found = await dispatch(parseFind(`\`\`\`\`FIND (${findUrl}) /current GET/\`\`\`\``), 4);
         assert.equal(found.status, 200);
         assert.equal((JSON.parse(String(found.content)) as unknown[]).length, 1);
         assert.deepEqual(requests, [

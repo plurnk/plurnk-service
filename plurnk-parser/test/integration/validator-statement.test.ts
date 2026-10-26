@@ -17,7 +17,7 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("{§op-shapes} PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip('````FIND (worker:///docs) <1-20> [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip("````FIND (worker:///docs) <1-20> @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -27,7 +27,7 @@ test("{§op-shapes} PlurnkStatement: READ with bare local path and empty body", 
 });
 
 test("{§op-shapes} PlurnkStatement: KILL with regex matcher", () => {
-    const r = validateRoundTrip('````KILL (worker:///**) [{"pattern": "/error|fail/i"}]````');
+    const r = validateRoundTrip("````KILL (worker:///**) /error|fail/i````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -46,7 +46,7 @@ test("{§send-body}: a completion reply preserves its literal answer and optiona
 });
 
 test("{§op-shapes} PlurnkStatement: KILL with jsonpath matcher", () => {
-    const r = validateRoundTrip('````KILL (log://**) [{"pattern": "$.status"}]````');
+    const r = validateRoundTrip("````KILL (log://**) $.status````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -145,7 +145,7 @@ test("{§matcher-body-redirect} PlurnkStatement: resource KILL's body warning do
     assert.equal(empty.items.length, 1, "an empty targeted body remains valid without an advisory");
 });
 
-test("{§matcher-option} PlurnkStatement: WORK and FORK require prompt bodies", () => {
+test("{§op-shapes} PlurnkStatement: WORK and FORK require prompt bodies", () => {
     for (const op of ["WORK", "FORK"]) {
         const missing = baseFields(op);
         assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
@@ -157,7 +157,7 @@ test("{§matcher-option} PlurnkStatement: WORK and FORK require prompt bodies", 
 // Per-op shape constraints — hand-crafted fixtures
 // -------------------------------------------------------------------------
 
-// The text and log operations carry a `matcher` beside the shared slots ({§matcher-option}).
+// The text and log operations carry a `matcher` beside the shared slots ({§naked-pattern}).
 const MATCHER_OPS = new Set(["FIND", "READ", "EDIT", "KILL"]);
 const baseFields = (op: string) => ({
     op,
@@ -279,7 +279,7 @@ test("{§op-shapes} PlurnkStatement: EDIT body is a plain string", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("{§matcher-option} PlurnkStatement: EDIT rejects MatcherBody-shaped body", () => {
+test("{§naked-pattern} PlurnkStatement: EDIT rejects MatcherBody-shaped body", () => {
     const stmt = { ...baseFields("EDIT"), body: { dialect: "glob", raw: "*.xml" } };
     const { valid } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, false);
@@ -309,11 +309,11 @@ test("{§contract-representations} PlurnkStatement: rejects extra property", () 
 // -------------------------------------------------------------------------
 
 test("{§slot-order} PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip('````FIND (worker:///docs) <1> [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip("````FIND (worker:///docs) <1> @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§slot-order} PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip('````FIND <1-5> (worker:///docs) [{"pattern": "*.xml"}]````');
+    const r = validateRoundTrip("````FIND <1-5> (worker:///docs) @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

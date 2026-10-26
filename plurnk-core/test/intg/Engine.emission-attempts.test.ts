@@ -683,7 +683,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
 test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const malformed = "\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````\n\n````NOTE\ninspect the results next\n````";
+        const malformed = "\n````FIND (worker:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -842,7 +842,7 @@ test("{§matcher-refusal} a bounded malformed operation defers same-turn complet
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("\n````FIND (**) [{\"pattern\":\"/unterminated[\"}]````\n\n````SEND\ndone\n````"),
+                invalid("\n````FIND (**) /unterminated[````\n\n````SEND\ndone\n````"),
             ],
         });
 

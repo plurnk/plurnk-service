@@ -270,20 +270,20 @@ test("{§target-group} {§safe-uri-target-groups}: a READ written one path per s
     }
 });
 
-test("{§target-group}: READ keeps each scope and local matcher while applying the heading default to other members", async () => {
+test("{§target-group}: READ keeps each scope while applying the heading matcher to every member", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const content = "outside\nlocal\nshared\nlocal\nshared\noutside";
         await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content });
-        const source = '```READ (worker:///alpha.md) <2,3> [{"pattern":"/local/"}] (worker:///beta.md) <3,4> /shared/\n```';
+        const source = "```READ (worker:///alpha.md) <2,3> (worker:///beta.md) <4,5> /shared/\n```";
         const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read the selected lines." }] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
         const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.deepEqual(reads.map(({ pathname, status_rx, rx }) => [pathname, status_rx, JSON.parse(rx).content]),
-            [["/alpha.md", 200, "local\n"], ["/beta.md", 200, "shared\n"]]);
-        assert.deepEqual(reads.map(({ rx }) => JSON.parse(rx).lineOrdinals), [[2], [3]]);
+            [["/alpha.md", 200, "shared"], ["/beta.md", 200, "shared"]]);
+        assert.deepEqual(reads.map(({ rx }) => JSON.parse(rx).lineOrdinals), [[3], [5]]);
     } finally { await db.close(); }
 });
 

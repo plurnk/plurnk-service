@@ -27,14 +27,14 @@ for (const op of ["READ", "KILL"] as const) {
         }
     });
 
-    test(`{§target-group}: ${op} applies the naked matcher independently of the first member's options`, () => {
+    test(`{§target-group}: ${op} applies the naked matcher to every member independently of member options`, () => {
         for (const own of [0, 1]) {
-            const paths = ["a", "b"].map((path, index) => `(${path})${index === own ? ' [{"pattern":"/local/"}]' : ""}`).join(" ");
+            const paths = ["a", "b"].map((path, index) => `(${path})${index === own ? ' [{"keep":1}]' : ""}`).join(" ");
             const ops = statements(`${op} ${paths} /shared/`);
             assert.deepEqual(ops.map((statement) => {
                 assert.ok(statement.op === "READ" || statement.op === "KILL");
                 return [statement.target?.raw, statement.matcher?.raw, statement.metadata];
-            }), [["a", own === 0 ? "/local/" : "/shared/", null], ["b", own === 1 ? "/local/" : "/shared/", null]]);
+            }), [["a", "/shared/", own === 0 ? ['{"keep":1}'] : null], ["b", "/shared/", own === 1 ? ['{"keep":1}'] : null]]);
         }
     });
 
@@ -65,15 +65,15 @@ for (const op of ["READ", "KILL"] as const) {
 for (const op of ["COPY", "MOVE"] as const) {
     test(`{§transfer-resource-selections}: ${op} keeps both operand pairs through adjacency and metadata order`, () => {
         for (const heading of [
-            `${op} (a)<1,3>[{"pattern":"/first/"}](b)[{"pattern":"/second/"}]<4,6>`,
-            `${op} (a) [{"pattern":"/first/"}] <1,3> (b) <4,6> [{"pattern":"/second/"}]`,
-            `${op} [{"pattern":"/first/"}] (a) <1,3> (b) <4,6> [{"pattern":"/second/"}]`,
+            `${op} (a)<1,3>[{"first":1}](b)[{"second":2}]<4,6>`,
+            `${op} (a) [{"first":1}] <1,3> (b) <4,6> [{"second":2}]`,
+            `${op} [{"first":1}] (a) <1,3> (b) <4,6> [{"second":2}]`,
         ]) {
             const ops = statements(heading);
             assert.equal(ops.length, 1);
             assert.ok(ops[0]?.op === op);
-            assert.deepEqual([ops[0].source, ops[0].destination].map(({ target, lineMarker, matcher }) =>
-                [target.raw, lineMarker?.marks, matcher?.raw]), [["a", [1, 3], "/first/"], ["b", [4, 6], "/second/"]]);
+            assert.deepEqual([ops[0].source, ops[0].destination].map(({ target, lineMarker, metadata }) =>
+                [target.raw, lineMarker?.marks, metadata]), [["a", [1, 3], ['{"first":1}']], ["b", [4, 6], ['{"second":2}']]]);
         }
     });
 }

@@ -41,7 +41,7 @@ for (const [name, parse] of [
 }
 
 test("{§response-text}: an unfenced heading is not response text, and says it did not run ({§unfenced-operation})", () => {
-    for (const bare of ["READ (notes.md)", "WAIT for it", "FIND (src/**) [{\"pattern\":\"/x/\"}]"]) {
+    for (const bare of ["READ (notes.md)", "WAIT for it", "FIND (src/**) /x/"]) {
         const result = PlurnkParser.parse("Prelude.\n" + bare + "\n" + task);
         assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"], bare);
         assert.deepEqual(errors(result).map(({ line, column, severity, message }) => [line, column, severity, message]),

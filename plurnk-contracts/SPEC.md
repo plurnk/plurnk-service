@@ -340,7 +340,6 @@ and parse diagnostics are separate contracts.
 | {§bare-option-object} | A bare option object is the option block, where the house option array owns the block. |
 | {§operation-aside} | The final header modifier may be one single-line HTML comment. |
 | {§scheme-metadata-modifier} | A target may carry one single-line `[metadata]` block, placed under {§slot-order}; executor and SEND fences… |
-| {§matcher-option} | `pattern` is the matcher, and it lives in the heading. |
 <!-- /map -->
 
 `````text
@@ -657,7 +656,7 @@ Tokens keep their source positions; only their order in the stream changes.
 | --- | --- |
 | `path`/`target`/`file_path`/`file`/`resource`/`uri` | the target |
 | `scope`/`range`/`lines`, `start`/`end` written apart, `offset`/`limit` (a first line and a count), a JSON array (`[500,530]`) or a `{"start", "end"}` object | the scope; plurnk slots written after the name are kept, and a trailing scope's own bracket may close the tag |
-| `pattern`/`regex`/`query` | a matcher option |
+| `pattern`/`regex`/`query` | the pattern ({§naked-pattern}) |
 | `aside`, `reason`, `description` | the aside |
 | `body`/`content`/`command`/`text`/`input` or plain text inside the call; an executor's string `input` | the body, an executor's program |
 | An executor's unknown parameter | one of its options, `[{"maxTokens": "2500"}]`, for its owner to accept or refuse; `bash` names `sh` when `sh` is the registered shell |
@@ -689,7 +688,7 @@ It chooses at least three backticks and more than any run within the body
 ({§balanced-fences}), preserving body bytes on reparse. Fence length is syntax,
 not AST or persistence state. Core-authored programs use
 this serializer and the ordinary admission parser. Rendering preserves a matcher
-beside owner metadata, not only a matcher carried inside its `pattern` option.
+beside owner metadata.
 
 | Element | Contract |
 |---|---|
@@ -716,7 +715,7 @@ is refused; the recovery is the scope's working form ({§parse-recovery}).
 optional target and duration under {§send-wait-scope}. Their literal bodies begin
 below the header.
 
-§target-group **READ and KILL take a target group.** A READ or KILL heading may carry several `(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked pattern on the heading ({§naked-pattern}) supplies the default for each member without its own metadata `pattern`. The form is accepted, not taught: it rescues a bulk attempt written one path per slot.
+§target-group **READ and KILL take a target group.** A READ or KILL heading may carry several `(path)` slots, each binding the scope and metadata that follow it under {§slot-order}; a naked pattern on the heading ({§naked-pattern}) applies to every member. The form is accepted, not taught: it rescues a bulk attempt written one path per slot.
 
 | Fact | Rule |
 | --- | --- |
@@ -752,9 +751,9 @@ compact empty block or permit unmatched fences.
 
 | Operation | Text after the slots on the heading line |
 |---|---|
-| FIND, READ, KILL with a non-log target | The matcher ({§naked-pattern}). Beside an option block's `pattern`, ignored ({§matcher-body-redirect}). |
-| KILL on a log target | The matcher. Beside an option block's `pattern`, the first line of the distillation ({§log-kill-distillation}). |
-| EDIT | A sigil-led matcher ({§edit-pattern}), unless an option block carries the `pattern`; otherwise the body. |
+| FIND, READ, KILL with a non-log target | The matcher ({§naked-pattern}). |
+| KILL on a log target | The matcher ({§naked-pattern}). |
+| EDIT | A sigil-led matcher ({§edit-pattern}); otherwise the body. |
 | COPY, MOVE | Ignored ({§transfer-resource-selections}). |
 | SEND, WORK, FORK, BARE | One JSON object is the option block where the heading admits one ({§bare-option-object}); otherwise the body. |
 | executors | The input body, including an unbracketed JSON object; metadata requires brackets. |
@@ -793,19 +792,9 @@ A third-party owner may read its block any way
 it likes — the language guarantees only the exact inner text. Documentation
 for a first-party owner therefore shows the bracketed array form.
 
-Two keys never reach an owner:
-`pattern`, the language's own ({§matcher-option}), and `env`, reserved for the
+The key `env` is reserved for the
 service's environment option on the operations that open a process or a
-Worker; the shared reader withholds both from the owner's options.
-
-§matcher-option **`pattern` is the matcher, and it lives in the heading.** On FIND, READ, KILL, EDIT, and each COPY/MOVE operand, the option `[{"pattern": "<matcher>"}]` carries the matcher string: the leading prefix claims its dialect under {§matcher-prefix-claims}, and AstBuilder lifts it into the statement's `matcher` (`MatcherBody | null`), positioned dialect errors included. The heading line is the matcher's home ({§naked-pattern}).
-
-| Fact | Rule |
-| --- | --- |
-| The block | one that carries only `pattern` leaves `metadata: null` for the owner; beside other keys the block stays with the owner verbatim, and the owner's reader treats `pattern` as reserved; the language lifts only from one block that parses as a JSON array of objects, and anything else lifts nothing and reaches the owner's `400` untouched |
-| Diagnostics | a `pattern` that is present but not a string is the language's own positioned diagnostic, as is a matcher of a claimed dialect that fails admission |
-| Bodies | FIND and READ bodies become memory under {§retrieval-annotation}; a non-log KILL's body is unused and receives the advisory under {§matcher-body-redirect}; EDIT keeps its literal body: with a matcher it is the replacement for every selected span ({§edit-pattern}), and an absent body deletes them |
-| `PlurnkParser.stringify` | writes a lifted matcher whose block left no metadata back bare when the bare form reads back identically and draws no advisory ({§naked-pattern}), otherwise as `[{"pattern": "…"}]` |
+Worker; the shared reader withholds it from the owner's options.
 
 ## 3. Lexical elements
 
@@ -940,7 +929,7 @@ semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400). A
 targetless message takes no scope. A scope never changes the message body or
 disposition.
 
-§kill-scope **KILL takes an optional text-coordinate scope beside its target, and an optional matcher.** The scope is numeric or anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````); the matcher option selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}). Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and `matcher`; no grouped AST reaches execution ({§target-group}). KILL requires a target.
+§kill-scope **KILL takes an optional text-coordinate scope beside its target, and an optional matcher.** The scope is numeric or anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````); the heading matcher selects rows or lines (```` ```KILL (log:///**) ~stale``` ````, {§naked-pattern}). Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and `matcher`; no grouped AST reaches execution ({§target-group}). KILL requires a target.
 
 | Fact | Rule |
 | --- | --- |
@@ -1025,7 +1014,7 @@ Mutation semantics:
   no body: text after the slots on the heading line, or beneath it, is ignored and the
   operation still runs, with one warning-severity advisory (`MOVE takes no body; the body
   was ignored.`). Each selection binds its own target, scope, matcher, and metadata under
-  {§slot-order}, {§matcher-option}, and {§scheme-metadata-modifier}.
+  {§slot-order} and {§scheme-metadata-modifier}.
 
 ### Per-operation observations
 
@@ -1078,7 +1067,7 @@ retrieval never returns inline within the emitting turn.
 
 The target slot contains either a local path or a scheme URL. Exact addresses
 and path globs share the slot; content matchers follow the heading forms in
-{§matcher-option}.
+{§naked-pattern}.
 
 | Form                    | Typed admission                                                     | Runtime meaning                                      |
 |-------------------------|---------------------------------------------------------------------|------------------------------------------------------|
@@ -1149,8 +1138,8 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 | {§pattern-body-single-line} | Every matcher is one physical line. |
 <!-- /map -->
 
-FIND, READ, KILL, EDIT, and the COPY/MOVE operands accept an optional matcher
-through the `pattern` option ({§matcher-option}). AstBuilder assigns the dialect from the
+FIND, READ, KILL, and EDIT accept an optional matcher
+on the heading line ({§naked-pattern}). AstBuilder assigns the dialect from the
 matcher's leading characters. A leading prefix claims its dialect. Invalid
 claimed syntax never falls back to glob matching: it is the operation's own
 refusal ({§matcher-refusal}), not a parse error.
@@ -1204,8 +1193,7 @@ statements remain recoverable when their boundaries are trustworthy.
   dialect's working form as `recovery` ({§parse-recovery}); the operation lands as its own `400` row,
   `grammar/matcher/unreadable-pattern`, with that message and recovery, its siblings run, and the
   rail treats it as soft ({§strike-progress-immunity} in the core SPEC). An unreadable matcher
-  renders back as written ({§statement-rendering}). Only the one-line and string-typed shape of a
-  `pattern` option remains the option block's own admission.
+  renders back as written ({§statement-rendering}).
 - §regex-dialect-readings **Three habits of other regex dialects are read, with one advisory each.**
   `\|` is alternation, `|`, and a literal pipe is `[|]`; `-flags` after the closing slash are the
   flags; a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and is otherwise
@@ -1214,8 +1202,7 @@ statements remain recoverable when their boundaries are trustworthy.
   the AST keeps the authored `raw` beside the pattern it was read as.
 
 - §pattern-body-single-line Every matcher is one physical line. On the protocol
-  operations it is the heading line's text ({§naked-pattern}) or the `pattern` option's
-  JSON string ({§matcher-option}); AstBuilder rejects a multiline one before dialect
+  operations it is the heading line's text ({§naked-pattern}); AstBuilder rejects a multiline one before dialect
   classification. A regex that matches a
   newline uses the two-character `\n` escape. Non-matcher operation bodies remain
   multiline.
@@ -1995,12 +1982,12 @@ diagnostics are:
   it has no pattern to read and is refused as `invalid-operation-syntax` naming what
   is missing. A matcher with a second unescaped `/` is not unclosed: it is
   `/pattern/flags`, and invalid flags keep their native failure with the escape hint.
-- §naked-pattern **The matcher rides the heading bare.** After the path, and any scope or option block, the rest of a FIND, READ or KILL heading line is the matcher, in whichever dialect its first characters claim ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`, `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. `FIND (src/parser.ts) /\bparse\w+\b/` is the same operation as `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`: the lift is exactly what `[{"pattern": "…"}]` produces, and that option remains the escape for a matcher the heading cannot hold bare — one opening with `(`, `<`, `[` or a backtick, one containing `<!--`, and every COPY/MOVE operand.
+- §naked-pattern **The matcher rides the heading bare.** After the path, and any scope or option block, the rest of a FIND, READ or KILL heading line is the matcher, in whichever dialect its first characters claim ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`, `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`.
 
   | Fact | Rule |
   | --- | --- |
   | Not a matcher | `#name` alone, a `#` followed by one channel token and nothing else, after a target that names no channel, is that target's channel exactly as if written on the path ({§local-path-fragment}); a target that already names a channel keeps such a token as its pattern |
-  | Independence | heading matchers remain independent of owner options: a block without `pattern` never erases the heading matcher, and invalid blocks still reach the owning validator; their heading-line text owns selection independently of annotation or distillation bodies |
+  | Independence | heading matchers remain independent of owner options: owner metadata blocks never erase the heading matcher, and invalid blocks still reach the owning validator; their heading-line text owns selection independently of annotation or distillation bodies |
   | EDIT | only a sigil lifts, because plain heading-line text is the replacement body it always was; the lines beneath the heading are then the replacement, and none deletes each match ({§edit-pattern}) |
   | The aside | a trailing `<!-- aside -->` on the same line stays the aside |
   | `^` | claims the regex dialect without slashes or flags: the whole text is the pattern, so `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`; `^` is deliberately absent from `plurnk.md`'s dialect table — a model writes the anchor whether or not it is taught, so the engine honours it without spending hot-path teaching on it, and the omission is not drift between the teaching and the engine |
@@ -2010,7 +1997,6 @@ diagnostics are:
   | Fact | Rule |
   | --- | --- |
   | Recovery | requires a single possible path-slot owner: with multiple slots, a trailing scope or metadata block refuses the heading rather than relocating or discarding the slot |
-  | A matcher that itself ends in one of those shapes | takes the option escape |
   | Teaching | `plurnk.md` teaches one order — `OP (path)? <scope\|range>? [metadata]? pattern? <!-- aside -->?` — and free ordering is not taught; small departure, small reinterpretation ({§outside-text}): every slot the model wrote is present and unambiguous, so only their sequence differs from the taught form, and nothing is invented to read it; the advisory names the canonical order rather than refusing, because the operation the model meant is never in doubt |
 
 - §log-heading-notation **The log's heading notation, copied as syntax, is read as the slot it
@@ -2042,10 +2028,8 @@ diagnostics are:
   body instead, the anchor would be written into the file, or the EDIT refused for want of a line
   marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
   since `@patch` is a search a model means.
-- §matcher-body-redirect **Unread selector text.** An option block's `pattern` owns the
-  selector; surplus heading text is unused with one warning naming its location.
-  A non-log KILL's body is likewise unused: `This KILL takes no body; line 2 was not used.`
-  Neither warning echoes discarded text. No operation recovers a matcher from below
+- §matcher-body-redirect **Unread selector text.** A non-log KILL's body is unused with one warning naming its location: `This KILL takes no body; line 2 was not used.`
+  The warning never echoes discarded text. No operation recovers a matcher from below
   its header. READ/FIND bodies follow {§retrieval-annotation}; log KILL bodies follow
   {§log-kill-distillation}.
 - §combined-anchor-tolerance **Combined line number and anchor in a scope.** A

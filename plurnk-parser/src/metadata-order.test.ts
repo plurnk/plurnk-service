@@ -62,8 +62,8 @@ test("{§scheme-metadata-modifier}: prefix and suffix blocks retain exact bytes 
 });
 
 test("{§slot-order} {§reasoning-operations}: reasoning uses the same metadata binding", () => {
-    const canonical = ["FIND (item) <1,3> [{\"pattern\":\"/needle/\"}]", "READ (item) <4,6> [{\"keep\":1}]"];
-    const reordered = ["FIND [{\"pattern\":\"/needle/\"}] (item) <1,3>", "READ [{\"keep\":1}] (item) <4,6>"];
+    const canonical = ["FIND (item) <1,3> /needle/", "READ (item) <4,6> [{\"keep\":1}]"];
+    const reordered = ["FIND (item) <1,3> /needle/", "READ [{\"keep\":1}] (item) <4,6>"];
     const program = (headings: string[]) => headings.map((heading) => PlurnkParser.frame(heading, null)).join("\n\n");
     const warnings: string[] = [];
     const statements = PlurnkParser.parseReasoningOperations(program(reordered), (warning) => warnings.push(warning.message));

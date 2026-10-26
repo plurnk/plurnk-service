@@ -71,20 +71,8 @@ EDIT's body is literal replacement text, not regex substitution syntax.
 The bare pattern selects text. The header's optional `[metadata]` slot carries
 named options; first-party operations read it as a JSON array of option objects.
 It follows the path and optional scope, before a bare pattern or aside. The body
-remains the operation's input, not its options. Other option names belong to the
-addressed scheme or executor; `env.md` describes the `env` option.
-
-`READ (client.js) /connect/` and
-`READ (client.js) [{"pattern":"/connect/"}]` select identically. The `pattern`
-option carries a matcher that would collide with header syntax, such as literal
-text starting with `[`. EDIT also uses it for unprefixed literal/glob matchers.
-COPY and MOVE use it to bind a pattern to the source or destination operand;
-this example selects from the source and creates `names.txt`:
-
-```COPY (client.js) [{"pattern":"/connect/"}] (names.txt)
-```
-
-The copied text is `connectconnect`; surrounding calls and punctuation are not selected.
+remains the operation's input, not its options. Option names belong to the
+addressed scheme or executor.
 
 ## Elements and text
 

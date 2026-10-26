@@ -15,7 +15,7 @@ readable Markdown (a materializer's or the local reader's) is `#readable`, read 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
 | `READ (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| `FIND (https://…) [{"pattern": …}]` | GET if needed | Return matching text regions for a scoped READ                           |
+| `FIND (https://…) pattern`             | GET if needed | Return matching text regions for a scoped READ                           |
 | `SEND (https://…)` with body             | POST          | Submit the body and stream the response                                  |
 | `EDIT (https://…)` with body             | PUT           | Replace the whole remote resource; a line scope does not apply           |
 | `KILL (https://…)`                       | none          | Cancel a live acquisition of the address, or forget its stored response  |

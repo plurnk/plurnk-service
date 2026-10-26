@@ -72,7 +72,7 @@ test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surfac
         assert.deepEqual((r6.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
         // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
-        const [findByGlob] = parse("````FIND (fixture:///) [{\"pattern\":\"Paris*\"}]````");
+        const [findByGlob] = parse("````FIND (fixture:///) Paris*````");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
         assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);

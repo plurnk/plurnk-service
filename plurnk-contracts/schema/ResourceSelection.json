@@ -40,7 +40,7 @@
    ]
   },
   "matcher": {
-   "description": "The selection matcher lifted from the operand's `[{\"pattern\": …}]` option; meaningful on the source operand, refused by the owner on a destination.",
+   "description": "Optional selection matcher on the source operand; refused by the owner on a destination.",
    "oneOf": [
     {
      "$ref": "https://schemas.plurnk.xyz/v0/MatcherBody.json"

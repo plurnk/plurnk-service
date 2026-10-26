@@ -169,7 +169,7 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
 
 for (const [header, body] of [
     ["EDIT (worker:///countries/france/capital)", "Paris"],
-    ['FIND (worker:///users.json) [{"pattern":"$.name"}]', ""],
+    ["FIND (worker:///users.json) $.name", ""],
     ["SEND (worker:///result)", "Paris"],
     ["sh", "uname -r"],
 ]) {

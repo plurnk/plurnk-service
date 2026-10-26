@@ -10,10 +10,13 @@ import { join } from "node:path";
 import type { ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { viableWindow } from "./_provider.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import { resourcePaths } from "./_find.ts";
+import { copyStmt, moveStmt, urlPath } from "./_dsl.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
@@ -142,13 +145,23 @@ test("{§binary-parity} a byte range copies exactly those bytes (coordinate = by
 
 test("{§binary-parity} a byte-pattern COPY and MOVE select the same native fragments", async () => {
     const bytes = Buffer.from([0, 0x41, 0x42, 0xff, 0x41, 0x42, 0]);
-    const { root, operations } = await runCopy({ "source.png": bytes }, '````COPY (source.png) [{"pattern":"/AB/"}] (copy.png)````\n````MOVE (source.png) [{"pattern":"/AB/"}] (move.png)````');
+    const db = await openMigrated();
     try {
-        assert.deepEqual(operations.filter(({ op }) => op === "COPY" || op === "MOVE").map(({ status_rx }) => status_rx), [200, 200]);
-        assert.deepEqual(await readFile(join(root, "copy.png")), Buffer.from("ABAB"));
-        assert.deepEqual(await readFile(join(root, "move.png")), Buffer.from("ABAB"));
-        assert.deepEqual(await readFile(join(root, "source.png")), Buffer.from([0, 0xff, 0]));
-    } finally { await rm(root, { recursive: true, force: true }); }
+        const env = await seedEnvelope(db, `binpattern-transfer-${crypto.randomUUID()}`, { producer: "client" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, ...env, mimetypes: DEFAULT_MIMETYPES });
+        await EntryCrud.writeEntry({ authority: "", pathname: "/source.png" }, { channels: { body: { content: "", bytes, mimetype: "image/png" } } }, ctx, "worker");
+        const matcher = { dialect: "regex" as const, raw: "/AB/", pattern: "AB", flags: "" };
+        const copyBase = copyStmt(urlPath("worker", "/source.png"), urlPath("worker", "/copy.png"));
+        const moveBase = moveStmt(urlPath("worker", "/source.png"), urlPath("worker", "/move.png"));
+        const copyRes = await engine.dispatch({ ...env, statement: { ...copyBase, source: { ...copyBase.source, matcher } }, sequence: 1, origin: "client" });
+        const moveRes = await engine.dispatch({ ...env, statement: { ...moveBase, source: { ...moveBase.source, matcher } }, sequence: 2, origin: "client" });
+        assert.deepEqual([copyRes.status, moveRes.status], [201, 201]);
+        const readBytes = async (pathname: string) => Buffer.from((await EntryCrud.readEntry({ authority: "", pathname }, ctx, "worker")).entry!.channels.body.content, "base64");
+        assert.deepEqual(await readBytes("/copy.png"), Buffer.from("ABAB"));
+        assert.deepEqual(await readBytes("/move.png"), Buffer.from("ABAB"));
+        assert.deepEqual(await readBytes("/source.png"), Buffer.from([0, 0xff, 0]));
+    } finally { await db.close(); }
 });
 
 test("{§binary-parity} a scoped binary MOVE removes exactly the transferred source bytes", async () => {

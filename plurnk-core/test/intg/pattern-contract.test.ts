@@ -50,15 +50,27 @@ for (const specimen of cases) {
                 const source = `worker://${pathname}`;
                 const destination = "worker:///selected.txt";
                 const transfer = operation === "COPY" || operation === "MOVE";
+                const findParsed = PlurnkParser.parseStatements(`\`\`\`FIND (${source}) ${specimen.pattern}\n\`\`\``);
+                const findItem = findParsed.items[0];
+                assert.equal(findItem?.kind, "statement");
+                if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error("Expected parsed FIND");
+                const matcher = findItem.statement.matcher;
                 const header = transfer
-                    ? `${operation} (${source}) [${JSON.stringify({ pattern: specimen.pattern })}] (${destination})`
-                    : `${operation} (${source}) [${JSON.stringify({ pattern: specimen.pattern })}]`;
+                    ? `${operation} (${source}) (${destination})`
+                    : operation === "EDIT"
+                        ? `${operation} (${source})`
+                        : `${operation} (${source}) ${specimen.pattern}`;
                 const parsed = PlurnkParser.parseStatements(`\`\`\`${header}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
                 assert.equal(parsed.items.length, 1, JSON.stringify(parsed));
                 const [item] = parsed.items;
                 assert.equal(item?.kind, "statement", JSON.stringify(parsed));
                 if (item?.kind !== "statement") throw new Error("Expected one parsed operation");
-                const result = await engine.dispatch({ ...env, statement: item.statement, sequence: 1, origin: "client" });
+                const statement = transfer && (item.statement.op === "COPY" || item.statement.op === "MOVE")
+                    ? { ...item.statement, source: { ...item.statement.source, matcher } }
+                    : item.statement.op === "EDIT"
+                        ? { ...item.statement, matcher }
+                        : item.statement;
+                const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "client" });
                 const body = async (path: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: path, name: "body" }))?.content;
                 const unchanged = operation === "KILL" && specimen.removed === specimen.content;
                 assert.equal(result.status, transfer ? 201 : unchanged ? 304 : 200, JSON.stringify(result));
@@ -97,13 +109,19 @@ for (const specimen of [
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const target = `worker:///${specimen.path}`;
             await new Worker().edit(editStmt(urlPath("worker", `/${specimen.path}`), specimen.content), makeSchemeCtx({ db, ...env }));
-            const pattern = `[${JSON.stringify({ pattern: specimen.pattern })}]`;
             const transfer = operation === "COPY" || operation === "MOVE";
-            const parsed = PlurnkParser.parseStatements(`\`\`\`${operation} (${target}) ${pattern}${transfer ? " (worker:///destination.txt)" : ""}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
+            const findParsed = PlurnkParser.parseStatements(`\`\`\`FIND (${target}) ${specimen.pattern}\n\`\`\``);
+            const findItem = findParsed.items[0];
+            if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error(JSON.stringify(findParsed));
+            const matcher = findItem.statement.matcher;
+            const parsed = PlurnkParser.parseStatements(`\`\`\`${operation} (${target})${transfer ? " (worker:///destination.txt)" : ` ${specimen.pattern}`}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
             assert.equal(parsed.items[0]?.kind, "statement");
             const item = parsed.items[0];
             if (item?.kind !== "statement") throw new Error(JSON.stringify(parsed));
-            const result = await engine.dispatch({ ...env, statement: item.statement, sequence: 1, origin: "client" });
+            const statement = transfer && (item.statement.op === "COPY" || item.statement.op === "MOVE")
+                ? { ...item.statement, source: { ...item.statement.source, matcher } }
+                : item.statement;
+            const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "client" });
             assert.equal(result.status, 422, JSON.stringify(result));
             assert.match(String(result.problem?.type), /\/pattern-source-unlocated$/);
             const source = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: `/${specimen.path}`, name: "body" });

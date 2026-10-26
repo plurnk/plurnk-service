@@ -23,23 +23,21 @@ const matcherOf = (input: string) => {
 };
 
 test("{§problem-details} trailing-regex recovery states the matcher form without guessing the author's intent", () => {
-    for (const pattern of ["/def copy/ -1", "/def copy/ i", "/def copy/i inspect the method"]) {
-        for (const matcher of [pattern, `[${JSON.stringify({ pattern })}]`]) {
-            const input = [
-                "```READ (requests/models.py) <300,330>\n```",
-                `\`\`\`READ (requests/models.py) ${matcher}\n\`\`\``,
-                "```FIND (requests/models.py) /def copy/\n```",
-                "```READ (test_requests.py) <1,60>\n```",
-            ].join("\n\n");
-            const { items } = PlurnkParser.parse(input);
-            assert.deepEqual(items.flatMap((item) => item.kind === "error" ? [item.error] : []), [], matcher);
-            const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-            assert.deepEqual(statements.map(({ op }) => op), ["READ", "READ", "FIND", "READ"], "every operation is admitted ({§matcher-refusal})");
-            const refused = "matcher" in statements[1] ? statements[1].matcher : null;
-            if (refused === null || refused === undefined || refused.dialect !== "unreadable") assert.fail(matcher);
-            assert.equal(refused.message, "Regex matcher has trailing text after `/pattern/flags`.", matcher);
-            assert.equal(refused.recovery, "Write only `/pattern/flags` in the matcher; flags are optional.", matcher);
-        }
+    for (const matcher of ["/def copy/ -1", "/def copy/ i", "/def copy/i inspect the method"]) {
+        const input = [
+            "```READ (requests/models.py) <300,330>\n```",
+            `\`\`\`READ (requests/models.py) ${matcher}\n\`\`\``,
+            "```FIND (requests/models.py) /def copy/\n```",
+            "```READ (test_requests.py) <1,60>\n```",
+        ].join("\n\n");
+        const { items } = PlurnkParser.parse(input);
+        assert.deepEqual(items.flatMap((item) => item.kind === "error" ? [item.error] : []), [], matcher);
+        const statements = items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.deepEqual(statements.map(({ op }) => op), ["READ", "READ", "FIND", "READ"], "every operation is admitted ({§matcher-refusal})");
+        const refused = "matcher" in statements[1] ? statements[1].matcher : null;
+        if (refused === null || refused === undefined || refused.dialect !== "unreadable") assert.fail(matcher);
+        assert.equal(refused.message, "Regex matcher has trailing text after `/pattern/flags`.", matcher);
+        assert.equal(refused.recovery, "Write only `/pattern/flags` in the matcher; flags are optional.", matcher);
     }
 });
 
@@ -49,7 +47,6 @@ test("{§trailing-slots} valid flags, scopes and asides do not become trailing-r
         ["READ (a.py) /def copy/i", "i", null, null, 0],
         ["READ (a.py) <1,16> /def copy/i <!-- inspect method -->", "i", [1, 16], "inspect method", 0],
         ["READ (a.py) /def copy/i <1,16> <!-- inspect method -->", "i", [1, 16], "inspect method", 1],
-        ['READ (a.py) <1,16> [{"pattern":"/def copy/i"}] <!-- inspect method -->', "i", [1, 16], "inspect method", 0],
     ] as const) {
         const { items } = PlurnkParser.parse(`\`\`\`${heading}\n\`\`\``);
         const errors = items.flatMap((item) => item.kind === "error" ? [item.error] : []);
@@ -89,7 +86,6 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
     for (const [input, recovery] of [
         ["```READ (a.py) <+1>\n```", "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`."],
         ["```READ (http://exa mple.com/x)\n```", "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`."],
-        ["```READ (a.py) [{\"pattern\": 3}]\n```", "Write the matcher as a string, `[{\"pattern\": \"/needle/i\"}]`, or bare on the opening fence line after the path."],
         ["```sh (a) (b)\n```", "`sh (program)? [{\"cwd\": \"…\"}]?` on the opening fence line, the input on the lines below, then the closing fence."],
         ["```EDIT (a.py) <1> <2>\nx\n```", "One scope per selection, such as `<12,40>` or `<@abcde,+5>`."],
         ["```READ (a.py) <line number>\n```", "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line."],

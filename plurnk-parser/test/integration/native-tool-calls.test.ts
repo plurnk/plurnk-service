@@ -90,7 +90,7 @@ test("{§native-tool-calls} a Hermes JSON tool_call and a GLM key/value tool_cal
     const hermes = "<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"worker:///notes.md\", \"scope\": \"1,20\"}}\n</tool_call>";
     assert.deepEqual(withoutPosition(ops(hermes)), canonical("````READ (worker:///notes.md) <1,20>\n````"));
     const glm = "<tool_call>FIND\n<arg_key>path</arg_key>\n<arg_value>django/urls/*.py</arg_value>\n<arg_key>pattern</arg_key>\n<arg_value>def resolve</arg_value>\n</tool_call>";
-    assert.deepEqual(withoutPosition(ops(glm)), canonical("````FIND (django/urls/*.py) [{\"pattern\":\"def resolve\"}]\n````"));
+    assert.deepEqual(withoutPosition(ops(glm)), canonical("````FIND (django/urls/*.py) def resolve\n````"));
 });
 
 test("{§native-tool-calls} Anthropic-style function_calls, Mistral [TOOL_CALLS], Llama <|python_tag|> and Kimi call sections", () => {

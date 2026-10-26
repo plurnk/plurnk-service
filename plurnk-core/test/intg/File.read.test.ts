@@ -275,7 +275,7 @@ test("{§markerless-first-page} File.find: a binary member does not poison a bod
             "file",
         );
 
-        const result = await new File().find(parseFind("````FIND (**) [{\"pattern\":\"/needle/\"}]````"), ctx);
+        const result = await new File().find(parseFind("````FIND (**) /needle/````"), ctx);
         assert.equal(result.status, 200);
         assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });

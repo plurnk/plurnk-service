@@ -208,7 +208,7 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 /**
- * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 /**
@@ -334,7 +334,7 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 body: null
@@ -361,7 +361,7 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 body: (string | null)
@@ -387,7 +387,7 @@ target: ParsedPath
 metadata: (string[] | null)
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the operand's `[{"pattern": …}]` option; meaningful on the source operand, refused by the owner on a destination.
+ * Optional selection matcher on the source operand; refused by the owner on a destination.
  */
 matcher: (MatcherBody | null)
 }
@@ -493,11 +493,11 @@ target: (ParsedPath | null)
  */
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading's `[{"pattern": …}]` option ({§matcher-option}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 /**
- * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher is the `pattern` option.
+ * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern}).
  */
 body: (string | null)
 position: Position
