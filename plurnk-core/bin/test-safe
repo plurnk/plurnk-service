@@ -8,7 +8,7 @@
 # so a recurrence leaves a stack to read instead of a mystery zombie.
 #
 #   bin/test-safe npm run test:intg
-#   PLURNK_TEST_BUDGET=2400 bin/test-safe npm run test:demo   # longer budget for real-model tiers
+#   PLURNK_TEST_BUDGET=2400 bin/test-safe npm run test:live   # longer budget for real-model tiers
 #
 # Caveat: SIGUSR2 reports the main thread; it fires for a session-pool spin (main free) but NOT a pure
 # main-thread sync spin (the handler starves too). For that, reproduce under `node --prof` and process

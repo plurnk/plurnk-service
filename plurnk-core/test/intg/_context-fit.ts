@@ -8,9 +8,9 @@ import { join } from "node:path";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
-import { localPath, readStmt } from "../intg/_dsl.ts";
-import { logEntries, packetSection } from "../intg/_packet.ts";
-import { TEST_OWNER } from "../intg/_approval.ts";
+import { localPath, readStmt } from "./_dsl.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+import { TEST_OWNER } from "./_approval.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 export interface AttachmentFixture {

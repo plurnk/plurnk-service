@@ -7113,9 +7113,8 @@ KILL controls a process and refuses a content pattern (`kill-pattern-unsupported
 <!-- map -->
 | Tag | Promise |
 | --- | --- |
-| {§live-harness-deadline} | The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT` as one whole-specimen deadline, including… |
-| {§tier-specimen-selection} | One invocation runs a real-model tier or one of its specimens. |
-| {§demo-oracles} | A demo story is graded by its oracle, never by the model's claim. |
+| {§live-harness-deadline} | The live harness uses `PLURNK_SERVICE_LIVE_TIMEOUT` as one whole-specimen deadline, including multi-prompt… |
+| {§tier-specimen-selection} | One invocation runs the live tier or one of its specimens. |
 | {§provider-conformance-matrix} | The provider conformance matrix: every configured model alias is exercised through a real PLURNK loop: the… |
 | {§test-artifact-retention} | Test artifact retention: every harness writes its run into one home. |
 | {§tier-census} | A real-model tier run is one directory with its census. |
@@ -7126,22 +7125,19 @@ KILL controls a process and refuses a content pattern (`kill-pattern-unsupported
 |---|---|---|---|
 | **unit** | `src/**/*.test.ts` | No | Isolated logic, mocked boundaries |
 | **intg** | `test/intg/` | No (mock provider) | Real file-backed SqlRite (per-test DB under `test/intg/.tmp/`), real engine |
-| **live** | `test/live/` | Real | Wire-level assertions |
-| **demo** | `test/demo/` | Real | Holistic outcome assertions |
+| **live** | `test/live/` | Real | Thin real-model smoke and digest witness; the full `live` and `demo` specimen corpus lives in `plurnk-bench/tiers/` (#1236) |
 
-§live-harness-deadline The live and demo tiers use `PLURNK_SERVICE_LIVE_TIMEOUT`
+§live-harness-deadline The live harness uses `PLURNK_SERVICE_LIVE_TIMEOUT`
 as one whole-specimen deadline, including multi-prompt stories. The test's abort
 signal reaches the loop wait and invokes ordinary scope cancellation before
 teardown. The runner joins the test body's cleanup before starting the next
-specimen. The shared workspace and story helpers cover setup, inference and
-oracle failures, preserve the primary failure when their cleanup also fails,
-and attempt every registered disposal.
+specimen. The shared workspace and story helpers (`test/harness.ts`) cover setup,
+inference and oracle failures, preserve the primary failure when their cleanup
+also fails, and attempt every registered disposal.
 The provider whole-call deadline and recovery policy remain independent; a harness cancellation is
 not evidence that the provider's own deadline expired.
 
-§tier-specimen-selection **One invocation runs a real-model tier or one of its specimens.** The demo catalog is every story under `test/demo/` and the live catalog every specimen under `test/live/`, each registered in one place; `npm run test:demo` and `npm run test:live` run the tier, and `-- --specimen "<name>"` the one specimen, through the same invocation, which places the name pattern before the file list. A selector must match at least one registered specimen before any provider call: a zero-match selector exits non-zero and runs nothing.
-
-§demo-oracles **A demo story is graded by its oracle, never by the model's claim.** The script oracle accepts an execution the daemon observed — a terminal receipt, a native script or a shell command with observed successful output — and rejects a claimed, unobserved, failed, unrelated or mismatched one; a model that verifies around the run is not failed for it (#807). The web oracle takes the actual latest stable version: never arbitrary digits, a partial match, a newer maintenance date or an LTS label. The packet audit oracle accepts numbered findings under any Markdown emphasis.
+§tier-specimen-selection **One invocation runs the live tier or one of its specimens.** The live catalog is every specimen under `test/live/`, registered in one place; `npm run test:live` runs the tier, and `-- --specimen "<name>"` the one specimen, through the same invocation, which places the name pattern before the file list. A selector must match at least one registered specimen before any provider call: a zero-match selector exits non-zero and runs nothing.
 
 §provider-conformance-matrix **The provider conformance matrix: every configured model alias is exercised through a
 real PLURNK loop: the production packet, a model-selected operation, its
@@ -7149,9 +7145,9 @@ materialized result, and completion.** Transport-only completions are not
 conformance evidence. Provider-exposed reasoning must survive in the durable
 assistant packet and digest; a provider with no private reasoning is valid when
 the observable operation cycle succeeds. One package-owned runner executes the
-full tier or exactly one registered specimen (`npm run test:live -- --specimen
+live smoke (`npm run test:live -- --specimen
 "<exact test name>"` in plurnk-core), rejecting absent and duplicate names before
-execution. The ledger and classification taxonomy live in
+execution, while `plurnk-bench` runs the full `live` and `demo` corpora. The ledger and classification taxonomy live in
 `plurnk-providers/README.md` and report authorization/credential failures
 distinct from model failures and repeated stochastic failures separately from
 stable ones, never with weakened assertions.
@@ -7165,7 +7161,7 @@ stable ones, never with weakened assertions.
 | Reclaim | a stamped run that passes is reclaimed when it exits; a failed suite's evidence is never touched and stays exactly where the run reported it |
 | Fixture reuse | a cross-package test may reuse Core's migration fixture only by passing a path inside the caller's own run directory |
 
-§tier-census **A real-model tier run is one directory with its census.** The live and demo drivers stamp `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every session the run claims lands inside `PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests, tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the sessions it claimed, turns, requests and cost; a run never deletes or moves any of it. `tier:history` ledgers every census under the home: per specimen, its verdicts over runs and its last reason. `npm run digest:missing` re-digests only a run's interrupted specimens, replacing a partial digest with a complete one and touching no other.
+§tier-census **A real-model tier run is one directory with its census.** The live driver stamps `PLURNK_TIER_RUN` as `<kind>-<UTC stamp>`; every session the run claims lands inside `PLURNK_BENCHMARKS/tier-<kind>-<stamp>/`, each in its own `<label>-XXXXXX/` with its database, its own host, its digest and a `census.json` naming the specimen that drove it, its loops, turns, requests, tokens and cost. The run's `census.md` and `census.json`, written by the tier's node:test reporter when the run ends, carry one row per specimen: verdict, skip reason or first failure line, the sessions it claimed, turns, requests and cost; a run never deletes or moves any of it. `npm run digest:missing` re-digests only a run's interrupted specimens, replacing a partial digest with a complete one and touching no other.
 
 A specimen declares what it requires of the route and the host; an unmet requirement is a skip, before anything boots or is spent, whose reason names the requirement and what was observed, and the census answers each unmet route-bound requirement with the declared aliases whose catalog entry satisfies it. A route the harness cannot resolve is a failure, never a skip. No test surface is an opt-in flag or a script of its own: the third-party MCP composition, the llama-server rails and the client's real-model TUI tier are live specimens that run wherever their requirements hold.
 

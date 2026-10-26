@@ -28,9 +28,8 @@ npm test
 | `npm run build` | Build every publishable workspace from a clean `dist`. |
 | `npm test` | One build of the platform, then the deterministic lint, unit and integration gate, then client conformance — needs an installed terminal client checkout (`npm ci` there). Defaults to `../plurnk`; `PLURNK_CLIENT_CHECKOUT` selects another location. |
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
-| `npm run test:live` | Long-running real-model wire assertions. |
+| `npm run test:live` | Real-model live smoke and digest witness; the full `live` and `demo` corpora live in `plurnk-bench/tiers/`. |
 | `npm run changelog` | Print the notes pending since the last release tag. `CHANGELOG.md` is generated from tags (`-- --write`) and gated by `--check`, never edited by hand. |
-| `npm run test:demo` | Long-running real-model outcome assertions. |
 | `npm run test:benchlet -w @plurnk/plurnk-service` | The bench's quick lane from this checkout. `PLURNK_BENCH_ROOT` names the bench checkout (`../plurnk-bench` by default) and `PLURNK_CLIENT_CHECKOUT` the client. |
 | `npm run probe:providers` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:defaults` | Validate and list configuration ownership and source classes without values. |
@@ -59,7 +58,7 @@ terminal client's real-model TUI tier (`PLURNK_CLIENT_CHECKOUT`).
 | Main push | Hooked `npm test`; root changes run full integration. |
 | Release candidate | Preserved applicable live/demo/bench evidence, then `release:check`. |
 | Publication | `release:publish` uses the qualified archives, verifies the registry-installed composition, and records the release. |
-| Model or benchmark campaign | Explicit `test:live`, `test:demo`, or canonical `plurnk-bench`; never the hot path. |
+| Model or benchmark campaign | Explicit `test:live` or canonical `plurnk-bench` (`tier:live`, `tier:demo`, `deepswe`, `swebench`); never the hot path. |
 
 ## Development workflow
 
@@ -82,7 +81,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 |---|---|
 | Configuration/startup | `npm run config:defaults`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
 | Deterministic test failure | The reported `~/benchmarks/intg-<lane>-<run>/` directory (`PLURNK_BENCHMARKS` overrides the root). Successful suites remove their own artifacts; failed suites retain them. |
-| Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement; `npm run tier:history -w @plurnk/plurnk-service` ledgers every run ({§tier-census}). |
+| Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement ({§tier-census}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
 | Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§type-resolution-audit}). |

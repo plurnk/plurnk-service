@@ -87,14 +87,5 @@ Plurnk sees what Git tracks or a `members` definition includes. The AGENTS.md po
 ## Tests
 
 Run the root monorepo commands for deterministic lint, unit, and integration
-coverage. Live-model, demo, and installation tests declare their external
-requirements separately.
-
-For manual client/service drills, create the modest standalone project used by
-the demos instead of digesting this monorepo:
-
-```sh
-npm run fixture:demo -w plurnk-core -- <label>
-```
-
-The command prints the temporary project path. The caller removes it when done.
+coverage. `npm run test:live` runs the real-model smoke; the full `live` and
+`demo` specimen corpora live in `plurnk-bench/tiers/`.

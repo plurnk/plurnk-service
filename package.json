@@ -72,7 +72,6 @@
         "test:unit": "npm run root:unit && npm run test:unit --workspaces --if-present",
         "test:intg": "npm run test:intg --workspaces --if-present",
         "test:live": "npm run test:live -w @plurnk/plurnk-service --",
-        "test:demo": "npm run test:demo -w @plurnk/plurnk-service --",
         "probe:providers": "npm run probe:providers -w @plurnk/plurnk-providers --",
         "test:client-conformance": "node scripts/test-client-conformance.mjs",
         "test": "node scripts/drill.mjs",

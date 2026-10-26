@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { assertContextFitEvidence, seedAttachmentFixture } from "../demo/_context-fit.ts";
+import { assertContextFitEvidence, seedAttachmentFixture } from "./_context-fit.ts";
 
 test("{§methods-loop-run-open-paths} {§markerless-first-page}: one oversized attachment lands as its first page, cut inside its one long line, and a range READ reaches its answer", async (approvalContext) => {
     serverProposals(approvalContext, "accept");

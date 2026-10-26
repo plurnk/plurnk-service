@@ -14,7 +14,7 @@ import { excludesFile, hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, rootWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { initializeDemoRepository } from "../demo/_git.ts";
+import { initializeDemoRepository } from "./_git.ts";
 
 const execFileP = promisify(execFile);
 const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });

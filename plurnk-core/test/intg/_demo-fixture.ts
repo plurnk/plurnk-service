@@ -1,21 +1,11 @@
-// Storyline fixture — a seeded tempdir that demos can use as a real
-// workspace: seed a small fake project with several files, git init it, exercise
-// real workflows against it). The model navigates real content; we
-// assert outcomes (file contents, command output) not op shapes.
+// Storyline fixture — a seeded tempdir that demos and integration witnesses use as a
+// real workspace: seed a small fake project with several files and git init it.
 
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { initializeDemoRepository } from "./_git.ts";
-import { usage } from "../../../scripts/lib/usage.mjs";
-
-usage(import.meta, `
-usage: npm run fixture:demo [-- <label>]   (from plurnk-core)
-Seeds a throwaway project the demo stories use as a real workspace and prints its path.
-Reads: nothing.
-Writes: a temporary project directory.
-`);
 
 export interface DemoFixture {
     workspace: string;
@@ -110,12 +100,3 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         },
     };
 };
-
-// Developer entrypoint: create the same modest, standalone git project used by
-// live demos and print its path. This keeps client/service theory drills from
-// accidentally digesting the platform monorepo. The caller owns cleanup.
-if (import.meta.main) {
-    const label = process.argv[2] ?? "manual";
-    const fixture = await seedDemoFixture(label);
-    process.stdout.write(`${fixture.workspace}\n`);
-}

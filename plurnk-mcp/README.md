@@ -227,7 +227,8 @@ rather than retryable server downtime.
 
 ```sh
 npm test -w @plurnk/plurnk-mcp
-PLURNK_MODEL=<selector> npm run test:live -- --specimen "live mcp: current third-party stdio and HTTP servers compose through the assembled product"
+# From plurnk-bench:
+PLURNK_MODEL=<selector> npm run tier:live -- --specimen "live mcp: current third-party stdio and HTTP servers compose through the assembled product"
 ```
 
 The package gate runs the exact current SDK and official conformance

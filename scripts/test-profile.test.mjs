@@ -52,19 +52,19 @@ test("{§credential-authority} test entrypoints exclude personal XDG policy whil
     writeFileSync(fixturePath, fixturePolicy);
     const baseEnv = { ...process.env, XDG_CONFIG_HOME: directory };
     delete baseEnv.PLURNK_SERVICE_POLICY;
-    const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
     const live = await liveInvocation();
-    const demo = await demoInvocation();
     const policyLoader = new URL("../plurnk-core/src/core/packet-inject.ts", import.meta.url).href;
     const gatePolicy = readFileSync(resolve(root, "plurnk-meta", "POLICY.md"), "utf8").trim() || null;
     const profileArgs = candidateDaemonArgs(root, root).slice(0, 1);
     const cases = [
         { name: "daily driving", args: [], expected: personalPolicy },
         { name: "unit/integration", args: ["--import=./test/setup.ts"], expected: null },
-        ...[["live", live], ["demo", demo]].map(([name, invocation]) => ({
-            name, args: invocation.args.filter((arg) => arg.startsWith("--env-file")),
-            env: invocation.env, expected: gatePolicy,
-        })),
+        {
+            name: "live",
+            args: live.args.filter((arg) => arg.startsWith("--env-file")),
+            env: live.env,
+            expected: gatePolicy,
+        },
         { name: "candidate/benchmark", args: profileArgs, expected: null },
         { name: "explicit benchmark policy", args: profileArgs, env: { PLURNK_SERVICE_POLICY: fixturePath }, expected: fixturePolicy },
     ];
@@ -121,12 +121,12 @@ test("{§credential-authority} the pre-push gate drills the pushed commit in a t
 test("{§credential-authority} a root alias of a workspace script delegates by workspace name and passes its arguments through", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
     assert.match(pkg.scripts.start, /^npm start -w @plurnk\/plurnk-service$/u);
-    for (const name of ["test:live", "test:demo", "share", "probe:providers"]) {
+    for (const name of ["test:live", "share", "probe:providers"]) {
         assert.match(pkg.scripts[name], /^npm run (?:-s )?[\w:]+ -w @plurnk\/[\w-]+ --$/u, `${name}: delegates and ends with -- so npm run ${name} -- <arguments> reaches the script`);
     }
 });
 
-test("{§credential-authority} live/demo operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
+test("{§credential-authority} live operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
     const home = mkdtempSync(resolve(tmpdir(), "plurnk-operator-env-"));
     try {
         writeFileSync(resolve(home, ".bashrc"), [
@@ -154,23 +154,16 @@ test("{§credential-authority} live/demo operator bootstrap carries Tavily and B
     }
 });
 
-test("{§credential-authority} live, demo, and benchlet launch through the operator environment", async () => {
+test("{§credential-authority} live and benchlet launch through the operator environment", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
-    // #588: no generated grammar precedes a live or demo run; an operator's own GBNF is a file path.
+    // #588: no generated grammar precedes a live run; an operator's own GBNF is a file path.
     assert.equal(pkg.scripts["build:rail"], undefined, "no rail build survives the GBNF discard");
-    for (const name of ["pretest:live", "pretest:demo"]) {
-        assert.equal(pkg.scripts[name], undefined, `${name} has nothing to regenerate`);
-    }
+    assert.equal(pkg.scripts["pretest:live"], undefined, "pretest:live has nothing to regenerate");
     assert.ok(live.args.includes(`--env-file-if-exists=${gateProfile()}`), "the live tier layers the committed gate profile");
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md");
 
-    const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
-    const demo = await demoInvocation();
-    assert.ok(demo.args.includes(`--env-file-if-exists=${gateProfile()}`), "the demo driver loads the shared profile");
-    assert.equal(demo.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/POLICY.md", "the demo driver selects the gate policy");
-
-    for (const name of ["test:live", "test:demo", "test:benchlet"]) {
+    for (const name of ["test:live", "test:benchlet"]) {
         assert.match(
             pkg.scripts[name],
             /^bash \.\.\/scripts\/operator-environment\.sh /,
