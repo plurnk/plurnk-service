@@ -9,12 +9,12 @@ printf 'hello\n' > hello.txt
 wc -l hello.txt
 ```
 
-A script target runs that script: `sh (greet.sh)` runs it with an empty stdin;
-a nonempty body becomes its stdin. The interpreter reads the script directly,
-so it needs no executable bit; a script path authored inside a shell body still
-follows the kernel's ordinary executable-bit rules. Script arguments go in
-`[{"args": ["--release","two words"]}]`: each string is one literal argument,
-without shell expansion. The same options apply to local, `worker://`, and
+A script target runs that script: `sh (greet.sh)` runs it with no arguments;
+a nonempty body is tokenized by shell quoting and passed as its arguments
+(plain words split on whitespace, quoted arguments stay whole, nothing is
+expanded). The interpreter reads the script directly, so it needs no executable
+bit; a script path authored inside a shell body still follows the kernel's
+ordinary executable-bit rules. The same applies to local, `worker://`, and
 `skill://` script targets across every interpreter.
 
 ## Environment

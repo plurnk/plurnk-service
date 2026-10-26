@@ -27,26 +27,19 @@ literal `\n` separators keeping the invocation on one discovery line.
 The table above is the **inline** form: the body is the program. A directory in
 the `(target)` slot selects the working directory for that inline program. A
 file in the `(target)` slot is instead the script each interpreter reads
-directly, and the body becomes that script's stdin. Script arguments use
-`[{"args": ["arg",...]}]`; each string is passed literally, without shell
-expansion ({§executor-metadata}).
+directly, and the body is tokenized by shell quoting (`tokenizeArgv`) into the
+script's arguments ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
 
 ```sh (./deploy.sh)
-yes
-yes
-no
+--release "two words"
 ```
 
-```python3 (transform.py) [{"args": ["--format","json"]}]
-3
-1
-4
-1
-5
+```python3 (transform.py)
+--format json
 ```
 
 All declared tags run host code, so every invocation is proposal-gated ({§executor-effect}). Inline programs have no
-separate input channel; script targets receive stdin from the body.
+separate input channel; script targets receive their arguments from the body.
 
 ## Configuration
 

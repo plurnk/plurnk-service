@@ -79,25 +79,12 @@ test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/js/pyt
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
-test("{§executor-subprocess-routing} spawnArgs: a target selects the interpreter's script-file form and body is stdin", () => {
+test("{§executor-subprocess-routing} spawnArgs: a target selects the interpreter's script-file form and body is tokenized into argv", () => {
     // @ts-expect-error protected hook
-    assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh"], useShell: false, stdin: "stdin body" });
+    assert.deepEqual(make("sh").spawnArgs("sh", '--flag "two words"', "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh", "--flag", "two words"], useShell: false });
     // @ts-expect-error
-    assert.deepEqual(make("python3").spawnArgs("python3", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
+    assert.deepEqual(make("python3").spawnArgs("python3", '--flag "two words"', "t.py"), { cmd: "python3", args: ["t.py", "--flag", "two words"], useShell: false });
 });
-
-for (const [tag, bin, body] of [
-    ["sh", "sh", 'printf "%s\\n" "$0" "$1" "$2" "$3"'],
-    ["js", "node", 'console.log(process.argv.slice(1).join("\\n"))'],
-    ["python3", "python3", 'import sys; print("\\n".join(sys.argv[1:]))'],
-] as const) {
-    test(`{§executor-metadata}: inline ${tag} preserves arguments using native interpreter conventions`, { skip: !present(bin) }, async () => {
-        const argv = ["first", "two words", "", "$(touch forbidden)"];
-        const { result, out } = await run(tag, body, { metadata: [JSON.stringify({ args: argv })] });
-        assert.equal(result.status, 200, out.stderr);
-        assert.equal(out.stdout, `${argv.join("\n")}\n`);
-    });
-}
 
 // An EDIT-created script has no exec bit, and
 // a file target still runs — the interpreter reads it; execve never happens.
@@ -105,7 +92,7 @@ test("{§executor-subprocess-routing} a file target runs without +x; transient e
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-transient-"));
     try {
         const script = path.join(dir, "greet.sh");
-        await fs.writeFile(script, "read name; echo \"hi $name\"\n", { mode: 0o644 });
+        await fs.writeFile(script, "echo \"hi $1\"\n", { mode: 0o644 });
         const out: string[] = [];
         const args: ExecArgs = {
             metadata: null,
@@ -117,7 +104,7 @@ test("{§executor-subprocess-routing} a file target runs without +x; transient e
         };
         const result = await make("sh").run(args);
         assert.equal(result.status, 200);
-        assert.match(out.join(""), /hi plurnk/, "the non-executable script ran with the body as stdin");
+        assert.match(out.join(""), /hi plurnk/, "the non-executable script ran with the body as argv");
         assert.equal(((await fs.stat(script)).mode & 0o111), 0, "the exec bit was never set — zero mutation");
     } finally {
         await fs.rm(dir, { recursive: true, force: true });

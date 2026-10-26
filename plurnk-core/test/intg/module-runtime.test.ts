@@ -306,7 +306,7 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
         const consumer = fakeEntry("consumer");
         engine.registerRuntime("consumer", {
             ...consumer,
-            invocation: { body: { role: "stdin", required: false }, target: { role: "resource", required: true, kind: "resource" }, example: { target: "worker:///program", body: "input" } },
+            invocation: { body: { role: "arguments", required: false }, target: { role: "resource", required: true, kind: "resource" }, example: { target: "worker:///program", body: "input" } },
             executor: {
                 ...consumer.executor,
                 async run(args) {

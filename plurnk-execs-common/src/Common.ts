@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
-import { SubprocessExecutor, SpawnAccounts, Shell } from "@plurnk/plurnk-execs";
+import { SubprocessExecutor, SpawnAccounts, Shell, tokenizeArgv } from "@plurnk/plurnk-execs";
 import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 
 // Per-interpreter spawn recipe. `bin` is the executable (probed for presence).
@@ -29,11 +29,11 @@ export default class Common extends SubprocessExecutor {
     protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = Common.#recipe(runtime);
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
-        // With a target the program IS the target and the body is its stdin
-        // ({§executor-subprocess-routing}). The interpreter reads the file;
-        // no executable bit is consulted or changed.
+        // With a target the program IS the target and the body is its arguments,
+        // tokenized by shell quoting ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
+        // The interpreter reads the file; no executable bit is consulted or changed.
         if (target !== null) {
-            return { cmd: r.bin, args: [target], useShell: false, stdin: command };
+            return { cmd: r.bin, args: [target, ...tokenizeArgv(command)], useShell: false };
         }
         return { cmd: r.bin, args: r.arg(command), useShell: false };
     }

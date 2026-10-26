@@ -145,9 +145,8 @@ authored READ retains its own source-scheme metadata contract.
 | Stage | Contract |
 | ----- | -------- |
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
-| Framework default | `BaseExecutor.prepare` validates that no unsupported metadata fields or duplicates are present. Unknown fields, duplicates, and malformed values are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its fields are `args` and `lifetime`. `` (or `` Its field is `lifetime`. `` when the executor owns none). Tools can override preparation to own different metadata. |
-| Subprocess options | `SubprocessExecutor` additionally accepts `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
-| Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. Subprocess executors use the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
+| Framework default | `BaseExecutor.prepare` validates that no unsupported metadata fields or duplicates are present. Unknown fields, duplicates, and malformed values are refused. An unknown field's recovery names every field the run takes, the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. `` Tools can override preparation to own different metadata. |
+| Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
 
 §executor-argv-tokenizer **`tokenizeArgv` splits a command line into argv by shell quoting alone.** Plain words split on whitespace; quoted multi-word and quoted empty arguments stay whole; escapes are honoured; nothing is expanded — no variables, no command substitution, no metacharacters — and unterminated quoting is refused as `CommandSyntaxError`.
@@ -634,7 +633,8 @@ which names the program the path runs, the version its `--version` reports when 
 the path: `Run shell commands and scripts with bash 5.2.37 (/bin/bash).` A script target runs under
 the same shell. Nothing about the dialect is promised beyond what the summary names.
 
-With a file target, the target is the program and the body is its stdin. Each executor
+With a file target, the target is the program and the body is its arguments,
+split into argv by `tokenizeArgv` ({§executor-argv-tokenizer}). Each executor
 uses its interpreter's file form. The working
 directory is the consumer's `cwd` — the project root, or the directory a
 directory `(target)` names for an inline program ({§exec-target-routing}). Data

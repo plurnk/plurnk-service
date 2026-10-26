@@ -8,7 +8,7 @@ import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
 import SpawnAccounts from "./SpawnAccount.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
-import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
 // KILL signal: an abort reason carrying `{ signal }` (a Unix signal name or
 // number) delivers exactly that signal, once, fire-and-forget — no escalation;
@@ -82,19 +82,14 @@ export default class SubprocessExecutor extends BaseExecutor {
     // delegates to Runtime.resolve (sh/js/python3); subclasses with their own
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
-    // reimplementing it. When `target` is set, the body becomes the program's
-    // stdin ({§executor-subprocess-routing}); the extension maps it and the parent
-    // parses nothing.
+    // reimplementing it. When `target` is set, the body is tokenized into argv
+    // ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
     protected spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
         return Runtime.resolve(runtime, command, target);
     }
 
-    override prepare(input: ExecInput): Promise<ExecPreparation> {
-        return InvocationMetadata.prepare(input, { args: true });
-    }
-
     run({ runtime, body, metadata, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
-        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { args: true });
+        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target });
         if ("failure" in parsed) {
             setState("stdout", "errored");
             setState("stderr", "errored");
@@ -121,11 +116,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 },
             ));
         }
-        const { cmd, useShell, stdin } = spawnArgs;
-        if (useShell && parsed.options.args.length > 0) {
-            throw new Error("A subprocess recipe cannot shell-interpret an explicit argument vector.");
-        }
-        const args = [...spawnArgs.args, ...parsed.options.args];
+        const { cmd, args, useShell, stdin } = spawnArgs;
         return new Promise<ExecResult>((resolve) => {
             // Already cancelled before we start — don't launch a doomed process.
             if (signal.aborted) {

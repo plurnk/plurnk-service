@@ -139,11 +139,9 @@ for (const [proposals, withOptions] of [
         await writeFile(join(directory, "scripts", "sibling.mjs"), 'export default "IMPORTED_SIBLING";\n');
         await writeFile(join(directory, "assets", "input.txt"), "RELATIVE_ASSET");
         const script = join(directory, "scripts", "main.mjs");
-        const cwd = withOptions ? join(root, "output folder") : root;
-        if (withOptions) await mkdir(cwd);
-        const argv = withOptions ? ["--name", "two words", "", "$(touch unwanted)", "quoted\"}value", "{", "\\}"] : [];
-        const stdin = withOptions ? "input with spaces\nsecond line" : "";
-        const marker = join(cwd, "ran.json");
+        const argv = withOptions ? ["--name", "two words", "", "$(touch unwanted)", 'quoted"value', "{", "\\}"] : [];
+        const body = withOptions ? `--name "two words" "" "$(touch unwanted)" 'quoted"value' "{" "\\\\}"` : null;
+        const marker = join(root, "ran.json");
         await writeFile(script, [
             'import { readFile, writeFile } from "node:fs/promises";',
             'import sibling from "./sibling.mjs";',
@@ -154,7 +152,7 @@ for (const [proposals, withOptions] of [
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
             turn("````READ (skill://sample/scripts/main.mjs) <1,-1>````"),
-            turn(PlurnkParser.frame(`js (skill://sample/scripts/main.mjs)${withOptions ? ` [${JSON.stringify({ cwd: "output folder", args: argv })}]` : ""}`, withOptions ? stdin : null)),
+            turn(PlurnkParser.frame("js (skill://sample/scripts/main.mjs)", body)),
             turn("", true),
         ] });
         await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -165,7 +163,7 @@ for (const [proposals, withOptions] of [
             assert.equal(result.finalStatus, 200);
             if (proposals === "accept") {
                 assert.deepEqual(JSON.parse(await readFile(marker, "utf8")), {
-                    file: script, cwd, sibling: "IMPORTED_SIBLING", asset: "RELATIVE_ASSET", argv, stdin,
+                    file: script, cwd: root, sibling: "IMPORTED_SIBLING", asset: "RELATIVE_ASSET", argv, stdin: "",
                 });
                 assert.match(provider.packets.at(-1)!, /NATIVE_EXEC_COMPLETE/);
             } else {

@@ -3702,7 +3702,7 @@ A `script`-kind target ({§executor-invocation}) is the program or working direc
 | a directory with an inline body | the working directory (`cwd`) for the inline body |
 | a directory with no body | refused `400 target-not-a-program` |
 | an absent path | refused `400 target-not-found`, stating what exists and inferring nothing ({§diagnostic-observation}): a registered tool of another executor is named with that executor, another available executor as its own executor (`` `python3` is its own executor. ``), and anything else as a target that must name an existing program resource |
-| a non-file resource that cannot be read | the owning READ's failure identity (#163), its recovery stating the slot contract: the resource is the program and the body its stdin |
+| a non-file resource that cannot be read | the owning READ's failure identity (#163), its recovery stating the slot contract: the resource is the program and the body its arguments |
 
 §exec-target-near-miss A target in the executor's own scheme whose path can never
 be a stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's

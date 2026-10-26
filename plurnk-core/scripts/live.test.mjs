@@ -32,7 +32,7 @@ test("{§live-harness-deadline} live and demo deadline reads the existing env kn
 test("{§tier-census} the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 41);
+    assert.equal(names.length, 40);
     // {§tier-census} — the surfaces that were flags and scripts are specimens with requirements.
     assert.ok(names.includes("live mcp: current third-party stdio and HTTP servers compose through the assembled product"));
     assert.ok(names.includes("live client: the terminal client's real-model TUI tier passes against this service"));
@@ -43,7 +43,6 @@ test("{§tier-census} the live catalog contains every registered specimen exactl
     assert.ok(names.includes("live: structural edits preserve neighboring source text"));
     assert.ok(names.includes("live: cancellation settles an active model request"));
     assert.ok(names.includes("{§bare-inference} live: delegate two isolated questions and consume their answers"));
-    assert.ok(names.includes("live executor input: SEND feeds a running js process"));
     assert.ok(names.includes("live: a client-attached image persists until log curation"));
     for (const form of ["hash", "line", "range", "insert", "column", "prepend", "append", "pattern", "whole"]) assert.ok(names.includes(`live: EDIT by ${form} — one taught EDIT lands the sentence that means it`), `the #893 ${form} specimen is registered`);
     for (const kind of ["image", "pdf", "audio"]) assert.ok(names.includes(`live: a retained ${kind} is reported as one earlier READ, never as a new arrival`), `the #899 ${kind} account specimen is registered`);

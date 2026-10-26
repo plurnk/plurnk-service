@@ -37,8 +37,9 @@ independently of the definition; an empty definition is invalid.
 
 The instructions are the skill: `READ (skill://<name>/SKILL.md)` for the
 procedure and `FIND (skill://<name>/**)` for its files. Scripts run with their
-registered executor, for example `js (skill://<name>/scripts/program.js)`,
-subject to ordinary operation approval. Skill resources are read-only through `skill://`.
+registered executor, for example `js (skill://<name>/scripts/program.js)` with
+any arguments in the fence body, subject to ordinary operation approval. Skill
+resources are read-only through `skill://`.
 
 ## discover
 

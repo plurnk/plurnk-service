@@ -7,7 +7,7 @@ const SH: Omit<RuntimeDecl, "summary"> = {
     glyph: "🐚",
     invocation: {
         body: {
-            role: "the shell program; stdin when the target is a script",
+            role: "the shell program; arguments when the target is a script",
             required: false,
         },
         target: {
@@ -28,7 +28,7 @@ const FIXED: readonly RuntimeDecl[] = [
         summary: "Run JavaScript code or scripts with Node.js.",
         invocation: {
             body: {
-                role: "JavaScript program; stdin when the target is a script",
+                role: "JavaScript program; arguments when the target is a script",
                 required: false,
             },
             target: {
@@ -47,7 +47,7 @@ const FIXED: readonly RuntimeDecl[] = [
         summary: "Run Python 3 code or scripts.",
         invocation: {
             body: {
-                role: "Python program; stdin when the target is a script",
+                role: "Python program; arguments when the target is a script",
                 required: false,
             },
             target: {

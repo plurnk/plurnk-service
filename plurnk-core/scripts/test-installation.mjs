@@ -500,7 +500,7 @@ writeFileSync(resolve(packedSkillDir, "SKILL.md"), [
 mkdirSync(resolve(packedSkillDir, "scripts"));
 const packedSkillScript = resolve(packedSkillDir, "scripts", "main.mjs");
 const packedSkillMarker = resolve(packedSkillProject, "executed.json");
-const packedSkillArgs = ["two words", "", "quoted\"}value", "$(touch forbidden)"];
+const packedSkillArgs = ["two words", "", "quoted\"value", "$(touch forbidden)"];
 writeFileSync(resolve(packedSkillDir, "scripts", "sibling.mjs"), 'export default "NATIVE_SIBLING";');
 writeFileSync(packedSkillScript, [
     'import { rename, writeFile } from "node:fs/promises";',
@@ -664,8 +664,8 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs) [{"args": ${JSON.stringify(packedSkillArgs)}}]
-raw stdin
+            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs)
+'two words' '' 'quoted"value' '$(touch forbidden)'
 \`\`\`\``,
         },
     });
@@ -703,10 +703,10 @@ ok(
         file: packedSkillScript,
         sibling: "NATIVE_SIBLING",
         args: packedSkillArgs,
-        stdin: "raw stdin",
+        stdin: "",
         cwd: packedSkillProject,
     }),
-    "the packed daemon executes a native skill with exact argv, stdin, cwd and sibling imports",
+    "the packed daemon executes a native skill with exact argv, cwd and sibling imports",
 );
 if (dormantBoot.probeResult?.skillExecution == null) console.error({ skillExec: dormantBoot.probeResult?.skillExec, probeError: dormantBoot.probeError });
 ok(

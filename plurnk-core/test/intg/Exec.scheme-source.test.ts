@@ -468,7 +468,7 @@ test("{§exec-target-routing} execution source eligibility and failures come fro
         assert.equal(writeonly.status, 404);
         assert.equal(writeonly.problem?.type, "https://problems.plurnk.xyz/scheme/writeonly/entry-not-found");
         // #425 F4 — the owning identity stays; the execution slot contract rides the recovery.
-        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its stdin.");
+        assert.equal(writeonly.problem?.recovery, "The target `writeonly:///item` names the program resource; the body is its arguments.");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
@@ -479,7 +479,7 @@ test("{§exec-target-routing} execution source eligibility and failures come fro
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/absent/representation-not-found");
         // The recovery states the slot contract and never guesses that the missing resource was a tool call.
         assert.doesNotMatch(String(absent.problem?.recovery), /\[[a-z]+\] \(/, "execution does not guess that a missing resource was intended as a tool call");
-        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its stdin.");
+        assert.equal(absent.problem?.recovery, "The target `absent:///item` names the program resource; the body is its arguments.");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);

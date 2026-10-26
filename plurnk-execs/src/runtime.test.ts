@@ -33,18 +33,18 @@ test("{§executor-shell} an additional runtime uses the conventional command fla
     });
 });
 
-test("{§executor-shell} a shell target runs as the program with body on stdin", () => {
-    assert.deepEqual(Runtime.resolve("sh", "piped input", "./run.sh"), {
-        cmd: shell, args: ["./run.sh"], useShell: false, stdin: "piped input",
+test("{§executor-shell} a shell target runs as the program with body tokenized into argv", () => {
+    assert.deepEqual(Runtime.resolve("sh", '--flag "two words"', "./run.sh"), {
+        cmd: shell, args: ["./run.sh", "--flag", "two words"], useShell: false,
     });
 });
 
-test("{§executor-shell} an interpreter target is the script with body on stdin", () => {
-    assert.deepEqual(Runtime.resolve("python3", "data", "t.py"), {
-        cmd: "python3", args: ["t.py"], useShell: false, stdin: "data",
+test("{§executor-shell} an interpreter target is the script with body tokenized into argv", () => {
+    assert.deepEqual(Runtime.resolve("python3", '--flag "two words"', "t.py"), {
+        cmd: "python3", args: ["t.py", "--flag", "two words"], useShell: false,
     });
-    assert.deepEqual(Runtime.resolve("js", "data", "t.js"), {
-        cmd: "node", args: ["t.js"], useShell: false, stdin: "data",
+    assert.deepEqual(Runtime.resolve("js", '--flag "two words"', "t.js"), {
+        cmd: "node", args: ["t.js", "--flag", "two words"], useShell: false,
     });
 });
 

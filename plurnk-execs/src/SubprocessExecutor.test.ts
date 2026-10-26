@@ -66,14 +66,14 @@ test("{§executor-subprocess-routing} cwd is the process working dir when there 
     assert.equal(realpathSync(out.stdout.trim()), dir);
 });
 
-test("{§executor-subprocess-routing} a shell target is one script file, without executable permission or command parsing", async (t) => {
+test("{§executor-subprocess-routing} a shell target is one script file, without executable permission, with body tokenized into argv", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "executor-script-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const target = join(directory, "script with spaces;literal.sh");
-    await writeFile(target, "cat\n", { mode: 0o600 });
-    const { result, out } = await exec("sh", "hello from stdin", { target });
+    await writeFile(target, 'printf "%s|" "$@"\n', { mode: 0o600 });
+    const { result, out } = await exec("sh", '--flag "two words"', { target });
     assert.equal(result.status, 200);
-    assert.equal(out.stdout, "hello from stdin");
+    assert.equal(out.stdout, "--flag|two words|");
 });
 
 test("{§executor-subprocess-routing} a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {

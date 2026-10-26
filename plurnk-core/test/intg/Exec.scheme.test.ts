@@ -385,7 +385,7 @@ test("{§exec-target-routing} directory `(target)` sets the working directory fo
 });
 
 for (const source of ["local", "file", "worker"] as const) {
-    test(`{§executor-metadata} ${source} script receives exact argv, stdin and workspace cwd`, async () => {
+    test(`{§executor-subprocess-routing} ${source} script receives exact tokenized argv and workspace cwd`, async () => {
         await withWorkspace(async (ctx) => {
             const root = await mkdtemp(join(tmpdir(), "exec-arguments-"));
             try {
@@ -397,13 +397,12 @@ for (const source of ["local", "file", "worker"] as const) {
                     workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script.mjs", content: program,
                 });
                 const argv = ["ARGUMENT_SENTINEL", "two words", "", "$(touch unwanted)"];
-                const input = "raw stdin\nsecond line";
+                const body = 'ARGUMENT_SENTINEL "two words" "" "$(touch unwanted)"';
                 const statement: ExecStatement = {
-                    ...execStmt("js", null, input),
+                    ...execStmt("js", null, body),
                     target: source === "local" ? localPath(filename)
                         : source === "file" ? urlPath("file", join(root, filename))
                         : urlPath("worker", "/script.mjs"),
-                    metadata: [JSON.stringify({ args: argv })],
                 };
                 const proposed = deferred<number>();
                 const pending = ctx.engine.dispatch({
@@ -416,7 +415,6 @@ for (const source of ["local", "file", "worker"] as const) {
                 assert.equal((await pending).status, 200);
                 await ctx.exec.idle();
                 const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
-                assert.doesNotMatch(row?.attrs ?? "", /ARGUMENT_SENTINEL/, "raw metadata is not copied into proposal attrs");
                 const { pathname } = JSON.parse(row!.attrs) as { pathname: string };
                 const read = await ctx.engine.dispatch({
                     statement: readStmt(urlPath("js", pathname)),
@@ -424,7 +422,7 @@ for (const source of ["local", "file", "worker"] as const) {
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
                 });
                 assert.equal(read.status, 200);
-                assert.deepEqual(JSON.parse(String((read as { content?: string }).content)), { args: argv, input, cwd: root });
+                assert.deepEqual(JSON.parse(String((read as { content?: string }).content)), { args: argv, input: "", cwd: root });
             } finally {
                 await ctx.exec.idle();
                 await rm(root, { recursive: true, force: true });

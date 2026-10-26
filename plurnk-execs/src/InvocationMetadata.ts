@@ -1,16 +1,14 @@
 import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInput, ExecPreparation } from "./types.ts";
 
-type Options = { args: string[] };
-type Accepted = { args?: boolean };
+type Options = Record<string, never>;
 type Parsed = { options: Options } | { failure: SchemeResult };
 
-// {§executor-metadata} The executor framework owns these options, not Core. The
-// framework READS the heading's `[metadata]` as a JSON array of option objects — house policy,
-// not a language rule ({§scheme-metadata-modifier});
-// the key this framework knows is `args`.
+// {§executor-metadata} The executor framework READS the heading's `[metadata]` as a JSON array
+// of option objects — house policy, not a language rule ({§scheme-metadata-modifier}); the
+// default executor contract owns no metadata keys beyond the service's ({§service-metadata-keys}).
 export default class InvocationMetadata {
-    static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
+    static parse(input: ExecInput): Parsed {
         const fail = (code: string, detail: string, recovery?: string): Parsed => ({
             failure: Results.failure("executor:metadata", code, 400, detail, {}, {
                 runtime: input.runtime, ...(recovery === undefined ? {} : { recovery }), retryable: false,
@@ -18,32 +16,23 @@ export default class InvocationMetadata {
         });
         const read = MetadataOptions.parse(input.metadata, "executor:metadata", { runtime: input.runtime });
         if ("failure" in read) return read;
-        const options: Options = { args: [] };
-        for (const [field, value] of Object.entries(read.options)) {
-            if (!(accepted.args && field === "args")) {
-                return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`, InvocationMetadata.#fields(accepted));
-            }
-            if (!Array.isArray(value) || !value.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
-                return fail("invalid-args", "Execution args must be a JSON array of strings without NUL.");
-            }
-            options.args = value;
+        for (const [field] of Object.entries(read.options)) {
+            return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`, InvocationMetadata.#fields());
         }
-        return { options };
+        return { options: {} };
     }
 
     // {§executor-metadata} — an unsupported field's recovery names every field the run takes, the
-    // executor's own and the service's ({§service-metadata-keys}), and no guess at the field the
-    // author meant ({§diagnostic-observation}).
-    static #fields(accepted: Accepted): string {
-        const names = [...(accepted.args === true ? ["args"] : []), ...MetadataOptions.SERVICE_KEYS]
-            .map((name) => `\`${name}\``);
+    // service's ({§service-metadata-keys}), and no guess at the field the author meant ({§diagnostic-observation}).
+    static #fields(): string {
+        const names = MetadataOptions.SERVICE_KEYS.map((name) => `\`${name}\``);
         return names.length === 1
             ? `Its field is ${names[0]}.`
             : `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}.`;
     }
 
-    static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {
-        const parsed = this.parse(input, accepted);
+    static async prepare(input: ExecInput): Promise<ExecPreparation> {
+        const parsed = this.parse(input);
         if ("failure" in parsed) return parsed.failure;
         return { status: 200, cwd: input.cwd };
     }

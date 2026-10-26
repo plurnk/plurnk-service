@@ -98,9 +98,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // The slot contract, stated when a resource source cannot be read: the resource IS the program and the
-    // body its stdin. The other reading of the fence is not offered ({§diagnostic-observation}).
+    // body its arguments. The other reading of the fence is not offered ({§diagnostic-observation}).
     static sourceRecovery(source: string, upstream: unknown): string {
-        const contract = `The target \`${source}\` names the program resource; the body is its stdin.`;
+        const contract = `The target \`${source}\` names the program resource; the body is its arguments.`;
         return typeof upstream === "string" && upstream.length > 0 ? `${contract} ${upstream}` : contract;
     }
 
