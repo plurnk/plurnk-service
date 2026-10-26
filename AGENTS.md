@@ -14,7 +14,7 @@ extensions included in the default installation. The terminal client is a separa
 
 | Need | Where |
 |---|---|
-| What a command does | `ls scripts` lists what a person runs ({§scripts-layout}); every script answers `--help` with what it does, what it reads and what it writes ({§script-help}); `npm run` lists each package's names. |
+| What a command does | `ls scripts` lists what a person runs ({§scripts-layout}); every script answers `--help`; `npm run` lists each package's names. |
 | Install, build, gate | `npm install`, `npm run build`, `npm test` (the drill, `scripts/drill.mjs`; the pre-push hook runs it on a push to `main`; {§lint-gate}). `CONTRIBUTING.md` § Setup has the lifecycle table. |
 | A choice: a limit, a default, a posture | Each package's `.env.defaults`; `ARCHITECTURE.md` § Configuration authority is the law. The real-model layers, highest first: the shell, `plurnk-core/.env.test`, `$XDG_CONFIG_HOME/plurnk/.env`, the defaults, the floor ({§environment-layers}; `scripts/lib/environment.mjs` is the code). |
 | A model | `PLURNK_MODEL_<alias>=<provider>/<model>` declared once in `$XDG_CONFIG_HOME/plurnk/.env`; `PLURNK_MODEL=<alias>` selects one per run, or standing in that file (`plurnk-aliases/SPEC.md`; provider ids in `plurnk-models`). Credentials live in the login shell, which `scripts/operator-environment.sh` carries into every real-model run. |
