@@ -16,7 +16,7 @@ test("{§release-candidate-graph} release:gate enforces dependency freshness and
     await mkdir(path.join(cwd, "scripts"));
     await mkdir(path.join(cwd, "bin"));
     const record = 'import { appendFileSync } from "node:fs"; appendFileSync("calls.jsonl", JSON.stringify(process.argv.slice(1)) + "\\n");';
-    for (const script of ["package-build-policy", "package-provenance", "package-publint"]) {
+    for (const script of ["package-build-policy", "package-provenance", "package-publint", "package-types"]) {
         await writeFile(path.join(cwd, "scripts", `${script}.mjs`), record);
     }
     const rootManifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -69,6 +69,7 @@ if (args[0] !== "audit") {
     const calls = (await readFile(path.join(cwd, "calls.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
     assert.ok(calls.some((args) => args[0].endsWith("package-provenance.mjs") && args.includes("--pack") && args.includes("alpha") && args.includes("beta")));
     assert.ok(calls.some((args) => args[0].endsWith("package-publint.mjs") && args.includes("alpha") && args.includes("beta")));
+    assert.ok(calls.some((args) => args[0].endsWith("package-types.mjs") && args.includes("alpha") && args.includes("beta")));
     assert.equal(calls.some((args) => args.includes("excluded")), false);
     assert.equal(calls.some((args) => args[0] === "npm" && args[1] === "outdated"), true);
     await assert.rejects(run(process.execPath, [gates, "--only", "missing"], { cwd, env }), /unknown workspace directory: missing/);

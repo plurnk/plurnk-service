@@ -85,15 +85,15 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 | Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement; `npm run tier:history -w @plurnk/plurnk-service` ledgers every run ({§tier-census}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
-| Published type resolution | Optional `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds. |
+| Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§type-resolution-audit}). |
 
 The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
 visible. `plurnk-meta`'s `./POLICY.md` and `./recap.md` exports are excluded because
-they are file assets, not code modules. The checker is fetched into npm's cache
-on demand; it adds no project dependency or step to ordinary or release gates.
-Its nonzero exit means the selected audit failed, not an advisory green result.
-ATTW skips packages with no declarations; it complements, rather than replaces,
-the existing package-content and publint checks.
+they are file assets, not code modules. The checker is an exact-pinned root
+development dependency and runs in `release:gate` (`release:check`) beside publint
+as well as on demand. Its nonzero exit means the selected audit failed, not an
+advisory green result. ATTW skips packages with no declarations; it complements,
+rather than replaces, the existing package-content and publint checks.
 
 An in-process test timeout does not contain synchronous allocation or native
 work. Run suspected resource-exhaustion cases under OS memory and swap limits;

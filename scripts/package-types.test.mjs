@@ -22,7 +22,7 @@ const fixture = async (t) => {
     return root;
 };
 
-test("{§type-resolution-audit} optional type audit checks packed public code with explicit profile and asset exclusions", async (t) => {
+test("{§type-resolution-audit} type audit checks packed public code with explicit profile and asset exclusions", async (t) => {
     const root = await fixture(t);
     const calls = [];
     const count = await checkPackageTypes(root, {
@@ -30,26 +30,26 @@ test("{§type-resolution-audit} optional type audit checks packed public code wi
         report: () => {},
     });
     assert.equal(count, 3);
-    const common = ["exec", "--yes", "--package=@arethetypeswrong/cli@0.18.5", "--", "attw", "--pack"];
     assert.deepEqual(calls, [
-        { command: "npm", cwd: root, args: [...common, "code package", "--profile", "esm-only", "--format", "table", "--no-color"] },
-        { command: "npm", cwd: root, args: [...common, "meta", "--profile", "esm-only", "--format", "table", "--no-color", "--exclude-entrypoints", "./POLICY.md", "./recap.md"] },
-        { command: "npm", cwd: root, args: [...common, "assets", "--profile", "esm-only", "--format", "table", "--no-color"] },
+        { command: "attw", cwd: root, args: ["--pack", "code package", "--profile", "esm-only", "--format", "table", "--no-color"] },
+        { command: "attw", cwd: root, args: ["--pack", "meta", "--profile", "esm-only", "--format", "table", "--no-color", "--exclude-entrypoints", "./POLICY.md", "./recap.md"] },
+        { command: "attw", cwd: root, args: ["--pack", "assets", "--profile", "esm-only", "--format", "table", "--no-color"] },
     ]);
 });
 
-test("{§type-resolution-audit} optional type audit selects an exact workspace and rejects absent or private selections", async (t) => {
+test("{§type-resolution-audit} type audit selects exact workspaces and rejects absent or private selections", async (t) => {
     const root = await fixture(t);
     const calls = [];
     const options = { run: async (...args) => { calls.push(args); return { code: 0, signal: null }; }, report: () => {} };
     assert.equal(await checkPackageTypes(root, { ...options, only: "code package" }), 1);
-    assert.equal(calls.length, 1);
+    assert.equal(await checkPackageTypes(root, { ...options, only: ["code package", "assets"] }), 2);
+    assert.equal(calls.length, 3);
     await assert.rejects(checkPackageTypes(root, { ...options, only: "../elsewhere" }), /Unknown workspace: \.\.\/elsewhere/);
     await assert.rejects(checkPackageTypes(root, { ...options, only: "private" }), /No public package selected/);
-    assert.equal(calls.length, 1, "invalid selections never launch the checker");
+    assert.equal(calls.length, 3, "invalid selections never launch the checker");
 });
 
-test("{§type-resolution-audit} optional type audit reports every checker failure and does not turn errors into success", async (t) => {
+test("{§type-resolution-audit} type audit reports every checker failure and fails on a broken type entrypoint", async (t) => {
     const root = await fixture(t);
     let calls = 0;
     await assert.rejects(checkPackageTypes(root, {
@@ -57,8 +57,22 @@ test("{§type-resolution-audit} optional type audit reports every checker failur
         report: () => {},
     }), /code package: exit 1[\s\S]*meta: signal SIGTERM/);
     assert.equal(calls, 3, "one bad package does not hide the remaining results");
-    const cause = new Error("spawn npm ENOENT");
+    const cause = new Error("spawn attw ENOENT");
     await assert.rejects(checkPackageTypes(root, {
         run: async () => { throw cause; }, report: () => {},
     }), (error) => error === cause);
+
+    // Real attw execution on a deliberately broken type entrypoint (ships types, but "." has no matching declaration).
+    await mkdir(path.join(root, "broken", "dist"), { recursive: true });
+    await writeFile(path.join(root, "broken", "dist", "index.js"), "export const x = 1;\n");
+    await writeFile(path.join(root, "broken", "dist", "other.d.ts"), "export declare const y: number;\n");
+    await writeFile(path.join(root, "broken", "package.json"), JSON.stringify({
+        name: "@example/broken",
+        version: "1.0.0",
+        type: "module",
+        exports: { ".": { types: "./dist/missing.d.ts", default: "./dist/index.js" } },
+        files: ["dist/**/*"],
+    }));
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ workspaces: ["broken"] }));
+    await assert.rejects(checkPackageTypes(root, { only: "broken", report: () => {} }), /ATTW failed for 1 package\(s\):\nbroken: exit 1/);
 });

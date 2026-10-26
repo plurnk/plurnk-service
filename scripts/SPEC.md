@@ -72,7 +72,7 @@ refuses the tree when it does not hold.
 | Audit | Rule |
 | --- | --- |
 | §runtime-import-direction Runtime import direction | Over the built output, never the TypeScript: erased imports and type-only re-exports are not edges, a side-effect import beside a type-only import is; owner boundaries hold on emitted imports; an unresolved import or missing build output is a refusal (#1053). `npm run audit:direction`. |
-| §type-resolution-audit Type resolution | Packed public code resolves its exported types from a consumer's view under the `esm-only` profile, assets excluded; a selection names an exact workspace and refuses an absent or private one; every checker failure is reported and none becomes success. `npm run packages:types`. |
+| §type-resolution-audit Type resolution | Packed public code resolves its exported types from a consumer's view under the `esm-only` profile, assets excluded; a selection names exact workspaces and refuses an absent or private one; every checker failure is reported and none becomes success. Runs in `release:gate` beside `publint` and on demand via `npm run packages:types`. |
 
 ## Launchers
 

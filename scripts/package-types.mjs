@@ -5,8 +5,8 @@ import { parseArgs } from "node:util";
 import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
-usage: npm run packages:types [-- --only <workspace-dir>]
-Checks that every package's exported types resolve from a consumer's view.
+usage: npm run packages:types [-- --only <workspace-dir>]...
+Checks that every package's exported types resolve from a consumer's view ({§type-resolution-audit}).
 Reads: every workspace's package.json exports.
 Writes: findings to stdout; exit 1 on any.
 `);
@@ -16,24 +16,35 @@ const excludedEntrypoints = {
     "@plurnk/plurnk-meta": ["./POLICY.md", "./recap.md"],
 };
 
+const binDir = path.resolve(import.meta.dirname, "../node_modules/.bin");
+
 const runChecker = (command, args, cwd) => new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: "inherit" });
+    const child = spawn(command, args, {
+        cwd,
+        stdio: "inherit",
+        env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
     child.once("error", reject);
     child.once("close", (code, signal) => resolve({ code, signal }));
 });
 
 export const checkPackageTypes = async (root, { only, run = runChecker, report = console.log } = {}) => {
     const { workspaces } = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-    if (only !== undefined && !workspaces.includes(only)) throw new Error(`Unknown workspace: ${only}`);
+    const selected = only === undefined
+        ? workspaces
+        : [...new Set(Array.isArray(only) ? only : [only])];
+    for (const directory of selected) {
+        if (!workspaces.includes(directory)) throw new Error(`Unknown workspace: ${directory}`);
+    }
     const failures = [];
     let checked = 0;
-    for (const directory of only === undefined ? workspaces : [only]) {
+    for (const directory of selected) {
         const manifest = JSON.parse(await readFile(path.join(root, directory, "package.json"), "utf8"));
         if (manifest.private === true) continue;
         const exclusions = excludedEntrypoints[manifest.name] ?? [];
         report(`ATTW ${directory}: esm-only${exclusions.length === 0 ? "" : `; file assets excluded: ${exclusions.join(", ")}`}`);
-        const { code, signal } = await run("npm", [
-            "exec", "--yes", "--package=@arethetypeswrong/cli@0.18.5", "--", "attw", "--pack", directory,
+        const { code, signal } = await run("attw", [
+            "--pack", directory,
             "--profile", "esm-only", "--format", "table", "--no-color",
             ...(exclusions.length === 0 ? [] : ["--exclude-entrypoints", ...exclusions]),
         ], root);
@@ -46,7 +57,7 @@ export const checkPackageTypes = async (root, { only, run = runChecker, report =
 };
 
 if (import.meta.main) {
-    const { values } = parseArgs({ options: { only: { type: "string" } } });
+    const { values } = parseArgs({ options: { only: { type: "string", multiple: true } } });
     const count = await checkPackageTypes(path.resolve(import.meta.dirname, ".."), values);
     console.log(`ATTW GREEN: ${count} public workspace package(s)`);
 }

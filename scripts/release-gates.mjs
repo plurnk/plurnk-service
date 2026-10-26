@@ -32,6 +32,9 @@ await run("node", provenanceArgs, { maxBuffer: 64 * 1024 * 1024 });
 const publintArgs = ["scripts/package-publint.mjs"];
 publintArgs.push(...selection);
 await run("node", publintArgs, { maxBuffer: 64 * 1024 * 1024 });
+const typesArgs = ["scripts/package-types.mjs"];
+typesArgs.push(...selection);
+await run("node", typesArgs, { maxBuffer: 64 * 1024 * 1024 });
 
 let gated = 0;
 for (const dir of dirs) {
