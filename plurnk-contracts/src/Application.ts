@@ -242,6 +242,24 @@ export type ApplicationProviderAlias = ModelRoute & {
     readonly inputCapacity: number | null;
 };
 
+/** {§service-update} Result of an explicit operator-triggered catalog and package update. */
+export interface ApplicationServiceUpdateResult {
+    readonly catalog: {
+        readonly status: "updated" | "unchanged";
+        readonly providers: number;
+        readonly models: number;
+        readonly addedModels: number;
+        readonly updatedAt: string;
+        readonly path: string;
+    };
+    readonly npm: {
+        readonly status: "updated" | "unchanged" | "source";
+        readonly package: string;
+        readonly previousVersion: string;
+        readonly currentVersion: string;
+    };
+}
+
 export type ApplicationEventHandler = (
     workspaceId: number | null,
     method: string,

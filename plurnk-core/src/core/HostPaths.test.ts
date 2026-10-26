@@ -42,6 +42,7 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     assert.equal(paths.databaseFile, "/home/ada/.local/share/plurnk/plurnk.db");
     assert.equal(paths.stateDir, "/home/ada/.local/state/plurnk");
     assert.equal(paths.cacheDir, "/home/ada/.cache/plurnk");
+    assert.equal(paths.modelsCacheFile, "/home/ada/.cache/plurnk/models.json");
     assert.equal(paths.runtimeDir, null);
     assert.equal(paths.plurnkSkillsDir, "/home/ada/.config/plurnk/skills");
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");
@@ -104,6 +105,7 @@ test("{§state-root} an absolute state root moves data, state, cache and runtime
     assert.equal(paths.dataDir, "/tmp/private-daemon/data/plurnk");
     assert.equal(paths.stateDir, "/tmp/private-daemon/state/plurnk");
     assert.equal(paths.cacheDir, "/tmp/private-daemon/cache/plurnk");
+    assert.equal(paths.modelsCacheFile, "/tmp/private-daemon/cache/plurnk/models.json");
     assert.equal(paths.runtimeDir, "/tmp/private-daemon/runtime/plurnk");
     assert.equal(paths.databaseFile, "/tmp/private-daemon/data/plurnk/plurnk.db");
     assert.equal(paths.configDir, "/cfg/plurnk", "configuration is operator input and stays under XDG");

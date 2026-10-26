@@ -26,7 +26,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, isSafeInteger, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -46,6 +46,8 @@ import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import EnvScheme from "../schemes/Env.ts";
 import HostPaths from "../core/HostPaths.ts";
+import ServiceUpdater from "../core/ServiceUpdater.ts";
+import { loadCatalogCache } from "@plurnk/plurnk-models";
 import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -95,6 +97,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         retentionPolicy();
         Exec.validateConfiguration();
         ExecutorRegistry.validateConfiguration();
+        ServiceUpdater.validateConfiguration();
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -165,6 +168,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
+        try { loadCatalogCache(hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
         this.#dbPath = dbPath;
         this.#http = http;
         this.#configuration = configuration;
@@ -759,6 +763,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
         if (this.#dbPath === undefined) throw new Error("this daemon was started without its database path");
         return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
+    }
+
+    // {§service-update} — explicit operator-triggered model-catalog and package update.
+    async updateService(): Promise<ApplicationServiceUpdateResult> {
+        return await ServiceUpdater.run({ hostPaths: this.#hostPaths });
     }
 
     listPrompts(workspaceId: number, limit?: number, sessionId?: number): Promise<string[]> {

@@ -147,6 +147,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | {§startup-readiness-line} | Readiness is one stdout line. |
 | {§daemon-launch} | The service ships its own launcher; launchers own policy. |
 | {§service-stop} | `plurnk-service stop` ends the service that holds the configured database. |
+| {§service-update} | Explicit operator-triggered model-catalog and package update (`PLURNK_SERVICE_UPDATEABLE`). |
 <!-- /map -->
 
 Daemon composition and startup. Session attention and workspace state follow
@@ -327,6 +328,8 @@ plurnk-service may be starting there, and only `discover` says which.
 | `"shared"` | survives the launcher that started it (scheduled deliveries and other clients depend on it): its own process group, both streams appended to the caller's `logFile`, else to the service's `<state dir>/service.log`, which the result names as `logFile`; readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
 
 §service-stop **`plurnk-service stop` ends the service that holds the configured database.** It reads the owning process from the database's lock, sends it SIGTERM, and returns once that process has exited; the service bounds its own shutdown (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, {§crash-only-stop}). A database that no live process holds is reported as not running, and that is success. A clean stop exits 0, so the systemd unit's `Restart=on-failure` leaves it stopped.
+
+§service-update **Explicit operator-triggered model-catalog and package update (`PLURNK_SERVICE_UPDATEABLE`).** Nothing phones a third party or installs packages automatically on startup, model miss, or a background timer. On startup the service and daemon load `$XDG_CACHE_HOME/plurnk/models.json` if present (`HostPaths.modelsCacheFile`, {§model-catalog-cache}). When `PLURNK_SERVICE_UPDATEABLE=1` (the shipped default), an explicit update triggered via `plurnk-service update`, the application port's `updateService()`, `_plurnk/action` `service.update`, or `/update` fetches and atomically writes `$XDG_CACHE_HOME/plurnk/models.json`, hot-swaps the active in-memory catalog immediately, and updates installed `@plurnk/plurnk-service` (and `@plurnk/plurnk` when co-installed) via `npm` (reporting `status: "source"` without invoking `npm` in a source checkout). When `PLURNK_SERVICE_UPDATEABLE=0`, update commands and actions are refused with 403 `update-disabled`, leaving package upgrades to external package management and uncataloged model tuning to provider environment knobs.
 
 ## §actor-boundary Sessions and workspace boundaries
 
@@ -4585,7 +4588,7 @@ base directories replace any ambient values they supersede, and an absent
 | Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, plurnk-only MCP definitions `plurnk/mcp.json`, Agent Skills `plurnk/skills/<name>/SKILL.md`, and Agent Plugins `plurnk/plugins/<plugin>/` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
-| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
+| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§service-update}); no directory is created until an explicit update writes it. |
 | Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
 | Shared global MCP definitions | User home | `.agents/mcp.json` |
 | Shared global Agent Plugins | User home | `.agents/plugins/<plugin>/` ({§agent-plugins-hosting}) |

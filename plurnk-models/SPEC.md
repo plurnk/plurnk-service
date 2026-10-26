@@ -9,6 +9,13 @@
 | Publication | Build/prepack includes both generated catalogs in `dist`. Runtime requires neither upstream code nor network access. |
 | Refresh | Update the snapshot dependency and lockfile, then rebuild and verify consumers. A build does not select a newer snapshot. |
 
+## §model-catalog-cache On-demand XDG cache overlay
+
+| Boundary | Contract |
+| --- | --- |
+| Offline boot | `loadCatalogCache(cachePath)` reads an existing cached projection without network access. On overlap between the shipped snapshot and the cache, whichever has the newer timestamp wins while entries unique to the other remain available. |
+| Explicit refresh | `updateCatalogCache(cachePath)` performs a conditional `GET` (`If-None-Match` when an `ETag` is cached) against `https://models.dev/api.json`, validates the response through `projectCatalog`, writes the cache atomically, and hot-swaps the active in-memory catalog immediately. |
+
 ## §model-catalog-projection Retained facts
 
 | Projection | Contract |

@@ -454,7 +454,7 @@ plane.**
   `providers/set`, and `providers/disable`.
 - **Available Slash Commands (`availableCommands` on `session/prompt`):**
   Every session advertises `AvailableCommand[]` entries for `/mcp`, `/skills`, `/members`,
-  `/env`, `/schedule`, `/rollback`, `/share`, and `/script`. Submitting `/<command> ...` via
+  `/env`, `/schedule`, `/rollback`, `/share`, `/script`, and `/update`. Submitting `/<command> ...` via
   `session/prompt` executes the command under ACP v2's local-command lifecycle
   (`state_update: { state: "running" }` → `agent_message_chunk` / `notice` →
   `state_update: { state: "idle", stopReason: "end_turn" }`).
@@ -467,6 +467,7 @@ plane.**
 | `ping` | Daemon | Liveness check; returns `{}`. |
 | `discover` | Daemon | Returns the complete `AcpDiscovery` manifest ({§discovery}). |
 | `models.list` | Daemon | `ApplicationPort.listModels` ({§model-catalog}). |
+| `service.update` (`/update`) | Daemon | `ApplicationPort.updateService` ({§service-update}). |
 | `workspace.list` / `workspace.create` / `workspace.attach` / `workspace.rename` / `workspace.hide` | Daemon / Workspace | Workspace lifecycle on `ApplicationPort` ({§acp-place-hiding}). |
 | §acp-session-loops `session.loops` | Workspace | `ApplicationPort.listSessionLoops`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }` with `opening` bounded to `PLURNK_ACP_EXCERPT_CHARS`. |
 | `log.read` / `entry.read` / `workspace.prompts` | Workspace | `ApplicationPort.readLog`, `readEntry`, and `listPrompts`. |

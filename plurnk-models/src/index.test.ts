@@ -1,13 +1,19 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { mkdtemp, rm, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
     catalogSnapshot,
+    loadCatalogCache,
     lookup,
     lookupProvider,
     providerCatalogSnapshot,
     providerCredentialEnvNames,
     providerNameFromCatalogId,
+    resetCatalog,
     resolveModel,
+    updateCatalogCache,
 } from "./index.ts";
 
 test("{§model-catalog-projection} lookup: a known cloud model exposes the independent limits and rate groups", () => {
@@ -107,3 +113,74 @@ test("{§model-catalog-projection} catalogSnapshot: every vendored provider has 
         }
     }
 });
+
+test("{§model-catalog-cache} updateCatalogCache writes an ETag-aware XDG cache, hot-swaps in memory, and loadCatalogCache merges newer-wins", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-models-cache-"));
+    const cachePath = join(dir, "models.json");
+    try {
+        let seenIfNoneMatch: string | null = null;
+        const payload = {
+            anthropic: {
+                id: "anthropic",
+                name: "Anthropic",
+                npm: "@ai-sdk/anthropic",
+                env: ["ANTHROPIC_API_KEY"],
+                models: {
+                    "claude-yesterday-1": {
+                        name: "Claude Yesterday 1",
+                        limit: { context: 500_000, output: 64_000 },
+                        attachment: true,
+                        reasoning: true,
+                        reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+                        tool_call: true,
+                        modalities: { input: ["text", "image"], output: ["text"] },
+                        cost: { input: 2, output: 10 },
+                    },
+                },
+            },
+        };
+
+        const report1 = await updateCatalogCache(cachePath, {
+            url: "https://models.dev/api.json",
+            fetch: async (_input, init) => {
+                const headers = new Headers(init?.headers);
+                seenIfNoneMatch = headers.get("if-none-match");
+                return new Response(JSON.stringify(payload), {
+                    status: 200,
+                    headers: { "content-type": "application/json", etag: '"v1"' },
+                });
+            },
+        });
+        assert.equal(seenIfNoneMatch, null);
+        assert.equal(report1.status, "updated");
+        assert.equal(report1.addedModels, 1);
+        assert.equal(lookup("anthropic", "claude-yesterday-1")?.contextWindow, 500_000);
+        assert.ok(lookup("openai", "gpt-5.4") !== null, "shipped models remain available");
+
+        const report2 = await updateCatalogCache(cachePath, {
+            url: "https://models.dev/api.json",
+            fetch: async (_input, init) => {
+                const headers = new Headers(init?.headers);
+                seenIfNoneMatch = headers.get("if-none-match");
+                return new Response(null, { status: 304 });
+            },
+        });
+        assert.equal(seenIfNoneMatch, '"v1"');
+        assert.equal(report2.status, "unchanged");
+        assert.equal(report2.addedModels, 0);
+
+        resetCatalog();
+        assert.equal(lookup("anthropic", "claude-yesterday-1"), null);
+        assert.equal(loadCatalogCache(cachePath), true);
+        assert.equal(lookup("anthropic", "claude-yesterday-1")?.contextWindow, 500_000);
+        // Touch shipped catalog mtime doesn't erase unique cached models even when shipped is newer
+        const past = new Date(0);
+        await utimes(cachePath, past, past);
+        assert.equal(loadCatalogCache(cachePath), true);
+        assert.equal(lookup("anthropic", "claude-yesterday-1")?.contextWindow, 500_000);
+    } finally {
+        resetCatalog();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+

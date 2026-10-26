@@ -76,6 +76,7 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
     { name: "rollback", description: "Roll back reversible session operations" },
     { name: "share", description: "Write a diagnostic digest of the workspace" },
     { name: "script", description: "Execute PLURNK statements directly" },
+    { name: "update", description: "Update the model catalog and service packages" },
 ]);
 
 const httpProblem = (
@@ -1569,6 +1570,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             ping: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             discover: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "models.list": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
+            "service.update": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.create": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.attach": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.list": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
@@ -1700,6 +1702,25 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             );
             return typeof res === "string" ? res : JSON.stringify(res);
         }
+        if (cmd === "update") {
+            const res = await this.#handlePlurnkAction(
+                { ...envelope, kind: "service.update", params: {} },
+                peer,
+            );
+            if (isRecord(res) && isRecord(res.catalog) && isRecord(res.npm)) {
+                const added = typeof res.catalog.addedModels === "number" && res.catalog.addedModels > 0
+                    ? `, +${res.catalog.addedModels} new`
+                    : "";
+                const catLine = `catalog: ${String(res.catalog.status)} (${String(res.catalog.models)} models across ${String(res.catalog.providers)} providers${added})`;
+                const npmLine = res.npm.status === "source"
+                    ? `npm: ${String(res.npm.package)}@${String(res.npm.currentVersion)} (source checkout)`
+                    : res.npm.status === "updated"
+                        ? `npm: ${String(res.npm.package)} ${String(res.npm.previousVersion)} -> ${String(res.npm.currentVersion)}`
+                        : `npm: ${String(res.npm.package)}@${String(res.npm.currentVersion)} (unchanged)`;
+                return `${catLine}\n${npmLine}`;
+            }
+            return typeof res === "string" ? res : JSON.stringify(res);
+        }
         const tokens = rest.length > 0 ? rest.split(/\s+/u) : [];
         const verb = tokens[0] ?? "list";
         const alias = tokens[1];
@@ -1812,6 +1833,18 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
                 ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
             });
+        }
+
+        if (kind === "service.update") {
+            if (typeof this.#seam.updateService !== "function") {
+                throw RequestError.internalError({ detail: "service.update is not supported by this daemon." });
+            }
+            try {
+                return await this.#seam.updateService();
+            } catch (err) {
+                const detail = err instanceof Error ? err.message : String(err);
+                throw RequestError.invalidParams({ detail });
+            }
         }
 
         if (kind === "workspace.list") {

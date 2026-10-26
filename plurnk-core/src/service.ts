@@ -36,6 +36,8 @@ import Paths from "./Paths.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
+import { loadCatalogCache } from "@plurnk/plurnk-models";
+import ServiceUpdater from "./core/ServiceUpdater.ts";
 
 // How often `stop` looks for the signalled process to be gone.
 const STOP_POLL_MS = 100;
@@ -442,6 +444,8 @@ export default class Service {
         for (const cause of configurationErrors) Service.#configuration.record("extensions", cause);
         Service.#configuration.pluginReports(reports);
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
+        // {§model-catalog-cache} — load cached models.dev snapshot if present.
+        try { loadCatalogCache(Service.#hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
         // {§operator-config-undeclared-key} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
         for (const file of new Set([...(configFile === null ? [] : [resolve(configFile)]), Service.#hostPaths.configFile])) {
@@ -460,6 +464,12 @@ export default class Service {
         } else if (command === "stop") {
             if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
             handler = Service.#stop;
+        } else if (command === "update") {
+            if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
+            handler = async () => {
+                const result = await ServiceUpdater.run({ hostPaths: Service.#hostPaths, buildInfo });
+                process.stdout.write(`${ServiceUpdater.formatReport(result)}\n`);
+            };
         } else if (command === "config") {
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = action === null ? "config" : `config ${action}`;

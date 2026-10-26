@@ -672,6 +672,22 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
             currentPolicy = policy as unknown as Record<string, unknown>;
             return { service: {}, workspace: currentPolicy, effective: currentPolicy };
         },
+        updateService: async () => ({
+            catalog: {
+                status: "updated",
+                providers: 12,
+                models: 450,
+                addedModels: 3,
+                updatedAt: "2026-10-26T00:00:00.000Z",
+                path: "/tmp/models.json",
+            },
+            npm: {
+                status: "source",
+                package: "@plurnk/plurnk-service",
+                previousVersion: "4.4.0",
+                currentVersion: "4.4.0",
+            },
+        }),
     };
 
     const acpModule = Module.create({ env: options?.env });
@@ -1595,7 +1611,14 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
                 /Action 'workspace\.mcp\.list' rejected parameters\./,
             );
 
-            // 7. Slash command execution via session/prompt (/mcp list)
+            // 7. Slash command execution via session/prompt (/mcp list and /update) and service.update action
+            const updateAction = await ctx.request<{ catalog: { status: string }; npm: { status: string } }>(
+                "_plurnk/action",
+                { kind: "service.update", params: {} },
+            );
+            assert.equal(updateAction.catalog.status, "updated");
+            assert.equal(updateAction.npm.status, "source");
+
             await ctx.request(methods.agent.session.resume, {
                 sessionId: "1#user",
                 cwd: "/workspace/alpha",
@@ -1603,6 +1626,10 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
             await ctx.request(methods.agent.session.prompt, {
                 sessionId: "1#user",
                 prompt: [{ type: "text", text: "/mcp list" }],
+            });
+            await ctx.request(methods.agent.session.prompt, {
+                sessionId: "1#user",
+                prompt: [{ type: "text", text: "/update" }],
             });
             await new Promise((r) => setTimeout(r, 30));
             assert.ok(updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));

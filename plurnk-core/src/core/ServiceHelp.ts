@@ -12,7 +12,7 @@ export default class ServiceHelp {
     }
 
     static format(flags: FlagDescriptor[]): string {
-        return `usage: plurnk-service [options] [start|stop|migrate]
+        return `usage: plurnk-service [options] [start|stop|migrate|update]
        plurnk-service [options] config [edit|defaults|check]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
@@ -23,6 +23,7 @@ ${EnvFlags.formatFlagsHelp(flags)}
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
   stop                         stop the service that holds the configured database, and wait for it to exit
+  update                       update the cached model catalog and installed packages (requires PLURNK_SERVICE_UPDATEABLE=1)
   config defaults             print every installed package's annotated .env.defaults
   config check                validate configuration without contacting a provider
   share                        share a consistent copy of the database as a digest <folder>
