@@ -47,11 +47,7 @@ creation, child observations, waiting, completion, and reply routing.
 
 BARE makes one isolated call to the model, not a persistent worker. Nothing
 reaches it but the fence body: no log, no files, no web, no tools, no memory of
-this loop. It answers from the body and the model's own knowledge alone, so it
-cannot look anything up, and what it does not know it will guess. Use it to
-isolate a sub-problem whose complete inputs fit in the body — a long text to
-judge, a tangle to reason through without the log in view — never to search,
-recall, or fetch.
+this loop. It answers from the body and the model's own knowledge alone.
 
 ```BARE
 A self-contained prompt, with everything it needs pasted in.
