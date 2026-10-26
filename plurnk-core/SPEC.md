@@ -3656,7 +3656,7 @@ accounting and model-visible failure evidence remain separately owned by
 | Tag | Promise |
 | --- | --- |
 | {§exec-target-routing} | Exec target routing: |
-| {§exec-target-near-miss} | Two target near-misses have one reading each and are read without a diagnostic (#758). |
+| {§exec-target-near-miss} | A target in the executor's own scheme whose path can never be a stream (`sh:///daemon-env`; streams are eight… |
 | {§exec-target-documentation} | Documentation is never an execution target: generated reference is never a program. |
 | {§exec-tool-fall-through} | A tool run as a shell command is named at the failure site. |
 | {§exec-source-temporary} | Resource execution preserves source identity. |
@@ -3691,26 +3691,24 @@ AST: `{ runtime (the fence name in its registered lowercase spelling; there is n
 §exec-target-routing **Exec target routing:** the engine routes unconditionally to the `exec` scheme, resolves the runtime first, selects its static {§executor-invocation} or exact {§executor-tool-registry} entry, and enforces that declaration before effect admission. Core owns target realization: neither filesystem type nor body presence may invent a target role the selected runtime did not declare.
 
 - Core supplies the workspace's `project_root` as the default `cwd`, or the daemon's cwd in a headless workspace. The selected executor prepares its invocation metadata under {§executor-metadata}, for every target scheme, before effect admission or source acquisition; core validates the preparation result and retains its cwd, and neither parses option names nor redirects metadata to a source scheme. An executor without preparation accepts no metadata.
-- The `(path)` is a program — a script for an interpreter, a tool name for a tool runtime — and neither a command nor a working directory is ever a target. The default shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
+- The `(target)` is a program or working directory for an interpreter, or a tool name for a tool runtime. The default shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
 - The started receipt names the working directory only when it is not the project root, and then in the project-relative form ({§fs-namespace}); the default directory is omitted rather than repeated in every receipt. Native file addresses resolve from that same project directory, while absolute input retains its filesystem meaning.
 
-A `script`-kind target ({§executor-invocation}) is the program, and core inspects it before anything spawns:
+A `script`-kind target ({§executor-invocation}) is the program or working directory, and core inspects it before anything spawns:
 
 | Target | Outcome |
 | --- | --- |
 | a file | the script |
-| a directory | refused `400 target-not-a-program` |
+| a directory with an inline body | the working directory (`cwd`) for the inline body |
+| a directory with no body | refused `400 target-not-a-program` |
 | an absent path | refused `400 target-not-found`, stating what exists and inferring nothing ({§diagnostic-observation}): a registered tool of another executor is named with that executor, another available executor as its own executor (`` `python3` is its own executor. ``), and anything else as a target that must name an existing program resource |
 | a non-file resource that cannot be read | the owning READ's failure identity (#163), its recovery stating the slot contract: the resource is the program and the body its stdin |
 
-§exec-target-near-miss Two target near-misses have one reading each and are read
-without a diagnostic (#758). A directory target is never a program: with a body
-and no explicit `cwd`, the body runs with that directory as its working
-directory; without a body it is still `target-not-a-program`. A target in the
-executor's own scheme whose path can never be a stream (`sh:///daemon-env`;
-streams are eight hex digits) is the writer's name for the run: with a body, the
-body runs as if targetless; without one, the source read refuses as before. A
-real stream id is always the program source.
+§exec-target-near-miss A target in the executor's own scheme whose path can never
+be a stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's
+name for the run (#758): with a body, the body runs as if targetless without a
+diagnostic; without one, the source read refuses as before. A real stream id is
+always the program source.
 
 §exec-target-documentation **Documentation is never an execution target: generated reference is never a program.** A resource target under
 `worker:///_plurnk/` — the executor and scheme documentation the harness generates — is refused

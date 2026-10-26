@@ -1,8 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import BaseExecutor from "./BaseExecutor.ts";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
@@ -31,9 +28,6 @@ for (const [blocks, code] of [
     [['{"args": [1]}'], "invalid-args"],
     [['{"args": ["\\u0000"]}'], "invalid-args"],
     [['{"args": []}', '{"args": []}'], "metadata-repeated"],
-    [['{"cwd": ""}'], "invalid-cwd"],
-    [['{"cwd": 7}'], "invalid-cwd"],
-    [['{"cwd": "bad\\u0000path"}'], "invalid-cwd"],
     [['{"flag": "yes"}'], "metadata-unsupported"],
     [["--help"], "metadata-invalid"],
     [["42"], "metadata-invalid"],
@@ -58,27 +52,8 @@ test("{§executor-metadata} argument support is subprocess-owned, for scripts an
     const unsupported = await pure.prepare(input(['{"args": []}'], { runtime: "pure" }));
     assert.equal(unsupported.status, 400);
     assert.match(unsupported.problem?.type ?? "", /metadata-unsupported$/);
+    assert.equal(unsupported.problem?.recovery, "Its field is `lifetime`.");
     assert.equal((await pure.prepare(input(null))).status, 200);
-});
-
-test("{§executor-metadata} cwd is prepared once from the supplied environment", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "executor-options-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const directory = join(root, "directory with spaces");
-    await mkdir(directory);
-    await writeFile(join(root, "plain-file"), "not a directory");
-    for (const cwd of ["directory with spaces", directory]) {
-        const prepared = await executor.prepare(input([JSON.stringify({ cwd })], { cwd: root }));
-        assert.equal(prepared.status, 200);
-        assert.equal(prepared.cwd, directory);
-    }
-    for (const cwd of ["missing", "plain-file", "plain-file/nested"]) {
-        const failed = await executor.prepare(input([JSON.stringify({ cwd })], { cwd: root }));
-        assert.equal(failed.status, 400);
-        assert.match(failed.problem?.type ?? "", /cwd-not-found$/);
-    }
-    const untouched = await executor.prepare(input(null, { cwd: null }));
-    assert.deepEqual(untouched, { status: 200, cwd: null });
 });
 
 test("{§executor-metadata} an unsupported field's refusal names the run's fields and nothing more ({§diagnostic-observation})", async () => {
@@ -86,6 +61,6 @@ test("{§executor-metadata} an unsupported field's refusal names the run's field
         const refused = await executor.prepare(input([JSON.stringify({ [field]: 60 })]));
         assert.equal(refused.status, 400);
         assert.equal(refused.problem?.detail, `Executable tool '${input(null).runtime}' does not accept metadata field '${field}'.`);
-        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args` and `lifetime`.");
+        assert.equal(refused.problem?.recovery, "Its fields are `args` and `lifetime`.");
     }
 });

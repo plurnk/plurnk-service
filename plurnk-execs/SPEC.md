@@ -145,7 +145,7 @@ authored READ retains its own source-scheme metadata contract.
 | Stage | Contract |
 | ----- | -------- |
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
-| Framework default | `BaseExecutor.prepare` accepts `[{"cwd": "<directory>"}]`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its fields are `cwd`, `args` and `lifetime`. `` Tools can override preparation to own different metadata. |
+| Framework default | `BaseExecutor.prepare` validates that no unsupported metadata fields or duplicates are present. Unknown fields, duplicates, and malformed values are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its fields are `args` and `lifetime`. `` (or `` Its field is `lifetime`. `` when the executor owns none). Tools can override preparation to own different metadata. |
 | Subprocess options | `SubprocessExecutor` additionally accepts `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
 | Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. Subprocess executors use the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
@@ -190,7 +190,6 @@ their own failures.
 
 | code | status | condition |
 |---|---:|---|
-| `cwd-not-found` | 400 | The requested execution directory does not exist as a directory. |
 | `invalid-command` | 400 | The command could not be parsed; detail includes a bounded cause. |
 
 §executor-page-receipt **A full page says so.** When a tool result is a JSON array whose
@@ -429,7 +428,7 @@ details; the generated tool document owns the one model-facing H1.
 | `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
 | `path`      | Accept only a local or `file://` path and pass that path directly.                                                             |
 | `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone representation under the scratch directory ({§exec-source-temporary}, {§exec-scratch-directory}). |
-| `script`    | As `resource`, and the local path must be an existing file: a directory or an absent path is refused before anything spawns ({§exec-executor-slot}). |
+| `script`    | As `resource`, and the local path must be an existing file, or an existing directory when an inline body is supplied: a directory with no body or an absent path is refused before anything spawns ({§exec-executor-slot}, {§exec-target-routing}). |
 
 Every execution must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
@@ -589,16 +588,14 @@ tags are offered in a particular workspace ({§bundled-set}).
 
 | Package  | Declared tags                                                                                              | Effect by target                | Channels / mimetype                |
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
-| `common` | `sh`, `js`, `python3`, `perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
+| `common` | `sh`, `js`, `python3` | `host`                          | `stdout`, `stderr` / `text/stream` |
 
 Optional executor packages are not part of this installed set merely because
 they exist in the workspace.
 
-The package-owned `.env.defaults` disable `perl`, `ruby`, `lua`, `deno`, `bun`,
-`tcl`, `bc`, and `awk`. The default admitted tags are `sh`,
-`js`, and `python3`, subject to availability. An operator can enable any
-optional executor through {§executor-installation}; disabled tags contribute
-no discovery teaching or executor scheme ({§executor-policy}).
+The default admitted tags are `sh`, `js`, and `python3`, subject to availability.
+An operator can disable any runtime through {§executor-policy}; disabled tags
+contribute no discovery teaching or executor scheme ({§executor-policy}).
 
 ## §executor-subprocess Subprocess contract
 
@@ -637,12 +634,11 @@ which names the program the path runs, the version its `--version` reports when 
 the path: `Run shell commands and scripts with bash 5.2.37 (/bin/bash).` A script target runs under
 the same shell. Nothing about the dialect is promised beyond what the summary names.
 
-With a target, the target is the program and the body is its stdin. Each executor
-uses its interpreter's file form (`awk -f <target>`, for example). The working
+With a file target, the target is the program and the body is its stdin. Each executor
+uses its interpreter's file form. The working
 directory is the consumer's `cwd` — the project root, or the directory a
-`[{"cwd": "<directory>"}]` block on the heading names ({§exec-executor-slot}); a
-directory is never a target. Data runtimes define their own declared target
-kind and role.
+directory `(target)` names for an inline program ({§exec-target-routing}). Data
+runtimes define their own declared target kind and role.
 
 Subprocess executors inherit stdout/stderr streaming, scoped-environment handoff,
 availability probing, operation results, exit code, and process-group

@@ -135,8 +135,7 @@ export default class Dsl {
     static buildExec(p: OpExecParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: p.runtime ?? "sh",
-            target: "",
-            metadata: p.cwd === undefined ? "" : `[${JSON.stringify({ cwd: p.cwd })}]`,
+            target: Dsl.#formatPath(p.cwd),
             lineMarker: "",
             body: p.command ?? "",
         }));

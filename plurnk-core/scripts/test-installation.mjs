@@ -498,9 +498,8 @@ writeFileSync(resolve(packedSkillDir, "SKILL.md"), [
     "Use the installed product boundary.",
 ].join("\n"));
 mkdirSync(resolve(packedSkillDir, "scripts"));
-mkdirSync(resolve(packedSkillProject, "run directory"));
 const packedSkillScript = resolve(packedSkillDir, "scripts", "main.mjs");
-const packedSkillMarker = resolve(packedSkillProject, "run directory", "executed.json");
+const packedSkillMarker = resolve(packedSkillProject, "executed.json");
 const packedSkillArgs = ["two words", "", "quoted\"}value", "$(touch forbidden)"];
 writeFileSync(resolve(packedSkillDir, "scripts", "sibling.mjs"), 'export default "NATIVE_SIBLING";');
 writeFileSync(packedSkillScript, [
@@ -665,7 +664,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
+            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs) [{"args": ${JSON.stringify(packedSkillArgs)}}]
 raw stdin
 \`\`\`\``,
         },
@@ -705,7 +704,7 @@ ok(
         sibling: "NATIVE_SIBLING",
         args: packedSkillArgs,
         stdin: "raw stdin",
-        cwd: resolve(packedSkillProject, "run directory"),
+        cwd: packedSkillProject,
     }),
     "the packed daemon executes a native skill with exact argv, stdin, cwd and sibling imports",
 );
@@ -841,7 +840,7 @@ try {
 }
 
 process.stdout.write("-- executor inventory --\n");
-// {§executor-default-inventory} {§executor-policy}: installed is not enabled.
+// {§executor-default-inventory} {§executor-policy}: installed is sh, js and python3; policy filters them.
 const defaultTags = ["sh", "js", "python3"];
 const declaredRuntimes = (await Promise.all(defaultExecPackages.map(async (packageName) =>
     (await installedRuntimes(packageName)).map(({ name }) => [name, packageName])))).flat();
@@ -851,29 +850,18 @@ ok(
         && isDeepStrictEqual(packedExecs.registered.toSorted(), defaultTags.toSorted()),
     "the packed default registers only sh, js and python3",
 );
-const optIn = Object.fromEntries(declaredRuntimes.map(([tag]) => [`PLURNK_EXECS_${tag.toUpperCase()}`, "1"]));
-const enabledExecs = packedExecInventory(optIn);
 for (const [tag, packageName] of declaredRuntimes) {
-    if (!defaultTags.includes(tag)) {
-        ok(
-            packedExecs.disabled.includes(tag)
-                && !(tag in packedExecs.owners)
-                && !packedExecs.registered.includes(tag)
-                && !packedExecs.advertised.includes(tag),
-            `optional runtime ${tag} is disabled and unadvertised by the packed floor`,
-        );
-    }
     ok(
-        enabledExecs.owners[tag] === packageName && enabledExecs.registered.includes(tag),
-        `runtime ${tag} explicitly enables and loads from the service-owned ${packageName} extension`,
+        packedExecs.owners[tag] === packageName && packedExecs.registered.includes(tag),
+        `runtime ${tag} loads from the service-owned ${packageName} extension`,
     );
 }
-const restrictedExecs = packedExecInventory({ ...optIn, PLURNK_EXECS_ONLY: "js,perl", PLURNK_EXECS_PERL: "0" });
+const restrictedExecs = packedExecInventory({ PLURNK_EXECS_ONLY: "js,python3", PLURNK_EXECS_PYTHON3: "0" });
 ok(
     isDeepStrictEqual(Object.keys(restrictedExecs.owners), ["js"])
         && isDeepStrictEqual(restrictedExecs.registered, ["js"])
         && isDeepStrictEqual(restrictedExecs.advertised, ["js"]),
-    "the packed allowlist and per-tag disable compose after explicit opt-in",
+    "the packed allowlist and per-tag disable compose",
 );
 
 uninstallSandbox();

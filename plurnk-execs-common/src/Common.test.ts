@@ -36,7 +36,7 @@ test("{§executor-dynamic-runtimes} the runtimes module declares the candidate c
     const manifest = declared.map((r) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
-        "sh", "js", "python3", "perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk",
+        "sh", "js", "python3",
     ]);
     const [shell, ...alternatives] = declared as Array<{
         name: string;
@@ -84,18 +84,6 @@ test("{§executor-subprocess-routing} spawnArgs: a target selects the interprete
     assert.deepEqual(make("sh").spawnArgs("sh", "stdin body", "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh"], useShell: false, stdin: "stdin body" });
     // @ts-expect-error
     assert.deepEqual(make("python3").spawnArgs("python3", "data", "t.py"), { cmd: "python3", args: ["t.py"], useShell: false, stdin: "data" });
-    // @ts-expect-error protected hook
-    assert.deepEqual(make("awk").spawnArgs("awk", "data", "t.awk"), { cmd: "awk", args: ["-f", "t.awk"], useShell: false, stdin: "data" });
-});
-
-test("{§executor-subprocess-routing}: awk reads the target script and consumes raw body as stdin", { skip: !present("awk") }, async (t) => {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "execs-awk-"));
-    t.after(() => fs.rm(directory, { recursive: true, force: true }));
-    const target = path.join(directory, "script with spaces.awk");
-    await fs.writeFile(target, '{ print "READ:" $0 }\n');
-    const { result, out } = await run("awk", "first\nsecond\n", { target });
-    assert.equal(result.status, 200, out.stderr);
-    assert.equal(out.stdout, "READ:first\nREAD:second\n");
 });
 
 for (const [tag, bin, body] of [
@@ -148,32 +136,16 @@ test("{§executor-subprocess-routing} live: sh runs a shell command", async () =
     assert.equal(out.stdout, "plurnk\n");
 });
 
-test("{§executor-subprocess-routing} spawnArgs: eval-flag interpreters carry the command via their flag", () => {
-    // @ts-expect-error exercise the protected hook directly
-    assert.deepEqual(make("perl").spawnArgs("perl", "print 1"), { cmd: "perl", args: ["-e", "print 1"], useShell: false });
-    // @ts-expect-error
-    assert.deepEqual(make("deno").spawnArgs("deno", "console.log(1)"), { cmd: "deno", args: ["eval", "console.log(1)"], useShell: false });
-});
-
-test("{§executor-subprocess-routing} spawnArgs: filters feed the command via stdin; awk is bare-program + empty stdin", () => {
-    // @ts-expect-error
-    assert.deepEqual(make("bc").spawnArgs("bc", "6*7"), { cmd: "bc", args: [], useShell: false, stdin: "6*7\n" });
-    // @ts-expect-error
-    assert.deepEqual(make("tcl").spawnArgs("tcl", "puts 1"), { cmd: "tclsh", args: [], useShell: false, stdin: "puts 1\n" });
-    // @ts-expect-error
-    assert.deepEqual(make("awk").spawnArgs("awk", "BEGIN{print 42}"), { cmd: "awk", args: ["BEGIN{print 42}"], useShell: false, stdin: "" });
-});
-
 test("{§executor-default-inventory} effect: every common interpreter is host (subprocess, proposal-gated)", () => {
-    assert.equal(make("perl").effect(null), "host");
-    assert.equal(make("bc").effect(null), "host");
+    assert.equal(make("sh").effect(null), "host");
+    assert.equal(make("js").effect(null), "host");
+    assert.equal(make("python3").effect(null), "host");
 });
 
 test("{§executor-policy} probe: reflects PATH presence per tag", async () => {
-    for (const tag of ["perl", "ruby", "bc", "awk"]) {
-        const bin = tag === "tcl" ? "tclsh" : tag;
+    for (const tag of ["sh", "python3"]) {
         const r = await make(tag).probe();
-        assert.equal(r.available, present(bin), `${tag} availability should track \`command -v ${bin}\``);
+        assert.equal(r.available, present(tag), `${tag} availability should track \`command -v ${tag}\``);
     }
 });
 

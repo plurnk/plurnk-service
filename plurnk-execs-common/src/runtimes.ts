@@ -11,7 +11,7 @@ const SH: Omit<RuntimeDecl, "summary"> = {
             required: false,
         },
         target: {
-            role: "script; never a command or a directory",
+            role: "script, or working directory for an inline program",
             required: false,
             kind: "script",
         },
@@ -32,7 +32,7 @@ const FIXED: readonly RuntimeDecl[] = [
                 required: false,
             },
             target: {
-                role: "script; never a command or a directory",
+                role: "script, or working directory for an inline program",
                 required: false,
                 kind: "script",
             },
@@ -51,164 +51,12 @@ const FIXED: readonly RuntimeDecl[] = [
                 required: false,
             },
             target: {
-                role: "script; never a command or a directory",
+                role: "script, or working directory for an inline program",
                 required: false,
                 kind: "script",
             },
             example: {
                 body: "print(42)",
-            },
-        },
-    },
-    {
-        name: "perl",
-        glyph: "🐪",
-        summary: "Run Perl code or scripts.",
-        invocation: {
-            body: {
-                role: "Perl program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "print 42;",
-            },
-        },
-    },
-    {
-        name: "ruby",
-        glyph: "💎",
-        summary: "Run Ruby code or scripts.",
-        invocation: {
-            body: {
-                role: "Ruby program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "puts 42",
-            },
-        },
-    },
-    {
-        name: "lua",
-        glyph: "🌙",
-        summary: "Run Lua code or scripts.",
-        invocation: {
-            body: {
-                role: "Lua program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "print(42)",
-            },
-        },
-    },
-    {
-        name: "deno",
-        glyph: "🦕",
-        summary: "Run TypeScript or JavaScript code or scripts with Deno.",
-        invocation: {
-            body: {
-                role: "Deno program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "console.log(42)",
-            },
-        },
-    },
-    {
-        name: "bun",
-        glyph: "🥟",
-        summary: "Run TypeScript or JavaScript code or scripts with Bun.",
-        invocation: {
-            body: {
-                role: "Bun program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "console.log(42)",
-            },
-        },
-    },
-    {
-        name: "tcl",
-        glyph: "🪶",
-        summary: "Run Tcl code or scripts.",
-        invocation: {
-            body: {
-                role: "Tcl program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "puts 42",
-            },
-        },
-    },
-    {
-        name: "bc",
-        glyph: "🧮",
-        summary: "Evaluate calculations with bc.",
-        invocation: {
-            body: {
-                role: "bc program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "6 * 7",
-            },
-        },
-    },
-    {
-        name: "awk",
-        glyph: "🪄",
-        summary: "Run AWK code or scripts.",
-        invocation: {
-            body: {
-                role: "AWK program; stdin when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script; never a command or a directory",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "BEGIN { print 42 }",
             },
         },
     },

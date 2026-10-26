@@ -4,16 +4,9 @@ import { SubprocessExecutor, SpawnAccounts, Shell } from "@plurnk/plurnk-execs";
 import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
 
 // Per-interpreter spawn recipe. `bin` is the executable (probed for presence).
-// The command is carried one of three ways:
-//   - arg(command): eval-flag interpreters (perl -e, ruby -e, …)
-//   - stdin:        filters that read their program from stdin (bc, tclsh)
-//   - bare:         program as a positional arg with empty stdin → EOF (awk BEGIN)
 interface Recipe {
     bin: string;
-    arg?: (command: string) => string[];
-    script?: (target: string) => string[];
-    stdin?: boolean;
-    bare?: boolean;
+    arg: (command: string) => string[];
     // node is guaranteed (the daemon IS node) — reported available without a
     // PATH probe. Everything else is detected.
     alwaysAvailable?: boolean;
@@ -24,33 +17,14 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
     sh: { bin: "sh", arg: (c) => ["-c", c] },
     js: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
     python3: { bin: "python3", arg: (c) => ["-c", c] },
-    // Detected host interpreters.
-    perl: { bin: "perl", arg: (c) => ["-e", c] },
-    ruby: { bin: "ruby", arg: (c) => ["-e", c] },
-    lua: { bin: "lua", arg: (c) => ["-e", c] },
-    deno: { bin: "deno", arg: (c) => ["eval", c] },
-    bun: { bin: "bun", arg: (c) => ["-e", c] },
-    tcl: { bin: "tclsh", stdin: true },
-    bc: { bin: "bc", stdin: true },
-    awk: { bin: "awk", bare: true, script: (target) => ["-f", target] },
 });
 
 // Exposed for tests / consumers wanting the candidate set.
 export const RUNTIME_TAGS: readonly RuntimeTag[] = Object.freeze(Object.keys(RECIPES).filter(isExecutionOp));
 
-// PATH presence via POSIX `command -v` — robust across interpreters that don't
-// support `--version` (tclsh, bc, some awks). bin is from the fixed table above.
 const onPath = (bin: string): boolean =>
     spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin], { ...SpawnAccounts.options() }).status === 0; // {§executor-spawn-account}
 
-// Detection harness: one package claiming the common-REPL tags. probe() lights
-// up only the interpreters present on this host, so the consumer offers the
-// model exactly what the platform has — "plurnk supports the host's REPLs out
-// of the box". The operator kill-switch (PLURNK_EXECS_<tag>=0 / _ONLY) is no
-// longer honored here — framework discovery applies it uniformly across every
-// extension ({§executor-policy}), so a disabled tag never reaches probe(). All run
-// arbitrary code → effect `host` (inherited, proposal-gated). Reuses
-// SubprocessExecutor's run() (streaming + process-group abort) via spawnArgs().
 export default class Common extends SubprocessExecutor {
     protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = Common.#recipe(runtime);
@@ -59,13 +33,9 @@ export default class Common extends SubprocessExecutor {
         // ({§executor-subprocess-routing}). The interpreter reads the file;
         // no executable bit is consulted or changed.
         if (target !== null) {
-            return { cmd: r.bin, args: r.script?.(target) ?? [target], useShell: false, stdin: command };
+            return { cmd: r.bin, args: [target], useShell: false, stdin: command };
         }
-        // Trailing newline so line-oriented readers (bc, tclsh) evaluate the
-        // final line before EOF rather than erroring on an unterminated line.
-        if (r.stdin) return { cmd: r.bin, args: [], useShell: false, stdin: `${command}\n` };
-        if (r.bare) return { cmd: r.bin, args: [command], useShell: false, stdin: "" };
-        return { cmd: r.bin, args: r.arg!(command), useShell: false };
+        return { cmd: r.bin, args: r.arg(command), useShell: false };
     }
 
     // {§executor-shell} `sh` runs the environment's shell; every other recipe is fixed.

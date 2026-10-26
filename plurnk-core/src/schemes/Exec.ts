@@ -582,7 +582,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // A script target as it exists: a file runs, a directory with a body is where the body runs
-    // ({§exec-target-near-miss}), and a missing one is refused as what it is ({§diagnostic-observation}).
+    // ({§exec-target-routing}), and a missing one is refused as what it is ({§diagnostic-observation}).
     static async #inspectScriptTarget(core: PlurnkSchemeContext, args: {
         runtime: string; target: string; cwd: string | null; defaultCwd: string; hasBody: boolean;
     }): Promise<{ target: string | null; cwd: string | null } | ExecResult> {
@@ -606,8 +606,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 );
             }
         }
-        // {§exec-target-near-miss} — a directory is never a program: with a body and no explicit
-        // cwd, it is where the body runs. Never taught.
+        // {§exec-target-routing} — a directory with a body is where the inline program runs; without
+        // a body it is refused as not a program.
         if (kind === "directory" && hasBody && cwd === defaultCwd) {
             cwd = inspected;
             target = null;

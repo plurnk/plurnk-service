@@ -25,7 +25,7 @@ export default class StatementShape {
 
     // {§parse-recovery} — the working form of an operation, for a diagnostic that refused its heading.
     static workingForm(op: string, exec: boolean): string | undefined {
-        if (exec) return `\`${op} (program)? [{"cwd": "…"}]?\` on the opening fence line, the input on the lines below, then the closing fence.`;
+        if (exec) return `\`${op} (target)?\` on the opening fence line, the input on the lines below, then the closing fence.`;
         const forms: Readonly<Record<string, string>> = {
             FIND: "`FIND (path or glob) <first,last>? pattern? <!-- aside -->?` on the opening fence line.",
             READ: "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line.",

@@ -21,10 +21,6 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } f
 import { testExecutors } from "./_execs.ts";
 import { localPath } from "./_dsl.ts";
 
-// Exercise optional implementations too; executor-defaults.test.ts covers their
-// shipped admission and model-facing survey. {§executor-default-inventory}
-for (const tag of ["AWK", "BC", "PERL"]) process.env[`PLURNK_EXECS_${tag}`] = "1";
-
 // The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
 // oxlint-disable-next-line eslint/no-control-regex
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -101,9 +97,6 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
     // Subprocess runtimes execute arbitrary host code → ALWAYS `host` → always gated, even for a
     // visibly-harmless command (the executor classifies the target, never parses the command to judge it).
-    { tag: "awk", body: "BEGIN { print 6 * 7 }", cwd: null, expect: "42\n", gate: "propose" },
-    { tag: "bc", body: "scale=4; 22/7", cwd: null, expect: "3.1428\n", gate: "propose" },
-    { tag: "perl", body: "print join(',', 1..5)", cwd: null, expect: "1,2,3,4,5", gate: "propose" },
     { tag: "python3", body: "print(sum(range(101)))", cwd: null, expect: "5050\n", gate: "propose" },
     { tag: "js", body: "console.log(6 * 7)", cwd: null, expect: "42\n", gate: "propose" },
 ];
@@ -111,7 +104,7 @@ const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expe
 // Self-contained batteries tags — runnable deterministically with no external resource. The census
 // REQUIRES every one of these that the host probes available to be covered by this suite (sh is
 // covered by Exec.scheme.test.ts).
-const SELF_CONTAINED = ["sh", "js", "awk", "bc", "perl", "python3"] as const;
+const SELF_CONTAINED = ["sh", "js", "python3"] as const;
 
 test("{§exec-registry-resolves} execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();
@@ -133,7 +126,7 @@ test("{§exec-registry-resolves} execs batteries: coverage census — every self
         const e = reg.entry(tag);
         return e?.executor?.channels[e.executor.defaultChannel]?.mimetype;
     };
-    for (const t of ["js", "awk", "python3"]) assert.equal(declMime(t), "text/stream", `${t} stdout channel is text/stream`);
+    for (const t of ["js", "python3"]) assert.equal(declMime(t), "text/stream", `${t} stdout channel is text/stream`);
 });
 
 for (const { tag, body, cwd, expect, gate } of CASES) {

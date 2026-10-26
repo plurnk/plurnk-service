@@ -95,7 +95,7 @@ test("{§executor-trust} discover: details are sourced from docs/<tag>.md with t
         plurnk: { kind: "exec", runtimes: [
             runtime("sh", { details: "inline-sh (loses to the file)" }),
             runtime("js", { details: "inline-js (no file → kept)" }),
-            runtime("bc"),
+            runtime("python3"),
         ] },
     });
     await fs.mkdir(path.join(dir, "docs"), { recursive: true });
@@ -104,7 +104,7 @@ test("{§executor-trust} discover: details are sourced from docs/<tag>.md with t
     const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.equal(registry.get("sh")?.details, "from the file", "docs/<tag>.md wins and its authoring title is not duplicated in the generated document");
     assert.equal(registry.get("js")?.details, "inline-js (no file → kept)", "inline is the fallback when no file ships");
-    assert.equal(registry.get("bc")?.details, "", "neither file nor inline → empty");
+    assert.equal(registry.get("python3")?.details, "", "neither file nor inline → empty");
 });
 
 test("{§executor-trust} discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {

@@ -901,8 +901,8 @@ MCP service uses that executor path and its owner validates the named tool and
 input-body JSON against its schema. Unknown names do not fall back to a shell.
 There is no runtime-less form: every execution names its runtime, and canonical
 shell examples name `sh` explicitly.
-The path names a program or tool and is never split. Metadata such as
-`[{"cwd": "…"}]` remains interpreted by the selected executor.
+The path names a program, working directory, or tool and is never split. Metadata such as
+`[{"lifetime": "…"}]` is validated before execution.
 
 §turn-disposition WAIT requests parking; its literal body does not control
 scheduling, and its optional target is the label the row keeps, never a join;

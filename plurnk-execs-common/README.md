@@ -1,9 +1,9 @@
 # @plurnk/plurnk-execs-common
 
-The **universal subprocess executor** for
+The **subprocess executor** for
 [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. One
-package offers the shell, Node.js, and Python 3 by default, with other supported
-host interpreters available as opt-ins. Node is guaranteed; the rest are detected.
+package offers the shell, Node.js, and Python 3. Node is guaranteed; the rest
+are detected.
 
 A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
@@ -11,31 +11,25 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 
 The manifest claims the subprocess tags. Per-tag `probe()` reports Node
 unconditionally because the daemon already runs on it. A cheap `command -v`
-detects every other interpreter, so one executor adapts to the host.
+detects `sh` and `python3`, so one executor adapts to the host.
 
-| Tag                              | Binary            | Inline body via                          |
-| -------------------------------- | ----------------- | ---------------------------------------- |
-| `sh` 🐚                          | sh                | `-c <body>`                              |
-| `js` ⬢                           | node              | `-e <body>` (always available)           |
-| `python3` 🐍                     | python3           | `-c <body>`                              |
-| `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <body>`                              |
-| `deno` 🦕                        | deno              | `eval <body>`                            |
-| `bun` 🥟                         | bun               | `-e <body>`                              |
-| `tcl` 🪶                         | tclsh             | stdin                                    |
-| `bc` 🧮                          | bc                | stdin (for example, `6 * 7`)             |
-| `awk` 🪄                         | awk               | program arg, empty stdin (`BEGIN { … }`) |
+| Tag          | Binary  | Inline body via                |
+| ------------ | ------- | ------------------------------ |
+| `sh` 🐚      | sh      | `-c <body>`                    |
+| `js` ⬢       | node    | `-e <body>` (always available) |
+| `python3` 🐍 | python3 | `-c <body>`                    |
 
 Each enabled runtime's catalog Summary includes a short executable inline body, with
 literal `\n` separators keeping the invocation on one discovery line.
 
-### A script — the `(target)` slot
+### The `(target)` slot — a script or working directory
 
-The table above is the **inline** form: the body is the program. A file in the
-`(target)` slot is instead the script each interpreter reads directly, and the
-body becomes that script's stdin. A `[{"cwd": "<directory>"}]` block on the heading
-selects the working directory. Script arguments use `[{"args": ["arg",...]}]`;
-each string is passed literally, without shell expansion ({§executor-metadata}).
-These options work for local, Worker, and Skill script targets alike.
+The table above is the **inline** form: the body is the program. A directory in
+the `(target)` slot selects the working directory for that inline program. A
+file in the `(target)` slot is instead the script each interpreter reads
+directly, and the body becomes that script's stdin. Script arguments use
+`[{"args": ["arg",...]}]`; each string is passed literally, without shell
+expansion ({§executor-metadata}).
 
 ```sh (./deploy.sh)
 yes
@@ -51,20 +45,10 @@ no
 5
 ```
 
-The first operation answers a shell script's prompts through stdin. The second
-feeds records to a Python script.
-
 All declared tags run host code, so every invocation is proposal-gated ({§executor-effect}). Inline programs have no
 separate input channel; script targets receive stdin from the body.
 
 ## Configuration
-
-The shipped [`.env.defaults`](./.env.defaults) disables `perl`, `ruby`, `lua`,
-`deno`, `bun`, `tcl`, `bc`, and `awk`. To expose one, set its switch to `1`
-in the ordinary environment cascade and restart the service; commented opt-ins
-are in [`.env.example`](./.env.example). For example, `PLURNK_EXECS_PERL=1`
-enables the Perl executor when Perl is installed. These switches do not prevent
-calling an interpreter through `sh`.
 
 Per-tag kill-switches (`PLURNK_EXECS_<TAG>=0`) and the
 `PLURNK_EXECS_ONLY` allowlist are honored by framework discovery, uniformly

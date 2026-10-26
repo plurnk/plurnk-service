@@ -23,9 +23,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 
-// {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
-const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
-    metadata: cwd === null ? null : [JSON.stringify({ cwd })],
+// {§exec-executor-slot} — a null runtime is the bare shell; the target is the program or working directory.
+const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
+    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
@@ -245,11 +245,11 @@ test("{§exec-target-routing} {§diagnostic-observation} a target that names ano
     });
 });
 
-test("{§exec-target-routing} `[{\"cwd\": \".\"}]` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
+test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt(null, null, "pwd", "."),
+            statement: execStmt(null, ".", "pwd"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
@@ -360,7 +360,7 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
     });
 });
 
-test("{§exec-target-routing} `[{\"cwd\": \"…\"}]` metadata sets the working directory", async () => {
+test("{§exec-target-routing} directory `(target)` sets the working directory for an inline program", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-directory-"));
         try {
@@ -368,14 +368,14 @@ test("{§exec-target-routing} `[{\"cwd\": \"…\"}]` metadata sets the working d
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
-                statement: execStmt(null, null, "echo hi", "sub"),  // `### EXEC_ [{"cwd": "sub"}]` with a shell body
+                statement: execStmt(null, "sub", "echo hi"),  // `sh (sub)` with a shell body
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
             const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
-            assert.equal(attrs.cwd, join(root, "sub"), "`[{\"cwd\": \"sub\"}]` names where the body runs");
+            assert.equal(attrs.cwd, join(root, "sub"), "`(sub)` names where the body runs");
             assert.equal(attrs.target, null, "no program path — the body is the program");
             assert.equal(attrs.body, "echo hi", "the body is the shell program");
             ctx.engine.resolveProposal(id, { decision: "reject" });
@@ -385,16 +385,14 @@ test("{§exec-target-routing} `[{\"cwd\": \"…\"}]` metadata sets the working d
 });
 
 for (const source of ["local", "file", "worker"] as const) {
-    test(`{§executor-metadata} ${source} script receives exact argv, stdin and prepared cwd`, async () => {
+    test(`{§executor-metadata} ${source} script receives exact argv, stdin and workspace cwd`, async () => {
         await withWorkspace(async (ctx) => {
             const root = await mkdtemp(join(tmpdir(), "exec-arguments-"));
             try {
-                const cwd = join(root, "output folder");
-                await mkdir(cwd);
                 await rootWorkspace(ctx.db, ctx.workspaceId, root);
                 const program = 'let input = ""; for await (const chunk of process.stdin) input += chunk; console.log(JSON.stringify({ args: process.argv.slice(2), input, cwd: process.cwd() }));';
                 const filename = "script with spaces.mjs";
-                await writeFile(join(cwd, filename), program);
+                await writeFile(join(root, filename), program);
                 await seedEntryWithChannel(ctx.db, {
                     workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script.mjs", content: program,
                 });
@@ -403,9 +401,9 @@ for (const source of ["local", "file", "worker"] as const) {
                 const statement: ExecStatement = {
                     ...execStmt("js", null, input),
                     target: source === "local" ? localPath(filename)
-                        : source === "file" ? urlPath("file", join(cwd, filename))
+                        : source === "file" ? urlPath("file", join(root, filename))
                         : urlPath("worker", "/script.mjs"),
-                    metadata: [JSON.stringify({ cwd: "output folder", args: argv })],
+                    metadata: [JSON.stringify({ args: argv })],
                 };
                 const proposed = deferred<number>();
                 const pending = ctx.engine.dispatch({
@@ -426,7 +424,7 @@ for (const source of ["local", "file", "worker"] as const) {
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
                 });
                 assert.equal(read.status, 200);
-                assert.deepEqual(JSON.parse(String((read as { content?: string }).content)), { args: argv, input, cwd });
+                assert.deepEqual(JSON.parse(String((read as { content?: string }).content)), { args: argv, input, cwd: root });
             } finally {
                 await ctx.exec.idle();
                 await rm(root, { recursive: true, force: true });
@@ -435,7 +433,7 @@ for (const source of ["local", "file", "worker"] as const) {
     });
 }
 
-test("{§exec-target-near-miss} a directory target with a body runs there; with nothing to run it is refused, as is `[{\"cwd\": \"…\"}]` with an empty body", async () => {
+test("{§exec-target-routing} a directory target with a body runs there; with nothing to run it is refused", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-empty-directory-"));
         try {
@@ -443,7 +441,7 @@ test("{§exec-target-near-miss} a directory target with a body runs there; with 
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const asCwd = ctx.engine.dispatch({
-                statement: execStmt(null, "sub", "pwd"),  // `sh (sub)` + body — the directory is where the body runs (#758)
+                statement: execStmt(null, "sub", "pwd"),  // `sh (sub)` + body — the directory is where the body runs
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
@@ -457,15 +455,10 @@ test("{§exec-target-near-miss} a directory target with a body runs there; with 
             await asCwd.catch(() => {});
             const asProgram = await ctx.engine.dispatch({
                 statement: execStmt(null, "sub", ""),  // `sh (sub)` with no body — a directory is not a program
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 3, origin: "model",
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
             });
             assert.equal(asProgram.status, 400);
             assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program");
-            const result = await ctx.engine.dispatch({
-                statement: execStmt(null, null, "", "sub"),  // `### EXEC_ [{"cwd": "sub"}]` — nothing to run
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
-            });
-            assert.equal(result.status, 400, "a working directory with an empty body has nothing to run");
         } finally { await rm(root, { recursive: true, force: true }); }
     });
 });

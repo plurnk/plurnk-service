@@ -85,7 +85,7 @@ The execution's `(target)` slot is runtime-specific:
 | Runtime shape  | Typical mapping                                                   |
 | -------------- | ----------------------------------------------------------------- |
 | Tool / service | Target is the tool name; body is its input (MCP, logical tools).  |
-| Executable     | Target is the program; body is its stdin (shell, JS, Python 3).   |
+| Executable     | Target is the program, or working directory for an inline program; body is its inline program or stdin (shell, JS, Python 3). |
 
 The consumer supplies both `cwd` and a resolved `target`; the executor maps them
 to its tool rather than reconstructing filesystem or scheme policy.
@@ -95,7 +95,7 @@ to its tool rather than reconstructing filesystem or scheme policy.
 `prepare(input)` validates the tool's raw header metadata before admission and
 returns the effective cwd. `run(args)` receives that cwd and the original
 metadata, separately from the unchanged body. Source acquisition never inherits
-execution metadata. `BaseExecutor` supplies `[{"cwd": "..."}]`; `SubprocessExecutor` adds
+execution metadata. `SubprocessExecutor` accepts
 literal script arguments with `[{"args": ["arg",...]}]`. Override preparation for
 tool-specific options. See {§executor-metadata}.
 

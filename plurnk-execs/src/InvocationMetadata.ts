@@ -1,17 +1,14 @@
-import { errnoCode } from "@plurnk/plurnk-contracts";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
 import { MetadataOptions, Results, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ExecInput, ExecPreparation } from "./types.ts";
 
-type Options = { cwd?: string; args: string[] };
+type Options = { args: string[] };
 type Accepted = { args?: boolean };
 type Parsed = { options: Options } | { failure: SchemeResult };
 
 // {§executor-metadata} The executor framework owns these options, not Core. The
 // framework READS the heading's `[metadata]` as a JSON array of option objects — house policy,
 // not a language rule ({§scheme-metadata-modifier});
-// the keys this framework knows are `cwd` and `args`.
+// the key this framework knows is `args`.
 export default class InvocationMetadata {
     static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
         const fail = (code: string, detail: string, recovery?: string): Parsed => ({
@@ -23,13 +20,8 @@ export default class InvocationMetadata {
         if ("failure" in read) return read;
         const options: Options = { args: [] };
         for (const [field, value] of Object.entries(read.options)) {
-            if (field !== "cwd" && !(accepted.args && field === "args")) {
+            if (!(accepted.args && field === "args")) {
                 return fail("metadata-unsupported", `Executable tool '${input.runtime}' does not accept metadata field '${field}'.`, InvocationMetadata.#fields(accepted));
-            }
-            if (field === "cwd") {
-                if (typeof value !== "string" || value.length === 0 || value.includes("\0")) return fail("invalid-cwd", "Execution cwd must be a nonempty directory path string without NUL.");
-                options.cwd = value;
-                continue;
             }
             if (!Array.isArray(value) || !value.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
                 return fail("invalid-args", "Execution args must be a JSON array of strings without NUL.");
@@ -43,26 +35,16 @@ export default class InvocationMetadata {
     // executor's own and the service's ({§service-metadata-keys}), and no guess at the field the
     // author meant ({§diagnostic-observation}).
     static #fields(accepted: Accepted): string {
-        const names = ["cwd", ...(accepted.args === true ? ["args"] : []), ...MetadataOptions.SERVICE_KEYS]
+        const names = [...(accepted.args === true ? ["args"] : []), ...MetadataOptions.SERVICE_KEYS]
             .map((name) => `\`${name}\``);
-        return `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}.`;
+        return names.length === 1
+            ? `Its field is ${names[0]}.`
+            : `Its fields are ${names.slice(0, -1).join(", ")} and ${names.at(-1)!}.`;
     }
 
     static async prepare(input: ExecInput, accepted: Accepted = {}): Promise<ExecPreparation> {
         const parsed = this.parse(input, accepted);
         if ("failure" in parsed) return parsed.failure;
-        const directory = parsed.options.cwd;
-        if (directory === undefined) return { status: 200, cwd: input.cwd };
-        const cwd = resolve(input.cwd ?? process.cwd(), directory);
-        try {
-            if ((await stat(cwd)).isDirectory()) return { status: 200, cwd };
-        } catch (cause) {
-            const code = errnoCode(cause);
-            if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
-        }
-        return Results.failure("executor:metadata", "cwd-not-found", 400,
-            `Execution cwd '${directory}' is not an existing directory.`, {}, {
-                runtime: input.runtime, retryable: false,
-            });
+        return { status: 200, cwd: input.cwd };
     }
 }

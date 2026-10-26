@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs-common",
     "version": "3.0.1",
-    "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell, Node.js, Python 3, and supported host interpreters.",
+    "description": "Subprocess executor for plurnk-service's exec scheme — exposing the shell, Node.js, and Python 3.",
     "keywords": [
         "plurnk",
         "exec",
@@ -51,13 +51,11 @@
     "files": [
         "dist/**/*",
         "README.md",
-        ".env.defaults",
-        ".env.example",
         "docs/**/*"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --env-file-if-exists=../plurnk-execs/.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} \"src/**/*.test.ts\"",
+        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-execs/.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} \"src/**/*.test.ts\"",
         "test": "npm run test:lint && npm run test:unit",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

@@ -201,7 +201,7 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
         summary: "Effect fixture.",
         invocation: {
             body: { role: "fixture input", required: false },
-            target: { role: "fixture resource", required: false, kind: "resource" },
+            target: { role: "fixture script", required: false, kind: "script" },
             example: { body: "fixture" },
         },
         details: "",
@@ -236,7 +236,7 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
         const statements: ExecStatement[] = [
             execStmt("tool", null, "inline"),
             execStmt("tool", "data.txt", "file input"),
-            { ...execStmt("tool", null, "directory cwd"), metadata: ['{"cwd": "work"}'] },
+            execStmt("tool", "work", "directory cwd"),
             { ...execStmt("tool", null, ""), runtime: "tool", target: schemeTarget },
             { ...execStmt("tool", null, "filter"), runtime: "tool", target: schemeTarget },
         ];

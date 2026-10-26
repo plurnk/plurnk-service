@@ -1,9 +1,9 @@
 # python3
 
-The body is Python code, run with `python3 -c`. A script target instead runs
-that file and receives the body as stdin; `[{"args": [...]}]` passes literal
-arguments and `[{"cwd": "<directory>"}]` selects the working directory, as for
-every interpreter (`sh.md`).
+The body is Python code, run with `python3 -c`. A directory in the `(target)`
+slot selects the working directory for that inline code. A script target instead
+runs that file and receives the body as stdin; `[{"args": [...]}]` passes
+literal arguments, as for every interpreter (`sh.md`).
 
 ```python3 <!-- the body is the program -->
 import json, sys
