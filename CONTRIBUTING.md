@@ -118,7 +118,7 @@ place diagnostic options before the test filenames.
 
 | Question | Node options | Evidence |
 |---|---|---|
-| Which paths did this test exercise? | `--experimental-test-coverage --test-coverage-include=<source-glob>` | Text summary; `--test-reporter=lcov` produces LCOV. |
+| Which paths did this test exercise? | `--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<source-glob>` (before `--test`) | Text summary (emitted by the deterministic tiers as report-only); `--test-reporter=lcov` produces LCOV. |
 | Where is CPU time spent? | `--cpu-prof --diagnostic-dir=<directory>` | `.cpuprofile` per participating process/thread. |
 | Where are sampled JavaScript allocations retained? | `--heap-prof --diagnostic-dir=<directory>` | `.heapprofile`; not total RSS, native memory, or proof of a leak. |
 
@@ -136,7 +136,8 @@ Run coverage and timing investigations separately: instrumentation affects the
 workload. Keep Node version, command, source identity, and test outcome with the
 artifacts. Compare like workloads; coverage describes only the selected tests,
 and profile files must not be mistaken for a whole-process-tree memory total.
-These are on-demand diagnostics, not additional gates or live-run defaults.
+Coverage is report-only in the deterministic tiers and never a gate; profilers
+remain on-demand diagnostics, not live-run defaults.
 
 For SQL, `npm run -s report:sql -- /path/to/workload.db [specimens.json]` snapshots
 the explicitly selected database and emits JSON plans for the current source PREPs

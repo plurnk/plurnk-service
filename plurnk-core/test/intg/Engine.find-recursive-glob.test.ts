@@ -15,7 +15,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("{§find-candidate-containment} a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", async (approvalContext) => {
+test("{§find-candidate-containment} a body FIND over ~2k members with a handler-crashing member answers truthfully, not 500", { timeout: 60_000 }, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-findglob-"));
     try {
@@ -24,12 +24,11 @@ test("{§find-candidate-containment} a body FIND over ~2k members with a handler
         await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env });
         await writeFile(join(root, "main.go"), "package main\n");
-        for (let dir = 0; dir < 40; dir += 1) {
+        await Promise.all(Array.from({ length: 40 }, async (_dirSlot, dir) => {
             await mkdir(join(root, "test", `pkg${dir}`), { recursive: true });
-            for (let file = 0; file < 48; file += 1) {
-                await writeFile(join(root, "test", `pkg${dir}`, `case${file}_test.go`), `package pkg${dir}\n// marker case\n`);
-            }
-        }
+            await Promise.all(Array.from({ length: 48 }, (_fileSlot, file) =>
+                writeFile(join(root, "test", `pkg${dir}`, `case${file}_test.go`), `package pkg${dir}\n// marker case\n`)));
+        }));
         // The corpus poison: an unbalanced template partial that crashes Readability.
         await writeFile(
             join(root, "test", "pkg0", "header.html"),
@@ -46,7 +45,7 @@ test("{§find-candidate-containment} a body FIND over ~2k members with a handler
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "findglob", projectRoot: root });
-                const outcome = await runLoopToTerminal(ws, 2, { prompt: "find" });
+                const outcome = await runLoopToTerminal(ws, 2, { prompt: "find" }, { timeoutMs: 50_000 });
                 assert.equal(outcome.result.status, 200);
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: outcome.modelSessionId! });
                 const find = rows.find(({ op }) => op === "FIND");

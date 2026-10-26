@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, tierFiles } from "./drill.mjs";
+import { coverageReport, docsOnly, formatPhaseSummary, hostBudget, partitionByScript, scopeIntg, shares, tierFiles } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html", "plurnk-execs-common"];
 
@@ -119,19 +119,37 @@ describe("drill parallelism — the host's, shared by work", () => {
         assert.deepEqual(shares(8, [0, 0]), [8, 8], "lanes whose files are unknown each have the budget");
     });
 
-    it("{§drill-parallelism} every node --test tier takes its share, and no tier fixes its own", async () => {
+    it("{§drill-parallelism} {§drill-scope} every node --test tier takes its share, positions native coverage before --test, and sets no coverage threshold", async () => {
         const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
         const dirs = [".", ...manifest.workspaces];
         for (const dir of dirs) {
             const { scripts = {} } = JSON.parse(await readFile(new URL(`../${dir}/package.json`, import.meta.url), "utf8"));
             for (const [name, command] of Object.entries(scripts)) {
                 if (!/ --test( |$)/u.test(command)) continue;
-                assert.match(command, / --test \$\{PLURNK_TEST_CONCURRENCY:\+--test-concurrency=\$PLURNK_TEST_CONCURRENCY\}/u, `${dir} ${name} takes the drill's share`);
+                assert.match(command, / --experimental-test-coverage --test-coverage-include-all '?--test-coverage-include=[^\s']+'? --test \$\{PLURNK_TEST_CONCURRENCY:\+--test-concurrency=\$PLURNK_TEST_CONCURRENCY\}/u, `${dir} ${name} positions report-only coverage before --test and takes the drill's share`);
                 assert.doesNotMatch(command, /--test-concurrency=\d/u, `${dir} ${name} fixes no concurrency of its own`);
+                assert.doesNotMatch(command, /--test-coverage-(?:branches|functions|lines)/u, `${dir} ${name} sets no coverage threshold`);
                 if (name === "test:unit" || name === "test:intg") {
                     assert.ok(await tierFiles(new URL(`../${dir}/`, import.meta.url).pathname, command) > 0, `${dir} ${name} names the test files it runs`);
                 }
             }
         }
+    });
+
+    it("{§drill-scope} coverageReport extracts the per-file coverage table from passing output without altering phase red/green semantics", () => {
+        const sample = [
+            "✔ test passes (1.0ms)",
+            "ℹ start of coverage report",
+            "ℹ file | line % | branch % | funcs % | uncovered lines",
+            "ℹ src/x.ts | 12.50 | 50.00 | 0.00 | 10-40",
+            "ℹ end of coverage report",
+        ].join("\n");
+        assert.equal(coverageReport(sample), [
+            "ℹ start of coverage report",
+            "ℹ file | line % | branch % | funcs % | uncovered lines",
+            "ℹ src/x.ts | 12.50 | 50.00 | 0.00 | 10-40",
+            "ℹ end of coverage report",
+        ].join("\n"));
+        assert.equal(coverageReport("✔ no coverage block here"), null);
     });
 });

@@ -10,9 +10,9 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)
-The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. A phase's output is printed only when that phase goes red.
+The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. Each node --test tier emits Node's native per-file coverage table as report-only output (--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope> must precede --test or Node silently swallows it; --test-coverage-include scopes the table and all-files roll-up to the package's own source so imported workspace dependencies do not pollute it; {§drill-scope}). Test detail is printed only when a phase goes red; no phase can fail on coverage.
 Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change); the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
-Writes: the phase summary to stdout; exit 1 on any red phase.
+Writes: the phase summary and per-file coverage tables to stdout; exit 1 on any red phase.
 `);
 
 // {§drill-parallelism} A test process's footprint, measured: a core integration file's process peaks near 420 MB.
@@ -134,6 +134,11 @@ export const formatPhaseSummary = ({ title, results, reds, excluded, elapsedSeco
     return `${title}: ${results.length - reds.length}/${results.length} green in ${elapsedSeconds}s${failures}${inapplicable}`;
 };
 
+export const coverageReport = (out) => {
+    const match = /^ℹ start of coverage report[\s\S]*?^ℹ end of coverage report$/mu.exec(out);
+    return match?.[0] ?? null;
+};
+
 const phase = async (title, script, subset) => {
     const started = Date.now();
     const { included, excluded } = partitionByScript(subset, script);
@@ -153,6 +158,11 @@ const phase = async (title, script, subset) => {
         excluded,
         elapsedSeconds: Math.round((Date.now() - started) / 1000),
     }));
+    for (const r of results) {
+        if (r.code !== 0) continue;
+        const report = coverageReport(r.out);
+        if (report !== null) console.log(`\n----- coverage ${r.dir} (${r.script}) -----\n${report}`);
+    }
     for (const r of reds) {
         console.log(`\n===== RED ${r.dir} (${r.script}) =====`);
         console.log(r.out);

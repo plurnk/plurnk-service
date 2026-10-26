@@ -39,8 +39,8 @@
     "scripts": {
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} src/*.test.ts",
-        "test:intg": "export PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ) PLURNK_TEST_LANE=acp; node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/intg/*.test.ts && node ../scripts/reclaim-green-run.mjs acp",
+        "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} src/*.test.ts",
+        "test:intg": "export PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ) PLURNK_TEST_LANE=acp; node --conditions=plurnk-dev --env-file-if-exists=../plurnk-contracts/.env.defaults --env-file-if-exists=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} test/intg/*.test.ts && node ../scripts/reclaim-green-run.mjs acp",
         "prepublishOnly": "npm test",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

@@ -2,7 +2,7 @@
     "name": "@plurnk/monorepo",
     "private": true,
     "version": "1.0.0",
-    "description": "The plurnk platform monorepo \u2014 daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
+    "description": "The plurnk platform monorepo — daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
     "license": "MIT",
     "type": "module",
     "engines": {
@@ -67,7 +67,7 @@
         "lifecycle:check": "node scripts/package-lifecycle-policy.mjs",
         "spec:map": "node scripts/spec-map.mjs --write",
         "root:lint": "npm run lifecycle:check && npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && plurnk-spec-check --allowance scripts/spec-witness-allowance.json && node scripts/spec-map.mjs && node scripts/problem-codes.mjs && node scripts/host-path-policy.mjs && node scripts/env-surface-policy.mjs && npm run source:check && npm run docs:check && node scripts/changelog.mjs --check",
-        "root:unit": "node --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} 'scripts/**/*.test.*'",
+        "root:unit": "node --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=scripts/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} 'scripts/**/*.test.*'",
         "test:lint": "npm run root:lint && npm run test:lint --workspaces --if-present",
         "test:unit": "npm run root:unit && npm run test:unit --workspaces --if-present",
         "test:intg": "npm run test:intg --workspaces --if-present",

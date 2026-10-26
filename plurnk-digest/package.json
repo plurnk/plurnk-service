@@ -4,17 +4,32 @@
     "description": "Forensic reports, snapshots and model interviews for Plurnk evidence",
     "type": "module",
     "license": "MIT",
-    "repository": { "type": "git", "url": "git+https://github.com/plurnk/plurnk-service.git", "directory": "plurnk-digest" },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-digest"
+    },
     "exports": {
-        ".": { "plurnk-dev": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
         "./package.json": "./package.json"
     },
-    "files": [".env.defaults", "dist/**/*", "README.md", "SPEC.md"],
-    "engines": { "node": ">=26" },
+    "files": [
+        ".env.defaults",
+        "dist/**/*",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
     "scripts": {
         "test": "npm run test:lint && npm run test:unit",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 src/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --experimental-test-coverage --test-coverage-include-all '--test-coverage-include=src/**' --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} --test-timeout=30000 src/*.test.ts",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:clean && npm run build:dist && node --input-type=module -e 'import { copyFileSync } from \"node:fs\"; copyFileSync(\"src/share.sql\", \"dist/share.sql\");'",
@@ -27,8 +42,12 @@
         "@plurnk/plurnk-providers": "^5.0.0",
         "@possumtech/sqlrite": "^6.5.3"
     },
-    "publishConfig": { "access": "public" },
+    "publishConfig": {
+        "access": "public"
+    },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-digest#readme",
-    "bugs": { "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues" },
+    "bugs": {
+        "url": "https://repo.possumtech.com/plurnk/plurnk-service/issues"
+    },
     "author": "@wikitopian"
 }
