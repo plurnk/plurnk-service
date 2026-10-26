@@ -1,4 +1,5 @@
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import { chatMessageText } from "./types.ts";
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, streamText, wrapLanguageModel, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
@@ -345,7 +346,7 @@ const executeModelOnce = async (
         reasoning,
     } = request;
     const resolvedModel = typeof languageModel === "function"
-        ? languageModel(request.fetch ?? ((input, init) => globalThis.fetch(input, init)))
+        ? languageModel(request.fetch ?? outboundFetch)
         : languageModel;
     // {§provider-native-tool-calls} — requests pass toolChoice: "none" ({§provider-native-tools-disabled}),
     // and raw wire tool_calls plus finishReason are preserved on the response without AI SDK's

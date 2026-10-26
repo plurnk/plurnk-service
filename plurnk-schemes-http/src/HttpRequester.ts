@@ -1,6 +1,7 @@
 // One outbound HTTP request from a statement, with its bounded error detail. Split out of Http.
 import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, UrlPath, EntryData, SchemeResult } from "@plurnk/plurnk-schemes";
 import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, { webUserAgent, WebMaterializationError } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
@@ -97,7 +98,7 @@ export default class HttpRequester {
         subscription.addEventListener("abort", onAbort, { once: true });
         let pendingJson: { content: string; mimetype: string } | undefined;
         try {
-            const response = await fetch(url, {
+            const response = await outboundFetch(url, {
                 method,
                 body,
                 headers: headers.some(([k]) => k.toLowerCase() === "user-agent")

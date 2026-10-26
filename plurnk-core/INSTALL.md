@@ -129,7 +129,11 @@ For a service-owned variable, strip `PLURNK_`, lowercase, and replace `_` with
 `-` to obtain its CLI flag: `PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`.
 Extension settings remain environment/configuration values; they do not extend the
 service CLI. Boolean flags use `1` and `0`. An empty value is not an unset value;
-the owning declaration specifies its meaning.
+the owning declaration specifies its meaning. Standard host outbound transport
+variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, both cases, and
+`NODE_EXTRA_CA_CERTS`) apply across every outbound HTTP seam (providers, web
+reads/requests, remote MCP servers, and OTLP telemetry) whether set in the shell
+or `$XDG_CONFIG_HOME/plurnk/.env` ({§ambient-http-transport}).
 
 ## Manual and shell completions
 

@@ -19,7 +19,7 @@ import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.t
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
-import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
+import { outboundFetch, type ExtensionAttribution, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
@@ -349,7 +349,7 @@ export default class AiSdkProvider implements Provider {
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#operationTimeoutMs = config.operationTimeoutMs;
         this.#headers = config.headers ?? {};
-        this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
+        this.#fetch = config.fetch ?? outboundFetch;
         this.#contextWindow = config.contextWindow ?? null;
         this.#inputModalities = config.inputModalities ?? new Set();
         this.#maxInputTokens = config.maxInputTokens ?? null;
@@ -743,7 +743,7 @@ export default class AiSdkProvider implements Provider {
         let recoveredAfterOutput = false;
         const executeAdmittedRequest = async () => {
             const capture = this.#rawBody ? new RequestCapture() : undefined;
-            const fetch = capture?.fetch(this.#fetch ?? ((input, init) => globalThis.fetch(input, init))) ?? this.#fetch;
+            const fetch = capture?.fetch(this.#fetch ?? outboundFetch) ?? this.#fetch;
             let requestReasoningStream = "";
             let structuredReasoning = false;
             const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE

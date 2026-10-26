@@ -24,6 +24,7 @@ import type {
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import { syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { readFile } from "node:fs/promises";
 import HostPolicy from "./HostPolicy.ts";
 
@@ -75,7 +76,10 @@ const SOCKET_CLOSE_INTERNAL_ERROR = 4011;
 
 // Default: the runtime's global WebSocket (tests always inject, so this path is
 // runtime-only). Fail-hard if the runtime lacks it.
-const connectGlobal: SocketFactory = (url) => new WebSocket(url);
+const connectGlobal: SocketFactory = (url) => {
+    syncAmbientHttp();
+    return new WebSocket(url);
+};
 
 export default class Ws implements SchemeHandler {
     static manifest: SchemeManifest = {

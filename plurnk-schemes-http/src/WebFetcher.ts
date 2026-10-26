@@ -15,6 +15,7 @@ import {
     WebMaterializationError,
 } from "@plurnk/plurnk-schemes";
 import { formatJsonDocument } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import Guard, { GuardBlockedError } from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
 import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
@@ -589,7 +590,7 @@ export default class WebFetcher implements WebMaterializer {
         const guarded = opts?.guarded !== false;
         const request = async (requestUrl: string, headers: ReadonlyArray<readonly [string, string]>): Promise<Response> => guarded
             ? Guard.fetch(requestUrl, { method: "GET", body: undefined, headers }, signal)
-            : fetch(requestUrl, {
+            : outboundFetch(requestUrl, {
                 method: "GET",
                 headers: headers.map(([name, value]): [string, string] => [name, value]),
                 signal,

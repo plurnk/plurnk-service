@@ -257,3 +257,14 @@ marks the span `ERROR` and records only `error.type`, the error's class name,
 never its message. Every instrumented package binds these to its own tracer
 rather than declaring a second helper; prompts, payloads and arbitrary URLs never
 reach a span through them.
+
+## §ambient-http-transport Ambient proxy and CA transport
+
+`outboundFetch` and `syncAmbientHttp(env?)` apply the host's ambient proxy
+(`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and their lowercase spellings) and extra
+certificate authority (`NODE_EXTRA_CA_CERTS`) to Node's global HTTP/HTTPS agents,
+global `fetch` dispatcher, and OpenSSL root store. Every outbound HTTP seam calls
+`outboundFetch` (or `syncAmbientHttp()` before initializing an HTTP/gRPC client),
+honoring values from the shell or `$XDG_CONFIG_HOME/plurnk/.env` without
+Plurnk-specific proxy or CA knobs. When none of those variables are set, global
+`fetch` and agent state remain untouched.

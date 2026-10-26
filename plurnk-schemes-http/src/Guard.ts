@@ -5,6 +5,7 @@
 
 import dns from "node:dns/promises";
 import net from "node:net";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import { requireNonNegativeIntegerEnv } from "./Config.ts";
 import HostPolicy from "./HostPolicy.ts";
 
@@ -122,7 +123,7 @@ export default class Guard {
             if (!["http:", "https:"].includes(current.protocol) || !HostPolicy.permits(current.href) || !(await Guard.isPublicUrl(current.href))) {
                 throw new GuardBlockedError(current.href);
             }
-            const response = await fetch(current.href, { method, body, headers, signal, redirect: "manual" });
+            const response = await outboundFetch(current.href, { method, body, headers, signal, redirect: "manual" });
             if (!REDIRECT_STATUSES.has(response.status)) return response;
             const location = response.headers.get("location");
             if (location === null || hops <= 0) return response;

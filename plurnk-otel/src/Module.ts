@@ -7,7 +7,7 @@ import type {
     MeterProvider as ApiMeterProvider,
     TracerProvider as ApiTracerProvider,
 } from "@opentelemetry/api";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { ConfigurationError, syncAmbientHttp } from "@plurnk/plurnk-meta";
 import type { ContainedConfiguration, DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 
 export const SERVICE_NAME = "plurnk-service";
@@ -63,6 +63,7 @@ export const select = (env: Env): Selection | null => {
 // {§otel-module} Construct the selected exporters and providers and register them as the process's globals; a global
 // another owner already holds fails the registration, which is unwound ({§otel-shutdown}) before its cause is thrown.
 const register = async (selection: Selection): Promise<Registration> => {
+    syncAmbientHttp();
     const [{ context, metrics, trace }, { resourceFromAttributes }] = await Promise.all([
         import("@opentelemetry/api"),
         import("@opentelemetry/resources"),

@@ -4,6 +4,7 @@
 // no value) has no entry. Nothing here installs, launches, or connects.
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { McpStdioServerDefinition, McpStreamableHttpServerDefinition } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 
 type McpServerEntry = Omit<McpStdioServerDefinition, "name"> | Omit<McpStreamableHttpServerDefinition, "name">;
 
@@ -180,7 +181,7 @@ export const searchRegistry = async (
     endpoint.searchParams.set("limit", String(limit));
     let response: Response;
     try {
-        response = await fetch(endpoint, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
+        response = await outboundFetch(endpoint, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
     } catch (cause) {
         throw new RegistryError(`The MCP Registry at ${endpoint.origin} could not be reached.`, null, { cause });
     }

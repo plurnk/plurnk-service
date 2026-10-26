@@ -1,4 +1,5 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 
 type ToolProtocol = "openai" | "messages" | "generate-content";
 
@@ -19,7 +20,7 @@ export const withoutNativeTools = (
 
 export const withoutNativeToolsFetch = (
     protocol: ToolProtocol,
-    fetch: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init),
+    fetch: typeof globalThis.fetch = outboundFetch,
 ): typeof globalThis.fetch => (input, init) => {
     if (typeof init?.body !== "string") throw new TypeError("Provider generation requires a serialized JSON request");
     const body: unknown = JSON.parse(init.body);

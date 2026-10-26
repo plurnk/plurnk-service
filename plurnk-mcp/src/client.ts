@@ -39,6 +39,7 @@ import {
     Validator,
     type McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import packageJson from "../package.json" with { type: "json" };
 import { ErrorDetail } from "@plurnk/plurnk-execs";
 import PreparationDiagnostics, { type PreparationDiagnostic } from "./PreparationDiagnostics.ts";
@@ -312,7 +313,7 @@ const openTransport = (
             }
             // {§mcp-redirect-refused} — configured headers never reach another origin: no
             // redirect is followed, and a redirected endpoint fails naming where it pointed.
-            const response = await fetch(url, { ...sent, redirect: "manual" });
+            const response = await outboundFetch(url, { ...sent, redirect: "manual" });
             if (REDIRECT_STATUSES.has(response.status)) {
                 const location = response.headers.get("location");
                 await response.body?.cancel();

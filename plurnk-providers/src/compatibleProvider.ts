@@ -1,4 +1,5 @@
 import { EFFORTS, isRecord, type Effort } from "@plurnk/plurnk-contracts";
+import { outboundFetch } from "@plurnk/plurnk-meta";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
@@ -55,7 +56,7 @@ const probeModels = async (
 ): Promise<EndpointProbe> => {
     const modelsUrl = url.replace(/\/chat\/completions$/, "/models");
     try {
-        const response = await fetch(modelsUrl, {
+        const response = await outboundFetch(modelsUrl, {
             headers,
             ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
@@ -99,7 +100,7 @@ const probeProps = async (
     timeout: number,
 ): Promise<{ slotCount: number | null; eosText: string | null }> => {
     try {
-        const response = await fetch(url.replace(/\/v1\/chat\/completions$/, "/props"), {
+        const response = await outboundFetch(url.replace(/\/v1\/chat\/completions$/, "/props"), {
             headers,
             ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
