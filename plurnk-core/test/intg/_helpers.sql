@@ -837,8 +837,19 @@ WHERE id = $id;
 -- {§engine-rails} — the loop's persisted strike streak, the rail's own truth.
 SELECT strike_streak FROM loops WHERE id = $loop_id;
 -- PREP: test_last_loop_reply
-SELECT content FROM message_responses WHERE loop_id = $loop_id AND length(content) > 0
-ORDER BY id DESC LIMIT 1;
+-- {§loop-answer}: the latest nonempty reply the loop gave to the message that started it (ordinal 1),
+-- or the latest reply in the loop when no originating message was answered.
+SELECT COALESCE(
+    (SELECT r.content
+     FROM log_responses r
+     JOIN sessions producer ON producer.id = r.session_id
+     JOIN json_each(r.rx, '$.answers') answer
+     JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+     WHERE m.loop_id = $loop_id AND m.ordinal = 1 AND length(r.content) > 0
+     ORDER BY r.id DESC LIMIT 1),
+    (SELECT content FROM message_responses WHERE loop_id = $loop_id AND length(content) > 0
+     ORDER BY id DESC LIMIT 1)
+) AS content;
 
 -- PREP: test_content_store_count
 SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;

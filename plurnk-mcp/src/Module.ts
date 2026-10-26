@@ -390,7 +390,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
             namespaceOwner: OWNER,
-            summary: "Manage MCP servers",
+            summary: "Manage MCP servers; active servers run as <alias> (<tool>) and publish workspace:///_plurnk/tools/<alias>.md",
             definitionSchema: MCP_DEFINITION,
             example: { alias: "example-server", definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] } },
             docsDir: fileURLToPath(new URL("..", import.meta.url)),

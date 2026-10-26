@@ -510,8 +510,8 @@ Registries without definitions and empty registries publish no catalog.
 | By declared JSON type | `""` for string, `0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object; an undeclared type is `null` |
 | A closed set of strings (`enum`) | its first choice in the JSON skeleton; when a required field declares between 2 and 12 string choices, the aside lists the full `"a"\|"b"\|…` union (#762, #1228) |
 | A top-level `anyOf` | contributes its first branch's required fields, so a schema that requires one of several inputs previews one valid form |
-| Nested objects and arrays | stay empty (`{}` / `[]`) in the JSON skeleton; when a required object or array of objects declares nested `properties` (or item string enums), the aside summarizes one level of its `{field: type, opt?: type}` shape up to 6 fields, with `… +N opt` for any remainder (#1228) |
-| Declared top-level properties beyond the required set | the aside lists up to 12 optional properties as `name?: type` (using string enum unions up to 12 choices, typed `item[]` arrays, one-level `{…}` objects, or declared JSON types), with `… +N opt` for any remainder (#1228) |
+| Nested objects and arrays | stay empty (`{}` / `[]`) in the JSON skeleton; when a required object, bounded `oneOf`/`anyOf` object union (up to 4 branches), or array of objects declares nested `properties` (or item string enums), the aside summarizes one level of its `{field: type, opt?: type}` shape up to 6 fields per branch, with `… +N opt` for any remainder (#1228) |
+| Declared top-level properties beyond the required set | the aside lists up to 12 optional properties as `name?: type` (using string enum unions up to 12 choices, typed `item[]` arrays, one-level `{…}` objects or bounded `{…}\|{…}` object unions, or declared JSON types), with `… +N opt` for any remainder (#1228) |
 
 Runtime-name admission is one identity contract:
 

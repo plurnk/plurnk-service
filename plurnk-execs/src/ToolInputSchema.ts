@@ -26,24 +26,54 @@ const isStringEnum = (choices: unknown): choices is readonly string[] =>
     Array.isArray(choices) && choices.length > 0 && choices.length <= 12
     && choices.every((choice): choice is string => typeof choice === "string");
 
-const dereference = (prop: JsonSchema): JsonSchema => {
+const resolveLocalDef = (root: JsonSchema, fragment: string): JsonSchema | undefined => {
+    if (!fragment.startsWith("/$defs/")) return undefined;
+    const key = fragment.slice("/$defs/".length);
+    const defs = isRecord(root.$defs) ? root.$defs : undefined;
+    const candidate = defs?.[key];
+    return isRecord(candidate) ? candidate : undefined;
+};
+
+const dereference = (prop: JsonSchema, root?: JsonSchema): JsonSchema => {
     if (typeof prop.$ref === "string") {
-        const resolved = Validator.schemaByRef(prop.$ref.split("#", 1)[0]);
-        if (isRecord(resolved)) return resolved;
+        const [baseUri, fragment] = prop.$ref.split("#", 2);
+        const targetRoot = baseUri.length > 0 ? Validator.schemaByRef(baseUri) : root;
+        if (isRecord(targetRoot)) {
+            if (fragment !== undefined && fragment.length > 0) {
+                const resolved = resolveLocalDef(targetRoot, fragment);
+                if (resolved !== undefined) {
+                    return isRecord(targetRoot.$defs) ? { ...resolved, $defs: targetRoot.$defs } : resolved;
+                }
+            } else {
+                return targetRoot;
+            }
+        }
     }
-    return prop;
+    return root !== undefined && prop.$defs === undefined && isRecord(root.$defs)
+        ? { ...prop, $defs: root.$defs }
+        : prop;
+};
+
+const structuredUnionBranches = (prop: JsonSchema): JsonSchema[] => {
+    const rawBranches = Array.isArray(prop.oneOf) ? prop.oneOf : Array.isArray(prop.anyOf) ? prop.anyOf : [];
+    if (rawBranches.length === 0 || rawBranches.length > 4) return [];
+    const resolved = rawBranches.map((branch) => dereference(objectOf(branch), prop));
+    return resolved.every((branch) => isRecord(branch.properties) && Object.keys(branch.properties).length > 0)
+        ? resolved
+        : [];
 };
 
 const hasStructuredDetail = (raw: JsonSchema): boolean => {
     const prop = dereference(raw);
     if (isRecord(prop.properties) && Object.keys(prop.properties).length > 0) return true;
-    const items = dereference(objectOf(prop.items));
+    if (structuredUnionBranches(prop).length > 0) return true;
+    const items = dereference(objectOf(prop.items), prop);
     return (isRecord(items.properties) && Object.keys(items.properties).length > 0)
         || (isStringEnum(items.enum) && items.enum.length > 1);
 };
 
-const propertySignature = (raw: JsonSchema, depth = 0): string => {
-    const prop = dereference(raw);
+const propertySignature = (raw: JsonSchema, depth = 0, root?: JsonSchema): string => {
+    const prop = dereference(raw, root);
     if (isStringEnum(prop.enum)) {
         return prop.enum.map((choice) => JSON.stringify(choice)).join("|");
     }
@@ -55,7 +85,7 @@ const propertySignature = (raw: JsonSchema, depth = 0): string => {
     if (declared.includes("array") || isRecord(prop.items)) {
         const items = objectOf(prop.items);
         if (Object.keys(items).length > 0) {
-            const itemSig = propertySignature(items, depth);
+            const itemSig = propertySignature(items, depth, prop);
             const wrap = itemSig.includes("|") && !itemSig.startsWith("{");
             return `${wrap ? `(${itemSig})` : itemSig}[]`;
         }
@@ -68,9 +98,15 @@ const propertySignature = (raw: JsonSchema, depth = 0): string => {
         const optionalKeys = Object.keys(nestedProps).filter((key) => !nestedReqSet.has(key));
         const ordered = [...nestedReq, ...optionalKeys];
         const parts = ordered.slice(0, 6).map((key) =>
-            `${key}${nestedReqSet.has(key) ? "" : "?"}: ${propertySignature(objectOf(nestedProps[key]), 1)}`);
+            `${key}${nestedReqSet.has(key) ? "" : "?"}: ${propertySignature(objectOf(nestedProps[key]), 1, prop)}`);
         if (ordered.length > 6) parts.push(`… +${ordered.length - 6} opt`);
         return `{${parts.join(", ")}}`;
+    }
+    if (depth === 0) {
+        const branches = structuredUnionBranches(prop);
+        if (branches.length > 0) {
+            return branches.map((branch) => propertySignature(branch, 0, prop)).join("|");
+        }
     }
     if (declared.length > 0) return declared.join("|");
     if (Array.isArray(prop.oneOf) || Array.isArray(prop.anyOf)) return "object";

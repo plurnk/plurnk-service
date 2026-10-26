@@ -257,6 +257,19 @@ test("{§executor-input-schema-preview} surfaces optional properties, nested obj
     const capped = ToolInputSchema.asideNote({ type: "object", properties: manyOptionalProps });
     assert.ok(capped?.endsWith(", … +2 opt)"), `expected bounded optional tail, got ${capped}`);
 
+    assert.equal(
+        ToolInputSchema.asideNote({
+            type: "object",
+            required: ["verb"],
+            properties: {
+                verb: { type: "string", enum: ["list", "add"] },
+                alias: { type: "string" },
+                definition: { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" },
+            },
+        }),
+        '(verb: "list"|"add"; alias?: string, definition?: {name: string, type: "stdio", command: string, args?: string[], env?: object, cwd?: string}|{name: string, type: "streamable-http", url: string, headers?: object, authorization?: object})',
+    );
+
     const noOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
         invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },
