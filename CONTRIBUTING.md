@@ -250,6 +250,25 @@ npm run release:finalize -- /path/to/qualified-release-artifacts
 Existing signed tags and published release records are verified and preserved
 ({§release-finalization}).
 
+### Major releases
+
+**Major-only maintenance classes** — changesets that must wait for or drive a major:
+
+- A protocol face or dependency retirement.
+- The migration-chain re-founding ({§db-migrations}).
+- Wire contracts visible to clients or models: envelopes, receipts, events.
+- Configuration key removals or renames ({§operator-config-env-defaults}).
+- Teaching or materialized-address removals the model can observe.
+
+**The per-major sweep** — the release-window checklist, executed in order:
+
+1. **Retired-forms grep clean**: no code, specification, doc, test, migration, comment, or diagnostic names a retired form (`AGENTS.md` § Changes).
+2. **Migration baseline flattened**: baseline squashed to the previous major's terminal schema, shape hashes re-frozen, and `plurnk-core/test/intg/schema-baseline.test.ts` scoped to the new floor ({§db-migrations}).
+3. **Clients migrated**: the drill's `test:client-conformance` phase (`scripts/test-client-conformance.mjs`) is green at the release commits ({§acp-first-party-client-conformance}).
+4. **Bench lanes relocked**: `../plurnk-bench` lanes relocked to the release commits (`relock.sh`).
+5. **Operator migration notes**: `CHANGELOG.md` (`npm run changelog -- --write`) and the release notes carry the operator migration section (old database path, old client path, renamed or removed configuration keys).
+6. **Leanness re-measured**: codebase and packet-floor numbers (`npm run report:floor`) recorded for the release notes whenever the anti-bloat posture is reported publicly.
+
 ## Reviews and reports
 
 State the problem, tradeoffs, verification, and compatibility effect. Reports need
