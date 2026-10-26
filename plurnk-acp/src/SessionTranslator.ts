@@ -1052,7 +1052,15 @@ export default class SessionTranslator {
             readonly exactLoopSeq?: number;
         } = {},
     ): ReplayResult {
-        const activeRows = rows.filter((row) => !("inherited_history" in row && row.inherited_history === 1));
+        const activeRows = rows
+            .filter((row) => !("inherited_history" in row && row.inherited_history === 1))
+            .toSorted(
+                (a, b) =>
+                    (a.loop_seq - b.loop_seq) ||
+                    (a.turn_seq - b.turn_seq) ||
+                    (a.sequence - b.sequence) ||
+                    (a.id - b.id),
+            );
         const allLoopSeqs = [...new Set(activeRows.map((r) => r.loop_seq).filter(isSafeInteger))].toSorted((a, b) => a - b);
 
         let candidateSeqs = allLoopSeqs;
@@ -1071,9 +1079,26 @@ export default class SessionTranslator {
                 : new Set(candidateSeqs);
 
         const updates: AcpSessionUpdate[] = [];
-        for (const row of activeRows) {
+        for (let i = 0; i < activeRows.length; i += 1) {
+            const row = activeRows[i];
             if (!selectedLoops.has(row.loop_seq)) continue;
             updates.push(...translator.logEntry({ entry: row }));
+            const attrs = SessionTranslator.#attrRecord(row.attrs);
+            if (typeof attrs.stream === "string") {
+                const streamEnded = activeRows
+                    .slice(i + 1)
+                    .some(
+                        (later) =>
+                            addressOf(later) === attrs.stream ||
+                            later.loop_seq > row.loop_seq ||
+                            (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
+                    );
+                if (streamEnded) {
+                    updates.push(
+                        ...translator.terminalConcluded(row.id, SessionTranslator.#statusOf(row)),
+                    );
+                }
+            }
         }
 
         if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
