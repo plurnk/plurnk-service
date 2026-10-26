@@ -234,7 +234,6 @@ export const startClientJourneyModel = async () => {
             PLURNK_MODEL_journey: `journey-fixture/${MODEL}`,
             PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_NPM: "@ai-sdk/openai-compatible",
             PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
-            PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_REASONING_BUDGET_PATH: "/reasoning/max_tokens",
             PLURNK_PROVIDERS_CONTEXT_WINDOW_journey: "32768",
             PLURNK_PROVIDERS_OUTPUT_BUDGET_journey: "4096",
             PLURNK_PROVIDERS_EFFORT_journey: "adaptive",

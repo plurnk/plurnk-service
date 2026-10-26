@@ -237,7 +237,7 @@ test("{§provider-resolution} public construction applies the package floor to a
     assert.equal(provider.model, fireworksNative);
 });
 
-test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
+test("{§provider-effort} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
         calls.push({ url: requestUrl(url), init });

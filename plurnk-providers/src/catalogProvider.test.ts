@@ -37,11 +37,9 @@ import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const env = withProviderDefaults({
-    ...OPERATOR_MODEL_OPTIONS,
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
@@ -61,58 +59,6 @@ const env = withProviderDefaults({
 test.afterEach(() => {
     mock.restoreAll();
     resetEmittedWarnings();
-});
-
-test("{§provider-wire-declaration} configured fields survive the actual compatible SDK request", async () => {
-    const bodies: Record<string, unknown>[] = [];
-    const headers: Headers[] = [];
-    mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-        bodies.push(JSON.parse(requestBody(init)));
-        headers.push(new Headers(init?.headers));
-        return new Response(`data: ${JSON.stringify({
-            id: "wire-test", model: "served", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
-        })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
-    });
-    const declaration = {
-        ...env,
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_NPM: "@ai-sdk/openai-compatible",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_BASE_URL: "https://unlisted.invalid/v1",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_OUTPUT_PATH: "/max_completion_tokens",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORT_PATH: "/reasoning_effort",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_BUDGET_PATH: "/thinking_budget",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_CONTROLS: "exclusive",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORTS: "low,medium,xhigh",
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_ON_BODY: '{"enable_thinking":true}',
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_OFF_BODY: '{"enable_thinking":false}',
-        PLURNK_PROVIDERS_PROVIDER_UNLISTED_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-session-affinity"}',
-        PLURNK_PROVIDERS_CONTEXT_WINDOW: "65536",
-        PLURNK_PROVIDERS_OUTPUT_BUDGET: "32768",
-        PLURNK_PROVIDERS_EFFORT: "adaptive",
-        PLURNK_PROVIDERS_REASONING_BUDGET: "8192",
-    };
-    const provider = catalogProviderFromEnv("unlisted", declaration, "unknown");
-    assert.ok(provider);
-    await provider.generate({ sessionId: "wire-test", messages: [{ role: "user", content: "hello" }] });
-    await provider.generate({ sessionId: "wire-test", messages: [], maxOutputTokens: 4096 });
-    assert.equal(bodies[0]?.thinking_budget, 8192);
-    assert.equal(bodies[0]?.max_completion_tokens, 32768);
-    assert.equal(bodies[0]?.max_tokens, undefined);
-    assert.equal(bodies[0]?.reasoning_effort, undefined);
-    assert.equal(headers[0]?.get("x-session-affinity"), "wire-test");
-    assert.equal(bodies[0]?.enable_thinking, true);
-    assert.equal(bodies[1]?.max_completion_tokens, 4096);
-    assert.equal(bodies[1]?.thinking_budget, 4095);
-    assert.throws(() => catalogProviderFromEnv("unlisted", {
-        ...declaration, PLURNK_PROVIDERS_EFFORT: "medium",
-    }, "unknown"), /reasoning effort and budget are exclusive/);
-    assert.equal(bodies.length, 2, "the conflicting controls cause no inference request");
-    const off = catalogProviderFromEnv("unlisted", { ...declaration, PLURNK_PROVIDERS_EFFORT: "off" }, "unknown");
-    await off?.generate({ sessionId: "wire-test", messages: [], sampling: { thinking_budget: 100000, enable_thinking: true } });
-    assert.equal(bodies[2]?.thinking_budget, undefined, "caller sampling cannot smuggle a configured budget field while reasoning is off");
-    assert.equal(bodies[2]?.enable_thinking, false);
-    assert.throws(() => catalogProviderFromEnv("openai", {
-        ...env, PLURNK_PROVIDERS_OUTPUT_PATH: "/max_completion_tokens",
-    }, "gpt-4.1-mini"), /OUTPUT_PATH configures compatible request fields, not this native SDK/);
 });
 
 test("{§provider-effort} catalog provider resolves model physics and Models.dev USD rates", () => {
@@ -234,23 +180,16 @@ test("{§provider-effort}: discovery never offers a fixed effort the installed t
         ...env,
         PLURNK_PROVIDERS_EFFORT: "adaptive",
         PLURNK_PROVIDERS_PROVIDER_OPENAI_REASONING_EFFORTS: "medium,xhigh",
-        PLURNK_PROVIDERS_PROVIDER_OPENROUTER_REASONING_EFFORTS: "medium,xhigh",
-        PLURNK_PROVIDERS_PROVIDER_OPENROUTER_REASONING_TRANSPORT_EFFORTS: "none,low,medium,high",
     });
-    for (const [name, expected] of [
-        ["openai", ["off", "adaptive", "low", "medium", "high", "xhigh"]],
-        ["openrouter", ["off", "adaptive", "low", "medium", "high"]],
-    ] as const) {
-        const catalog = lookupProvider(name);
-        assert.ok(catalog);
-        assert.deepEqual(catalogEfforts(catalog, info, declared), expected);
-        assert.throws(() => providerFromSdkModel({
-            name, model: "fixture", contextWindow: 32_768, info,
-            env: { ...declared, PLURNK_PROVIDERS_EFFORT: "max" },
-            languageModel: { specificationVersion: "v4" } as LanguageModel,
-            sdkPackage: catalog.npm,
-        }), UnsupportedEffortError);
-    }
+    const catalog = lookupProvider("openai");
+    assert.ok(catalog);
+    assert.deepEqual(catalogEfforts(catalog, info, declared), ["off", "adaptive", "low", "medium", "high", "xhigh"]);
+    assert.throws(() => providerFromSdkModel({
+        name: "openai", model: "fixture", contextWindow: 32_768, info,
+        env: { ...declared, PLURNK_PROVIDERS_EFFORT: "max" },
+        languageModel: { specificationVersion: "v4" } as LanguageModel,
+        sdkPackage: catalog.npm,
+    }), UnsupportedEffortError);
 });
 
 test("{§provider-effort} Models.dev controls Cloudflare's exact effort vocabulary", async () => {
@@ -1024,7 +963,7 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
     mock.restoreAll();
 });
 
-test("{§provider-wire-declaration} (#458) declared efforts union into the supported set under the models.dev-id prefix", () => {
+test("{§provider-effort} (#458) declared efforts union into the supported set under the models.dev-id prefix", () => {
     const provider = catalogProviderFromEnv("fireworks-ai", {
         ...env,
         FIREWORKS_API_KEY: "test-key",
@@ -1035,11 +974,8 @@ test("{§provider-wire-declaration} (#458) declared efforts union into the suppo
     assert.deepEqual(provider?.supportedEfforts, ["adaptive", "low", "high", "max"]);
 });
 
-// {§provider-wire-declaration}: DeepInfra's and Together's native SDKs extend openai-compatible, whose body writes
-// `reasoning_effort` from its own `reasoningEffort` option after spreading the others; the shipped declaration
-// therefore names that option, and every effort the catalog documents for a route reaches the wire.
 for (const name of ["deepinfra", "togetherai"]) {
-    test(`{§provider-wire-declaration} ${name}: the catalog's strongest effort, and off, reach the wire as reasoning_effort`, async (t) => {
+    test(`{§provider-effort} ${name}: the catalog's strongest effort, and off, reach the wire as reasoning_effort`, async (t) => {
         const routes = Object.entries(catalogSnapshot()[name] ?? {})
             .map(([model, info]) => ({
                 model,
@@ -1067,18 +1003,6 @@ for (const name of ["deepinfra", "togetherai"]) {
     });
 }
 
-test("{§provider-wire-declaration} a native route refusing its catalog's max names the declaration that sends it", () => {
-    const route = Object.keys(catalogSnapshot().deepinfra ?? {}).find((model) => catalogEffortsOf("deepinfra", model).includes("max"));
-    assert.ok(route !== undefined, "the deepinfra catalog documents no max effort to witness");
-    assert.throws(() => catalogProviderFromEnv("deepinfra", withProviderDefaults({
-        DEEPINFRA_API_KEY: "test-key",
-        PLURNK_PROVIDERS_EFFORT: "max",
-        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_OPTIONS_NAMESPACE: "",
-        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH: "",
-        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_OFF_BODY: "",
-    }), route), { message: /The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_OPTIONS_NAMESPACE and PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH\.$/ });
-});
-
 test("{§openrouter-app-attribution} attribution is the provider's declaration: openrouter sends it, another OpenRouter-SDK provider does not", async (t) => {
     const seen = new Map<string, Headers>();
     mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
@@ -1099,7 +1023,7 @@ test("{§openrouter-app-attribution} attribution is the provider's declaration: 
     assert.equal(other?.get("x-openrouter-title"), null);
 });
 
-test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, budget and switch reach the wire from the shipped declaration", async (t) => {
+test("{§provider-effort} alibaba: DashScope's inclusive cap, effort, budget and switch reach the wire from the provider adapter", async (t) => {
     const route = Object.keys(catalogSnapshot().alibaba ?? {}).find((model) => catalogEffortsOf("alibaba", model).length > 0
         && resolveModel("alibaba", model)?.info.reasoningOptions?.some((option) => option.type === "budget_tokens"));
     assert.ok(route !== undefined, "the alibaba catalog documents no effort-and-budget route to witness");

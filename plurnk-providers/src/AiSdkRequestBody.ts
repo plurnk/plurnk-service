@@ -54,7 +54,7 @@ const MANUAL_REASONING_MINIMUM = 1024;
 // sampling stay deliberately caller-overridable.
 const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
     "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
-    "reasoning_format", "reasoning_effort", "thinking", "think", "include_reasoning", "chat_template_kwargs", "thinking_budget_tokens",
+    "reasoning_format", "reasoning_effort", "thinking", "think", "enable_thinking", "thinking_budget", "include_reasoning", "chat_template_kwargs", "thinking_budget_tokens",
     "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
     "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
     "prompt_cache_key",

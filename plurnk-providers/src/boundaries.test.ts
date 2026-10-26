@@ -48,7 +48,6 @@ test("{§provider-runtime-neutral-openai} the OpenAI-compatible entrypoint exclu
         "AiSdkProvider.ts",
         "AiSdkRequestBody.ts",
         "RequestCapture.ts",
-        "RequestFields.ts",
         "aiSdkTransport.ts",
         "capacity.ts",
         "cost.ts",

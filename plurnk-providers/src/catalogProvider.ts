@@ -9,6 +9,7 @@ import {
 import {
     costOverrideFromEnv,
     contextWindowFromEnv,
+    declaredReasoningEfforts,
     effectiveContextWindow,
     dataCaptureFromEnv,
     generationEnvelopeFromEnv,
@@ -25,18 +26,19 @@ import {
 import AiSdkProvider, {
     type AiSdkProviderConfig,
     type GrammarStyle,
-    type NativeEffort,type AiSdkProviderOptions,type CacheAffinity,type NativeRequestControls
+    type NativeEffort,
+    type AiSdkProviderOptions,
+    type CacheAffinity,
+    type NativeRequestControls,
 } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
 import type { InputModality, Provider, ProviderCostNormalizer } from "./types.ts";
-import { INPUT_MODALITIES, UnsupportedEffortError } from "./types.ts";
+import { INPUT_MODALITIES } from "./types.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
-import RequestFields from "./RequestFields.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
-import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
@@ -54,12 +56,12 @@ const nativeEfforts: ReadonlySet<string> = new Set<NativeEffort>([
 
 const catalogWireEfforts = (
     info: ModelInfo,
-    declared: readonly ModelEffort[] = [],
-): readonly ModelEffort[] => [
+    declared: readonly Exclude<ModelEffort, null>[] = [],
+): readonly Exclude<ModelEffort, null>[] => [
     ...new Set([
         ...(info.reasoningOptions
             ?.filter((option) => option.type === "effort")
-            .flatMap((option) => option.values) ?? []),
+            .flatMap((option) => option.values.flatMap((value) => value === null ? [] : [value])) ?? []),
         ...declared,
     ]),
 ];
@@ -67,41 +69,201 @@ const catalogWireEfforts = (
 const catalogSupportsToggle = (info: ModelInfo): boolean =>
     info.reasoningOptions?.some((option) => option.type === "toggle") === true;
 
-const catalogSupportedEfforts = ({
-    info,
-    declared,
-}: {
-    info: ModelInfo;
-    declared: readonly ModelEffort[];
-}): readonly Effort[] => {
-    if (!info.reasoning) return activationPolicies;
-    const wireEfforts = new Set(catalogWireEfforts(info, declared));
-    const off = wireEfforts.has("none") || catalogSupportsToggle(info);
-    return EFFORTS.filter((policy) => policy === "adaptive"
-        || policy === "off" && off
-        || (policy === "low" || policy === "medium" || policy === "high"
-                || policy === "xhigh" || policy === "max")
-            && wireEfforts.has(policy));
+const assertCatalogReasoningBudget = (
+    name: string,
+    info: ModelInfo | undefined,
+    budget: number,
+): void => {
+    for (const option of info?.reasoningOptions ?? []) {
+        if (option.type !== "budget_tokens") continue;
+        if (option.min !== undefined && budget < option.min) {
+            throw new TypeError(`${name} provider: reasoning budget ${budget} is below catalog minimum ${option.min}`);
+        }
+        if (option.max !== undefined && budget > option.max) {
+            throw new TypeError(`${name} provider: reasoning budget ${budget} exceeds catalog maximum ${option.max}`);
+        }
+    }
 };
+
+const usesProviderReasoningProjection = (name: string, native: boolean): boolean =>
+    !native || name === "openrouter" || name === "deepinfra" || name === "togetherai";
+
+const supportsReasoningOff = (
+    name: string,
+    info: ModelInfo | undefined,
+    wireEfforts: ReadonlySet<string>,
+    declaredEfforts: readonly ModelEffort[],
+): boolean => {
+    if (info?.reasoning === false) return true;
+    if (name === "cloudflare-workers-ai") {
+        return info === undefined || wireEfforts.has("none");
+    }
+    if (
+        name === "openrouter"
+        || name === "deepinfra"
+        || name === "togetherai"
+        || name === "deepseek"
+        || name === "alibaba"
+        || name === "fireworks-ai"
+    ) {
+        return info === undefined || wireEfforts.has("none") || catalogSupportsToggle(info);
+    }
+    return info === undefined && declaredEfforts.length === 0
+        || wireEfforts.has("none")
+        || info !== undefined && catalogSupportsToggle(info);
+};
+
+const supportsFixedEfforts = (
+    name: string,
+    native: boolean,
+    declaredEfforts: readonly ModelEffort[],
+): boolean =>
+    native
+    || name === "deepseek"
+    || name === "alibaba"
+    || name === "fireworks-ai"
+    || name === "cloudflare-workers-ai"
+    || declaredEfforts.length > 0;
 
 const reasoningCapabilities = (
     name: string,
     env: NodeJS.ProcessEnv,
     info: ModelInfo | undefined,
     native: boolean,
-) => {
-    const declaredEfforts = RequestFields.declaredEfforts(name, env);
-    if (!native || RequestFields.namespace(name, env) !== undefined) {
-        const requestFields = new RequestFields(name, env, info);
-        return { declaredEfforts, efforts: requestFields.efforts, requestFields };
-    }
-    RequestFields.assertNative(name, env);
-    const supported = info === undefined ? activationPolicies : catalogSupportedEfforts({ info, declared: declaredEfforts });
-    const [first, ...rest] = supported.filter((policy) => policy !== "max");
+): {
+    readonly declaredEfforts: readonly Exclude<ModelEffort, null>[];
+    readonly efforts: readonly [Effort, ...Effort[]];
+    readonly outputTokenField?: "max_tokens" | "max_completion_tokens";
+    readonly reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
+    readonly reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined;
+} => {
+    const declaredEfforts = declaredReasoningEfforts(name, env);
+    const wireEfforts = info === undefined ? [...declaredEfforts] : catalogWireEfforts(info, declaredEfforts);
+    const wireEffortSet = new Set<string>(wireEfforts);
+    const needsAdaptiveWireEffort = info?.reasoning !== false && (
+        name === "openrouter"
+        || name === "deepinfra"
+        || name === "togetherai"
+        || name === "deepseek"
+        || name === "alibaba"
+        || name === "cloudflare-workers-ai" && (info !== undefined || declaredEfforts.length > 0)
+        || !native && declaredEfforts.length > 0
+    );
+    const adaptiveWireEffort = needsAdaptiveWireEffort ? adaptiveEffortFromEnv(env, wireEfforts) : undefined;
+    const customProjection = usesProviderReasoningProjection(name, native);
+    const allowFixed = supportsFixedEfforts(name, native, declaredEfforts);
+    const allowOff = supportsReasoningOff(name, info, wireEffortSet, declaredEfforts);
+
+    const supported = info?.reasoning === false || info === undefined && declaredEfforts.length === 0
+        ? activationPolicies
+        : EFFORTS.filter((policy) => policy === "adaptive"
+            || policy === "off" && allowOff
+            || allowFixed
+                && (policy === "low" || policy === "medium" || policy === "high" || policy === "xhigh"
+                    || policy === "max" && customProjection)
+                && wireEffortSet.has(policy));
+    const [first, ...rest] = supported;
     if (first === undefined) throw new TypeError(`${name} provider: no portable effort is representable`);
+    const efforts = [first, ...rest] satisfies [Effort, ...Effort[]];
+
+    if (native) {
+        if (name === "openrouter" && info?.reasoning !== false) {
+            return {
+                declaredEfforts,
+                efforts,
+                reasoningRequestProviderOptions: (mode, budget) => {
+                    if (mode === "off") return { openrouter: { reasoning: { effort: "none" } } };
+                    if (budget !== null) {
+                        if (mode !== "adaptive") {
+                            throw new TypeError(`${name} provider: reasoning effort and budget are exclusive; choose one control`);
+                        }
+                        assertCatalogReasoningBudget(name, info, budget);
+                        return { openrouter: { reasoning: { enabled: true, max_tokens: budget } } };
+                    }
+                    if (mode !== "adaptive") {
+                        return { openrouter: { reasoning: { enabled: true, effort: mode } } };
+                    }
+                    return {
+                        openrouter: {
+                            reasoning: adaptiveWireEffort === undefined
+                                ? { enabled: true }
+                                : { enabled: true, effort: adaptiveWireEffort },
+                        },
+                    };
+                },
+            };
+        }
+        if ((name === "deepinfra" || name === "togetherai") && info?.reasoning !== false) {
+            return {
+                declaredEfforts,
+                efforts,
+                reasoningRequestProviderOptions: (mode, budget) => {
+                    if (budget !== null) {
+                        throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    }
+                    if (mode === "off") return { [name]: { reasoningEffort: "none" } };
+                    if (mode !== "adaptive") return { [name]: { reasoningEffort: mode } };
+                    return adaptiveWireEffort === undefined ? undefined : { [name]: { reasoningEffort: adaptiveWireEffort } };
+                },
+            };
+        }
+        return { declaredEfforts, efforts };
+    }
+
     return {
         declaredEfforts,
-        efforts: [first, ...rest] satisfies [Effort, ...Effort[]],
+        efforts,
+        ...(name === "alibaba" ? { outputTokenField: "max_completion_tokens" as const } : {}),
+        reasoningRequestBody: (mode, budget) => {
+            if (info?.reasoning === false) {
+                if (budget !== null) throw new TypeError(`${name} model does not support reasoning`);
+                return {};
+            }
+            switch (name) {
+                case "deepseek":
+                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    if (mode === "off") return { thinking: { type: "disabled" } };
+                    if (mode !== "adaptive") return { thinking: { type: "enabled" }, reasoning_effort: mode };
+                    return {
+                        thinking: { type: "enabled" },
+                        ...(adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort }),
+                    };
+                case "alibaba":
+                    if (mode === "off") return { enable_thinking: false };
+                    if (budget !== null) {
+                        if (mode !== "adaptive") {
+                            throw new TypeError(`${name} provider: reasoning effort and budget are exclusive; choose one control`);
+                        }
+                        assertCatalogReasoningBudget(name, info, budget);
+                        return { enable_thinking: true, thinking_budget: budget };
+                    }
+                    if (mode !== "adaptive") return { enable_thinking: true, reasoning_effort: mode };
+                    return {
+                        enable_thinking: true,
+                        ...(adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort }),
+                    };
+                case "fireworks-ai":
+                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    if (mode === "off") return { reasoning_effort: "none" };
+                    if (mode !== "adaptive") return { reasoning_effort: mode };
+                    if (adaptiveWireEffort !== undefined) return { reasoning_effort: adaptiveWireEffort };
+                    if (info !== undefined && catalogSupportsToggle(info)) return { reasoning_effort: true };
+                    return {};
+                case "cloudflare-workers-ai":
+                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    if (info === undefined && declaredEfforts.length === 0) return {};
+                    if (mode === "off") return { reasoning_effort: "none" };
+                    if (mode !== "adaptive") return { reasoning_effort: mode };
+                    return adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort };
+                default:
+                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    if (mode === "off") return wireEffortSet.has("none") ? { reasoning_effort: "none" } : {};
+                    if (mode !== "adaptive") return { reasoning_effort: mode };
+                    return declaredEfforts.length > 0 && adaptiveWireEffort !== undefined
+                        ? { reasoning_effort: adaptiveWireEffort }
+                        : {};
+            }
+        },
     };
 };
 
@@ -128,12 +290,21 @@ const adaptiveEffortProjection = ({
     model: string;
     reasoningCapable: boolean;
     info?: ModelInfo;
-    declared: readonly ModelEffort[];
+    declared: readonly Exclude<ModelEffort, null>[];
 }): Pick<AiSdkProviderConfig, "adaptiveEffort" | "adaptiveEffortProviderOptions"> => {
     if (!reasoningCapable) return { adaptiveEffort: "provider-default" };
-    // {§provider-model-options}: a model family's adaptive reasoning, where the provider declares one.
-    const familyOptions = providerModelOptions(name, env, "ADAPTIVE_OPTIONS", model);
-    if (familyOptions !== undefined) return { adaptiveEffort: "provider-default", adaptiveEffortProviderOptions: familyOptions };
+    if (name === "anthropic" && model.includes("claude-")) {
+        return {
+            adaptiveEffort: "provider-default",
+            adaptiveEffortProviderOptions: { anthropic: { thinking: { type: "adaptive", display: "summarized" } } },
+        };
+    }
+    if (name === "amazon-bedrock" && model.includes("claude-")) {
+        return {
+            adaptiveEffort: "provider-default",
+            adaptiveEffortProviderOptions: { bedrock: { reasoningConfig: { type: "adaptive" } } },
+        };
+    }
     if (info !== undefined) {
         return {
             adaptiveEffort: adaptiveEffortFromEnv(env, catalogWireEfforts(info, declared)
@@ -200,16 +371,15 @@ export const providerFromSdkModel = ({
     );
     const effort = effortFromEnv(env, name, envelope.reasoningBudget);
     const reasoningCapable = info?.reasoning === true;
-    const { declaredEfforts, efforts, requestFields } = reasoningCapabilities(
+    const {
+        declaredEfforts,
+        efforts,
+        outputTokenField,
+        reasoningRequestBody,
+        reasoningRequestProviderOptions,
+    } = reasoningCapabilities(
         name, env, info, languageModel !== undefined,
     );
-    // The AI SDK's portable reasoning setting has no `max`; a native route whose catalog documents it needs the
-    // provider's own option declared ({§provider-wire-declaration}), not a wider effort list.
-    if (effort.mode === "max" && !(efforts as readonly Effort[]).includes("max") && requestFields === undefined && info !== undefined
-        && catalogSupportedEfforts({ info, declared: declaredEfforts }).includes("max")) {
-        const prefix = `PLURNK_PROVIDERS_PROVIDER_${name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`;
-        throw new UnsupportedEffortError(`provider:${name}`, "max", efforts, `The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: ${prefix}_OPTIONS_NAMESPACE and ${prefix}_REASONING_EFFORT_PATH.`);
-    }
     const adaptiveEffort = adaptiveEffortProjection({
         name,
         env,
@@ -283,7 +453,9 @@ export const providerFromSdkModel = ({
         repeatPenalty: parseOptionalFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
-        ...(requestFields === undefined ? {} : { requestFields }),
+        ...(outputTokenField === undefined ? {} : { outputTokenField }),
+        ...(reasoningRequestBody === undefined ? {} : { reasoningRequestBody }),
+        ...(reasoningRequestProviderOptions === undefined ? {} : { reasoningRequestProviderOptions }),
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
         ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
             ? { systemCacheProviderOptions }

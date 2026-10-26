@@ -112,7 +112,7 @@ export interface LanguageModelCallOptions {
     readonly abortSignal?: AbortSignal;
     readonly toolChoice?: { readonly type: "none" };
     readonly tools?: undefined;
-    readonly reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
+    readonly reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "none" | "provider-default";
     readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     readonly includeRawChunks?: boolean;
 }

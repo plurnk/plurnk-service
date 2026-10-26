@@ -2,8 +2,7 @@
 // local to the selected provider.
 
 import { EFFORTS, MAX_TIMER_MS, Validator, type Effort } from "@plurnk/plurnk-contracts";
-import RequestFields from "./RequestFields.ts";
-import type { CacheAffinity } from "./AiSdkProvider.ts";
+import type { ModelEffort } from "@plurnk/plurnk-models";
 import { providerSetting } from "./provider-env.ts";
 import InferenceAdmission from "./InferenceAdmission.ts";
 
@@ -84,44 +83,21 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
 
 export type CacheWritePolicy = "off" | "stable-system";
 
-const cacheAffinitySchema = {
-    oneOf: [
-        {
-            type: "object", additionalProperties: false, required: ["target", "name"],
-            properties: {
-                target: { enum: ["header", "body"] },
-                name: { type: "string", minLength: 1 },
-            },
-        },
-        {
-            type: "object", additionalProperties: false, required: ["target", "name", "provider"],
-            properties: {
-                target: { const: "provider-option" },
-                name: { type: "string", minLength: 1 },
-                provider: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_-]*$" },
-            },
-        },
-    ],
-};
+const MODEL_EFFORT_VALUES: readonly Exclude<ModelEffort, null>[] = Object.freeze([
+    "none", "minimal", "low", "medium", "high", "xhigh", "max",
+]);
 
-export const cacheAffinityDeclarationFromEnv = (env: NodeJS.ProcessEnv, provider: string): CacheAffinity | undefined => {
-    const [key, raw] = providerSetting(provider, env, "CACHE_AFFINITY_FIELD");
-    if (raw === undefined || raw === "") return undefined;
-    let value: unknown;
-    try { value = JSON.parse(raw); } catch (cause) { throw new TypeError(`${key} must be a cache-affinity declaration or null`, { cause }); }
-    if (value === null) return undefined;
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the cache-affinity schema just proved the declaration its type names
-    const field = Validator.assertJsonSchemaInstance(key, cacheAffinitySchema, value) as CacheAffinity;
-    if (field.target === "header") {
-        try { new Headers({ [field.name]: "session" }); }
-        catch (cause) { throw new TypeError(`${key} must name a valid HTTP header`, { cause }); }
-        if (["authorization", "proxy-authorization", "cookie", "host", "content-type", "content-length", "accept", "transfer-encoding", "connection"].includes(field.name.toLowerCase())) {
-            throw new TypeError(`${key} cannot replace an HTTP transport or authentication header`);
+export const declaredReasoningEfforts = (provider: string, env: NodeJS.ProcessEnv): readonly Exclude<ModelEffort, null>[] => {
+    const [key, raw] = providerSetting(provider, env, "REASONING_EFFORTS");
+    if (raw === undefined || raw.trim().length === 0) return [];
+    const values = raw.split(",").map((entry) => entry.trim()).filter(Boolean);
+    return values.map((value) => {
+        const matched = MODEL_EFFORT_VALUES.find((candidate) => candidate === value);
+        if (matched === undefined) {
+            throw new TypeError(`${key} has invalid value ${JSON.stringify(value)}; declarable efforts: ${MODEL_EFFORT_VALUES.join(", ")}`);
         }
-    } else if (RequestFields.isManaged(field.name) || field.target === "provider-option" && RequestFields.isManaged(field.provider)) {
-        throw new TypeError(`${key} cannot address a transport-owned field`);
-    }
-    return field;
+        return matched;
+    });
 };
 
 export const cacheAffinityFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
@@ -362,7 +338,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_OUTPUT_FLOOR",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
     "PLURNK_PROVIDERS_EFFORT_FALLBACK",
-    ...RequestFields.knobs,
+    "PLURNK_PROVIDERS_REASONING_EFFORTS",
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_EFFORT",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
@@ -380,12 +356,9 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_FREQUENCY_PENALTY",
     "PLURNK_PROVIDERS_SERVICE_TIER",
     "PLURNK_PROVIDERS_CACHE_WRITE_POLICY",
-    "PLURNK_PROVIDERS_SYSTEM_CACHE_OPTIONS",
-    "PLURNK_PROVIDERS_ADAPTIVE_OPTIONS",
     "PLURNK_PROVIDERS_APP_URL",
     "PLURNK_PROVIDERS_APP_NAME",
     "PLURNK_PROVIDERS_CACHE_AFFINITY",
-    "PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD",
     "PLURNK_PROVIDERS_REPEAT_LAST_N",
     "PLURNK_PROVIDERS_DRY_MULTIPLIER",
     "PLURNK_PROVIDERS_DRY_BASE",
@@ -443,9 +416,8 @@ export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: re
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
             // A bare knob can prefix another bare knob (_EFFORT prefixes
-            // _EFFORT_FALLBACK, _CACHE_AFFINITY prefixes _CACHE_AFFINITY_FIELD): a key
-            // that IS a known knob is never a suffixed override, whatever the
-            // alias is named.
+            // _EFFORT_FALLBACK): a key that IS a known knob is never a suffixed
+            // override, whatever the alias is named.
             if (knobs.includes(key)) continue;
             if (key.slice(knob.length + 1).toLowerCase() !== folded) continue;
             out[knob] = value;

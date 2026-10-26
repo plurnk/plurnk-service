@@ -2,7 +2,6 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
@@ -115,7 +114,7 @@ test("{§provider-sdk-boundary} createSdkModel constructs Cerebras from Models.d
     assert.equal(sdk?.compatible, undefined);
 });
 
-test("{§provider-wire-declaration} SDK construction does not freeze request-local reasoning controls", () => {
+test("{§provider-effort} SDK construction does not freeze request-local reasoning controls", () => {
     const source = createSdkModel("openrouter", "z-ai/glm-5.3-flash", {
         OPENROUTER_API_KEY: "test-key",
     })?.languageModel;
@@ -204,7 +203,7 @@ test("{§provider-fact-authority} ordered credential fallbacks are rejected at c
     );
 });
 
-test("{§provider-cache-affinity} the environment panel supplies each documented cache-affinity projection", () => {
+test("{§provider-cache-affinity} the SDK adapter supplies each documented cache-affinity projection", () => {
     assert.deepEqual(
         createSdkModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "openai", name: "promptCacheKey" },
@@ -221,21 +220,18 @@ test("{§provider-cache-affinity} the environment panel supplies each documented
         createSdkModel("fireworks-ai", "accounts/fireworks/models/test", withProviderDefaults({ FIREWORKS_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-affinity" },
     );
-    assert.equal(createSdkModel("openai", "gpt-4.1-mini", { OPENAI_API_KEY: "key" })?.cacheAffinity, undefined,
-        "the SDK binding does not reconstruct a missing declaration from provider identity");
+    assert.equal(createSdkModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "key" })?.cacheAffinity, undefined);
 });
 
-test("{§provider-model-options} explicit stable-system cache breakpoints exist only where a provider declares them, and none ship for closed families", () => {
+test("{§provider-cache-write-policy} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
     const cacheControl = { type: "ephemeral" };
-    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults({ ...OPERATOR_MODEL_OPTIONS, ...env }))?.systemCacheProviderOptions;
+    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
     assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
     assert.deepEqual(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.deepEqual(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
     assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic SDK declares none");
-    assert.equal(createSdkModel("anthropic", "claude-sonnet-4-6", withProviderDefaults({ ANTHROPIC_API_KEY: "key" }))?.systemCacheProviderOptions, undefined,
-        "the shipped defaults declare nothing for a closed model family, and identity reconstructs nothing");
 });
 
 test("{§provider-cache-affinity} an operator-declared compatible provider receives no guessed cache extension", () => {

@@ -5,7 +5,6 @@ import {
     dataCaptureFromEnv,
     costOverrideFromEnv,
     cacheAffinityFromEnv,
-    cacheAffinityDeclarationFromEnv,
     cacheWritePolicyFromEnv,
     generationEnvelopeFromEnv,
     resolveGenerationEnvelopeFromEnv,
@@ -92,26 +91,6 @@ test("{§provider-cache-write-policy} cache policy keeps cost-neutral affinity s
     );
 });
 
-test("{§provider-cache-affinity} declarations follow alias precedence and refuse invalid placement", () => {
-    const env = {
-        PLURNK_PROVIDERS_PROVIDER_EXAMPLE_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-session"}',
-        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD: '{"target":"body","name":"session"}',
-        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD_sample: '{"target":"provider-option","provider":"example","name":"session"}',
-        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD_disabled: "null",
-    };
-    assert.deepEqual(cacheAffinityDeclarationFromEnv(env, "example"), { target: "body", name: "session" });
-    assert.deepEqual(cacheAffinityDeclarationFromEnv(scopeEnvToAlias(env, "sample"), "example"), {
-        target: "provider-option", provider: "example", name: "session",
-    });
-    assert.equal(cacheAffinityDeclarationFromEnv(scopeEnvToAlias(env, "disabled"), "example"), undefined);
-    for (const raw of ["[]", "{", '{"target":"header"}', '{"target":"body","name":"max_tokens"}',
-        '{"target":"provider-option","name":"session"}', '{"target":"body","name":"__proto__"}',
-        '{"target":"header","name":"x-session","extra":true}', '{"target":"header","name":"invalid name"}',
-        '{"target":"header","name":"Authorization"}', '{"target":"header","name":"content-type"}']) {
-        assert.throws(() => cacheAffinityDeclarationFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD: raw }, "example"), /CACHE_AFFINITY_FIELD/);
-    }
-});
-
 // — per-alias knob scoping ({§provider-configuration}) —
 
 test("{§provider-configuration} scopeEnvToAlias: each projection reads one fresh environment snapshot", () => {
@@ -146,7 +125,7 @@ test("{§provider-configuration} scopeEnvToAlias: suffixed knob wins, bare is th
         PLURNK_PROVIDERS_EFFORT_turboderp: "high",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
-        PLURNK_PROVIDERS_REASONING_EFFORT_PATH_turboderp: "/thinking_config/thinking_level",
+        PLURNK_PROVIDERS_REASONING_EFFORTS_turboderp: "low,medium,xhigh",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
         PLURNK_PROVIDERS_OUTPUT_BUDGET_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
@@ -155,11 +134,11 @@ test("{§provider-configuration} scopeEnvToAlias: suffixed knob wins, bare is th
     assert.equal(scoped.PLURNK_PROVIDERS_EFFORT, "high");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
-    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_EFFORT_PATH, "/thinking_config/thinking_level");
+    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_EFFORTS, "low,medium,xhigh");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
     assert.equal(scoped.PLURNK_PROVIDERS_OUTPUT_BUDGET, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_EFFORT, "off"); // fallback intact
-    assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING_EFFORT_PATH, undefined, "another alias's projection never leaks");
+    assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING_EFFORTS, undefined, "another alias's projection never leaks");
 });
 
 test("{§provider-configuration} scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {

@@ -15,7 +15,6 @@ import {
     type ModelReadinessCause,
 } from "@plurnk/plurnk-contracts";
 import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.ts";
-import { providerModelOptions } from "./model-options.ts";
 import {
     createOpenAICompatible,
     encodeBytesBase64,
@@ -40,7 +39,6 @@ import type {
     LanguageModelV4Usage,
     ProviderCostNormalizer,
 } from "./types.ts";
-import { cacheAffinityDeclarationFromEnv } from "./env.ts";
 import { withoutNativeTools, withoutNativeToolsFetch } from "./native-tools.ts";
 
 export type SdkProviderSettings = {
@@ -2016,6 +2014,32 @@ const resolveSdkProvider = (
     return { catalog, url: baseUrl(provider, env, catalog, baseUrlOverride) };
 };
 
+const providerCacheAffinity = (provider: string): CacheAffinity | undefined => {
+    switch (provider) {
+        case "openai":
+            return { target: "provider-option", provider: "openai", name: "promptCacheKey" };
+        case "deepinfra":
+            return { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" };
+        case "openrouter":
+            return { target: "header", name: "x-session-id" };
+        case "cloudflare-workers-ai":
+        case "fireworks-ai":
+            return { target: "header", name: "x-session-affinity" };
+        default:
+            return undefined;
+    }
+};
+
+const providerSystemCacheOptions = (provider: string, model: string): AiSdkProviderOptions | undefined => {
+    if (provider === "anthropic") {
+        return { anthropic: { cacheControl: { type: "ephemeral" } } };
+    }
+    if (provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"))) {
+        return { openrouter: { cacheControl: { type: "ephemeral" } } };
+    }
+    return undefined;
+};
+
 export const createSdkModel = (
     provider: string,
     model: string,
@@ -2025,12 +2049,12 @@ export const createSdkModel = (
     const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
     if (resolved === null) return null;
     const { catalog, url } = resolved;
-    const cacheAffinity = cacheAffinityDeclarationFromEnv(env, provider);
-    const systemCacheProviderOptions = providerModelOptions(provider, env, "SYSTEM_CACHE_OPTIONS", model);
+    const cacheAffinity = providerCacheAffinity(provider);
+    const systemCacheProviderOptions = providerSystemCacheOptions(provider, model);
     return {
         ...modelFromSdk(provider, model, { ...env }, catalog, url),
         ...(systemCacheProviderOptions === undefined ? {} : { systemCacheProviderOptions }),
-        cacheAffinity,
+        ...(cacheAffinity === undefined ? {} : { cacheAffinity }),
         endpoint: url,
     };
 };

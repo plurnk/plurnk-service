@@ -7,16 +7,9 @@ import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { LanguageModel } from "./types.ts";
-import RequestFields from "./RequestFields.ts";
-import { withProviderDefaults } from "./defaults.ts";
 import { createGoogleGenerativeAI, createOpenRouter } from "./sdkModels.ts";
 import InferenceAdmission from "./InferenceAdmission.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
-
-const wireConfig = (env: NodeJS.ProcessEnv) => {
-    const requestFields = new RequestFields("test", withProviderDefaults(env));
-    return { requestFields, supportedEfforts: requestFields.efforts };
-};
 
 type TestProviderConfig = Omit<AiSdkProviderConfig, "operationTimeoutMs">
     & Partial<Pick<AiSdkProviderConfig, "operationTimeoutMs">>;
@@ -74,14 +67,15 @@ for (const phase of ["headers", "first content", "between chunks", "finish", "bu
     });
 }
 
-test("{§provider-wire-declaration} native SDK requests reproject controls for streaming and buffered calls", async () => {
-    const fields = new RequestFields("unlisted", {
-        ...withProviderDefaults({}),
-        PLURNK_PROVIDERS_OPTIONS_NAMESPACE: "openrouter",
-        PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning/effort",
-        PLURNK_PROVIDERS_REASONING_BUDGET_PATH: "/reasoning/max_tokens",
-        PLURNK_PROVIDERS_REASONING_EFFORTS: "none,low,xhigh,max",
-        PLURNK_PROVIDERS_REASONING_CONTROLS: "exclusive",
+test("{§provider-effort} native SDK requests reproject reasoning options for streaming and buffered calls", async () => {
+    const reasoningRequestProviderOptions = (mode: string, budget: number | null) => ({
+        openrouter: {
+            reasoning: mode === "off"
+                ? { effort: "none" }
+                : budget !== null
+                    ? { max_tokens: budget }
+                    : { effort: mode },
+        },
     });
     for (const streaming of [true, false]) {
         const bodies: Record<string, unknown>[] = [];
@@ -101,14 +95,11 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
         });
         const base = {
             model: "unlisted", languageModel: sdk.languageModel("unlisted"),
-            requestFields: fields, supportedEfforts: fields.efforts,
+            reasoningRequestProviderOptions,
+            supportedEfforts: ["off", "adaptive", "low", "xhigh", "max"] as const,
             fetchTimeoutMs: 5000, retryAttempts: 0, temperature: null,
             repeatPenalty: null, outputBudget: 4096, streaming,
         };
-        assert.throws(() => testProvider({
-            ...base, effort: { mode: "off", budget: null },
-            cacheAffinity: { target: "provider-option", provider: "openrouter", name: "reasoning" },
-        }), /cache affinity overlaps declared request controls/);
         const budgeted = testProvider({ ...base, reasoningBudget: 2048, effort: { mode: "adaptive", budget: 2048 } });
         for (const maxOutputTokens of [4096, 1500]) {
             const result = await budgeted.generate({ sessionId: "request-fields", messages: [{ role: "user", content: "hello" }], maxOutputTokens });
@@ -1405,87 +1396,6 @@ test("{§provider-connectivity} reasoningStyle 'think' follows activation (magni
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("{§provider-wire-declaration} preserves each declared fixed effort", async () => {
-    for (const mode of ["low", "medium", "high"] as const) {
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode, budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "low,medium,high" }) });
-        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ sessionId: "r", messages: [] });
-        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, mode);
-        mock.restoreAll();
-    }
-});
-
-test("{§provider-wire-declaration} explicit off and adaptive omission remain distinct", async () => {
-    for (const [effort, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "low", budget: null }, "low"], [{ mode: "high", budget: null }, "high"]] as const) {
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort, retryAttempts: 0, ...wireConfig({
-            PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort",
-            PLURNK_PROVIDERS_REASONING_EFFORTS: "low,high",
-            PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"reasoning_effort":"none"}',
-            PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: "{}",
-        }) });
-        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ sessionId: "r", messages: [] });
-        const body = JSON.parse(calls[0].init.body as string);
-        if (expected === null) assert.equal("reasoning_effort" in body, false, `mode ${effort.mode}: field must be omitted`);
-        else assert.equal(body.reasoning_effort, expected, `mode ${effort.mode}`);
-        mock.restoreAll();
-    }
-});
-
-test("{§provider-wire-declaration} graded fallback precedes a catalog toggle without changing explicit policies", async () => {
-    for (const [effort, efforts, expected] of [
-        [{ mode: "adaptive", budget: null }, ["low"], true],
-        [{ mode: "adaptive", budget: null }, ["low", "high", "max"], "high"],
-        [{ mode: "off", budget: null }, ["low", "high", "max"], "none"],
-        [{ mode: "low", budget: null }, ["low", "high", "max"], "low"],
-    ] as const) {
-        const requestFields = new RequestFields("fireworks-ai", withProviderDefaults({}), {
-            reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: [...efforts] }],
-        });
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort, retryAttempts: 0, requestFields, supportedEfforts: requestFields.efforts });
-        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ sessionId: "r", messages: [] });
-        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${effort.mode}`);
-        mock.restoreAll();
-    }
-});
-
-test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exact effort", async () => {
-    const cases = [
-        [{ mode: "off", budget: null }, { thinking: { type: "disabled" } }],
-        [{ mode: "adaptive", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
-        [{ mode: "high", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
-    ] as const;
-    for (const [effort, expected] of cases) {
-        const requestFields = new RequestFields("deepseek", withProviderDefaults({}), {
-            reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: ["high"] }],
-        });
-        const p = testProvider({
-            model: "m",
-            url: "http://x/v1/chat/completions",
-            fetchTimeoutMs: 5000,
-            temperature: 0.2,
-            repeatPenalty: 1.15,
-            effort,
-            retryAttempts: 0,
-            requestFields,
-            supportedEfforts: requestFields.efforts,
-        });
-        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({
-            sessionId: "r",
-            messages: [],
-            sampling: { thinking: { type: "disabled" }, reasoning_effort: "max" },
-        });
-        const body = JSON.parse(calls[0].init.body as string);
-        assert.deepEqual(
-            Object.fromEntries(Object.entries(body).filter(([key]) => key === "thinking" || key === "reasoning_effort")),
-            expected,
-        );
-        mock.restoreAll();
-    }
-});
-
 test("{§provider-connectivity} the family temperature default rides every request; caller sampling overrides it", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -1800,26 +1710,6 @@ test("{§provider-connectivity} reasoningStyle 'template' forwards a fixed effor
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true, reasoning_effort: "high" }, "the stated intent reaches the template; adaptive alone leaves the template default");
     assert.equal(body.thinking_budget_tokens, 64, "the budget still rides beside the effort");
-});
-
-test("{§provider-wire-declaration} off sends the declared disabling fields", async () => {
-    const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "none" }) });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await effort.generate({ sessionId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none");
-
-    mock.restoreAll();
-    const relay = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"include_reasoning":false}' }) });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await relay.generate({ sessionId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, false);
-});
-
-test("{§provider-wire-declaration} sets the declared relay passthrough toggle", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_ON_BODY: '{"include_reasoning":true}' }) });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ sessionId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
 });
 
 // — grammar-constrained sampling —
@@ -2392,40 +2282,6 @@ test("{§provider-connectivity} retry: a caller abort during backoff rejects pro
     ac.abort(new Error("cancelled"));
     await assert.rejects(() => promise); // abort cuts through the backoff
     assert.equal(calls.length, 1); // never retried after cancellation
-});
-
-test("{§provider-wire-declaration} maps nested budgets and adaptive/disabled bodies", async () => {
-    const configuration = wireConfig({
-        PLURNK_PROVIDERS_REASONING_BUDGET_PATH: "/thinking/budget_tokens",
-        PLURNK_PROVIDERS_REASONING_ON_BODY: '{"thinking":{"type":"enabled"}}',
-        PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"thinking":{"type":"disabled"}}',
-        PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: '{"thinking":{"type":"adaptive"}}',
-    });
-    // N>0 → enabled with budget_tokens
-    const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", outputBudget: 8192, reasoningBudget: 4096, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 4096 }, ...configuration });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await capped.generate({ sessionId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
-
-    mock.restoreAll();
-    const unbudgeted = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 8192, outputBudget: 4096, reasoningBudget: 2048, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 2048 }, ...configuration });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await unbudgeted.generate({ sessionId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 2048 });
-
-    mock.restoreAll();
-    // 0 → explicit disabled
-    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, ...configuration });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await off.generate({ sessionId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
-
-    mock.restoreAll();
-    // Adaptive is explicit, so the provider—not omission—owns the posture.
-    const adaptive = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, ...configuration });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await adaptive.generate({ sessionId: "r", messages: [] });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "adaptive" });
 });
 
 // — non-streaming transport (streaming:false) —

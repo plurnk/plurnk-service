@@ -337,10 +337,7 @@ rail observed.
 | {§provider-readable-reasoning} | Route-owned options may request exposed reasoning text. |
 | {§provider-sdk-warning} | AI SDK compatibility, unsupported-feature, deprecation, and other call warnings become source-attributed… |
 | {§provider-cache-affinity} | Cache affinity is route-owned request projection. |
-| {§provider-model-options} | A model family's native options are a provider declaration. |
 | {§provider-cache-write-policy} | Cache-write policy is separate from affinity. |
-| {§deepseek-reasoning-request} | Direct DeepSeek uses the panel's request-field declarations under {§provider-wire-declaration}. |
-| {§provider-wire-declaration} | Request-field declarations |
 <!-- /map -->
 
 §provider-sdk-boundary Cataloged providers instantiate their
@@ -385,12 +382,12 @@ or non-numeric rates refuse at construction.
 
 | Condition | Projection |
 | --- | --- |
-| Explicit adaptive declaration: `REASONING_ADAPTIVE_BODY`, or a native model family's `ADAPTIVE_OPTIONS` ({§provider-model-options}) | Preserve that mechanism; an explicit `{}` retains the enabled endpoint's default. |
+| Native model family with explicit adaptive thinking (Anthropic and Bedrock Claude families) | Send the provider's native adaptive thinking option and retain the endpoint's default level. |
 | The configured `PLURNK_PROVIDERS_EFFORT_FALLBACK` is supported by both model and transport | Send that exact effort. The shipped fallback is `high`, not the strongest available level. |
 | No supported fallback, including an empty fallback setting | Retain reasoning activation and the provider's default effort; never invent a level or escalate to another one. |
 
-Activation is distinct from effort: declared enable fields accompany active
-reasoning, and a toggle-only route uses its documented enable mechanism.
+Activation is distinct from effort: provider-specific enable fields accompany
+active reasoning, and a toggle-only route uses its documented enable mechanism.
 Non-reasoning models receive no reasoning controls; `off` is the explicit opt-out.
 A fixed policy retains its exact name and is rejected before provider I/O when
 either the route or transport cannot represent it. Every provider exposes that
@@ -401,35 +398,37 @@ rejected before I/O. Under `adaptive`, an explicit budget selects the numeric
 control; `off` suppresses it.
 
 `catalogEfforts` projects that same admission calculation from catalog
-facts and provider-wide environment declarations over the installed defaults,
+facts and operator-declared efforts over the installed defaults,
 without constructing a model, requiring credentials, or performing provider I/O.
 Admission respects the installed projection: native SDK fixed efforts exclude
-`max`; declared transport vocabularies constrain per-call option projections.
+`max` unless the route's adapter owns a per-call reasoning option projection.
 
 Models.dev's route-specific `reasoning_options` is the capability authority for
 what the daemon offers on its own; the daemon never adds vendor behaviour absent
 from the catalog. The operator may declare efforts a provider's reasoning routes
-accept (`PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_EFFORTS`, comma-separated
-portable names); declared efforts join the catalog's for policy admission and the
-`adaptive` projection under the same transport rule, a declared `none` admits
-`off` where the transport can express it, and a host that rejects a declared
-effort answers on the first request rather than at boot. The declaration never
-turns a non-reasoning route into a reasoning one. The installed AI SDK or
-explicit compatible adapter owns the wire projection:
+accept (`PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_EFFORTS` or
+`PLURNK_PROVIDERS_REASONING_EFFORTS`, comma-separated portable names); declared
+efforts join the catalog's for policy admission and the `adaptive` projection
+under the same transport rule, a declared `none` admits `off` where the
+transport can express it, and a host that rejects a declared effort answers on
+the first request rather than at boot. The declaration never turns a
+non-reasoning route into a reasoning one. The installed provider adapter owns
+the wire projection:
 
 | Catalog fact | `adaptive` projection | Portable policies admitted in addition to `adaptive` |
 | --- | --- | --- |
 | `reasoning: false` | No reasoning request | `off` |
 | `reasoning_options: []` | Provider default | None |
 | `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§effort-wire}; `off` only when `none` is transportable |
-| `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
-| `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
-| No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |
+| `toggle` | Native or adapter-owned activation, otherwise provider default | `off` only when that transport owns the toggle wire |
+| `budget_tokens` | Does not select policy | None; an adapter uses its bounds when projecting the independent budget |
+| No catalog entry | Explicit adapter projection or operator-declared efforts | Only the declared subset |
 | Operator-declared efforts | Join the catalog's `effort.values` for that provider's reasoning routes | Their exact members, under the transport rule above |
 
-Models.dev identifies the route's controls but not a provider-specific toggle
-or budget field name. The adapter supplies that last-mile mechanism; it never
-invents a cataloged effort value.
+Models.dev identifies the route's controls; the provider adapter supplies the
+wire field names and never invents a cataloged effort value. Request-local
+options are projected per call after the effective envelope is known, and
+streaming and buffered calls use the same projection.
 
 §provider-readable-reasoning Route-owned options may request exposed reasoning
 text. Normalization follows {§provider-open-reasoning}; Models.dev's reasoning
@@ -447,37 +446,17 @@ prompt-cache routing key, its catalog adapter projects `sessionId` through that
 provider's documented header, body field, or native SDK option. The common
 transport neither guesses from protocol resemblance nor sends a generic cache
 field to an unknown provider. The operator may disable affinity globally or per
-alias; automatic provider caching without an affinity control remains untouched.
-The environment's `CACHE_AFFINITY_FIELD` declares that placement as
-`{"target":"header"|"body","name":"…"}` or
-`{"target":"provider-option","provider":"…","name":"…"}`. It follows
-the provider/route/alias precedence of {§provider-wire-declaration}; `null`
-clears the declaration. Placement is independent of the enable switch, cannot
-replace transport-owned fields, and does not imply support from a provider's name.
-
-§provider-model-options **A model family's native options are a provider declaration.** Models.dev
-does not say which models on a native SDK take adaptive reasoning or explicit cache writes, and the SDKs
-do not export their tables, so a provider declares them as data: `ADAPTIVE_OPTIONS` and
-`SYSTEM_CACHE_OPTIONS` are JSON arrays of `{"models":["<glob>",…],"options":{…}}` rules. The first rule
-with a glob matching the route's model id (`path.matchesGlob`) supplies its per-call provider options;
-without a match none apply. They follow the provider/route/alias precedence of
-{§provider-wire-declaration}, an empty value declares none, and a malformed value fails construction.
-None ships: Plurnk's shipped defaults serve open models only, and an operator who routes a closed model
-family declares its options in their own configuration.
+alias (`PLURNK_PROVIDERS_CACHE_AFFINITY`); automatic provider caching without an
+affinity control remains untouched.
 
 §provider-cache-write-policy **Cache-write policy is separate from affinity.**
 `PLURNK_PROVIDERS_CACHE_WRITE_POLICY` is `off` or `stable-system`. The latter
 marks only the final leading system instruction as an explicit reusable cache
-boundary, and only on routes whose provider declares the control in
-`SYSTEM_CACHE_OPTIONS` ({§provider-model-options}). It does
-not mark the changing user packet or enable an API-wide automatic cache mode.
-Unsupported routes receive no invented option. The default five-minute
-provider lifetime is used; a longer, differently priced lifetime is not an
-implicit transport choice.
-
-§deepseek-reasoning-request Direct DeepSeek uses the panel's request-field
-declarations under {§provider-wire-declaration}. Models.dev supplies each
-model's effort vocabulary; it is not a second fixed list in this adapter.
+boundary on routes whose provider adapter supports explicit system cache
+breakpoints (Anthropic and Bedrock Claude families). It does not mark the
+changing user packet or enable an API-wide automatic cache mode. Unsupported
+routes receive no invented option. The default five-minute provider lifetime is
+used; a longer, differently priced lifetime is not an implicit transport choice.
 
 The compatible transport is deliberately retained for:
 
@@ -487,47 +466,6 @@ The compatible transport is deliberately retained for:
 
 It carries PLURNK-only fields and raw wire evidence without reimplementing the
 SDK's ordinary transport.
-
-### §provider-wire-declaration Request-field declarations
-
-Models.dev owns model capabilities, effort vocabulary, and numeric budget bounds.
-For endpoints whose field names it does not describe, the provider's
-environment panel supplies a bounded projection, independent of provider identity:
-
-| Declaration suffix | Meaning |
-| --- | --- |
-| `OPTIONS_NAMESPACE` | Native SDK's per-call `providerOptions` namespace. Without one, declared fields target the compatible request body. |
-| `OUTPUT_PATH` | RFC 6901 object-member pointer for the **inclusive** output ceiling; absent uses the compatible SDK's `max_tokens` field. |
-| `REASONING_EFFORT_PATH` / `REASONING_BUDGET_PATH` | Pointers for exact effort or numeric reasoning subset. No pointer means no such control. |
-| `REASONING_EFFORTS` | Additional declared effort values, unioned with Models.dev. |
-| `REASONING_TRANSPORT_EFFORTS` | Optional transport vocabulary, intersected with catalog/declaration efforts. It adds no model capability. |
-| `REASONING_CONTROLS` | Required when both pointers exist: `exclusive` refuses fixed effort plus budget; `combined` sends both. |
-| `REASONING_ON_BODY` | Static reasoning activation fields, merged with the selected control. |
-| `REASONING_OFF_BODY` | Explicit disable fields; otherwise a declared `none` effort can disable. |
-| `REASONING_ADAPTIVE_BODY` | Explicit adaptive fields, ahead of graded fallback; `{}` retains the enabled endpoint's default. |
-| `REASONING_TOGGLE_BODY` | Reasoning enable fields when Models.dev declares a toggle and neither an explicit adaptive body nor a supported fallback effort applies. |
-
-The existing provider declaration prefix is
-`PLURNK_PROVIDERS_PROVIDER_<NAME>_`; `PLURNK_PROVIDERS_<suffix>` overrides
-it for the route and accepts the ordinary alias suffix. These are data, not
-executable transformations. Static bodies cannot replace transport, sampling,
-or managed numeric controls; pointers cannot overlap. Configuration fails at
-construction before inference when a requested policy or numeric control is
-unrepresentable. A tighter per-call envelope reprojects the same declaration.
-Discovery and generation share the resolved policy set. A cataloged
-non-reasoning model receives no reasoning fields.
-Native SDKs retain their own output field; `OUTPUT_PATH` is incompatible with an
-options namespace. Request-local options are projected after the effective
-envelope is known, never frozen into SDK model construction. Streaming and
-non-streaming calls use the same projection.
-
-A native SDK's portable reasoning setting has no `max`, so a native route without
-a namespace cannot send an effort the catalog documents beyond it; construction
-refuses it and names the declaration that would. Native SDKs built on
-openai-compatible (DeepInfra, Together) write `reasoning_effort` from their own
-`reasoningEffort` option after spreading the others, overwriting a raw
-`reasoning_effort`; their shipped declarations therefore point at
-`/reasoningEffort`, with `{"reasoningEffort":"none"}` as the off body.
 
 ## §4 Operator configuration
 
@@ -751,7 +689,7 @@ every request:
 
 §llama-template-effort A detected llama-server rail admits `off` and `adaptive`, and a fixed
 effort only where the operator declares it (`REASONING_EFFORTS`,
-{§provider-wire-declaration}). The chat template decides what each level means and which
+{§provider-effort}). The chat template decides what each level means and which
 levels it accepts; PLURNK infers neither from the template nor from the model's name, and a
 template that refuses a declared level answers on the first request.
 

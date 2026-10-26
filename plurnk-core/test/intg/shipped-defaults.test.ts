@@ -105,7 +105,7 @@ test("{§operator-config-undeclared-key} the installed panels declare every fami
         ...PROVIDERS_KNOBS.map((knob) => `${knob}_fixture`),  // every provider knob, scoped to an alias
         "PLURNK_PROVIDERS_GBNF_fixture",
         "PLURNK_MODEL_fixture", "PLURNK_BASEURL_fixture",
-        "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_ON_BODY",
+        "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_EFFORTS",
         "PLURNK_EXECS_JS",
         ...["MCP", "SCHEDULE", "MEMBERS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
         "PLURNK_MCP_fixture_TOOLS", "PLURNK_SKILLS_分析", "PLURNK_SKILLS_分析_ENABLED",

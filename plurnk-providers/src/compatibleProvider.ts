@@ -3,6 +3,7 @@ import { outboundFetch } from "@plurnk/plurnk-meta";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
+    declaredReasoningEfforts,
     effectiveContextWindow,
     dataCaptureFromEnv,
     generationEnvelopeFromEnv,
@@ -18,7 +19,6 @@ import {
     inferenceAdmissionFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
-import RequestFields from "./RequestFields.ts";
 import { UnsupportedEffortError, type Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -34,7 +34,7 @@ const provider = "openai";
 // {§llama-template-effort} The server enforces off and adaptive itself; a fixed effort is the
 // operator's declaration of a level the served chat template distinguishes.
 const templateEfforts = (env: NodeJS.ProcessEnv): readonly Effort[] => {
-    const declared: ReadonlySet<string> = new Set(RequestFields.declaredEfforts(provider, env));
+    const declared: ReadonlySet<string> = new Set(declaredReasoningEfforts(provider, env));
     return EFFORTS.filter((policy) => policy === "off" || policy === "adaptive" || declared.has(policy));
 };
 

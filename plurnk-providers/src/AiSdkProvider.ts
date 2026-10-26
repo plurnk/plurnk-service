@@ -25,7 +25,6 @@ import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effe
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
-import type RequestFields from "./RequestFields.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
 
@@ -136,7 +135,9 @@ export type AiSdkProviderConfig = {
     // one total output budget.
     additiveReasoningProvider?: "anthropic" | "bedrock";
     reasoningStyle?: ReasoningStyle;          // default "none"
-    requestFields?: RequestFields;
+    outputTokenField?: "max_tokens" | "max_completion_tokens";
+    reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
+    reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined;
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
@@ -335,7 +336,9 @@ export default class AiSdkProvider implements Provider {
     #dryAllowedLength: number | undefined;
     #repeatLastN: number | undefined;
     #reasoningStyle: ReasoningStyle;
-    readonly #requestFields: RequestFields | undefined;
+    readonly #outputTokenField: "max_tokens" | "max_completion_tokens";
+    readonly #reasoningRequestBody: ((mode: Effort, reasoningBudget: number | null) => Record<string, unknown>) | undefined;
+    readonly #reasoningRequestProviderOptions: ((mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined) | undefined;
     #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
@@ -429,10 +432,15 @@ export default class AiSdkProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
-        this.#requestFields = config.requestFields;
-        if (this.#requestFields !== undefined && (this.#requestFields.namespace !== undefined) !== (config.languageModel !== undefined)) {
-            throw new TypeError("Request fields must use an SDK namespace for a native languageModel, and the body for a compatible URL");
+        if (this.#languageModel !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
+            throw new TypeError(`${config.source ?? "provider"}: compatible request body projections require an OpenAI-compatible URL`);
         }
+        if (this.#languageModel === undefined && config.reasoningRequestProviderOptions !== undefined) {
+            throw new TypeError(`${config.source ?? "provider"}: native reasoning provider options require an AI SDK model`);
+        }
+        this.#outputTokenField = config.outputTokenField ?? "max_tokens";
+        this.#reasoningRequestBody = config.reasoningRequestBody;
+        this.#reasoningRequestProviderOptions = config.reasoningRequestProviderOptions;
         this.#reasoningResponseStyle = config.reasoningResponseStyle ?? "verbatim";
         if (config.countPromptTokens !== undefined && config.promptTokensUrl !== undefined) {
             throw new Error(`${config.source ?? "provider"}: configure countPromptTokens or promptTokensUrl, not both`);
@@ -448,12 +456,6 @@ export default class AiSdkProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#cacheAffinity = config.cacheAffinity;
-        if (this.#cacheAffinity !== undefined && this.#cacheAffinity.target !== "header"
-            && this.#requestFields?.managedKeys.has(this.#cacheAffinity.name)
-            && (this.#cacheAffinity.target === "body"
-                || this.#cacheAffinity.target === "provider-option" && this.#cacheAffinity.provider === this.#requestFields.namespace)) {
-            throw new TypeError("cache affinity overlaps declared request controls");
-        }
         this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
         this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
         if (this.#languageModel === undefined && this.#cacheAffinity?.target === "provider-option") {
@@ -517,7 +519,8 @@ export default class AiSdkProvider implements Provider {
         if (this.#effort.budget !== this.#reasoningBudget) {
             throw new Error(`${this.#source}: effort and generation envelope disagree on reasoningBudget`);
         }
-        this.#requestFields?.body(this.#effort.mode, this.#outputBudget, this.#reasoningBudget);
+        this.#reasoningRequestBody?.(this.#effort.mode, this.#reasoningBudget);
+        this.#reasoningRequestProviderOptions?.(this.#effort.mode, this.#reasoningBudget);
         if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
             throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
         }
@@ -728,18 +731,16 @@ export default class AiSdkProvider implements Provider {
         // Both transports project the same resolved sampling; managed fields still win.
         const requestSampling = {
             ...this.#samplingDefaults,
-            ...this.#requestBody.samplingBody(sampling, this.#requestFields?.managedKeys),
+            ...this.#requestBody.samplingBody(sampling),
         };
         const body: Record<string, unknown> = {
             ...this.#requestBody.repetitionPenaltyBody(),
             ...requestSampling,
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
-            ...(this.#requestFields === undefined || this.#requestFields.namespace !== undefined
-                ? {
-                    ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
-                    ...(effectiveMaxOutputTokens === undefined ? {} : { max_tokens: effectiveMaxOutputTokens }),
-                }
-                : this.#requestFields.body(this.#effort.mode, effectiveMaxOutputTokens ?? null, capacity.reasoningBudget)),
+            ...(this.#reasoningRequestBody !== undefined
+                ? this.#reasoningRequestBody(this.#effort.mode, capacity.reasoningBudget)
+                : this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget)),
+            ...(effectiveMaxOutputTokens === undefined ? {} : { [this.#outputTokenField]: effectiveMaxOutputTokens }),
             ...this.#requestBody.grammarBody(sendGrammar),
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
@@ -873,11 +874,11 @@ export default class AiSdkProvider implements Provider {
                         languageModel: this.#languageModel,
                         fetch,
                         headers: requestHeaders,
-                        providerOptions: this.#requestBody.requestProviderOptions(sessionId, nativeReasoningBudget,
-                            this.#requestFields?.namespace === undefined ? undefined : {
-                                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- request fields are JSON: parsed from the operator's settings, composed from strings and numbers
-                                [this.#requestFields.namespace]: this.#requestFields.body(this.#effort.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],
-                            }),
+                        providerOptions: this.#requestBody.requestProviderOptions(
+                            sessionId,
+                            nativeReasoningBudget,
+                            this.#reasoningRequestProviderOptions?.(this.#effort.mode, capacity.reasoningBudget),
+                        ),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
@@ -896,13 +897,13 @@ export default class AiSdkProvider implements Provider {
                                 : undefined,
                         seed: typeof requestSampling.seed === "number" ? requestSampling.seed : undefined,
                         maxOutputTokens: this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
-                        reasoning: this.#requestFields?.namespace !== undefined
+                        reasoning: this.#reasoningRequestProviderOptions !== undefined
                             ? "provider-default"
                             : this.#effort.mode === "off"
-                            ? "none"
-                            : this.#effort.mode === "adaptive"
-                                ? this.#adaptiveEffort
-                                : nativeFixedEffort(this.#effort.mode),
+                                ? "none"
+                                : this.#effort.mode === "adaptive"
+                                    ? this.#adaptiveEffort
+                                    : nativeFixedEffort(this.#effort.mode),
                     });
             } catch (error) {
                 if (transportFailureOutputObserved(error)) recoveredAfterOutput = true;

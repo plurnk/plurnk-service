@@ -8,7 +8,6 @@ import { createSdkModel } from "./sdkModels.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
 import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 const KEYS = {
@@ -124,7 +123,6 @@ test("{§provider-request-controls} the catalog route carries the operator's tie
     t.after(() => mock.restoreAll());
     const bodies = captureBodies(openAiReply);
     const provider = catalogProviderFromEnv("openai", withProviderDefaults({
-        ...OPERATOR_MODEL_OPTIONS,
         OPENAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
