@@ -14,7 +14,7 @@ before it cannot do:
 - **Configuration** when what the integration needs already exists: a setting in
   the cascade, or a definition in `mcp.json` or a skill root.
 - **A skill** when the model needs knowledge, or a script it runs with its existing
-  runtimes (`sh`, `node`).
+  runtimes (`sh`, `js`).
 - **An MCP server** when X has an API the model calls as tools. A server X already
   publishes needs only its definition.
 - **A plugin** when skills and MCP servers install together, or travel to other agents.
@@ -36,9 +36,9 @@ before it cannot do:
 | Plugin | a directory holding `plugin.json`, `skills/` and `mcp.json` | its skills and MCP servers | none, unless it declares an extension |
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
-Skills and MCP servers are definitions. The `skills` and
-`mcp` runtimes add, replace, enable, disable and remove them in the current workspace,
-and `worker:///_plurnk/plurnk/skills.md` and `mcp.md` show each
+Skills and MCP servers are definitions. The `plurnk` runtime (`skills` and
+`mcp` tools) adds, replaces, enables, disables and removes them in the current workspace,
+and `worker:///_plurnk/tools/plurnk/skills.json` and `mcp.json` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 

@@ -127,12 +127,12 @@ test("{§membership-read-refusal} a non-member an exclusion covers or the reposi
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "Git ignores it (`.gitignore` line 1): a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("````READ (loose.md)````");
-    assert.equal(untracked.problem.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
+    assert.equal(untracked.problem.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
     await writeFile(join(root, "secret.md"), "hidden\n");
     await db.crud_insert_family_workspace_constraint.run({ workspace_id: ids.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
     const excluded = await dispatch("````READ (secret.md)````");
     assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
-    assert.doesNotMatch(excluded.problem.recovery ?? "", /members \(add\)/u, "an exclusion no add lifts is not offered one");
+    assert.doesNotMatch(excluded.problem.recovery ?? "", /plurnk \(members\)/u, "an exclusion no add lifts is not offered one");
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
 });
 
@@ -171,7 +171,7 @@ test("{§membership-ignore-source} an ignored file's refusal names the rule's fi
     for (const [path, file, line] of [["default.md", "~/.config/git/ignore", 1], ["info.md", ".git/info/exclude", excludeLine], ["drop.tmp", ".gitignore", 2]] as const) {
         assert.match(await named(path) ?? "", new RegExp(`^Git ignores it \\(\`${file.replaceAll(".", "\\.")}\` line ${line}\\)`, "u"), `${path} names ${file} line ${line}`);
     }
-    assert.match(await named("keep.tmp") ?? "", /members \(add\)/u, "a re-included path is untracked, not ignored");
+    assert.match(await named("keep.tmp") ?? "", /plurnk \(members\)/u, "a re-included path is untracked, not ignored");
 
     await asHome("configured", { ".gitconfig": "[core]\n\texcludesFile = ~/my-ignore\n", "my-ignore": "configured.md\n" });
     assert.match(await named("configured.md") ?? "", /^Git ignores it \(`~\/my-ignore` line 1\)/u, "the user's configured excludes file is honored and named");

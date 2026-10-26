@@ -191,7 +191,7 @@ export default class SkillSource {
                     if (pin.commit !== undefined && commit !== pin.commit) {
                         throw actionError("source-moved", 409, `'${located.location}' ${pin.ref ?? "HEAD"} now names ${commit}; this skill was added at ${pin.commit}.`, {
                             source: located.location, ...(pin.ref === undefined ? {} : { ref: pin.ref }), commit: pin.commit, current: commit,
-                            recovery: "Use skills (replace) with the complete source definition to take the current commit.", retryable: false,
+                            recovery: "Use plurnk (skills) replace with the complete source definition to take the current commit.", retryable: false,
                         });
                     }
                     break;

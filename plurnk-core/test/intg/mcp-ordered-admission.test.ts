@@ -34,13 +34,13 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         const { hostPaths, env } = await mcpFixture(t, scenario === "enable" ? { fresh: definition } : {});
         if (scenario === "enable") env.PLURNK_MCP_fresh_ENABLED = "0";
         const command = scenario === "enable" ? "enable" : "add";
-        const params = command === "enable" ? { alias: "fresh" }
-            : { alias: "fresh", definition: scenario === "invalid" ? { type: "not-a-transport" } : definition };
+        const params = command === "enable" ? { verb: "enable", alias: "fresh" }
+            : { verb: "add", alias: "fresh", definition: scenario === "invalid" ? { type: "not-a-transport" } : definition };
         const args = '{"query":"unchanged"}';
         const invocation = PlurnkParser.frame("FrEsH (inspect)", args);
         const source = [
-            PlurnkParser.frame(`mcp (${command})`, JSON.stringify(params)),
-            ...(scenario === "disable" || scenario === "remove" ? [PlurnkParser.frame(`mcp (${scenario})`, '{"alias":"fresh"}')] : []),
+            PlurnkParser.frame("plurnk (mcp)", JSON.stringify(params)),
+            ...(scenario === "disable" || scenario === "remove" ? [PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: scenario, alias: "fresh" }))] : []),
             scenario === "inline" ? `\`\`\`FrEsH (inspect) ${args}\n\`\`\``
                 : scenario === "quoted" ? PlurnkParser.frame("markdown", invocation) : invocation,
             PlurnkParser.frame("NOTE", "Observe the result."),
@@ -70,13 +70,13 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         if (scenario === "cancel") {
             await waitForDb(() => daemon.readLog({ workspaceId, workerId }), (rows) =>
-                rows.some((row) => row.origin === "model" && row.op === "mcp" && row.status_rx === 499));
+                rows.some((row) => row.origin === "model" && row.op === "plurnk" && row.status_rx === 499));
         }
         const succeeds = !["reject", "cancel", "invalid", "disable", "remove", "deny", "quoted"].includes(scenario);
         assert.deepEqual(received, succeeds ? [{ query: "unchanged" }] : [], "only the actually published capability can be invoked");
         const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
         const invoked = rows.filter((row) => row.origin === "model" && row.op === "fresh");
-        const configured = rows.filter((row) => row.origin === "model" && row.op === "mcp");
+        const configured = rows.filter((row) => row.origin === "model" && row.op === "plurnk");
         assert.ok(configured.length > 0);
         if (scenario === "quoted" || scenario === "cancel") {
             assert.deepEqual(invoked, [], "quotation and cancellation never admit an invocation");

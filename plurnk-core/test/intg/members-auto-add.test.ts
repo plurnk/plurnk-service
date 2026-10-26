@@ -202,7 +202,7 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
     const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
-    assert.equal(read.problem?.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body.");
+    assert.equal(read.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.");
     const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
     const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };

@@ -769,8 +769,8 @@ ok(
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("/_plurnk/plurnk/skills.md")?.includes("skills (discover)") === true,
-    "the packed Worker learns Skills management from the generated family manager, not a bundled skill",
+    packedSkills.get("/_plurnk/tools/plurnk/skills.json")?.includes("plurnk (skills)") === true,
+    "the packed Worker learns Skills management from the generated family tool, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
 const coldRestart = await bootStart(dormantMcpEnv);

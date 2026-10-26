@@ -9,8 +9,8 @@ worker's overrides. `list` shows the effective values and their origins.
 reach every worker's commands and newly started MCP servers, without depending
 on which worker starts them:
 
-```env (add)
-{"scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
+```plurnk (env)
+{"verb":"add","scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
 ```
 
 Omitting `scope` selects your worker. Its overrides do not configure shared MCPs.
@@ -75,7 +75,7 @@ not the command's lifetime.
 invocation overrides. Plurnk configuration belongs in the environment cascade;
 READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
-environment; READ `worker:///_plurnk/plurnk/mcp.md` for that setup.
+environment; READ `worker:///_plurnk/tools/plurnk/mcp.json` for that setup.
 
 ## Finding a name
 

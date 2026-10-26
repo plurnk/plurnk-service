@@ -54,7 +54,7 @@ export type WorkspaceTurnStarting = (args: {
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
-import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
+import { OutputScheme, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import LoopDriver from "./LoopDriver.ts";
 
 type ModuleRuntimeRegistration = RuntimeRegistryRegistration & {
@@ -404,6 +404,7 @@ export default class Engine {
         workspaceId: number,
         namespaceOwner: string,
         registrations: readonly ModuleRuntimeRegistration[],
+        schemes: ReadonlyArray<{ readonly name: string; readonly facet: RuntimeSchemeFacet; readonly traits?: readonly string[] }> = [],
     ): Promise<() => () => void> {
         if (this.#executors === undefined) {
             throw new Error("prepareWorkspaceRuntimes: executor registry not wired yet");
@@ -414,14 +415,29 @@ export default class Engine {
             namespaceOwner,
             normalized,
         );
+        const owner = { kind: "module" as const, name: namespaceOwner };
         const commitSchemes = await this.#schemes.prepareWorkspaceRuntimeSchemes(
             workspaceId,
             namespaceOwner,
-            normalized.map(({ tag, entry, scheme }) => ({
-                tag,
-                executor: entry.executor,
-                owner: entry.namespaceOwner,
-                facet: scheme })),
+            [
+                ...normalized.map(({ tag, entry, scheme }) => ({
+                    tag,
+                    executor: entry.executor,
+                    owner: entry.namespaceOwner,
+                    facet: scheme })),
+                ...schemes.map(({ name, facet, traits }) => ({
+                    tag: name,
+                    manifest: OutputScheme.manifestFromRuntime({
+                        name,
+                        glyph: "🧩",
+                        channels: { results: "application/json" },
+                        defaultChannel: "results",
+                        traits,
+                    }),
+                    owner,
+                    facet,
+                })),
+            ],
         );
         return () => {
             const rollbackSchemes = commitSchemes();

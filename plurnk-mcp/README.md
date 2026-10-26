@@ -106,15 +106,15 @@ JSON-RPC 2.0 method, receiving the action result or exact RFC 9457 Problem Detai
 }
 ```
 
-The model manages the same family through ````` ````mcp (list|discover|add|replace|enable|disable|remove) `````
+The model manages the same family through ````` ````plurnk (mcp) ````` with `"verb": "list" | "discover" | "add" | "replace" | "enable" | "disable" | "remove"`
 (`discover` while a registry is configured), each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.
 
 Tool discovery uses ordinary `FIND (worker:///_plurnk/tools/*.md)` and READ.
 Each server's document lists enabled tool calls with required-field previews
-and links to full input schemas under `tools/<server>/<encoded-tool>.md`.
-The manager uses the same layout under `plurnk/mcp.md` and `plurnk/mcp/`;
+and links to full input schemas under `tools/<server>/<encoded-tool>.json`.
+The manager uses the same layout under `tools/plurnk.md` and `tools/plurnk/mcp.json`;
 schema documents preserve descriptions and constraints without adding them to
 the initial survey ({§tools-resource-discovery}).
 

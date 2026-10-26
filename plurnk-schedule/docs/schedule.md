@@ -14,8 +14,8 @@ Its summary opens with the current time in the effective zone and previews
 the first occurrences; its definition carries the rule as it would be stored.
 Nothing is persisted.
 
-```schedule (discover) <!-- what time is it, and when would this fire -->
-{"source": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
+```plurnk (schedule) <!-- what time is it, and when would this fire -->
+{"verb": "discover", "source": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
 ```
 
 ## add
@@ -23,8 +23,8 @@ Nothing is persisted.
 `add` persists the rule for this workspace and arms its next occurrence, if any.
 It is a host effect and requires approval.
 
-```schedule (add)
-{"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://exampleWorkerName", "prompt": "Text delivered at each occurrence."}}
+```plurnk (schedule)
+{"verb": "add", "alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://exampleWorkerName", "prompt": "Text delivered at each occurrence."}}
 ```
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A

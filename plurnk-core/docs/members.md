@@ -43,7 +43,7 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-`members (discover)` with `{"query": "build/report.json"}` answers with one
+`plurnk (members)` with `{"verb": "discover", "query": "build/report.json"}` answers with one
 candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 | kind | summary |
@@ -58,8 +58,8 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   proposes its admission and, accepted, admits and reads it in one operation. With
   auto-add off, an accepted `add` makes it a member before the next operation.
 
-  ```members (add) <!-- include the generated reports; each glob is one definition -->
-  {"files": ["build/*.json"]}
+  ```plurnk (members) <!-- include the generated reports; each glob is one definition -->
+  {"verb": "add", "files": ["build/*.json"]}
   ```
 
 - **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
@@ -100,8 +100,8 @@ operator's environment, `workspace` from an `add`) and whether it is enabled. `e
 `disable` flip one definition, and `remove` forgets a workspace definition and restores
 inheritance, each named by the glob as `list` shows it:
 
-```members (disable)
-{"file": "build/*.json"}
+```plurnk (members)
+{"verb": "disable", "file": "build/*.json"}
 ```
 
 Inherited definitions cannot be removed here. Changes apply to every worker. Each enabled

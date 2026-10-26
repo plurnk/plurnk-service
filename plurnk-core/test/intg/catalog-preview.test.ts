@@ -234,15 +234,17 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
                 const workerName = await WorkerName.forId(db, modelWorkerId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
-                // Nothing is in it: no project files, tools, agents or members definitions, and the worker is new.
+                // Nothing is in it: no project files, agents or members definitions, and the worker is new.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "worker", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/plurnk.md" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                 ], "the surveys that select something run, in their taught order; the empty surfaces are left out ({§actor-boundary-catalog-preview})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, "workspace knowledgebase entries"],
+                    [null, null, null, null, "workspace knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {
@@ -294,8 +296,8 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "NOTE"],
-                    "initialization contains its opening NOTE, the three surveys that select something, its closing NOTE, and nothing else",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
+                    "initialization contains its opening NOTE, the five surveys that select something, its closing NOTE, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
                     "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");

@@ -108,10 +108,10 @@ Describe the child's complete task in the body.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
-## Membership (worker:///_plurnk/plurnk/members.md)
+## Membership (worker:///_plurnk/tools/plurnk/members.json)
 
-```members (add) <!-- adding membership tracking for files outside of the project folder -->
-{"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
+```plurnk (members) <!-- adding membership tracking for files outside of the project folder -->
+{"verb": "add", "files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
 ```
 
 ## Editing
@@ -155,10 +155,10 @@ bar
 example distillation or summarization
 ```
 
-## Environment (worker:///_plurnk/plurnk/env.md)
+## Environment (worker:///_plurnk/tools/plurnk/env.json)
 
-```env (add) <!-- persists for this worker's commands -->
-{"alias":"PLANET","definition":{"value":"world"}}
+```plurnk (env) <!-- persists for this worker's commands -->
+{"verb":"add","alias":"PLANET","definition":{"value":"world"}}
 ```
 
 ```sh [{"env":{"GREETING":"Hello"}}]

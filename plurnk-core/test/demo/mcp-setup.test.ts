@@ -39,7 +39,7 @@ for (const oauth of [false, true]) {
                         const installed = listed.definitions.find(({ definition }) => isRecord(definition) && definition.url === served.url);
                         assert.equal(installed?.state, "authorization-required");
                         assert.ok(notice.message?.includes(`/mcp oauth ${installed.alias}`), "the user receives an actionable client sign-in notice");
-                        // Simulate the user's client continuation while mcp (add) holds; the built-client test owns browser/callback reception.
+                        // Simulate the user's client continuation while plurnk (mcp) holds; the built-client test owns browser/callback reception.
                         const redirect = new URL("/callback", served.url);
                         const begun = await s.invokeWorkspaceAction("workspace.mcp.oauth.begin", { alias: installed.alias, redirectUrl: redirect.href }) as McpOAuthBeginResult;
                         assert.ok("authorization" in begun && begun.authorization?.url);
@@ -58,7 +58,7 @@ for (const oauth of [false, true]) {
                 maxTurns: 12,
             }, { signal: t.signal });
             if (oauth) {
-                assert.ok(oauthFlow !== undefined, "the model's mcp (add) triggered the authorization-required notice");
+                assert.ok(oauthFlow !== undefined, "the model's plurnk (mcp) triggered the authorization-required notice");
                 await oauthFlow;
             }
             assert.equal(result.finalStatus, 200, "setup and use conclude cleanly");

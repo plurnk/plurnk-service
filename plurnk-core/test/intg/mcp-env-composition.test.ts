@@ -43,7 +43,7 @@ test("{§functionality-model-mutation} MCP replacement precedes a tool invocatio
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
-            PlurnkParser.frame("mcp (replace)", JSON.stringify({ alias: "fixture", definition: { name: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) } })),
+            PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: "replace", alias: "fixture", definition: { name: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) } })),
             PlurnkParser.frame("fixture (environment)", "{}"),
             PlurnkParser.frame("NOTE", "Observe the new server's reply."),
         ].join("\n\n")),
@@ -60,7 +60,7 @@ test("{§functionality-model-mutation} MCP replacement precedes a tool invocatio
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
-    assert.equal(rows.find((row) => row.origin === "model" && row.op === "mcp")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
     assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
     assert.equal(output.witness, "replacement", "the tool runs on the new attachment, not the old server");
@@ -139,7 +139,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
         };
         try {
-            const changed = await run("env", "env (add)", { scope: "workspace", alias: "REF_VALUE", definition: { value: "workspace-reference" } }, true, 201);
+            const changed = await run("plurnk", "plurnk (env)", { verb: "add", scope: "workspace", alias: "REF_VALUE", definition: { value: "workspace-reference" } }, true, 201);
             assert.equal((changed.definition as { origin: string }).origin, "workspace", "the accepted model verb uses the same workspace layer as client actions");
             await invoke("mcp", "disable", { alias: "explicit" });
             await invoke("mcp", "enable", { alias: "explicit" });
@@ -263,7 +263,7 @@ for (const { policy, decision } of [
             await ownWorker(db, workspaceId, workerId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
             const definition = { name: "credential", ...environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" }) };
-            const source = PlurnkParser.frame("mcp (add)", JSON.stringify({ alias: "credential", definition }));
+            const source = PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: "add", alias: "credential", definition }));
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
             assert.ok(op?.kind === "statement");
@@ -289,7 +289,7 @@ for (const { policy, decision } of [
                 return;
             }
             assert.equal(result.status, 201);
-            const added = await awaitExecOutcome(db, { workspaceId, scheme: "mcp", timeoutMs: 10000 });
+            const added = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10000 });
             assert.equal((added.definition as { state: string }).state, "active");
             const starts = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
             assert.ok(starts.length > 0);

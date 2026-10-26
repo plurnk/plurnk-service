@@ -259,7 +259,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§problems-file}
-        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"files\": [\"<path>\"]}` body."); // {§problems-file}
+        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§problems-file}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -286,7 +286,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         assert.equal(peek.status, 404);
         assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
         assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§pinned-wording-core}
-        assert.equal(peek.problem?.recovery, "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body."); // {§pinned-wording-core}
+        assert.equal(peek.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§pinned-wording-core}
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§problems-file}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
@@ -379,7 +379,7 @@ test("{§problems-file} {§diagnostic-observation} a file target named like an e
         for (const key of ["sh", "nope", "tools/sh"]) {
             const miss = await readFileScheme(readStmt(key), withExecutors);
             assert.equal(miss.status, 404, key);
-            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{\"files\": [\"<path>\"]}` body.", key);
+            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.", key);
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });

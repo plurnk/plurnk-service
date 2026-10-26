@@ -425,10 +425,10 @@ export default class PacketBuilder {
                 }));
             }
         }
-        // {§schemes-directory} — a family's generated documents follow its manager runtime's admission:
+        // {§schemes-directory} — a family's generated documents follow its tool's admission:
         // a denied family is a door the model is never shown.
         out.push(...this.#functionalityDocuments(workspaceId)
-            .filter(({ family }) => this.#capabilities.allowsRuntimeAcross(family, null, workspaceId, policies))
+            .filter(({ family }) => this.#capabilities.allowsRuntimeAcross("plurnk", family, workspaceId, policies))
             .map(({ pathname, content }) => ({ pathname, content })));
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }

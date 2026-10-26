@@ -196,7 +196,7 @@ export default class WorkspaceResidency {
     }
 
     async replace({
-        workspaceId, namespaceOwner, state, runtimes,
+        workspaceId, namespaceOwner, state, runtimes, schemes = [],
     }: WorkspaceCapabilityReplacement, options: WorkspaceCapabilityPublication = {}): Promise<void> {
         await this.identity(workspaceId);
         if (namespaceOwner.trim().length === 0) throw new Error("workspace Functionality replacement requires a non-empty namespace owner");
@@ -220,16 +220,16 @@ export default class WorkspaceResidency {
             let prior: { state: string } | undefined;
             try {
                 prior = await this.#db.workspace_module_state_get.get<{ state: string }>(key);
-                const commitRuntimes = await this.#engine().prepareWorkspaceRuntimes(workspaceId, namespaceOwner, normalized);
+                const commitRuntimes = await this.#engine().prepareWorkspaceRuntimes(workspaceId, namespaceOwner, normalized, schemes);
                 if (encoded === null) await this.#db.workspace_module_state_delete.run(key);
                 else await this.#db.workspace_module_state_put.run({ ...key, state: encoded });
                 stateChanged = true;
-                rollbackRuntimes = commitRuntimes();
                 rollbackPublication = options.publish?.();
+                rollbackRuntimes = commitRuntimes();
                 await this.#rematerialize(workspaceId);
             } catch (cause) {
-                rollbackPublication?.();
                 rollbackRuntimes?.();
+                rollbackPublication?.();
                 const rollbackErrors: unknown[] = [];
                 if (stateChanged) {
                     try {

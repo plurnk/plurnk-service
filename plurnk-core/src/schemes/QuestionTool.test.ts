@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import QuestionTool, { questionRuntimeDecl } from "./QuestionTool.ts";
+import QuestionTool, { questionRegisteredTool } from "./QuestionTool.ts";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
 
 const args = (overrides: Partial<ExecArgs>): ExecArgs => ({
@@ -20,11 +20,12 @@ const args = (overrides: Partial<ExecArgs>): ExecArgs => ({
     ...overrides,
 });
 
-test("{§question-tool}: the runtime declaration shapes the auto-generated doc", () => {
-    assert.equal(questionRuntimeDecl.name, "question");
-    assert.match(questionRuntimeDecl.summary, /Ask the user/);
-    assert.ok(questionRuntimeDecl.invocation.example?.body !== undefined, "the example teaches a concrete body");
-    assert.match(questionRuntimeDecl.details ?? "", /message|requestedSchema/, "the doc teaches the standard field vocabulary");
+test("{§question-tool}: the registered tool declaration shapes the auto-generated doc", () => {
+    assert.equal(questionRegisteredTool.target, "question");
+    assert.match(questionRegisteredTool.summary, /Ask the user/);
+    assert.ok(questionRegisteredTool.invocation.inputSchema !== undefined, "the invocation carries its input schema");
+    assert.match(questionRegisteredTool.details ?? "", /message|requestedSchema/, "the doc teaches the standard field vocabulary");
+    assert.deepEqual(questionRegisteredTool.traits, ["interaction"]);
 });
 
 test("{§question-tool}: an answered question writes the standard ElicitResult", async () => {

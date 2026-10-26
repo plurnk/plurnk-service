@@ -63,7 +63,7 @@ export default class ExecutorRegistry {
     readonly #byTag: Map<string, ExecutorEntry>;   // own copy — runtime registration mutates it in place
     readonly #workspaceByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();
     readonly #packageAttributions: PackageAttributions;
-    readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
+    readonly #toolRegistries = new WeakMap<Executor, Map<number, RuntimeToolRegistry | null>>();
 
     constructor(byTag: ReadonlyMap<string, ExecutorEntry>, packageAttributions: PackageAttributions = new Map()) {
         for (const [tag, entry] of byTag) ExecutorRegistry.#assertDeclaration(tag, entry);
@@ -145,6 +145,7 @@ export default class ExecutorRegistry {
             else owners.set(namespaceOwner, next);
             if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
             else this.#workspaceByOwner.set(workspaceId, owners);
+            this.invalidateToolRegistries(workspaceId);
             let pending = true;
             return () => {
                 if (!pending) return;
@@ -155,6 +156,7 @@ export default class ExecutorRegistry {
                 else current.set(namespaceOwner, previous);
                 if (current.size === 0) this.#workspaceByOwner.delete(workspaceId);
                 else this.#workspaceByOwner.set(workspaceId, current);
+                this.invalidateToolRegistries(workspaceId);
             };
         };
     }
@@ -311,20 +313,41 @@ export default class ExecutorRegistry {
         return this.#byTag.get(tag);
     }
 
+    invalidateToolRegistries(workspaceId?: number): void {
+        for (const entry of this.#byTag.values()) {
+            if (entry.executor === null) continue;
+            const byWorkspace = this.#toolRegistries.get(entry.executor);
+            if (byWorkspace === undefined) continue;
+            if (workspaceId === undefined) {
+                byWorkspace.clear();
+            } else {
+                byWorkspace.delete(workspaceId);
+                byWorkspace.delete(0);
+            }
+        }
+    }
+
     // A family runtime's exact tools, summaries, and invocation contracts
     // cross the extension boundary as one validated snapshot. Absence means the
     // runtime's static invocation declaration is authoritative.
     toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {
         const entry = this.entry(tag, workspaceId);
         if (entry === undefined || entry.executor === null || entry.executor.toolRegistry === undefined) return null;
-        const cached = this.#toolRegistries.get(entry.executor);
-        if (cached !== undefined || this.#toolRegistries.has(entry.executor)) return cached ?? null;
+        const key = workspaceId ?? 0;
+        let byWorkspace = this.#toolRegistries.get(entry.executor);
+        if (byWorkspace !== undefined && (byWorkspace.get(key) !== undefined || byWorkspace.has(key))) {
+            return byWorkspace.get(key) ?? null;
+        }
         const registry = RuntimeInvocation.assertToolRegistry(
-            entry.executor.toolRegistry(),
+            entry.executor.toolRegistry(workspaceId),
             entry.namespaceOwner.name,
             tag,
         );
-        this.#toolRegistries.set(entry.executor, registry);
+        if (byWorkspace === undefined) {
+            byWorkspace = new Map<number, RuntimeToolRegistry | null>();
+            this.#toolRegistries.set(entry.executor, byWorkspace);
+        }
+        byWorkspace.set(key, registry);
         return registry;
     }
 

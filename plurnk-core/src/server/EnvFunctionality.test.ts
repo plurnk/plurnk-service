@@ -61,7 +61,7 @@ test("{§exec-env-scoped} reserved names have the same scoped refusal at family 
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.alias, alias);
             assert.equal(cause.result.problem.detail, `'${alias}' is reserved in env entries and invocation overrides.`);
-            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/plurnk/env.md for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
             return true;
         };
         await assert.rejects(() => adapter.admit({ alias, definition: { value: "explicit-value" } }, identity), refused);

@@ -274,7 +274,7 @@ by alias, highest precedence first:
 
 | Source | Location |
 |---|---|
-| Workspace overlay | Ordinary `mcp (add)` state |
+| Workspace overlay | Ordinary `plurnk (mcp)` `add` state |
 | Environment | `PLURNK_MCP_<alias>` |
 | Project | `<project>/.agents/mcp.json`, then selected project plugins |
 | Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |

@@ -124,7 +124,7 @@ const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
     teardown: async (snapshot) => { log.push(`teardown:${(snapshot as { aliases: string[] }).aliases.join(",")}`); },
 });
 
-test("{§functionality-document-body} an adapter's docs/<family>.md rides beneath the generated header; a wrong add example fails boot", async () => {
+test("{§functionality-document-body} an adapter's docs/<family>.md rides inside the family's tool schema description; a wrong add example fails boot", async () => {
     const docsDir = await mkdtemp(join(tmpdir(), "plurnk-fx-docs-"));
     const db = await openMigrated();
     try {
@@ -140,12 +140,17 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
             const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
             await insertWorker(db, workspaceId, null, "model", "model");
             await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
-            const doc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
-            assert.ok(doc, "the runtime document is a reference entry");
-            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n```fx ("), true, "the generated header owns the H1 and the summary");
-            assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
-            assert.ok(doc.content.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the document, its authoring title removed:\n${doc.content}`);
-            assert.equal((doc.content.match(/^# /gmu) ?? []).length, 1, "exactly one H1");
+            const entries = await daemon.engine.referenceEntries(workspaceId);
+            const doc = entries.find(({ pathname }) => pathname === "/_plurnk/tools/plurnk.md");
+            assert.ok(doc, "the plurnk tool index is a reference entry");
+            assert.equal(doc.content.startsWith("# plurnk\n\n## Summary\n\n```plurnk ("), true, "the generated header owns the H1 and the summary");
+            assert.ok(doc.content.includes("## Tools"), "the generated tool table is present");
+            const schema = entries.find(({ pathname }) => pathname === "/_plurnk/tools/plurnk/fx.json");
+            assert.ok(schema, "the family tool schema is a reference entry");
+            const parsed = JSON.parse(schema.content) as { title: string; description: string };
+            assert.equal(parsed.title, "plurnk: fx");
+            assert.ok(parsed.description.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the description, its authoring title removed:\n${parsed.description}`);
+            assert.equal((parsed.description.match(/^# /gmu) ?? []).length, 0, "no duplicate H1 in description");
         } finally {
             await daemon.stop();
         }
@@ -174,7 +179,7 @@ const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const
 
 test("{§functionality-model-mutation} one raw model program observes each management result in authored order", { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
-    const frame = (verb: string, params: object = {}) => PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params));
+    const frame = (verb: string, params: object = {}) => PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb, ...params }));
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
             frame("add", { alias: "candidate", definition: { kind: "doc" } }), frame("list"),
@@ -199,12 +204,12 @@ test("{§functionality-model-mutation} one raw model program observes each manag
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
-    const operations = rows.filter((row) => row.origin === "model" && row.op === "fx").toReversed();
+    const operations = rows.filter((row) => row.origin === "model" && row.op === "plurnk").toReversed();
     assert.deepEqual(operations.map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200, 502, 200, 200, 200, 200]);
-    const listed = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "fx", prefix: "/%" });
+    const listed = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" });
     const states: Array<string | undefined> = [];
     for (const { pathname } of listed.toSorted((a, b) => a.id - b.id)) {
-        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "fx", name: "results" });
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "plurnk", name: "results" });
         assert.ok(channel?.state === "closed" || channel?.state === "errored");
         const body = JSON.parse(channel.content) as Record<string, unknown>;
         if (Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
@@ -234,7 +239,7 @@ test("{§functionality-model-mutation} concurrent configuration bypasses occupie
     assert.equal((await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("held", "fixture")))).status, 200);
     await entered.promise;
     const results = await Promise.all(["first", "second"].map((alias) => clientOperation(daemon, workspaceId,
-        parseOne(PlurnkParser.frame("fx (add)", JSON.stringify({ alias, definition: { kind: "ok" } }))))));
+        parseOne(PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb: "add", alias, definition: { kind: "ok" } }))))));
     assert.deepEqual(results.map(({ status }) => status), [201, 201], "both changes settle while the external tool remains in flight");
     const listed = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
     assert.deepEqual(listed.definitions.map(({ alias, state }) => [alias, state]), [["first", "active"], ["second", "active"], ["svc", "active"]]);
@@ -265,7 +270,7 @@ test("{§functionality-preparation-cancellation} cancelling an operation joins p
     let loopId!: number;
     const pending = daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, onLoop: ({ loopId: id }) => { loopId = id; },
-        statements: [parseOne(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "cancelled", definition: { kind: "doc" } })))],
+        statements: [parseOne(PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb: "add", alias: "cancelled", definition: { kind: "doc" } })))],
     });
     await preparing.promise;
     assert.equal(await daemon.cancelLoop({ workspaceId, loopId }), true);
@@ -280,7 +285,7 @@ test("{§functionality-preparation-cancellation} cancelling an operation joins p
     const listed = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
     assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["svc"]);
     assert.equal(daemon.schemes.has("cancelled", workspaceId), false);
-    assert.equal((await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("fx (list)", "")))).status, 200, "the cancellation leaves the workspace usable");
+    assert.equal((await clientOperation(daemon, workspaceId, parseOne(PlurnkParser.frame("plurnk (fx)", "")))).status, 200, "the cancellation leaves the workspace usable");
 });
 
 for (const caller of ["action", "operation"] as const) {
@@ -293,7 +298,7 @@ for (const caller of ["action", "operation"] as const) {
         const action = (verb: string, params: Readonly<Record<string, unknown>>) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
         const listed = async () => (await action("list", {}) as FunctionalityListResult).definitions;
         const run = (statement: PlurnkStatement) => clientOperation(daemon, workspaceId, statement);
-        const operate = (verb: string, params: object) => run(parseOne(PlurnkParser.frame(`fx (${verb})`, JSON.stringify(params))));
+        const operate = (verb: string, params: object) => run(parseOne(PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb, ...params }))));
         const invoke = async (verb: string, params: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>> => {
             if (caller === "action") {
                 try { return await action(verb, params) as Record<string, unknown>; }
@@ -302,10 +307,10 @@ for (const caller of ["action", "operation"] as const) {
                     throw cause;
                 }
             }
-            const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "fx", prefix: "/%" })).length;
+            const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
             const dispatched = await operate(verb, params);
             if (dispatched.status >= 400) return { ...dispatched };
-            const result = await awaitExecOutcome(db, { workspaceId, scheme: "fx", after });
+            const result = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after });
             await daemon.settleFunctionality(workspaceId);
             return result;
         };
@@ -499,7 +504,7 @@ for (const boundary of ["available", "prepare"] as const) {
         broken = true;
         await handle.refresh({ workspaceId });
         assert.equal(daemon.schemes.has("local", workspaceId), false, "an invalid family has no operational runtimes");
-        assert.equal(daemon.schemes.has("fx", workspaceId), true, "the manager remains available");
+        assert.equal(daemon.schemes.has("plurnk", workspaceId), true, "the manager remains available");
         assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable, "withdrawal does not erase operator state");
         assert.ok(log.includes("teardown:local,svc"), "the previous snapshot is released");
         const problem = await rejectedProblem(() => daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)));
@@ -977,7 +982,7 @@ fixture
         assert.deepEqual(await states(), ["svc:service:dormant"]);
         assert.equal((await exec("svc")).status, 200, "the service definition's capability is published");
         assert.deepEqual(await states(), ["svc:service:active"], "execution activates the service default and manager");
-        assert.equal((await exec("fx")).status, 400, "the manager family is published; a missing verb is refused, not unknown");
+        assert.equal((await exec("plurnk")).status, 400, "the manager runtime is published; a missing tool target is refused, not unknown");
 
         // add → active and hot.
         const added = await invoke<{ status: number; definition: { state: string } }>("add", { alias: "alpha", definition: { kind: "ok" } });
@@ -1069,7 +1074,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````"));
+    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;
@@ -1100,7 +1105,7 @@ test("{§functionality-publication} a candidate goes live at publish, inside the
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````"));
+    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
     const mark = log.length;
     await daemon.invokeModuleAction("workspace.fx.add", { alias: "late", definition: { kind: "ok" } }, workspaceContext(workspaceId));
     const events = log.slice(mark).filter((event) => /^(publish|undo|commit|abort):/u.test(event));
@@ -1119,9 +1124,9 @@ test("{§functionality-publication} a management stream reports publication refu
     t.mock.method(daemon, "replaceWorkspaceCapabilities", async () => {
         throw new OperationFailureError(structuredClone(refused));
     }, { times: 1 });
-    const result = await clientOperation(daemon, workspaceId, parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````"));
+    const result = await clientOperation(daemon, workspaceId, parseOne("````plurnk (fx)\n{\"verb\":\"add\",\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````"));
     assert.equal(result.status, 409, "the operation itself reports publication failure");
-    assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "fx" }), refused,
+    assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" }), refused,
         "the invoking stream carries the exact refused publication, not an active definition");
     assert.equal(log.filter((line) => line === "abort:candidate,svc").length, 1);
     const listing = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as {
@@ -1131,7 +1136,7 @@ test("{§functionality-publication} a management stream reports publication refu
     assert.equal(daemon.schemes.has("candidate", workspaceId), false);
 });
 
-for (const verb of ["add", "replace"]) for (const hold of ["", "fx:host"]) {
+for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk:host"]) {
     test(`{§functionality-model-mutation} a model uses its ${verb} tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
         serverProposals(approvalContext, "accept");
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
@@ -1139,7 +1144,7 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "fx:host"]) {
         const alias = verb === "add" ? "candidate" : "svc";
         const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Tool result inspected.");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`${PlurnkParser.frame(`fx (${verb})`, JSON.stringify({ alias, definition: { kind: "doc" } }))}\n${step("NOTE")}`),
+            makeMockResponse(`${PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb, alias, definition: { kind: "doc" } }))}\n${step("NOTE")}`),
             makeMockResponse(`${PlurnkParser.frame(alias, "fixture")}\n${step("NOTE")}`),
             makeMockResponse(step("SEND [200]")),
         ] });
@@ -1168,11 +1173,11 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "fx:host"]) {
 test("{§functionality-model-mutation} authorization-required holds the model mutation at the workspace boundary until resolved", { timeout: 15_000 }, async (t) => {
     serverProposals(t, "accept");
     const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
-    process.env.PLURNK_SERVICE_EXEC_HOLD = "fx:host";
+    process.env.PLURNK_SERVICE_EXEC_HOLD = "plurnk:host";
     t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
     const log: string[] = [];
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "auth" } }))),
+        makeMockResponse(PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb: "add", alias: "candidate", definition: { kind: "auth" } }))),
         makeMockResponse(PlurnkParser.frame("candidate", "fixture")),
         makeMockResponse(PlurnkParser.frame("SEND [200]", "The candidate ran after sign-in.")),
     ] });
@@ -1200,10 +1205,10 @@ test("{§functionality-model-mutation} authorization-required holds the model mu
         assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
         assert.ok(result.modelWorkerId !== undefined, "the loop identifies its model worker");
         const rows = await daemon.readLog({ workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
-        const observed = rows.find((row) => row.op === "READ" && row.scheme === "fx" && JSON.stringify(row.rx).includes("active"));
+        const observed = rows.find((row) => row.op === "READ" && row.scheme === "plurnk" && JSON.stringify(row.rx).includes("active"));
         assert.ok(observed, "the terminal observation carries the settled active resource outcome");
         assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
-        const body = await awaitExecOutcome(db, { workspaceId, scheme: "fx" });
+        const body = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
         assert.equal(body.status, 201, "creation status survives inside the settled result body");
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
@@ -1216,9 +1221,9 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
     const states = async () =>
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
     const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
-    // A family verb streams its JSON outcome into the Worker's fx:// output
+    // A family verb streams its JSON outcome into the Worker's plurnk:// output
     // entry; dispatch awaits the management result ({§functionality-model-mutation}).
-    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "fx" });
+    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     const proposals: Array<{ logEntryId: number; disposition: unknown }> = [];
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
         if (method === "loop/proposal") proposals.push(params as { logEntryId: number; disposition: unknown });
@@ -1233,7 +1238,7 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
     };
     try {
         // read verbs run ungated.
-        const listed = await operate("````fx (list)````");
+        const listed = await operate("````plurnk (fx)````");
         assert.equal(listed.status, 200, "list is a read effect and starts ungated");
         assert.equal(proposals.length, 0, "no proposal was raised for a read verb");
         const listing = await verbResult();
@@ -1241,15 +1246,15 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
 
         // An accepted host verb runs the same coordinator method and the capability is live
         // before the next operation.
-        const added = await proposed("````fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````");
+        const added = await proposed("````plurnk (fx)\n{\"verb\":\"add\",\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````");
         assert.equal(added.status, 201, "the accepted add reports its completed creation");
         assert.equal((await operate("```viaexec\nfixture\n```")).status, 200, "publication settled before the next operation");
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
-        const down = await proposed("````fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````");
+        const down = await proposed("````plurnk (fx)\n{\"verb\":\"add\",\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````");
         assert.equal(down.status, 201, "the definition is created; its body reports unavailability");
-        await operate("````fx (list)````");
+        await operate("````plurnk (fx)````");
         const downState = (await states()).find(({ alias }) => alias === "down");
         assert.equal(downState?.state, "unavailable");
         assert.equal(downState?.problem?.status, 502, "the enabled definition keeps its exact Problem");
@@ -1257,13 +1262,14 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
         // Rejection performs nothing: no preparation, no state. The server's reject applies to a person's operation too.
         serverProposals(t, "reject");
         log.length = 0;
-        const rejected = await operate("````fx (add)\n{\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n````");
+        const rejected = await operate("````plurnk (fx)\n{\"verb\":\"add\",\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n````");
         assert.equal(rejected.status, 400);
         assert.equal(log.some((entry) => entry.startsWith("prepare:") && entry.includes("nope")), false, "a rejected proposal never prepares");
         assert.equal((await states()).some(({ alias }) => alias === "nope"), false);
 
-        // An unregistered verb is refused by the family registry (body refusals are the manager's own unit contract).
-        assert.equal((await operate("```fx (destroy)```")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
+        // An unregistered tool is refused by the plurnk runtime; an unregistered verb is refused by the family schema.
+        assert.equal((await operate("```plurnk (destroy)```")).status, 404, "an unregistered tool is refused with the tool list");
+        assert.equal((await operate("````plurnk (fx)\n{\"verb\":\"destroy\"}\n````")).status, 400, "an unregistered verb is refused by the family schema");
 
     } finally {
         unsubscribe();
@@ -1273,8 +1279,8 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
 });
 
 // {§schemes-directory} — a family the effective policy denies is a door the model is never shown:
-// no manager page, no generated document, and its verbs refuse at admission (#842).
-test("{§schemes-directory} {§capability-admission}: a denied family has no page, no generated document and no runnable verb", async () => {
+// no tool schema, no generated document, and its tool refuses at admission (#842).
+test("{§schemes-directory} {§capability-admission}: a denied family has no schema, no generated document and no runnable tool", async () => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);
@@ -1283,14 +1289,14 @@ test("{§schemes-directory} {§capability-admission}: a denied family has no pag
     try {
         await daemon.invokeModuleAction("workspace.fx.add", { alias: "paper", definition: { kind: "doc" } }, workspaceContext(workspaceId));
         const shown = await daemon.engine.referenceEntries(workspaceId);
-        assert.ok(shown.some(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md"), "the family page is surveyed while the family is admitted");
+        assert.ok(shown.some(({ pathname }) => pathname === "/_plurnk/tools/plurnk/fx.json"), "the family tool schema is surveyed while the family is admitted");
         assert.ok(shown.some(({ pathname }) => pathname === "/_plurnk/fx/paper.md"), "the family's generated document is surveyed while the family is admitted");
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "fx" }] } }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "plurnk", tool: "fx" }] } }) });
         const hidden = await daemon.engine.referenceEntries(workspaceId);
-        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md"), false, "a denied family has no page");
+        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/tools/plurnk/fx.json"), false, "a denied family has no tool schema");
         assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/fx/paper.md"), false, "a denied family projects no generated document");
         assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/worker.md"), true, "other references are untouched");
-        assert.equal((await operate("```fx (list)```")).status, 403, "the family's verbs refuse at admission");
+        assert.equal((await operate("```plurnk (fx)```")).status, 403, "the family's tool refuses at admission");
     } finally {
         await daemon.stop();
         await db.close();

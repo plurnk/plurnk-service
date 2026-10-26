@@ -32,7 +32,7 @@ export interface Executor {
     // One pure classification of the consumer-canonical logical target
     // ({§executor-effect}); authored body text is never an admission input.
     effect(target: string | null): Effect;
-    toolRegistry?(): RuntimeToolRegistry;
+    toolRegistry?(workspaceId?: number): RuntimeToolRegistry;
 }
 
 // One runtime a module contributes, published under its namespace owner ({§extension-namespace-arbitration}).

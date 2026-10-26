@@ -159,7 +159,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     const content = JSON.stringify({ mcpServers: { repaired: stdioEntry("echo-server.mjs") } });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`mcp (list)\n\`\`\`\``),
+        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`plurnk (mcp)\n\`\`\`\``),
         makeMockResponse("````repaired (echo)\n{\"message\":\"same-turn-repair\"}\n````"),
         makeMockResponse("````SEND [200]\nConfiguration repaired.\n````"),
     ] });
@@ -180,7 +180,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     assert.deepEqual(finalStatuses, [200]);
     const log = await daemon.readLog({ workspaceId, workerId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
-    const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "mcp" });
+    const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).map(({ alias, state }) => [alias, state]),
         [["repaired", "dormant"]], "the manager's own same-turn result observes fresh configuration without premature publication");
     const echoed = await awaitExecOutcome(db, { workspaceId, scheme: "repaired", channel: "json" });
@@ -226,14 +226,14 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     assert.equal((await listed())[0]?.state, "active");
     // {§functionality-discover-advertisement} With no registry the manager teaches no discover.
     const references = await daemon.engine.referenceEntries(workspaceId);
-    const manager = references.find(({ pathname }) => pathname === "/_plurnk/plurnk/mcp.md")?.content ?? "";
-    assert.match(manager, /```mcp \(list\|add\|replace\|enable\|disable\|remove\) <!-- Manage MCP servers -->/u, "the summary names the verbs the family serves");
-    assert.doesNotMatch(manager, /```mcp \(discover\) <!-- Return inert candidates/u, "the tool list has no discover");
-    assert.equal(references.some(({ pathname }) => pathname === "/_plurnk/plurnk/mcp/discover.json"), false, "no discover schema document");
-    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````mcp (discover)\n{\"query\": \"echo\"}\n````")] });
+    const mcpSchema = references.find(({ pathname }) => pathname === "/_plurnk/tools/plurnk/mcp.json")?.content ?? "";
+    const parsedSchema = JSON.parse(mcpSchema) as { properties: { verb: { enum: string[] } }; description: string };
+    assert.deepEqual(parsedSchema.properties.verb.enum, ["list", "add", "replace", "enable", "disable", "remove"], "the tool schema names the verbs the family serves");
+    assert.doesNotMatch(parsedSchema.description, /`discover`: Return inert candidates/u, "the verb teaching has no discover");
+    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````plurnk (mcp)\n{\"verb\": \"discover\", \"query\": \"echo\"}\n````")] });
     assert.ok(unserved !== undefined);
-    assert.equal(unserved.status, 404, "a discover the family does not serve is no registered target");
-    assert.match(String((unserved as { problem?: { type?: string } }).problem?.type), /\/target-not-registered$/u);
+    assert.equal(unserved.status, 400, "a discover the family does not serve is refused as an unknown verb");
+    assert.match(String((unserved as { problem?: { type?: string } }).problem?.type), /\/verb-unknown$/u);
     assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "fixture" })).definition.state, "disabled");
     assert.ok((await call("fixture", "echo")).status >= 400, "a disabled server's tool is absent");
     assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "fixture" })).definition.state, "active");

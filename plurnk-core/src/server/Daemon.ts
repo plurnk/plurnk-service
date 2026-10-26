@@ -18,7 +18,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
+import FunctionalityManager, { plurnkRuntimeDecl } from "./FunctionalityManager.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -1164,17 +1164,23 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
         this.#engine.setExecutors(executors);
         this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId));
-        // {§question-tool} — the native request-user-input runtime, process-wide;
-        // workspace admission gates its doc visibility and dispatch ({§workspace-capability-policy}).
+        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
+        // runtime exposes workspace Functionality families and `question` under `/tools/plurnk.md`.
         this.#engine.registerRuntimes([{
-            tag: "question",
+            tag: "plurnk",
             entry: {
-                executor: new QuestionTool({ runtime: "question", glyph: "❓" }),
+                executor: new FunctionalityManager({
+                    coordinator: this.#functionality,
+                    entries: (workspaceId) => this.#functionality.familyEntries(workspaceId),
+                    includeQuestion: true,
+                }),
                 namespaceOwner: { kind: "module", name: "core" },
-                glyph: "❓",
-                summary: questionRuntimeDecl.summary,
-                invocation: questionRuntimeDecl.invocation,
-                details: questionRuntimeDecl.details ?? "",
+                glyph: plurnkRuntimeDecl.glyph,
+                summary: plurnkRuntimeDecl.summary,
+                invocation: plurnkRuntimeDecl.invocation,
+                details: plurnkRuntimeDecl.details ?? "",
+                resourcesPath: plurnkRuntimeDecl.resourcesPath,
+                expandTools: plurnkRuntimeDecl.expandTools,
                 available: true,
                 detail: "in-process" } }]);
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag

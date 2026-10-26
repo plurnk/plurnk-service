@@ -1,37 +1,61 @@
 import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import { Validator, isRecord } from "@plurnk/plurnk-contracts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeRegisteredTool } from "@plurnk/plurnk-execs";
+import { Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../core/results.ts";
 
-// {§question-tool} — the native request-user-input runtime. The model asks the
-// human through one registered executor tool, wired directly against the standard
-// client-interaction lifecycle (no loopback MCP, no proposal masquerade). The
-// body is the MCP2 2026-07-28 form-elicitation shape verbatim —
+// {§question-tool} — the native request-user-input tool on the `plurnk` runtime.
+// The model asks the human through `plurnk (question)`, wired directly against the
+// standard client-interaction lifecycle (no loopback MCP, no proposal masquerade).
+// The body is the MCP2 2026-07-28 form-elicitation shape verbatim —
 // `{ message, requestedSchema }` — and the result is the standard
 // `ElicitResult` (`{ action: "accept" | "cancel", content? }`), so nothing
 // bespoke crosses the wire. Effect `read`: the tool observes the human's
 // answer and never mutates the host, so it is never proposal-gated.
 
-const QUESTION_BODY_EXAMPLE = `{"message": "Which branch should I target?", "requestedSchema": {"type": "object", "properties": {"branch": {"type": "string", "enum": ["main", "feat/x"]}}, "required": ["branch"]}}`;
-
-export const questionRuntimeDecl = {
-    name: "question",
-    glyph: "❓",
-    summary: "Ask the user to answer a question.",
-    invocation: {
-        target: { role: "label", kind: "literal", required: false },
-        body: { role: "MCP2 form-elicitation object", required: true },
-        example: { body: QUESTION_BODY_EXAMPLE },
+export const QUESTION_INPUT_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    required: ["message", "requestedSchema"],
+    properties: {
+        message: {
+            type: "string",
+            minLength: 1,
+            description: "The question shown to the user (non-empty string).",
+        },
+        requestedSchema: {
+            type: "object",
+            description: "JSON Schema object the user's answer must satisfy; enum/enumNames/oneOf/array/boolean/string/number forms supported.",
+        },
     },
-    details: `## Inputs
+} as const satisfies JsonSchema;
+
+const QUESTION_SUMMARY = "Ask the user to answer a question.";
+
+const QUESTION_DETAILS = `## Inputs
 
 | Field | Contract |
 | --- | --- |
 | \`message\` | The question shown to the user (non-empty string). |
 | \`requestedSchema\` | JSON Schema object the user's answer must satisfy; \`enum\`/enumNames/oneOf/array/boolean/string/number forms supported. |
 
-An optional target is a label, not a recipient. The result is \`{ "action": "accept", "content": <answer> }\`, \`{ "action": "decline" }\`, or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`,
-} satisfies RuntimeDecl;
+The result is \`{ "action": "accept", "content": <answer> }\`, \`{ "action": "decline" }\`, or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`;
+
+export const questionRegisteredTool: RuntimeRegisteredTool = {
+    target: "question",
+    summary: QUESTION_SUMMARY,
+    traits: ["interaction"],
+    invocation: {
+        target: { role: "Plurnk tool", kind: "literal", required: true },
+        body: { role: "MCP2 form-elicitation object", required: true, mimetype: "application/json" },
+        inputSchema: QUESTION_INPUT_SCHEMA,
+    },
+    details: QUESTION_DETAILS,
+    definition: {
+        name: "question",
+        description: `${QUESTION_SUMMARY}\n\n${QUESTION_DETAILS}`,
+        inputSchema: QUESTION_INPUT_SCHEMA,
+    },
+};
 
 export default class QuestionTool extends BaseExecutor {
     override get traits(): ReadonlyArray<string> {

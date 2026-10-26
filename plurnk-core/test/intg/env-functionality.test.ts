@@ -30,7 +30,7 @@ for (const scope of ["worker", "workspace"] as const) {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("env (add)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", definition: { value: "settled" } })),
+                PlurnkParser.frame("plurnk (env)", JSON.stringify({ verb: "add", scope, alias: "SETTLEMENT_WITNESS", definition: { value: "settled" } })),
                 PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
                 PlurnkParser.frame("NOTE", "Review the shell output."),
             ].join("\n\n")),
@@ -45,7 +45,7 @@ for (const scope of ["worker", "workspace"] as const) {
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
-        assert.equal(rows.find((row) => row.origin === "model" && row.op === "env")?.status_rx, 201);
+        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
         assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
 }
@@ -200,21 +200,21 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
         assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
 
-        // The model's projection: `env` is one published manager, and Core binds it to the invoking
+        // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
         // worker at the operation, so alice's `list` is alice's and bob's is bob's.
         const outputs = async (): Promise<number> =>
-            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "env", prefix: "/%" })).length;
+            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
         const exec = async (workerId: number, program: string) => {
             const after = await outputs();
             const { status } = await modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
-            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "env", after, timeoutMs: 10_000 }) };
+            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
         };
-        const aliceList = await exec(alice, "````env (list)````");
+        const aliceList = await exec(alice, "````plurnk (env)````");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "worker");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
-        const bobView = await (await exec(bob, "````env (list)````")).result() as unknown as FunctionalityListResult;
+        const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
@@ -247,9 +247,9 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         };
         try {
             const before = await outputs();
-            const bobAdded = await accepted(bob, `\`\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
+            const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ verb: "add", alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
             assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "worker");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);

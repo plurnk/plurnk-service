@@ -39,9 +39,9 @@ import type {
     WorkspaceCapabilityReplacement,
     WorkspaceCapabilityPublication,
 } from "./ModuleHost.ts";
-import FunctionalityManager, {
+import {
     FUNCTIONALITY_VERBS,
-    functionalityRuntimeDecl,
+    type FunctionalityFamilyEntry,
     type FunctionalityVerb,
 } from "./FunctionalityManager.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
@@ -135,15 +135,18 @@ interface AuthorizationWaiter {
     readonly reject: (reason: unknown) => void;
 }
 
+export interface FunctionalityConfigurationFailure {
+    readonly phase: "resolution" | "preparation";
+    readonly error: ConfigurationError;
+}
+
 interface WorkspaceFamily {
     state: FamilyState;
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
     // The enabled definitions that publication prepared ({§functionality-hotload}).
     enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
-    configurationFailure: {
-        readonly phase: "resolution" | "preparation";
-        readonly error: ConfigurationError;
-    } | null;
+    configurationFailure: FunctionalityConfigurationFailure | null;
+    documentBody: string;
 }
 
 const STATE_VERSION = 1;
@@ -272,6 +275,7 @@ export default class Functionality {
         this.#adapters.set(family, adapter);
         this.#owners.add(namespaceOwner);
         this.#schemas.set(family, schemas);
+        void this.#documentBody(adapter);
         this.#host.registerWorkspaceCapabilityProvider(namespaceOwner, {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
@@ -344,6 +348,23 @@ export default class Functionality {
         return [...this.#adapters.keys()].toSorted();
     }
 
+    familyEntries(workspaceId?: number): readonly FunctionalityFamilyEntry[] {
+        return this.families().map((family) => {
+            const adapter = this.#adapters.get(family)!;
+            const slot = workspaceId === undefined ? undefined : this.#families.get(this.#key(workspaceId, family));
+            return {
+                family,
+                summary: adapter.summary,
+                ...(adapter.traits === undefined ? {} : { traits: adapter.traits }),
+                inputSchemas: this.#schemas.get(family)!,
+                ...(adapter.example === undefined ? {} : { example: adapter.example }),
+                ...(adapter.discovery === undefined ? {} : { discovery: adapter.discovery }),
+                documentBody: slot?.documentBody ?? this.#resolvedDocumentBodies.get(family) ?? "",
+                configurationFailure: slot?.configurationFailure ?? null,
+            };
+        });
+    }
+
     // {§functionality-hotload} — every family that reads out-of-band state republishes it if it changed.
     async refreshChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         for (const adapter of this.#adapters.values()) {
@@ -388,13 +409,18 @@ export default class Functionality {
     // {§functionality-document-body} — read once per family from the adapter's package, the same
     // `docs/<tag>.md` rule runtimes use. A family that ships no file has a header-only document.
     #documentBodies = new Map<string, Promise<string>>();
+    #resolvedDocumentBodies = new Map<string, string>();
 
     #documentBody(adapter: HostFunctionalityAdapter): Promise<string> {
         let body = this.#documentBodies.get(adapter.family);
         if (body === undefined) {
-            body = adapter.docsDir === undefined
+            body = (adapter.docsDir === undefined
                 ? Promise.resolve("")
-                : DocFile.read(adapter.docsDir, adapter.family).then((text) => text ?? "");
+                : DocFile.read(adapter.docsDir, adapter.family).then((text) => text ?? ""))
+                .then((resolved) => {
+                    this.#resolvedDocumentBodies.set(adapter.family, resolved);
+                    return resolved;
+                });
             this.#documentBodies.set(adapter.family, body);
         }
         return body;
@@ -1093,6 +1119,8 @@ export default class Functionality {
             enabled = new Map();
         }
         let runtimes: RuntimeRegistration[];
+        let schemes: NonNullable<WorkspaceCapabilityReplacement["schemes"]>;
+        let documentBody: string;
         try {
             signal.throwIfAborted();
             report([], "publishing");
@@ -1102,21 +1130,11 @@ export default class Functionality {
                     throw new Error(`${adapter.family} prepared a runtime owned by '${runtime.namespaceOwner}' instead of '${adapter.namespaceOwner}'.`);
                 }
             }
-            const details = await this.#documentBody(adapter);
-            const diagnostic = configurationFailure === null ? "" : `> [!WARNING]\n> ${configurationFailure.error.message}\n\n`;
-            const manager: RuntimeRegistration = {
-                namespaceOwner: adapter.namespaceOwner,
-                decl: functionalityRuntimeDecl(adapter.family,
-                    configurationFailure === null ? adapter.summary : `${adapter.summary} — configuration unavailable; inspect with list`,
-                    diagnostic + details),
-                executor: new FunctionalityManager({
-                    family: adapter.family, workspaceId: identity.workspaceId, coordinator: this,
-                    traits: adapter.traits, inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
-                }),
-                availability: { available: true, detail: "workspace Functionality manager" },
-                ...(adapter.scheme === undefined || configurationFailure !== null ? {} : { scheme: adapter.scheme }),
-            };
-            runtimes = [manager, ...(prepared?.runtimes ?? [])];
+            documentBody = await this.#documentBody(adapter);
+            runtimes = [...(prepared?.runtimes ?? [])];
+            schemes = adapter.scheme === undefined || configurationFailure !== null
+                ? []
+                : [{ name: adapter.family, facet: adapter.scheme, ...(adapter.traits === undefined ? {} : { traits: adapter.traits }) }];
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }
@@ -1129,11 +1147,12 @@ export default class Functionality {
                     namespaceOwner: adapter.namespaceOwner,
                     state: Functionality.#persisted(nextState),
                     runtimes,
+                    ...(schemes.length === 0 ? {} : { schemes }),
                 }, {
                     gate: "none",
                     // {§functionality-publication} — the view and the adapter's candidate go live in one instant.
                     publish: () => {
-                        this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure });
+                        this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure, documentBody });
                         const undo = prepared?.publish();
                         return () => {
                             undo?.();

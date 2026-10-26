@@ -148,13 +148,26 @@ export default class CapabilityResolver {
         }
     }
 
-    // {§owner-interaction-ring} The interaction runtimes this worker's owner would not receive.
-    async #unreceived(workspaceId: number, workerId: number): Promise<readonly string[]> {
-        const interactions = (this.#executors()?.availableRuntimes(workspaceId) ?? [])
-            .filter((runtime) => this.#runtimeDescriptor(runtime, null, workspaceId).access === "interact");
-        if (interactions.length === 0) return [];
+    // {§owner-interaction-ring} The interaction capabilities this worker's owner would not receive.
+    async #unreceived(workspaceId: number, workerId: number): Promise<ReadonlyArray<{ readonly runtime: string; readonly tool?: string }>> {
+        const executors = this.#executors();
+        const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
+        for (const runtime of executors?.availableRuntimes(workspaceId) ?? []) {
+            if (this.#runtimeDescriptor(runtime, null, workspaceId).access === "interact") {
+                candidates.push({ runtime, name: runtime });
+                continue;
+            }
+            for (const registered of executors?.toolRegistry(runtime, workspaceId)?.tools ?? []) {
+                if (this.#runtimeDescriptor(runtime, registered.target, workspaceId).access === "interact") {
+                    candidates.push({ runtime, tool: registered.target, name: registered.target });
+                }
+            }
+        }
+        if (candidates.length === 0) return [];
         const owner = await WorkerOwners.read(this.#db, workerId);
-        return interactions.filter((runtime) => !WorkerOwners.receives(owner, runtime));
+        return candidates
+            .filter(({ name }) => !WorkerOwners.receives(owner, name))
+            .map(({ runtime, tool }) => ({ runtime, ...(tool === undefined ? {} : { tool }) }));
     }
 
     // {§owner-interaction-ring} An asking worker adds its owner's ring inside the shared cascade.
@@ -163,15 +176,25 @@ export default class CapabilityResolver {
         const unreceived = workerId === undefined ? [] : await this.#unreceived(workspaceId, workerId);
         return unreceived.length === 0 ? layers : [...layers, {
             scope: "owner",
-            policy: { deny: unreceived.map((runtime) => ({ access: "interact", runtime })) },
+            policy: { deny: unreceived.map(({ runtime, tool }) => ({ access: "interact", runtime, ...(tool === undefined ? {} : { tool }) })) },
         }];
     }
 
     // {§owner-interaction-ring} The worker's face of the shared reserved tree: the documents of a
-    // runtime its owner ring denies are absent.
+    // runtime or tool its owner ring denies are absent.
     async referenceVisibility(workspaceId: number, workerId: number): Promise<(pathname: string) => boolean> {
-        const hidden = (await this.#unreceived(workspaceId, workerId)).map((runtime) =>
-            ToolResources.documents(runtime, this.#executors()?.entry(runtime, workspaceId)?.resourcesPath));
+        const executors = this.#executors();
+        const unreceived = await this.#unreceived(workspaceId, workerId);
+        const hidden = unreceived.map(({ runtime, tool }) => {
+            const resourcesPath = executors?.entry(runtime, workspaceId)?.resourcesPath;
+            if (tool === undefined) return ToolResources.documents(runtime, resourcesPath);
+            const tools = executors?.toolRegistry(runtime, workspaceId)?.tools ?? [];
+            const allToolsUnreceived = tools.length > 0 && tools.every((candidate) =>
+                unreceived.some((denied) => denied.runtime === runtime && denied.tool === candidate.target));
+            if (allToolsUnreceived) return ToolResources.documents(runtime, resourcesPath);
+            const toolDoc = ToolResources.toolDocumentPath(runtime, tool, resourcesPath);
+            return (pathname: string) => pathname === toolDoc;
+        });
         return (pathname) => !hidden.some((documents) => documents(pathname));
     }
 
@@ -292,9 +315,13 @@ export default class CapabilityResolver {
 
     #runtimeDescriptor(runtime: string, tool: string | null, workspaceId: number): CapabilityDescriptor {
         if (!isLowercase(runtime)) throw new TypeError(`'${runtime}' names no runtime: runtime tags and family names are lowercase.`);
+        const toolTraits = tool === null
+            ? []
+            : (this.#executors()?.toolRegistry(runtime, workspaceId)?.tools.find((candidate) => candidate.target === tool)?.traits ?? []);
         const traits = [...new Set([
             ...this.#traits("exec", workspaceId),
             ...this.#traits(runtime, workspaceId),
+            ...toolTraits,
         ])].toSorted();
         return {
             operation: runtime,

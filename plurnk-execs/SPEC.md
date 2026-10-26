@@ -372,7 +372,7 @@ be reported as successful resource publication.
 | {§executor-runtime-declaration} | Runtime metadata |
 | {§executor-invocation} | Every runtime declares exactly one invocation contract: |
 | {§executor-blank-invocation} | A blank invocation is answered with its working form. |
-| {§executor-tool-registry} | A runtime representing a finite set of exact tools may implement `toolRegistry()` and return one immutable… |
+| {§executor-tool-registry} | A runtime representing a finite set of exact tools may implement `toolRegistry(workspaceId?: number)` and… |
 | {§executor-tool-catalog} | A registry may carry each tool's original JSON object as `definition`. |
 | {§executor-tool-document} | Tool documents are the model-facing executor directory. |
 | {§executor-input-schema-preview} | Schema-backed previews emit a compact, valid JSON skeleton containing only explicitly required top-level… |
@@ -503,7 +503,7 @@ shows them ({§tools-resource-discovery}). A registry runtime named without a ta
 every enabled target's fence. Nothing runs.
 
 §executor-tool-registry A runtime representing a finite set of exact tools
-may implement `toolRegistry()` and return one immutable snapshot:
+may implement `toolRegistry(workspaceId?: number)` and return one immutable snapshot:
 
 ```ts
 interface RuntimeToolRegistry {
@@ -513,12 +513,14 @@ interface RuntimeToolRegistry {
         invocation: RuntimeInvocation;
         details?: string;
         definition?: Readonly<Record<string, unknown>>;
+        traits?: readonly string[];
     }[];
 }
 ```
 
 Each entry owns one canonical literal target, one nonempty one-line summary,
-its complete invocation contract, and optional supplemental Markdown. Its
+its complete invocation contract, optional supplemental Markdown, and optional
+policy traits. Its
 invocation declares that target bucket as required and
 `literal`; duplicate targets, divergent example targets, or malformed
 invocations fail the extension boundary. The exact target must round-trip through

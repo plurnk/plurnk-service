@@ -32,10 +32,17 @@ test("{§service-worker-composition} live workspaces expose a model worker's ref
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
-        for (const reference of ["worker", "members", "skills", "mcp", "sh", "schedule"]) {
+        for (const reference of ["worker", "sh"]) {
             const result = await read(`worker:///_plurnk/plurnk/${reference}.md`);
             assert.equal(result.status, 200, `${reference}.md is READ-able in the worker's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
+        }
+        const plurnkDoc = await read("worker:///_plurnk/tools/plurnk.md");
+        assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the worker's actual generated tree");
+        for (const family of ["members", "skills", "mcp", "schedule"]) {
+            const result = await read(`worker:///_plurnk/tools/plurnk/${family}.json`);
+            assert.equal(result.status, 200, `${family}.json is READ-able in the worker's actual generated tree`);
+            assert.match(String(result.content), /\S/, `${family}.json contains its contract`);
         }
         for (const family of ["skills", "mcp", "members", "schedule"]) {
             const result = Validator.assertFunctionalityListResult(

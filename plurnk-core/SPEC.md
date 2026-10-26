@@ -535,7 +535,7 @@ capabilities may narrow or omit the reference catalogs under {§capability-admis
 | Surface | Target | Scope / aside |
 | --- | --- | --- |
 | Agent Skills | FIND `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
-| Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
+| Plurnk references: executors and schemes | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
 | Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
 | Enabled members | `worker:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
 | Project filesystem | `*` | File cap below; `project root member files` |
@@ -945,7 +945,7 @@ and never re-fetch a match.
   | The admission | Rule |
   | --- | --- |
   | Proposed | a read of content proposes it as a 202 the proposal lifecycle settles ({§proposal-202-pauses}): its review body is the definition, `{"files": [...]}`, and its effect is `host`, so policy accepts it where nobody reviews (`PLURNK_SERVICE_EFFECT_HOST=auto` or `PLURNK_SERVICE_PROPOSALS=accept`) and the reviewer decides otherwise |
-  | Accepted | admits the files as the Worker's own `members (add)` of each exact path, under the model's scope, with one `member_added` notice each, and runs the operation again; its result settles the row ({§proposal-accept-applies}) |
+  | Accepted | admits the files as the Worker's own `plurnk (members)` `add` of each exact path, under the model's scope, with one `member_added` notice each, and runs the operation again; its result settles the row ({§proposal-accept-applies}) |
   | Rejected | settles 400 `rejected` and admits nothing ({§proposal-reject-fails}) |
   | Refused by the scope | a path the scope refuses is proposed no further within the operation, which then misses it as a non-member |
 
@@ -961,7 +961,7 @@ and never re-fetch a match.
   | --- | --- |
   | Ambient membership | Tracked files are ambient members with `git` origin; an untracked file never is — it enters membership only by this admission, with `constraint` origin and `model` source. |
   | An accepted creation | Incorporated by an exact creation record, never by `git add` ({§membership-model-universe}); a record that cannot be written fails the creation transaction, never an orphan ({§file-create-no-orphans}). |
-  | The admission | The Worker's own `members (add)` of the exact path, provenance `model-proposal`, under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so scope `none` admits nothing and the read is refused as it is with the knob off; published before the operation runs again ({§functionality-model-mutation}) and announced by one `member_added` notice per file ({§notice-directive}). |
+  | The admission | The Worker's own `plurnk (members)` `add` of the exact path, provenance `model-proposal`, under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` narrowed by the workspace ({§members-model-scope}), so scope `none` admits nothing and the read is refused as it is with the knob off; published before the operation runs again ({§functionality-model-mutation}) and announced by one `member_added` notice per file ({§notice-directive}). |
   | Its settlement | As every host effect is ({§proposal-disposition}): by policy where nobody reviews, by the reviewer under `review`; `reject` refuses every admission. |
   | Outside the universe | A path git ignores, a path an exclusion matches, a directory and anything beyond the root: their refusals are unchanged ({§membership-read-refusal}, {§file-directory-target}). |
   | A person's client operation | Reads members only. |
@@ -2017,7 +2017,7 @@ invalid range, read-only authority, and occupied hidden state without guessing.
 
 | Case | Result | Recovery |
 | --- | --- | --- |
-| Not a member | 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, the target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}) | Offers listing with FIND, creation with EDIT and admission with `members (add)` and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. `` |
+| Not a member | 404 `entry-not-found`, `No member of this workspace is at '<key>'.`, the target rendered as the reusable member address ({§fs-answer-in-canon}, {§file-url}) | Offers listing with FIND, creation with EDIT and admission with `plurnk (members)` and presumes none ({§diagnostic-observation}): `` FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{"verb": "add", "files": ["<path>"]}` body. `` |
 | Beyond the root | The engine does not look at the disk at all, and the key is named by the absolute path it renders as ({§file-path-normalization}), so two reads there differ only in the address they echo | Speaks of the address too, true under every members scope: `'<address>' is outside the project root: only a members definition under the operator's namespace scope admits it.` |
 | Inside the root, on disk, not a member | Occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ says so: 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.` — unless the model's read admits it first ({§membership-auto-add}) | Admission only |
 | Covered by an exclusion | `entry-not-member`, as above; an exclusion outranks every inclusion, so no admission is offered | `` A members exclusion (`!<glob>`) covers it: only the user can lift it. `` |
@@ -5176,8 +5176,8 @@ registry. Deleting the workspace cascades its state; worker lifecycle does not.
 | {§functionality-state} | Functionality state is one durable value per workspace and family. |
 | {§functionality-publication} | Functionality publication is one replacement of a family's state and runtimes. |
 | {§functionality-documents} | Generated documents describe the shared snapshot. |
-| {§functionality-model-projection} | The model's projection of a Functionality family is one workspace manager executor. |
-| {§functionality-document-body} | A family's document body is an authored file beneath its generated header. |
+| {§functionality-model-projection} | The model's projection of Functionality families is the workspace `plurnk` tool. |
+| {§functionality-document-body} | A family's document body is an authored file in its tool schema. |
 | {§functionality-model-mutation} | The model's mutations of a Functionality family settle in authored order. |
 <!-- /map -->
 
@@ -5496,31 +5496,29 @@ Enabled, active definitions are discoverable. Disabled or unavailable
 definitions add no hot-path teaching. Their exact state and Problem remain
 available through `list`.
 
-§functionality-model-projection **The model's projection of a Functionality family is one workspace manager executor.** Its verbs — `discover` only where the family serves discovery
-({§functionality-discover-advertisement}) — use their actual coordinator schemas and the ordinary
-tool-document machinery. `list`/`discover` are read effects; mutations are host
+§functionality-model-projection **The model's projection of Functionality families is the workspace `plurnk` tool.** Core registers one in-process `plurnk` runtime at boot under `resourcesPath: "/tools"` with `expandTools: true`, publishing one tool per registered Functionality family (`plurnk (<family>)`) alongside `plurnk (question)` ({§question-tool}). Each family tool's `verb` — `discover` only where the family serves discovery
+({§functionality-discover-advertisement}), defaulting to `list` when omitted — and arguments use its actual coordinator schemas and the ordinary
+tool-document machinery (`worker:///_plurnk/tools/plurnk.md` and `worker:///_plurnk/tools/plurnk/<family>.json`). `list`/`discover` are read effects; mutations are host
 effects and use normal proposals. Summary, signatures, and deep docs derive
 from the same registry ({§tools-resource-materialization},
 {§executor-input-schema-preview}). Outcomes stream into the invoking operation's
-output entry. The manager closes over workspace identity, not worker identity.
-A worker-scoped family's verbs nonetheless act for the invoking Worker: Core
-binds that Worker to the manager at the operation, so the published manager
-stays one per workspace and the executor framework's arguments carry no
+output entry (`plurnk:///<id>`). A family's `scheme` facet (`env://`, `schedule://`) registers directly in the workspace scheme registry ({§module-workspace-capabilities}).
+A worker-scoped family's verbs act for the invoking Worker: Core
+binds that Worker and workspace to the manager at the operation, so the executor framework's arguments carry no
 identity ({§functionality-scope}).
 
 Expected adapter failures retain their exact status and Problem in both client
 actions and the model operation's stream/result ({§problem-error-carrier}). An
 unexpected exception remains an executor fault, not a managed refusal.
 
-§functionality-document-body **A family's document body is an authored file beneath
-its generated header.** The adapter names its package directory (`docsDir`);
+§functionality-document-body **A family's document body is an authored file in
+its tool schema.** The adapter names its package directory (`docsDir`);
 that package's `docs/<family>.md` is read once, by the same rule runtimes use
 for `docs/<tag>.md` ({§executor-discovery}: the authoring title `# <family>` is
-removed, the generated document owns the H1), and rides the family
-declaration's `details` beneath the Tools section. The header, verb table, and
+removed), and rides the family tool's `details` into `worker:///_plurnk/tools/plurnk/<family>.json` (`description`). The runtime header, tool signatures, and
 schema documents stay generated; no prose from the file enters the hot path.
-A family that ships no file has a header-only document. Registration also
-validates the adapter's taught `add` example against the `add` input schema it
+A family that ships no file has a schema-only tool document. Registration also
+validates the adapter's taught `plurnk (<family>)` `add` example against the `add` input schema it
 teaches, so a wrong example fails boot rather than the model.
 
 §functionality-model-mutation **The model's mutations of a Functionality family settle in authored order.** Every manager verb, including inspection, completes before dispatch proceeds; later operations observe earlier successful configuration changes. The invoking operation and its output remain pending until settlement, and never acknowledge merely starting a future commit; settlement reports `active`, `unavailable`, or the exact publication failure. When a model mutation publishes `authorization-required`, it announces that sign-in requirement and holds at the workspace boundary ({§module-workspace-quiescence}) until a subsequent publication resolves the alias out of `authorization-required`, then streams that settled outcome. Shell commands, remote tools, WORK/FORK and streaming READ retain their deliberately asynchronous contracts ({§op-synchronous}).
@@ -5730,15 +5728,15 @@ and packet shaping. Replacement preserves unrelated workspace settings. Before t
 or observation, existing workers reconcile generated references against it. It requires no selected
 bound worker and returns the complete fresh projection.
 
-§question-tool **The `question` tool asks the worker's owner and waits for the answer the client-interaction lifecycle delivers.** Core registers one in-process `question` runtime at boot and offers it only to a worker whose owner would receive it ({§owner-interaction-ring}).
+§question-tool **The `question` tool asks the worker's owner and waits for the answer the client-interaction lifecycle delivers.** Core publishes `question` as a tool of the in-process `plurnk` runtime (`plurnk (question)`, schema at `worker:///_plurnk/tools/plurnk/question.json`) and offers it only to a worker whose owner would receive it ({§owner-interaction-ring}).
 
 | Facet | Rule |
 | --- | --- |
-| Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; an optional literal target is a descriptive label only, which neither routes the question nor changes the body or recipient |
+| Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; target `(question)` selects the tool on `plurnk` |
 | Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`): the executor submits the contracts-owned form `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), the client returns the exact `ClientInteractionResolution`, and the executor writes it verbatim to `results`; answer fields are data, including fields named `action` or `content` |
 | Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§client-interactions}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
 | Effect | `read`: the tool observes the human's answer and is never proposal-gated |
-| Admission | its runtime declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny it; the ordinary executor policy also applies, `PLURNK_EXECS_QUESTION=0` disabling registration and teaching ({§executor-policy}) |
+| Admission | the tool declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny `plurnk (question)` independently of family tools; the ordinary executor policy also applies, `PLURNK_EXECS_PLURNK=0` disabling registration and teaching ({§executor-policy}) |
 
 §worker-tool-admission **Tool visibility and execution share admission.** The
 reserved tool tree's FIND/READ faces drop a runtime or tool document whenever
@@ -5750,9 +5748,9 @@ registration; there is no separate per-tool availability system.
 
 §owner-interaction-ring **An interaction tool is offered only where an answer can come
 from.** An asking worker adds one ring inside that cascade, derived live from its owner
-and never stored. It denies each interaction runtime whose tool the owner would not
-receive under {§client-interaction-routing}; an interaction runtime asks under its own
-tag, as `question` does.
+and never stored. It denies each interaction tool or runtime whose tool the owner would not
+receive under {§client-interaction-routing}; an interaction tool asks under its own
+tool name (such as `question` on `plurnk`), or its runtime tag for a standalone interaction runtime.
 
 | Surface | With the ring |
 | --- | --- |
@@ -6709,8 +6707,8 @@ flowchart LR
 §tools-resource-materialization **Tool resources materialize from one workspace snapshot.** The runtime registry, workspace capability policy, tool resources, and dispatch use one effective workspace snapshot; attached tools are capabilities like every other runtime, and the model never learns an origin.
 
 - A disabled, unavailable, detached, replaced, or removed runtime has no tool resource; an exact registry's empty set publishes no runtime and admits no invocation. Reconciliation deletes stale documents before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an enabled executable; executor enablement is the sole user-configured filter shared by discovery and dispatch.
-- A runtime declaration may carry `resourcesPath`, its generated-doc root relative to the workspace's generated subtree ({§worker-generated-subtree}). Absent, its docs live in the internal `_plurnk/plurnk` namespace; present (attached MCP servers: `/tools`), the runtime document materializes at `_plurnk` + that root in the shared scratch.
-- Turn 0 surveys the runtimes (`FIND (worker:///_plurnk/tools/*.md)`, one row per server carrying its summary) and, for each server named in `PLURNK_MCP_EXPANDED`, adds one FIND over its runtime document matching the complete executable blocks (`FIND (worker:///_plurnk/tools/<server>.md)` with a multiline regex over matching fences), so turn 0 names every tool with its aside and signature — one row per tool, paged like every survey. Capability attenuation restricts that matcher to the admitted exact tools. No document is delivered unasked.
+- A runtime declaration may carry `resourcesPath`, its generated-doc root relative to the workspace's generated subtree ({§worker-generated-subtree}). Absent, its docs live in the internal `_plurnk/plurnk` namespace; present (`plurnk` and attached MCP servers: `/tools`), the runtime document materializes at `_plurnk` + that root in the shared scratch.
+- Turn 0 surveys the runtimes (`FIND (worker:///_plurnk/tools/*.md)`, one row per runtime carrying its summary) and, for each runtime with `expandTools` (`plurnk` by default, plus each MCP server named in `PLURNK_MCP_EXPANDED`), adds one FIND over its runtime document matching the complete executable blocks (`FIND (worker:///_plurnk/tools/<runtime>.md)` with a multiline regex over matching fences), so turn 0 names every tool with its aside and signature — one row per tool, paged like every survey. Capability attenuation restricts that matcher to the admitted exact tools. No document is delivered unasked.
 - When the registry supplies {§executor-tool-catalog} definitions, the runtime document links to its sibling `<runtime>.json`. The catalog contains exactly the effective tools and is an ordinary `application/json` resource for READ, FIND, and JSONPath selection. It follows the same reconciliation as the runtime document and per-tool schemas; neither the catalog nor its definitions are automatically included in turn 0 or expanded-tool surveys.
 
 §tool-document-header-only **A header-only tool document:** a registry-less runtime whose declaration carries no
@@ -6725,7 +6723,7 @@ already present. Required schema fields use {§executor-input-schema-preview};
 authored examples take precedence. Family alternatives and descriptive summaries
 remain one compact orientation line, not an expansion of every tool's signature.
 
-§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project root, or absolute: it is matched against member keys, so its spelling is canonicalized as a path's is ({§fs-canonical-name}) and an absolute glob admits exactly what its root-relative spelling does; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
+§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```plurnk (members) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§path-glob-matching}) relative to the project root, or absolute: it is matched against member keys, so its spelling is canonicalized as a path's is ({§fs-canonical-name}) and an absolute glob admits exactly what its root-relative spelling does; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
 
 | Verb | Input | Effect |
 | --- | --- | --- |
@@ -7338,7 +7336,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `members (add)` admits existing files with a `{"files": ["<path>"]}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{"verb": "add", "files": ["<path>"]}` body. A path beyond the root recovers instead to: '*path*' is outside the project root: only a members definition under the operator's namespace scope admits it. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; the result distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -7417,7 +7415,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `request-target-invalid` | 400 | The request target is not a URL the listener can route. |
 | `route-failed` | 500 | The mounted route failed while answering the request. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
-| `name-reserved` | 400 | '*alias*' is reserved in env entries and invocation overrides. Recovery: READ worker:///_plurnk/plurnk/env.md for supported configuration paths. |
+| `name-reserved` | 400 | '*alias*' is reserved in env entries and invocation overrides. Recovery: READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
 | `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
 | `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME). |
@@ -7470,5 +7468,5 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |
 | The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |
-| '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"files": ["<path>"]}` body. | a non-member on disk at the addressed path |
+| '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `plurnk (members)` and a `{"verb": "add", "files": ["<path>"]}` body. | a non-member on disk at the addressed path |
 | '*path*' exists on disk but is not a member of this workspace. Recovery: Git ignores it (`<file>` line `<n>`): a client or operator members definition can include it, a model definition cannot. | a non-member git ignores ({§membership-read-refusal}, {§membership-ignore-source}) |

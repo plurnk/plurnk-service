@@ -20,7 +20,7 @@ The child's complete task goes here.
 
 `env` occupies the header's `[metadata]` slot after the worker address; the
 body is the child's task, not a JSON options object. On WORK and FORK these
-values override the child's inherited environment (`env.md`).
+values override the child's inherited environment (`worker:///_plurnk/tools/plurnk/env.json`).
 
 ```FORK (worker://exampleWorkerName) <!-- a child that begins with your history -->
 The child's task, continuing from what you already know.

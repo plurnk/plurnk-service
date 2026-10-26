@@ -241,7 +241,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : ignoredBy !== null
                             // {§membership-ignore-source}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
-                            : "Admit it with `members (add)` and a `{\"files\": [\"<path>\"]}` body."
+                            : "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."
                     : fileMissRecovery(named),
                 retryable: false,
             },

@@ -31,5 +31,6 @@ WHERE entries.scheme = 'worker'
   AND (
     entries.pathname LIKE '/_plurnk/skills/%'
     OR entries.pathname LIKE '/_plurnk/plurnk/%'
+    OR entries.pathname LIKE '/_plurnk/tools/%'
   )
   AND entry_channels.name = 'body';

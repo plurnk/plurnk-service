@@ -316,7 +316,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // One logical target derives one effect fact before policy consumes it.
         // A non-file resource keeps its exact authored address until materialization.
         const effectTarget = resourceSource ?? target;
-        const effect = resolved.executor.effect(effectTarget);
+        const effect = resolved.executor instanceof FunctionalityManager
+            ? resolved.executor.effectForInvocation(effectTarget, body, core.workspaceId)
+            : resolved.executor.effect(effectTarget);
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-sinks}
         // The log writer claims the workspace output address before proposal application.
@@ -784,7 +786,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         // {§functionality-model-mutation} Configuration is an ordered core operation,
         // not a background job competing for an external-execution slot.
-        if (resolved.executor instanceof FunctionalityManager) {
+        if (resolved.executor instanceof FunctionalityManager && target !== "question") {
             const tail = run();
             this.#activeSpawns.set(subscriptionId, tail);
             return await tail;
@@ -1029,7 +1031,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
         // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
         // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
-        const executor = opts.executor instanceof FunctionalityManager ? opts.executor.forWorker(ctx.workerId) : opts.executor;
+        const executor = opts.executor instanceof FunctionalityManager
+            ? opts.executor.forContext(ctx.workspaceId, ctx.workerId)
+            : opts.executor;
         const db = ctx.db;
         // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.

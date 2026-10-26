@@ -48,7 +48,7 @@ leaves no model-facing trace.
 | Service | Host-provided trees |
 | Standard locations | Global, plurnk, then project roots selected by {§agent-roots} |
 | Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition |
-| Live workspace | `skills (add)` creates a workspace definition; `replace` assigns a complete named definition through {§functionality-replacement} |
+| Live workspace | `plurnk (skills)` `add` creates a workspace definition; `replace` assigns a complete named definition through {§functionality-replacement} |
 
 `PLURNK_SKILLS_ENABLED` supplies default enabledness; `<name>_ENABLED` overrides
 it independently ({§resource-environment}). The decoded environment alias must
@@ -130,7 +130,7 @@ serialized URI address the same resource, not separate skill identities.
 | `READ (skill://<name>/SKILL.md)` | Original frontmatter and Markdown, unchanged; relative links remain relative to the source layout. |
 | `READ` / `FIND` below the authority | References, scripts, and assets retain their source paths and ordinary pattern, channel, byte, and multimodal semantics. Acquisition observes current source contents, including disappearance. |
 | ```` ```runtime (skill://<name>/scripts/program.ext) ```` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-source-temporary}. Discovery and READ never execute scripts. |
-| Model mutation | Read-only; no EDIT, SEND, or KILL of skill resources. Manage definitions and enablement through ```` ```skills ````. |
+| Model mutation | Read-only; no EDIT, SEND, or KILL of skill resources. Manage definitions and enablement through ```` ```plurnk (skills) ````. |
 | Disable / unavailable / remove | Withdraw the authority from new resource access and discovery. Existing log receipts remain historical evidence. |
 | WORK / FORK | Use the same workspace Functionality, not copied definitions or resource caches. |
 
@@ -153,7 +153,7 @@ recomputes it under the workspace gate before packet assembly: a changed signatu
 family, and an unchanged one republishes only when the skills the coordinator would publish differ
 from the published ones. A skill installed, edited or removed by any other tool is therefore
 discoverable in the first subsequent model turn, while an unchanged set dispatches nothing. The model manages skills
-only through the generated ```` ```skills ```` family
+only through the generated ```` ```plurnk (skills) ```` tool
 ({§functionality-model-projection}); it is never taught a package manager.
 
 ## Problems
@@ -169,7 +169,7 @@ only through the generated ```` ```skills ```` family
 | `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |
 | `source-unreachable` | 502 | git could not reach '*remote*', or fetch it (at '*ref*'): *reason*. |
 | `ref-missing` | 404 | '*remote*' has no branch or tag '*ref*', or names no default branch. |
-| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Use `skills (replace)` with the complete source definition to take the current commit. |
+| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Use `plurnk (skills)` `replace` with the complete source definition to take the current commit. |
 | `source-is-plugin` | 422 | '*source*' is an Agent Plugin, not a skill. |
 | `source-unsafe` | 422 | '*path*' links outside its skill, or is neither a file, a directory, nor an inward link. |
 | `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |

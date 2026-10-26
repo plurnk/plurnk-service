@@ -25,11 +25,18 @@ export interface WorkspaceCapabilityProvider {
     deactivate(identity: WorkspaceCapabilityIdentity): void | Promise<void>;
 }
 
+export interface WorkspaceSchemeRegistration {
+    readonly name: string;
+    readonly facet: RuntimeSchemeFacet;
+    readonly traits?: readonly string[];
+}
+
 // {§module-workspace-capabilities}
 export interface WorkspaceCapabilityReplacement extends WorkspaceCapabilityIdentity {
     readonly namespaceOwner: string;
     readonly state: unknown;
     readonly runtimes: readonly RuntimeRegistration[];
+    readonly schemes?: readonly WorkspaceSchemeRegistration[];
 }
 
 export interface WorkspaceCapabilityPublication {

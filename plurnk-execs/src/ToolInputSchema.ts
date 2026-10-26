@@ -26,14 +26,24 @@ const isStringEnum = (choices: unknown): choices is readonly string[] =>
     Array.isArray(choices) && choices.length > 0 && choices.length <= 12
     && choices.every((choice): choice is string => typeof choice === "string");
 
-const hasStructuredDetail = (prop: JsonSchema): boolean => {
+const dereference = (prop: JsonSchema): JsonSchema => {
+    if (typeof prop.$ref === "string") {
+        const resolved = Validator.schemaByRef(prop.$ref.split("#", 1)[0]);
+        if (isRecord(resolved)) return resolved;
+    }
+    return prop;
+};
+
+const hasStructuredDetail = (raw: JsonSchema): boolean => {
+    const prop = dereference(raw);
     if (isRecord(prop.properties) && Object.keys(prop.properties).length > 0) return true;
-    const items = objectOf(prop.items);
+    const items = dereference(objectOf(prop.items));
     return (isRecord(items.properties) && Object.keys(items.properties).length > 0)
         || (isStringEnum(items.enum) && items.enum.length > 1);
 };
 
-const propertySignature = (prop: JsonSchema, depth = 0): string => {
+const propertySignature = (raw: JsonSchema, depth = 0): string => {
+    const prop = dereference(raw);
     if (isStringEnum(prop.enum)) {
         return prop.enum.map((choice) => JSON.stringify(choice)).join("|");
     }
@@ -62,7 +72,9 @@ const propertySignature = (prop: JsonSchema, depth = 0): string => {
         if (ordered.length > 6) parts.push(`… +${ordered.length - 6} opt`);
         return `{${parts.join(", ")}}`;
     }
-    return declared.length > 0 ? declared.join("|") : "any";
+    if (declared.length > 0) return declared.join("|");
+    if (Array.isArray(prop.oneOf) || Array.isArray(prop.anyOf)) return "object";
+    return "any";
 };
 
 export default class ToolInputSchema {

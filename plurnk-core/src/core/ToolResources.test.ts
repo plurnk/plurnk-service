@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
 import ToolResources from "./ToolResources.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
-import { functionalityRuntimeDecl, FUNCTIONALITY_VERBS } from "../server/FunctionalityManager.ts";
+import { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
 test("{§tools-resource-discovery} renders a general runtime as one self-describing resource", () => {
@@ -208,17 +208,16 @@ test("{§tool-document-header-only} a registry-less runtime with no details is m
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
-test("{§functionality-model-projection} manager summaries advertise effective verbs in lifecycle order", () => {
-    for (const verbs of [FUNCTIONALITY_VERBS, ["list", "discover"]]) {
-        const declaration = functionalityRuntimeDecl("mcp", "Manage MCP servers", "");
+test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order", () => {
+    for (const tools of [["env", "mcp", "members", "schedule", "skills", "question"], ["members", "question"]]) {
         const [resource] = ToolResources.render({
-            runtime: "mcp", ...declaration, details: "",
-            registry: { tools: verbs.map((target) => ({
-                target, summary: target, invocation: declaration.invocation,
+            runtime: "plurnk", ...plurnkRuntimeDecl, details: "",
+            registry: { tools: tools.map((target) => ({
+                target, summary: target, invocation: plurnkRuntimeDecl.invocation,
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n")[0];
-        assert.equal(summary, `\`\`\`mcp (${verbs.join("|")}) <!-- Manage MCP servers -->\\n\`\`\``);
+        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage workspace capabilities and ask the user questions. -->\\n\`\`\``);
     }
 });
 

@@ -182,6 +182,7 @@ export interface RuntimeRegisteredTool {
     readonly invocation: RuntimeInvocation;
     readonly details?: string;
     readonly definition?: Readonly<Record<string, unknown>>;
+    readonly traits?: readonly string[];
 }
 
 export interface RuntimeToolRegistry {

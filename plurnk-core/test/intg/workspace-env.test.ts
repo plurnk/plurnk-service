@@ -50,7 +50,7 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries and invocation overrides.");
-            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/plurnk/env.md for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
             return true;
         });
         await assert.rejects(shared("list", { scope: "worker" }), /scope does not match/u);

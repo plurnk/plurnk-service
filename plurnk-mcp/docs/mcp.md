@@ -1,7 +1,7 @@
 # mcp
 
 An MCP server publishes tools, and an enabled server is a runtime here under
-its own name. A tool runs the way `sh` or `node` runs: a fenced call names the
+its own name. A tool runs the way `sh` or `js` runs: a fenced call names the
 server and the tool, and its body is the tool's JSON arguments.
 
 ```files (list_directory) <!-- server (tool) -->
@@ -31,16 +31,16 @@ redacted connection diagnostic or session stderr available to the host.
 `{"query": "<name>"}` and searches that registry; each candidate carries the
 exact definition to add. Discovery never persists or enables anything.
 
-```mcp (discover) <!-- search before adding -->
-{"query": "filesystem"}
+```plurnk (mcp) <!-- search before adding -->
+{"verb": "discover", "query": "filesystem"}
 ```
 
 `add` saves and enables a workspace definition, then reports its connection
 state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
-```mcp (add)
-{"alias": "files", "definition": {"name": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
+```plurnk (mcp)
+{"verb": "add", "alias": "files", "definition": {"name": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
 ```
 
 A complete definition names one transport: `stdio` has `command` and optional
@@ -75,13 +75,13 @@ source. A complete workspace override replaces these plugin semantics too.
 
 A local server's inherited environment excludes Plurnk settings and model
 provider keys; explicit definition bindings are separate.
-Workspace variables set with the `env` family (`env.md`) apply on top at
+Workspace variables set with the `env` family (`worker:///_plurnk/tools/plurnk/env.json`) apply on top at
 every server launch; worker-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 
-```env (add)
-{"scope": "workspace", "alias": "SERVICE_TOKEN", "definition": {"value": "<credential>"}}
+```plurnk (env)
+{"verb": "add", "scope": "workspace", "alias": "SERVICE_TOKEN", "definition": {"value": "<credential>"}}
 ```
 
 Native definitions resolve `${NAME}` once against the operator's environment
@@ -97,8 +97,8 @@ Structured authorization secrets must be references, not literal credentials.
 
 For an OAuth server, start by adding its URL; the client supplies the callback.
 
-```mcp (add)
-{"alias": "remote", "definition": {"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}}
+```plurnk (mcp)
+{"verb": "add", "alias": "remote", "definition": {"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}}
 ```
 
 When a server requires OAuth sign-in, Plurnk notifies the user in the client and

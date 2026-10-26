@@ -190,10 +190,17 @@ export default class RuntimeInvocation {
         const targets = new Set<string>();
         const tools = toolValues.map((toolValue, index): RuntimeRegisteredTool => {
             const tool = recordOf(toolValue, `tool registry.tools[${index}]`, fail);
-            assertKnownFields(tool, new Set(["target", "summary", "invocation", "details", "definition"]), `tool registry.tools[${index}]`, fail);
+            assertKnownFields(tool, new Set(["target", "summary", "invocation", "details", "definition", "traits"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
             const summary = RuntimeSummary.assertLine(tool.summary, `tool registry.tools[${index}].summary`, fail);
             const details = "details" in tool ? stringOf(tool.details, `tool registry.tools[${index}].details`, fail) : undefined;
+            const traits = "traits" in tool
+                ? (
+                    Array.isArray(tool.traits)
+                        ? tool.traits.map((trait, traitIndex) => exampleLineOf(trait, `tool registry.tools[${index}].traits[${traitIndex}]`, fail))
+                        : fail(`tool registry.tools[${index}].traits must be an array`)
+                )
+                : undefined;
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
             if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), runtime, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor fence`);
@@ -218,6 +225,7 @@ export default class RuntimeInvocation {
                 invocation,
                 ...(details === undefined ? {} : { details }),
                 ...("definition" in tool ? { definition: recordOf(tool.definition, `tool registry.tools[${index}].definition`, fail) } : {}),
+                ...(traits === undefined ? {} : { traits }),
             };
         });
         if (tools.some(({ definition }) => definition !== undefined) && tools.some(({ definition }) => definition === undefined)) {

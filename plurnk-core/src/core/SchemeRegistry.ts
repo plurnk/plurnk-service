@@ -41,7 +41,8 @@ interface NamespaceClaim {
 
 interface RuntimeSchemeRegistration {
     readonly tag: string;
-    readonly executor: Executor;
+    readonly executor?: Executor;
+    readonly manifest?: SchemeManifest;
     readonly owner: RuntimeNamespaceOwner;
     readonly facet?: RuntimeSchemeFacet;
 }
@@ -222,14 +223,18 @@ export default class SchemeRegistry {
             handler: ExecOutputScheme;
             claim: NamespaceClaim;
         }> = [];
-        for (const { tag, executor, owner, facet } of registrations) {
+        for (const { tag, executor, manifest, owner, facet } of registrations) {
             if (tags.has(tag)) {
                 throw new Error(`scheme name '${tag}' occurs more than once in one registration batch`);
             }
             tags.add(tag);
             const claim = SchemeRegistry.#runtimeClaim(owner);
             if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
-            const handler = new ExecOutputScheme(executor.manifest, exec, facet);
+            const resolvedManifest = executor?.manifest ?? manifest;
+            if (resolvedManifest === undefined) {
+                throw new Error(`scheme '${tag}' requires an executor or manifest`);
+            }
+            const handler = new ExecOutputScheme(resolvedManifest, exec, facet);
             Manifest.of(handler, tag);
             if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
             prepared.push({ tag, handler, claim });
@@ -260,7 +265,7 @@ export default class SchemeRegistry {
         const handlers = new Map<string, RegisteredScheme>();
         const claims = new Map<string, NamespaceClaim>();
         const workspaceOwners = this.#workspaceByOwner.get(workspaceId);
-        for (const { tag, executor, owner, facet } of registrations) {
+        for (const { tag, executor, manifest, owner, facet } of registrations) {
             if (tags.has(tag)) {
                 throw new Error(`scheme name '${tag}' occurs more than once in one workspace snapshot`);
             }
@@ -276,7 +281,11 @@ export default class SchemeRegistry {
                 const peer = snapshot.claims.get(tag);
                 if (peer !== undefined) this.#throwClaimCollision(tag, peer, incoming);
             }
-            const handler = new ExecOutputScheme(executor.manifest, exec, facet);
+            const resolvedManifest = executor?.manifest ?? manifest;
+            if (resolvedManifest === undefined) {
+                throw new Error(`workspace scheme '${tag}' requires an executor or manifest`);
+            }
+            const handler = new ExecOutputScheme(resolvedManifest, exec, facet);
             Manifest.of(handler, tag);
             if (this.#coreServices !== undefined) handler.bindCore(this.#coreServices);
             await this.#readyHandler(handler);
