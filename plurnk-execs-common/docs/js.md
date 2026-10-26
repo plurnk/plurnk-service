@@ -16,29 +16,3 @@ Environment, working directory, channels, output on completion, exit status and 
 are every subprocess executor's, as `sh.md` states. Stdout is text, so structured
 output is serialized (`console.log(JSON.stringify(value))`); a thrown error
 exits nonzero with its stack on stderr.
-
-## Live input
-
-`[{"stdin": "open"}]` keeps stdin open for later SENDs to the receipt's execution
-address. Without it, initial input ends with EOF as usual.
-
-```js [{"stdin": "open"}]
-process.stdin.on("data", chunk => process.stdout.write(chunk));
-```
-
-Using the address returned by that invocation (here `js:///ab3d5678`):
-
-```SEND (js:///ab3d5678)
-hello
-
-```
-
-The blank line before the closing fence supplies a newline after `hello`.
-SEND adds no newline of its own. Its receipt acknowledges pipe delivery, not
-program completion. READ that same address to inspect stdout while it runs.
-
-```SEND (js:///ab3d5678) [{"eof": true}]
-```
-
-EOF closes stdin, not the process. KILL terminates the execution. Any worker
-in the workspace can send input to the same execution address.

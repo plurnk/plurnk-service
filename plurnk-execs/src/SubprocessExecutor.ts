@@ -6,7 +6,6 @@ import BaseExecutor from "./BaseExecutor.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
-import SubprocessInput from "./SubprocessInput.ts";
 import SpawnAccounts from "./SpawnAccount.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
@@ -91,11 +90,11 @@ export default class SubprocessExecutor extends BaseExecutor {
     }
 
     override prepare(input: ExecInput): Promise<ExecPreparation> {
-        return InvocationMetadata.prepare(input, { args: true, stdin: true });
+        return InvocationMetadata.prepare(input, { args: true });
     }
 
-    run({ runtime, body, metadata, cwd, target, env, signal, write, setState, registerInput }: ExecArgs): Promise<ExecResult> {
-        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { args: true, stdin: true });
+    run({ runtime, body, metadata, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target }, { args: true });
         if ("failure" in parsed) {
             setState("stdout", "errored");
             setState("stderr", "errored");
@@ -123,13 +122,6 @@ export default class SubprocessExecutor extends BaseExecutor {
             ));
         }
         const { cmd, useShell, stdin } = spawnArgs;
-        const interactive = parsed.options.stdin === "open";
-        if (interactive && registerInput === undefined) {
-            setState("stdout", "errored");
-            setState("stderr", "errored");
-            return Promise.resolve(Results.failure("executor:input", "input-unsupported", 501,
-                "This executor consumer does not provide live input.", {}, { retryable: false }));
-        }
         if (useShell && parsed.options.args.length > 0) {
             throw new Error("A subprocess recipe cannot shell-interpret an explicit argument vector.");
         }
@@ -175,7 +167,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // (The probe path already uses this discipline; matches it.)
             // {§executor-spawn-account} — the child runs as the configured account, with its name in its environment.
             const child = spawn(cmd, args, {
-                stdio: [interactive || stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
+                stdio: [stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
                 shell: useShell, cwd: cwd ?? undefined, env: SpawnAccounts.environment(env ?? process.env), detached: true,
                 ...SpawnAccounts.options(),
             });
@@ -188,11 +180,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // consumer even though the exec succeeded. The child's exit code is
             // the truth; a
             // stdin write racing child exit is expected noise, not a failure.
-            if (interactive && child.stdin) {
-                const input = new SubprocessInput(child.stdin, signal);
-                input.initial(stdin ?? "");
-                registerInput!((message) => input.receive(message));
-            } else if (stdin !== undefined && child.stdin) {
+            if (stdin !== undefined && child.stdin) {
                 child.stdin.on("error", () => { /* EPIPE-class race with exit — outcome is the exit code */ });
                 child.stdin.end(stdin);
             }

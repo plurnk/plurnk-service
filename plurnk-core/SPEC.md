@@ -2373,7 +2373,7 @@ operator knobs in `.env.defaults`. Search indexing performs no inference.
 
 §per-entry-channels-edit-writes-only-body EDIT writes one channel per call — the channel resolved from the path's fragment (or the scheme's `defaultChannel` when no fragment).
 
-Schemes MAY declare multiple channels (`node`: stdout/stderr; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently. Execution input is control under {§exec-input}, not a stored channel.
+Schemes MAY declare multiple channels (`js`: stdout/stderr; `http`: body/header; SSE: per-event-type). Each goes in `manifest.channels` with mimetype pinned; rendered independently.
 
 For a multi-channel streaming READ, persistence and publication are distinct: the scheme may acquire and persist auxiliary channels, but a fragmentless target publishes only the manifest's `defaultChannel`. An explicit fragment publishes that channel. Thus an ordinary HTTP READ presents the sanitized `body`; response metadata and archival DOM remain addressable implementation/diagnostic surfaces rather than ambient model context.
 
@@ -3451,7 +3451,6 @@ pattern-bounded and admits files only; it does not become an unrestricted walk.
 | {§completion-defers-to-results} | Results keep the loop running until observed. |
 | {§send-administrative-terminal} | Administrative programs close their own transaction. |
 | {§send-undelivered-child-term} | An undelivered child terminal: completion is not delivery. |
-| {§exec-input} | SEND to a running execution |
 <!-- /map -->
 
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
@@ -3650,28 +3649,6 @@ accounting and model-visible failure evidence remain separately owned by
   directly to the next packet because the wake edge has already fired. A genuinely
   empty wait creates no future wake; ordinary obligation adjudication still applies
   under {§wait-obligation-matrix}.
-
-### §exec-input SEND to a running execution
-
-An execution's existing runtime address is also its optional input recipient
-({§executor-live-input}). SEND never edits stored output or creates another
-invocation. Like stream KILL, input addresses the workspace execution regardless
-of which Worker launched it ({§execution-output-identity}).
-
-| Boundary | Behavior |
-| --- | --- |
-| Admission | Require SEND control and the original invocation's runtime/tool capabilities. Preserve its classified effect: host input proposes; pure/read input uses the same effect policy as launch. |
-| Acceptance | Recheck both capabilities, workspace, and the exact live subscription. Stale approval cannot reach a replacement invocation. |
-| Launched without input | The invocation's preparation declared no receiver ({§executor-live-input}): `409 input-unavailable`, immediately, naming the launch form that opens input. |
-| Queued for a slot | `409 input-unavailable`, immediately and `retryable`; never wait for an execution slot while blocking another input-dependent execution. |
-| Admitted, receiver declared, not yet open | Delivery waits for the receiver to register, within the backpressure bound; the execution settling first returns `410 input-closed`. A receiver registered without the declaration is the executor's defect and fails its run. |
-| Unknown address | `404 stream-not-found`. A terminal execution or retired input returns `410 input-closed`. |
-| Delivery | Serialize accepted inputs per invocation. Preserve authored body and receiver-owned metadata. Receiver success means delivery only, not completion. |
-| Backpressure | `PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS` bounds each accepted delivery, including its queue residence. Expiry returns `504 input-timeout`; cancellation returns `499 input-cancelled`. Once delivery has begun, retire and abort input on either; delivery may be partial and is never replayed. The execution itself is not implicitly killed. |
-| Settlement or teardown | Retire and abort input immediately when the execution settles or is cancelled. Existing stream completion and worker wake mechanics remain the only completion path. |
-
-No operation writes a stored runtime entry: its scheme's `writableBy` is empty, and the execution writes its own streams. Input and termination are
-control capabilities, not exceptions granting write access to stdout/resources.
 
 ## §exec Executions
 
@@ -7333,10 +7310,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 
 | code | status | contract |
 |---|---:|---|
-| `invalid-input-target` | 400 | SEND input addresses an execution, without a channel or scope. |
-| `input-unavailable` | 409 | This execution was launched without input. Recovery: Launch it with `[{"stdin": "open"}]` when its runtime takes input, then SEND to that execution. — This execution is queued for an execution slot; its input opens when it starts. Recovery: SEND again once the execution has started. — This execution's input receiver is no longer enabled. |
 | `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-near-miss}): The execution at /*id* is `*runtime*:///*id*`. |
-| `input-closed` | 410 | Execution input is closed. |
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this worker. |
 | `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
 | `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
@@ -7350,7 +7324,6 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `executor-invalid-result` | 500 | The executor returned an invalid operation result. |
 | `executor-threw` | 500 | The executor failed outside its operation result contract. |
 | `entry-narration-failed` | 500 | An executor entry could not be materialized or narrated. |
-| `input-receiver-failed` | 500 | The input receiver failed outside its result contract; delivery may be partial. |
 
 §problems-entries **Entry scheme Problems (log, worker, entries).** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 

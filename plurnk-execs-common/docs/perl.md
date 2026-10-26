@@ -14,6 +14,3 @@ printf "%s=%d\n", $_, $count{$_} for sort keys %count;
 
 ```perl (tools/rename.pl) [{"args": ["--dry-run"]}]
 ```
-
-Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md`
-shows.

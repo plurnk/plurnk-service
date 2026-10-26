@@ -66,9 +66,3 @@ npm test
 Expiry closes the stream with status 504. By contrast, `WAIT [30]` limits one
 wait to 30 seconds without stopping the command. Without `lifetime`,
 the command is loop-bound; see `env.md` for other lifetime values.
-
-## Live input
-
-`[{"stdin": "open"}]` keeps stdin open for later SENDs to the returned execution
-address; `[{"eof": true}]` closes it. The worked example, including newline
-framing, is on `js.md`.

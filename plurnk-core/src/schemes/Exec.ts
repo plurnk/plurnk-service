@@ -1,6 +1,6 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { errnoCode, isExecutionOp, PathSyntax } from "@plurnk/plurnk-contracts";
-import { type ExecStatement, type FindStatement, type KillStatement, type SendStatement } from "@plurnk/plurnk-contracts";
+import { type ExecStatement, type FindStatement, type KillStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
     InvalidOperationResultError,
@@ -35,7 +35,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import ExecScratch from "./ExecScratch.ts";
-import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
 import ExecEntrySink, { type WebFetch } from "./exec-entry-sink.ts";
 
@@ -46,7 +45,6 @@ type ApplyOutcome = SchemeResultBase & { outcome?: string; body?: string; result
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "js", "python3", etc.
     cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
-    input?: "open";         // the preparation declared that the invocation registers an input receiver ({§executor-live-input})
     target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-sinks})
     body: string;           // the fence body
     pathname: string;       // workspace output claim ({§execution-output-identity})
@@ -88,7 +86,6 @@ export type { WebFetch } from "./exec-entry-sink.ts";
 export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
     static validateConfiguration(hostPaths?: HostPaths): void {
         readExecConcurrency();
-        ExecutionInput.configuredTimeout();
         ExecScratch.directory(process.env, hostPaths);
     }
 
@@ -125,7 +122,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // the registry ({§web-materialization-contract}): core names no extension package.
     readonly #fetchWeb: WebFetch;
     readonly #materializer: () => WebMaterializer;
-    #execution: { scheduler: ExecScheduler; inputTimeoutMs: number } | null = null;
+    #execution: { scheduler: ExecScheduler } | null = null;
     #scratch: ExecScratch | null = null;
     constructor(fetchWeb: WebFetch | undefined, materializer: () => WebMaterializer) {
         super();
@@ -134,9 +131,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // {§configuration-repair-path}: validate before admission, not while constructing the repair environment.
-    #prepareExecution(): { scheduler: ExecScheduler; inputTimeoutMs: number } {
+    #prepareExecution(): { scheduler: ExecScheduler } {
         return this.#execution ??= {
-            inputTimeoutMs: ExecutionInput.configuredTimeout(),
             scheduler: new ExecScheduler(),
         };
     }
@@ -145,7 +141,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return this.#scratch ??= new ExecScratch(process.env, hostPaths);
     }
 
-    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
+    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -290,14 +286,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const { defaultCwd, resourceSource } = routed;
         let { target } = routed;
         let cwd: string | null = defaultCwd;
-        let inputDeclared = false;
 
         const lifetime = Exec.#readReservedMetadata(statement, runtime);
         if ("status" in lifetime) return lifetime;
         // {§executor-metadata} Options belong to the invoked executor for every source kind.
         const prepared = await Exec.#prepareInvocation(resolved.executor, statement, { runtime, body, target: resourceSource ?? target, cwd });
         if ("status" in prepared) return prepared;
-        ({ cwd, inputDeclared } = prepared);
+        ({ cwd } = prepared);
         // A `script` target must be an existing file; other kinds pass through as declared.
         if (target !== null && invocation.target?.kind === "script") {
             const inspected = await Exec.#inspectScriptTarget(core, { runtime, target, cwd, defaultCwd, hasBody });
@@ -326,7 +321,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // is text coordinates, which an execution has none of.
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
-            ...(inputDeclared ? { input: "open" as const } : {}),
             ...(resourceSource !== null ? { resourceSource } : {}),
             ...lifetime,
         };
@@ -335,7 +329,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
     }
 
-    // A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
+    // {§problems-exec} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
     static #refuse(
         runtime: string,
         code: string,
@@ -566,11 +560,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return lifetime;
     }
 
-    // {§executor-metadata} The executor's preparation of its own options: the working directory it chose
-    // and whether the invocation registers an input receiver; metadata without a preparer is refused.
+    // {§executor-metadata} The executor's preparation of its own options: the working directory it chose;
+    // metadata without a preparer is refused.
     static async #prepareInvocation(executor: Executor, statement: ExecStatement, args: {
         runtime: string; body: string; target: string | null; cwd: string | null;
-    }): Promise<{ cwd: string | null; inputDeclared: boolean } | ExecResult> {
+    }): Promise<{ cwd: string | null } | ExecResult> {
         const { runtime, body, target, cwd } = args;
         if (executor.prepare !== undefined) {
             const prepared = Results.assert(await executor.prepare({ runtime, body, target, cwd, metadata: statement.metadata }));
@@ -578,13 +572,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
                 throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
             }
-            return { cwd: prepared.cwd, inputDeclared: prepared.input === "open" };
+            return { cwd: prepared.cwd };
         }
         if ((statement.metadata?.length ?? 0) > 0) {
             return Results.failure("scheme:exec", "metadata-unsupported", 400,
                 `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
         }
-        return { cwd, inputDeclared: false };
+        return { cwd };
     }
 
     // A script target as it exists: a file runs, a directory with a body is where the body runs
@@ -652,72 +646,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { target, cwd };
     }
 
-    async #inputRecipient(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string) {
-        const core = this.coreContext(ctx);
-        const target = statement.target;
-        const failure = (code: string, status: number, detail: string) => ({
-            failure: Results.failure("scheme:exec", code, status, detail, {}, { retryable: false }),
-        });
-        if (target?.kind !== "url" || target.scheme !== runtime || target.fragment !== null
-            || target.query !== null || statement.lineMarker !== null) {
-            // {§problems-exec}
-            return failure("invalid-input-target", 400, "SEND input addresses an execution, without a channel or scope.");
-        }
-        const coordinate = entryCoordinateOf(target, "namespace");
-        const found = [...this.#activeAborts.entries()].find(([, entry]) =>
-            entry.workspaceId === core.workspaceId && entry.runtime === runtime && entry.pathname === coordinate.pathname);
-        if (found !== undefined) {
-            if (core.executors?.entry(runtime, core.workspaceId)?.executor !== found[1].executor) {
-                return failure("input-unavailable", 409, "This execution's input receiver is no longer enabled.");
-            }
-            return { found };
-        }
-        const terminal = await ChannelWrite.execTerminalStatus(core.db, {
-            workspaceId: core.workspaceId, scheme: runtime, ...coordinate,
-        });
-        if (terminal !== null) return failure("input-closed", 410, "Execution input is closed.");
-        const recovery = await Exec.#nearMiss(core, coordinate.pathname);
-        return recovery === undefined
-            ? failure("stream-not-found", 404, "No execution exists at the requested address.")
-            : { failure: Results.failure("scheme:exec", "stream-not-found", 404, "No execution exists at the requested address.", {}, { recovery, retryable: false }) };
-    }
-
-    async sendInput(statement: SendStatement, ctx: CoreSchemeCallContext, runtime: string): Promise<SchemeResult> {
-        const recipient = await this.#inputRecipient(statement, ctx, runtime);
-        if ("failure" in recipient) return recipient.failure;
-        const [subscriptionId, entry] = recipient.found;
-        const unavailable = entry.input.unavailable();
-        if (unavailable !== null) return unavailable;
-        const denied = await this.capabilityDenial(entry.invocation, ctx);
-        if (denied !== null) return denied;
-        return {
-            status: 202,
-            attrs: { inputSubscription: subscriptionId, inputBody: statement.body?.raw ?? "", inputTarget: statement.target!.raw, effect: entry.effect },
-        };
-    }
-
-    async applyInput(args: ProposalApplyRequest, ctx: CoreSchemeCallContext, runtime: string): Promise<SchemeResult> {
-        const attrs = args.attrs as { inputSubscription?: unknown; inputBody?: unknown; inputTarget?: unknown };
-        if (typeof attrs.inputSubscription !== "number" || typeof attrs.inputBody !== "string" || typeof attrs.inputTarget !== "string") {
-            throw new InvalidOperationResultError("Execution input proposal is missing its invocation or body.");
-        }
-        const body = args.body ?? attrs.inputBody;
-        const statement: SendStatement = {
-            op: "SEND", aside: null, metadata: args.metadata === null ? null : [...args.metadata],
-            target: parsePath(attrs.inputTarget), lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
-        };
-        const recipient = await this.#inputRecipient(statement, ctx, runtime);
-        if ("failure" in recipient) return recipient.failure;
-        const [subscriptionId, entry] = recipient.found;
-        if (subscriptionId !== attrs.inputSubscription) {
-            return Results.failure("scheme:exec", "input-closed", 410,
-                "The proposed execution input is no longer live.", {}, { retryable: false });
-        }
-        const denied = await this.capabilityDenial(statement, ctx) ?? await this.capabilityDenial(entry.invocation, ctx);
-        if (denied !== null) return denied;
-        return entry.input.deliver(body, args.metadata, ctx.signal);
-    }
-
     async applyResolution(
         args: ProposalApplyRequest,
         ctx: CoreSchemeCallContext,
@@ -740,11 +668,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (!isExecutionOp(runtime)) {
             throw new InvalidOperationResultError(`The accepted execution proposal names runtime '${runtime}', which is not a runtime tag.`);
         }
-        const invocation: ExecStatement = {
-            runtime, aside: null, metadata: null,
-            target: attrs.resourceSource ? parsePath(attrs.resourceSource) : target === null ? null : parsePath(target),
-            lineMarker: null, body, position: { line: 1, column: 1 },
-        };
 
         // {§exec-source-temporary} Admission precedes source realization. Native
         // files retain their environment; only standalone sources need a copy.
@@ -761,20 +684,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const stream = await Exec.#openStreamEntry(core, runtime, pathname);
         if ("status" in stream) return stream;
         const { resolved, entryId } = stream;
-        const { subscriptionId, controller, input, lifecycle } = await this.#bindSpawnLifecycle({
-            core, attrs, resolved, runtime, body, target, pathname, entryId, effect, invocation,
-            inputTimeoutMs: execution.inputTimeoutMs,
+        const { subscriptionId, controller, lifecycle } = await this.#bindSpawnLifecycle({
+            core, attrs, resolved, runtime, body, target, pathname, entryId, effect,
         });
 
-        const run = async () => {
-            input.started();
-            return this.#runExecutor({
-                executor: resolved.executor,
-                runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
-                entryId, lifecycle, signal: controller.signal, controller, tempPath, input,
-                timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
-            });
-        };
+        const run = async () => this.#runExecutor({
+            executor: resolved.executor,
+            runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
+            entryId, lifecycle, signal: controller.signal, controller, tempPath,
+            timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
+        });
 
         // {§functionality-model-mutation} Configuration is an ordered core operation,
         // not a background job competing for an external-execution slot.
@@ -899,7 +818,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // The spawn's live subscription and cancellation scope: the stream subscription opened, the controller bound
-    // to the loop's teardown unless detached ({§exec-lifetime}), the input receiver, the abort registry entry, and
+    // to the loop's teardown unless detached ({§exec-lifetime}), the abort registry entry, and
     // the LiveSubscription whose release unbinds them all.
     async #bindSpawnLifecycle(args: {
         core: PlurnkSchemeContext;
@@ -911,10 +830,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         pathname: string;
         entryId: number;
         effect: Effect;
-        invocation: ExecStatement;
-        inputTimeoutMs: number;
-    }): Promise<{ subscriptionId: number; controller: AbortController; input: ExecutionInput; lifecycle: LiveSubscription }> {
-        const { core, attrs, resolved, runtime, body, target, pathname, entryId, effect, invocation, inputTimeoutMs } = args;
+    }): Promise<{ subscriptionId: number; controller: AbortController; lifecycle: LiveSubscription }> {
+        const { core, attrs, resolved, runtime, body, target, pathname, entryId, effect } = args;
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             workerId: core.workerId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
@@ -945,8 +862,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        const input = new ExecutionInput(controller.signal, inputTimeoutMs, attrs.input === "open");
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true });
         const lifecycle = new LiveSubscription({
             db: core.db, registry: this.liveSubscriptions(),
             identity: {
@@ -962,7 +878,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             },
             notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
         });
-        return { subscriptionId, controller, input, lifecycle };
+        return { subscriptionId, controller, lifecycle };
     }
 
     // Bridge the executor's sink-style contract (write/setState/emit)
@@ -1018,9 +934,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         coordinate?: StreamCoordinate;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
-        input: ExecutionInput;
     }): Promise<SchemeResult> {
-        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
+        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, coordinate } = opts;
         // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
         // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
         const executor = opts.executor instanceof FunctionalityManager
@@ -1084,7 +999,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 result = cancelled();
             } else try {
                 const reported: ExecutorResult = await executor.run({
-                    registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
                     entry: sink.entry,
                     // {§executor-interaction-sink} — the executor's signal narrows the execution's, never replaces it.
@@ -1106,7 +1020,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     })),
                     emit: (event) => ctx.pushNotice?.(event),
                 });
-                input.close();
                 // Drain the queue so the subscription doesn't close before
                 // final chunk events / state transitions have committed.
                 await queue;
@@ -1128,7 +1041,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     );
                 }
             } catch (cause) {
-                input.close();
                 // {§executor-results} — an abort rejection is not an executor crash.
                 if (signal.aborted && (cause === signal.reason || (cause instanceof Error && cause.name === "AbortError"))) {
                     result = cancelled();

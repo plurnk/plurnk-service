@@ -97,7 +97,6 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
 
 for (const [key, invocation] of [
     ["PLURNK_SERVICE_EXEC_CONCURRENCY", "sh"],
-    ["PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS", "sh"],
     ["PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "sh"],
     ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (worker:///program.sh)"],
 ] as const) {

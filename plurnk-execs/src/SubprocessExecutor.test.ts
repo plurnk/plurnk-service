@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
-import type { ExecArgs, ExecInputReceiver, ExecResult } from "./types.ts";
+import type { ExecArgs, ExecResult } from "./types.ts";
 import type { Notice } from "./Notice.ts";
 
 // A condition the test waits on, polled until it holds; the bound only keeps a hang from outliving the test.
@@ -76,7 +76,7 @@ test("{§executor-subprocess-routing} a shell target is one script file, without
     assert.equal(out.stdout, "hello from stdin");
 });
 
-test("{§executor-stdin} a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
+test("{§executor-subprocess-routing} a stdin-reading program with no stdin body gets /dev/null (EOF) and never hangs", async () => {
     // `cat` with no argument reads fd0 to EOF. With a dangling pipe this blocks
     // forever and parks the loop until a client cancel; /dev/null delivers
     // immediate EOF, so it exits 0 cleanly. If the fix regresses, this test
@@ -84,27 +84,6 @@ test("{§executor-stdin} a stdin-reading program with no stdin body gets /dev/nu
     const { result, out } = await exec("sh", "cat");
     assert.equal(result.status, 200, "the stdin-reader exited cleanly on EOF, not blocked");
     assert.equal(out.stdout, "", "/dev/null yields no bytes");
-});
-
-test("{§executor-stdin}: a script's initial body precedes later input without implicit EOF", async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "executor-live-script-"));
-    t.after(() => rm(directory, { recursive: true, force: true }));
-    const target = join(directory, "echo.mjs");
-    await writeFile(target, 'process.stdin.on("data", c => process.stdout.write(c));\n');
-    const controller = new AbortController();
-    let receiver: ExecInputReceiver | undefined;
-    let stdout = "";
-    const result = new SubprocessExecutor({ runtime: "js", glyph: "j" }).run({
-        runtime: "js", body: "initial\n", target, cwd: directory, metadata: ['{"stdin": "open"}'],
-        signal: controller.signal, registerInput: (input) => { receiver = input; },
-        write: (channel, chunk) => { if (channel === "stdout") stdout += chunk; },
-        setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" }),
-    });
-    t.after(async () => { controller.abort({ signal: "SIGKILL" }); await result; });
-    assert.ok(receiver);
-    assert.equal((await receiver({ body: "later", metadata: ['{"eof": true}'], signal: controller.signal })).status, 200);
-    assert.equal((await result).status, 200);
-    assert.equal(stdout, "initial\nlater");
 });
 
 test("{§executor-sinks} env: a scoped env is handed to the child verbatim", async () => {

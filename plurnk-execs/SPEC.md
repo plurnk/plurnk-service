@@ -39,11 +39,9 @@ spawn recipe and availability binary.
 | {§executor-interaction-sink} | `interact(request, signal?)` — Await one contracts-owned client interaction ({§client-interaction-wire}). |
 | {§executor-metadata} | Invocation metadata ownership |
 | {§executor-argv-tokenizer} | `tokenizeArgv` splits a command line into argv by shell quoting alone. |
-| {§executor-live-input} | Invocation-local input |
-| {§executor-stdin} | Subprocess input |
 | {§executor-channels} | Channels |
 | {§executor-results} | Results, failures, and notices |
-| {§problems-executor-input} | Invocation and live-input Problems. |
+| {§problems-executor-input} | Invocation Problems. |
 | {§executor-page-receipt} | A full page says so. |
 | {§executor-exit-code} | An exit code is the command's answer. |
 | {§executor-effect} | Effect is an admission fact |
@@ -77,7 +75,6 @@ interface ExecArgs {
     metadata: readonly string[] | null;
     env?: NodeJS.ProcessEnv;
     signal: AbortSignal;
-    registerInput?(receiver: ExecInputReceiver): void;
     write(channel: string, chunk: string, mimetype?: string): void;
     setState(channel: string, state: ChannelState): void;
     emit(notice: Notice): void;
@@ -128,7 +125,6 @@ surface.
 | `metadata` | Exact ordered header blocks owned by the invoked executor, retained separately from the body and target. |
 | `env`      | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy.  |
 | `signal`   | Consumer cancellation. Every executor must honor it at each cancellable boundary.                       |
-| `registerInput` | Optionally register one live input receiver for this invocation under {§executor-live-input}. |
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
 | `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
 | `emit`     | Publish a transient, nonterminal Notice.                                                                |
@@ -149,8 +145,8 @@ authored READ retains its own source-scheme metadata contract.
 | Stage | Contract |
 | ----- | -------- |
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
-| Framework default | `BaseExecutor.prepare` accepts `[{"cwd": "<directory>"}]`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its fields are `cwd`, `args`, `stdin`, `env` and `lifetime`. `` Tools can override preparation to own different metadata. |
-| Subprocess options | `SubprocessExecutor` additionally accepts `[{"stdin": "open"}]` ({§executor-stdin}) and `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
+| Framework default | `BaseExecutor.prepare` accepts `[{"cwd": "<directory>"}]`. Relative directories resolve against the supplied default cwd; an absent override preserves it. Unknown fields, duplicates, malformed values, and nonexistent directories are refused. An unknown field's recovery names every field the run takes, the executor's own and the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its fields are `cwd`, `args` and `lifetime`. `` Tools can override preparation to own different metadata. |
+| Subprocess options | `SubprocessExecutor` additionally accepts `[{"args": ["arg",...]}]`. The JSON array contains strings without NUL, preserves order and empty/whitespace-containing arguments, and appends directly to the spawn argument vector without shell parsing. Inline programs retain their interpreter's usual argument conventions. |
 | Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata. Subprocess executors use the same option parser to obtain argv; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
 
@@ -159,48 +155,6 @@ authored READ retains its own source-scheme metadata contract.
 Metadata does not turn inline programs or script stdin into JSON envelopes.
 Executable references document advanced options on demand; no language-level
 option names or hot-path teaching are required.
-
-### §executor-live-input Invocation-local input
-
-`ExecArgs.registerInput?(receiver)` binds one receiver to the current invocation.
-The receiver accepts `{ body: string, metadata: readonly string[] | null,
-signal: AbortSignal }` and resolves a universal `SchemeResult`. The body is exact
-authored text; metadata belongs to the receiver. Registration is once per run,
-never executor-instance state. An absent callback means the consumer cannot
-deliver live input. A receiver must honor cancellation at each delivery boundary.
-Preparation declares the receiver: an invocation that will register one returns
-`input: "open"` from `prepare` ({§executor-metadata}), so the consumer can tell input
-that has not opened yet from input that never will. Registering without the
-declaration is the executor's defect, refused at registration; declaring and settling
-without registering closes input when the run settles.
-
-| Responsibility | Owner |
-| --- | --- |
-| Address, workspace admission, capability checks, proposals | Consumer, using the existing execution identity and effect. |
-| Delivery ordering, bounded backpressure, lifetime | Consumer; serialize accepted deliveries, never replay an ambiguous write, retire on execution settlement/cancellation. |
-| Input meaning, framing, EOF, delivery result | Receiver; acceptance does not imply consumption, command success, or execution completion. |
-| Output, progress, completion | Existing `write`, `setState`, and `run` result; input introduces no second output or wake path. |
-
-#### §executor-stdin Subprocess input
-
-`SubprocessExecutor` accepts `[{"stdin": "open"}]` at invocation, and its preparation
-then declares `input: "open"` ({§executor-live-input}). The initial recipe
-input precedes SEND bodies and stdin remains open; without this option, existing
-batch input and EOF behavior is unchanged.
-
-| SEND input | Effect |
-| --- | --- |
-| Body, no metadata | Write its exact UTF-8 bytes, including authored newlines; no implicit newline. Empty input is a no-op, not EOF. |
-| `[{"eof": true}]` with optional body | Write the body, then close stdin. Later SENDs return `410 input-closed`, including repeated EOF. |
-| Other or duplicate metadata | `400`, before writing. |
-| Pipe failure | Factual delivery failure with the native error code; no automatic retry. |
-| Delivery cancellation | Stop the pending write and close stdin. The process retains its ordinary lifecycle. |
-
-A successful receipt reports `bytesAccepted` and `inputClosed`, with those facts
-in the ordinary model-visible `detail`. It acknowledges the writable pipe, not
-application processing. Subprocess executors inherit this
-contract; logical executors need not offer a receiver. In particular,
-client-interaction tools and MCP transports do not gain stdin through this API.
 
 ### §executor-channels Channels
 
@@ -230,7 +184,7 @@ is cancellation, not an executor defect; the consumer preserves its distinct
 cancellation/deadline result. Other throws and invalid results become durable
 contract failures before the consumer closes the stream.
 
-§problems-executor-input **Invocation and live-input Problems.** These failures
+§problems-executor-input **Invocation Problems.** These failures
 belong to the shared executor implementation; leaf executors may also declare
 their own failures.
 
@@ -238,11 +192,6 @@ their own failures.
 |---|---:|---|
 | `cwd-not-found` | 400 | The requested execution directory does not exist as a directory. |
 | `invalid-command` | 400 | The command could not be parsed; detail includes a bounded cause. |
-| `input-unsupported` | 501 | The consumer does not provide live input. |
-| `invalid-input-metadata` | 400 | Stdin SEND accepts only the optional `[{"eof": true}]` option. |
-| `input-closed` | 410 | Stdin is closed, or closed during delivery; the latter may have delivered partial input. |
-| `input-cancelled` | 499 | Input delivery was cancelled and may be partial. |
-| `input-write-failed` | 502 | Stdin delivery failed and may be partial. |
 
 §executor-page-receipt **A full page says so.** When a tool result is a JSON array whose
 length equals the page size the call asked for, or the tool schema's default for one

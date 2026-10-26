@@ -110,25 +110,27 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             { scheme: this.#manifest.name, operation: "EDIT", retryable: false });
     }
 
-    // {§exec-input} reaches a stored execution's process; a claimed resource is a recipient of its own.
+    // {§runtime-resource-binding} A claimed resource's SEND is its facet's; stored output has none.
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const facet = this.#facet;
         if (facet?.send !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {
             return facet.send(statement, await this.#facetContext(ctx, statement.target));
         }
-        return this.#exec.sendInput(statement, ctx, this.#manifest.name);
+        return Results.failure("scheme:exec", "operation-not-implemented", 501,
+            `Scheme '${this.#manifest.name}' does not implement SEND.`, {},
+            { scheme: this.#manifest.name, operation: "SEND", retryable: false });
     }
 
-    // A facet that proposed its own operation applies its own settlement: the proposal's target
-    // is the same claim that routed `send`, so an executor-input proposal (which has no claimed
-    // target) still reaches the executor.
+    // A facet that proposed its own operation applies its own settlement.
     async applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const facet = this.#facet;
         const target = (request.attrs as { target?: ParsedPath | null }).target;
         if (facet?.applyResolution !== undefined && target != null && this.claimsLiveResource(target)) {
             return facet.applyResolution(request, await this.#facetContext(ctx, target));
         }
-        return this.#exec.applyInput(request, ctx, this.#manifest.name);
+        return Results.failure("scheme:exec", "operation-not-implemented", 501,
+            `Scheme '${this.#manifest.name}' does not implement proposal application.`, {},
+            { scheme: this.#manifest.name, retryable: false });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {

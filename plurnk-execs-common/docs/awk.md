@@ -16,6 +16,3 @@ END { printf "rows=%d total=%.2f\n", NR - 1, total }
 alpha,1
 beta,2
 ```
-
-Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md`
-shows.

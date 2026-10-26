@@ -227,7 +227,7 @@ test("{§runtime-resource-binding}: a facet that states its representation owns 
         assert.equal((await dispatch("````SEND (peers://ada)\nhello\n````")).status, 200);
         assert.deepEqual(sent, ["hello"], "a claimed SEND is the facet's");
         const stored = await dispatch("````SEND (peers:///1/1/1)\nstdin\n````");
-        assert.notEqual(stored.status, 200, "an unclaimed SEND still addresses a stored execution's process");
+        assert.notEqual(stored.status, 200, "an unclaimed SEND is refused on stored execution output");
         assert.deepEqual(sent, ["hello"], "the facet never sees an execution coordinate");
 
         const rows = (await db.test_log_entries_by_turn.all<{ scheme: string | null; hostname: string | null; pathname: string | null }>({ turn_id: turnId }))

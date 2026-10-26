@@ -1249,7 +1249,7 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin, workspaceId);
         }
 
-        // {§stream-control}, {§exec-input}: process control is not a write to
+        // {§stream-control}: process control and facet-claimed SEND are not writes to
         // stored output. The workspace execution binding owns KILL and SEND.
         if (statement.op === "KILL" || statement.op === "SEND") {
             const target = schemeNameOf(statement.target);

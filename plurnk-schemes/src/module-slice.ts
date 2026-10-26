@@ -29,9 +29,8 @@ export interface RuntimeSchemeFacet {
     editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    // An operation the facet proposed is also the facet's to apply ({§http-outbound-proposes}).
-    // Routed by the proposal's own `target`, the same claim that routed the operation itself, so
-    // an executor-input proposal on an unclaimed coordinate still reaches the executor.
+    // An operation the facet proposed is also the facet's to apply ({§http-outbound-proposes}),
+    // routed by the proposal's own `target`.
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 

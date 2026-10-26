@@ -13,5 +13,4 @@ scale=6
 Each expression prints its value on its own line to `#stdout`; `#stderr`
 carries parse errors such as `syntax error`, and the exit status is 0 even when
 a line failed to parse, so a missing result is explained on `#stderr`. A script
-target (`bc (rates.bc)`) runs that file with the body as stdin. Live input
-(`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `js.md` shows.
+target (`bc (rates.bc)`) runs that file with the body as stdin.

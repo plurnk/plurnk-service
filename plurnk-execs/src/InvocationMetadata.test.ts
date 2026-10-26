@@ -23,13 +23,6 @@ test("{§executor-metadata} script arguments preserve exact strings without inte
     assert.equal(request.body, "unchanged stdin");
 });
 
-test("{§executor-live-input} preparation declares the receiver exactly when stdin is open", async () => {
-    assert.equal((await executor.prepare(input(['{"stdin": "open"}']))).input, "open");
-    assert.equal((await executor.prepare(input(['{"stdin": "open", "cwd": "."}']))).input, "open", "the declaration rides with a resolved cwd");
-    assert.equal((await executor.prepare(input(['{"args": ["--help"]}']))).input, undefined);
-    assert.equal((await executor.prepare(input(null))).input, undefined);
-});
-
 // Blocks are the inner text of one `[…]` slot: JSON option objects ({§scheme-metadata-modifier}).
 for (const [blocks, code] of [
     [['{"args": "--help"}'], "invalid-args"],
@@ -42,7 +35,6 @@ for (const [blocks, code] of [
     [['{"cwd": 7}'], "invalid-cwd"],
     [['{"cwd": "bad\\u0000path"}'], "invalid-cwd"],
     [['{"flag": "yes"}'], "metadata-unsupported"],
-    [['{"stdin": "closed"}'], "invalid-stdin"],
     [["--help"], "metadata-invalid"],
     [["42"], "metadata-invalid"],
     [['"a string"'], "metadata-invalid"],
@@ -67,8 +59,6 @@ test("{§executor-metadata} argument support is subprocess-owned, for scripts an
     assert.equal(unsupported.status, 400);
     assert.match(unsupported.problem?.type ?? "", /metadata-unsupported$/);
     assert.equal((await pure.prepare(input(null))).status, 200);
-    assert.equal((await pure.prepare(input(['{"stdin": "open"}']))).status, 400);
-    assert.equal((await executor.prepare(input(['{"stdin": "open"}']))).status, 200);
 });
 
 test("{§executor-metadata} cwd is prepared once from the supplied environment", async (t) => {
@@ -96,6 +86,6 @@ test("{§executor-metadata} an unsupported field's refusal names the run's field
         const refused = await executor.prepare(input([JSON.stringify({ [field]: 60 })]));
         assert.equal(refused.status, 400);
         assert.equal(refused.problem?.detail, `Executable tool '${input(null).runtime}' does not accept metadata field '${field}'.`);
-        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args`, `stdin` and `lifetime`.");
+        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args` and `lifetime`.");
     }
 });
