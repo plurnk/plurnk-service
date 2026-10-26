@@ -1,6 +1,5 @@
 // The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of AiSdkProvider; every knob it reads is injected.
-import type { Effort } from "./types.ts";
-import type { JSONValue } from "ai";
+import type { Effort, JSONValue } from "./types.ts";
 import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
 import type { ReasoningStyle, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";

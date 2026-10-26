@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenRouter } from "./sdkModels.ts";
 import AiSdkProvider from "./AiSdkProvider.ts";
 import { providerCostNormalizer } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";

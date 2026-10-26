@@ -295,7 +295,6 @@ const mods = resolve(sandbox, "node_modules");
 const installedRoot = resolve(mods, "@plurnk", "plurnk-service");
 const installedPackage = JSON.parse(readFileSync(resolve(installedRoot, "package.json"), "utf8"));
 const buildInfo = JSON.parse(readFileSync(resolve(installedRoot, "dist", "build-info.json"), "utf8"));
-const installedRequire = createRequire(resolve(installedRoot, "package.json"));
 const revision = execFileSync("git", ["-C", resolve(import.meta.dirname, ".."), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const dirty = execFileSync("git", ["-C", resolve(import.meta.dirname, ".."), "status", "--porcelain"], { encoding: "utf8" }).trim() !== "";
 ok(buildInfo.package === installedPackage.name, "packed build provenance names the installed package");
@@ -368,16 +367,12 @@ for (const heavy of ["pdfjs-dist", "@napi-rs/canvas"]) {
 }
 
 for (const [providerPackage, provider] of [
-    ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
-    ["@ai-sdk/google", "Google"],
-    ["@openrouter/ai-sdk-provider", "OpenRouter"],
+    ["@earendil-works/pi-ai", "pi-ai provider transport"],
 ]) {
-    let installed = false;
-    try {
-        installedRequire.resolve(providerPackage);
-        installed = true;
-    } catch {}
-    ok(installed, `${provider} AI SDK adapter ships OOTB`);
+    ok(existsSync(resolve(mods, ...providerPackage.split("/"), "package.json")), `${provider} ships OOTB`);
+}
+for (const retired of ["ai", "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider"]) {
+    ok(!existsSync(resolve(mods, retired)), `${retired} is absent from a clean service install`);
 }
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 

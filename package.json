@@ -107,7 +107,9 @@
         "typescript": "^7.0.2"
     },
     "allowScripts": {
-        "esbuild@0.28.2": true
+        "@google/genai@2.21.0": false,
+        "esbuild@0.28.2": true,
+        "protobufjs@7.6.6": false
     },
     "overrides": {
         "smol-toml": "^1.9.1"

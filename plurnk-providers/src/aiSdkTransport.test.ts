@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { APICallError } from "ai";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { ProviderTimeoutError } from "./errors.ts";
+import { APICallError, ProviderTimeoutError } from "./errors.ts";
+import { createAnthropic } from "./sdkModels.ts";
 import { calculateCostUsdDecimal } from "./usage.ts";
 import {
     executeAiSdkModel,

@@ -6,16 +6,14 @@
 // ordinary vendor protocol. The compatible URL path serves only PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
+import type { CallWarning, ChatMessage, GrammarEvidence, JSONValue, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
-import type { CallWarning, JSONValue } from "ai";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { executeAiSdkModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./aiSdkTransport.ts";
 import type { LanguageModelSource } from "./aiSdkTransport.ts";
-import { prepareRetries } from "ai/internal";
-import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
+import { APICallError, RetryError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
@@ -39,6 +37,44 @@ export type ProviderFetch = typeof globalThis.fetch;
 // transport still wedged after the grace is force-rejected with the signal's own reason, so the existing
 // operation/cancellation classification is unchanged. The grace is unwind slack, not a second deadline.
 const OPERATION_DEADLINE_UNWIND_GRACE_MS = 1_000;
+
+const headerValue = (headers: Readonly<Record<string, string>> | undefined, name: string): string | undefined => {
+    if (headers === undefined) return undefined;
+    const target = name.toLowerCase();
+    return Object.entries(headers).find(([key]) => key.toLowerCase() === target)?.[1];
+};
+
+const retryDelayMs = (error: APICallError, attempt: number): number => {
+    const retryAfterMs = headerValue(error.responseHeaders, "retry-after-ms");
+    if (retryAfterMs !== undefined) {
+        const timeoutMs = Number.parseFloat(retryAfterMs);
+        if (!Number.isNaN(timeoutMs) && timeoutMs >= 0 && timeoutMs <= 60_000) return timeoutMs;
+    }
+    const retryAfter = headerValue(error.responseHeaders, "retry-after");
+    if (retryAfter !== undefined) {
+        const timeoutSeconds = Number.parseFloat(retryAfter);
+        if (!Number.isNaN(timeoutSeconds)) return Math.max(0, timeoutSeconds * 1000);
+        const parsedDate = Date.parse(retryAfter);
+        if (!Number.isNaN(parsedDate)) return Math.max(0, parsedDate - Date.now());
+    }
+    return Math.min(1000 * 2 ** (attempt - 1), 10_000);
+};
+
+const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> => new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+    }
+    const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+});
 
 const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -901,19 +937,44 @@ export default class AiSdkProvider implements Provider {
             }
         };
 
+        const retry = async (): Promise<Awaited<ReturnType<typeof executeRequest>>> => {
+            const errors: unknown[] = [];
+            while (true) {
+                try {
+                    return await executeRequest();
+                } catch (error) {
+                    if (operationSignal?.aborted) throw error;
+                    errors.push(error);
+                    if (!APICallError.isInstance(error) || !error.isRetryable || this.#retryAttempts === 0) {
+                        if (errors.length === 1) throw error;
+                        const message = error instanceof Error ? error.message : String(error);
+                        throw new RetryError({
+                            message: `Failed after ${errors.length} attempts. Last error: ${message}`,
+                            reason: "errorNotRetryable",
+                            errors,
+                        });
+                    }
+                    if (errors.length > this.#retryAttempts) {
+                        throw new RetryError({
+                            message: `Failed after ${errors.length} attempts. Last error: ${error.message}`,
+                            reason: "maxRetriesExceeded",
+                            errors,
+                        });
+                    }
+                    await waitForRetry(retryDelayMs(error, errors.length), operationSignal);
+                }
+            }
+        };
+
         let raw;
         try {
-            const { retry } = prepareRetries({
-                maxRetries: this.#retryAttempts,
-                abortSignal: operationSignal,
-            });
             // {§provider-connectivity} — the operation deadline and caller cancellation are backstopped by
             // racing, not only by the advisory operationSignal, so a transport that ignores the abort still
             // surfaces the deadline (→ the operationTimeout/caller branches below) rather than hanging the
             // loop (#505). A well-behaved transport settles first and wins the race with its own evidence.
             raw = operationSignal === undefined
-                ? await retry(executeRequest)
-                : await raceAgainstDeadline(retry(executeRequest), operationSignal);
+                ? await retry()
+                : await raceAgainstDeadline(retry(), operationSignal);
         } catch (err) {
             if (err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError

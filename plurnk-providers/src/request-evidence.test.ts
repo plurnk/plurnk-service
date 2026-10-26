@@ -2,9 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import AiSdkProvider from "./AiSdkProvider.ts";
-import { createSdkModel } from "./sdkModels.ts";
+import { createAnthropic, createSdkModel } from "./sdkModels.ts";
 import type { ProviderRequestAccounting } from "./types.ts";
 import { requestBody } from "../../scripts/lib/test-fetch.ts";
 

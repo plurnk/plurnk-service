@@ -1,11 +1,126 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
-import { APICallError, InvalidResponseDataError, JSONParseError, RetryError, TypeValidationError } from "ai";
 import { ProviderError } from "./providerError.ts";
 import type { ProviderErrorKind } from "./providerError.ts";
 import type { ProviderRequestCapacity } from "./types.ts";
 
 export { ProviderError, RETRYABLE_PROVIDER_KINDS } from "./providerError.ts";
 export type { ProviderErrorKind } from "./providerError.ts";
+
+export class APICallError extends Error {
+    readonly url: string;
+    readonly requestBodyValues: unknown;
+    readonly statusCode?: number;
+    readonly responseHeaders?: Record<string, string>;
+    readonly responseBody?: string;
+    readonly isRetryable: boolean;
+    readonly data?: unknown;
+
+    constructor({
+        message,
+        url,
+        requestBodyValues,
+        statusCode,
+        responseHeaders,
+        responseBody,
+        cause,
+        isRetryable = statusCode !== undefined && (
+            statusCode === 408 || statusCode === 409 || statusCode === 429 || statusCode >= 500
+        ),
+        data,
+    }: {
+        message: string;
+        url: string;
+        requestBodyValues: unknown;
+        statusCode?: number;
+        responseHeaders?: Record<string, string>;
+        responseBody?: string;
+        cause?: unknown;
+        isRetryable?: boolean;
+        data?: unknown;
+    }) {
+        super(message, cause === undefined ? undefined : { cause });
+        this.name = "AI_APICallError";
+        this.url = url;
+        this.requestBodyValues = requestBodyValues;
+        this.statusCode = statusCode;
+        this.responseHeaders = responseHeaders;
+        this.responseBody = responseBody;
+        this.isRetryable = isRetryable;
+        this.data = data;
+    }
+
+    static isInstance(error: unknown): error is APICallError {
+        return error instanceof APICallError;
+    }
+}
+
+export class RetryError extends Error {
+    readonly reason: "maxRetriesExceeded" | "errorNotRetryable" | "abort";
+    readonly errors: readonly unknown[];
+    readonly lastError: unknown;
+
+    constructor({
+        message,
+        reason,
+        errors,
+    }: {
+        message: string;
+        reason: "maxRetriesExceeded" | "errorNotRetryable" | "abort";
+        errors: readonly unknown[];
+    }) {
+        super(message);
+        this.name = "AI_RetryError";
+        this.reason = reason;
+        this.errors = errors;
+        this.lastError = errors[errors.length - 1];
+    }
+
+    static isInstance(error: unknown): error is RetryError {
+        return error instanceof RetryError;
+    }
+}
+
+export class JSONParseError extends Error {
+    readonly text: string;
+
+    constructor({ text, cause }: { text: string; cause: unknown }) {
+        super(`JSON parsing failed: Text: ${text}.`, cause === undefined ? undefined : { cause });
+        this.name = "AI_JSONParseError";
+        this.text = text;
+    }
+
+    static isInstance(error: unknown): error is JSONParseError {
+        return error instanceof JSONParseError;
+    }
+}
+
+export class TypeValidationError extends Error {
+    readonly value: unknown;
+
+    constructor({ value, cause }: { value: unknown; cause: unknown }) {
+        super(`Type validation failed: Value: ${JSON.stringify(value)}.`, cause === undefined ? undefined : { cause });
+        this.name = "AI_TypeValidationError";
+        this.value = value;
+    }
+
+    static isInstance(error: unknown): error is TypeValidationError {
+        return error instanceof TypeValidationError;
+    }
+}
+
+export class InvalidResponseDataError extends Error {
+    readonly data: unknown;
+
+    constructor({ data, message = `Invalid response data: ${JSON.stringify(data)}.` }: { data: unknown; message?: string }) {
+        super(message);
+        this.name = "AI_InvalidResponseDataError";
+        this.data = data;
+    }
+
+    static isInstance(error: unknown): error is InvalidResponseDataError {
+        return error instanceof InvalidResponseDataError;
+    }
+}
 
 export interface ClassifiedProviderError {
     kind: ProviderErrorKind;

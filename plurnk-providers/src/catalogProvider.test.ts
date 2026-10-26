@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAI } from "./sdkModels.ts";
 import { catalogProviderFromEnv, catalogEfforts, providerFromSdkModel } from "./catalogProvider.ts";
 import { catalogSnapshot, lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { calculateCostUsdDecimal } from "./usage.ts";
@@ -34,7 +34,7 @@ const catalogRatesOf = (provider: string, model: string) => {
     };
 };
 import { withProviderDefaults } from "./defaults.ts";
-import type { LanguageModel } from "ai";
+import type { LanguageModel } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";

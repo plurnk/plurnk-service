@@ -1,4 +1,4 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenAICompatible } from "./aiSdkTransport.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";

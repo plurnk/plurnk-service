@@ -1,7 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MockLanguageModelV4 } from "ai/test";
+import type {
+    LanguageModel,
+    LanguageModelCallOptions,
+    LanguageModelGenerateResult,
+    LanguageModelStreamResult,
+} from "./types.ts";
 import { createSdkModel } from "./sdkModels.ts";
+
+class MockLanguageModelV4 implements LanguageModel {
+    readonly specificationVersion = "v4";
+    readonly provider = "mock.v4";
+    readonly modelId = "mock-model";
+    readonly supportedUrls = {};
+    readonly doGenerateCalls: LanguageModelCallOptions[] = [];
+    readonly doStreamCalls: LanguageModelCallOptions[] = [];
+    readonly #doGenerateImpl: (options: LanguageModelCallOptions) => Promise<LanguageModelGenerateResult>;
+    readonly #doStreamImpl: (options: LanguageModelCallOptions) => Promise<LanguageModelStreamResult>;
+
+    constructor({
+        doGenerate,
+        doStream,
+    }: {
+        doGenerate: (options: LanguageModelCallOptions) => Promise<LanguageModelGenerateResult>;
+        doStream: (options: LanguageModelCallOptions) => Promise<LanguageModelStreamResult>;
+    }) {
+        this.#doGenerateImpl = doGenerate;
+        this.#doStreamImpl = doStream;
+    }
+
+    async doGenerate(options: LanguageModelCallOptions): Promise<LanguageModelGenerateResult> {
+        this.doGenerateCalls.push(options);
+        return this.#doGenerateImpl(options);
+    }
+
+    async doStream(options: LanguageModelCallOptions): Promise<LanguageModelStreamResult> {
+        this.doStreamCalls.push(options);
+        return this.#doStreamImpl(options);
+    }
+}
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";

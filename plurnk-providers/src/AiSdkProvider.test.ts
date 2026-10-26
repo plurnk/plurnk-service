@@ -6,10 +6,10 @@ import { strict as assert } from "node:assert";
 import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
 import { providerCostNormalizer } from "./accounting.ts";
-import type { LanguageModel } from "ai";
+import type { LanguageModel } from "./types.ts";
 import RequestFields from "./RequestFields.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createGoogleGenerativeAI, createOpenRouter } from "./sdkModels.ts";
 import InferenceAdmission from "./InferenceAdmission.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 
@@ -2108,7 +2108,6 @@ for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]])
 }
 
 test("{§provider-input-modalities} Google serializes native audio through its own SDK adapter", async () => {
-    const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
     const google = createGoogleGenerativeAI({ apiKey: "fixture", baseURL: "https://example.test/v1beta" });
     const calls = installFetchJson({ candidates: [{ content: { role: "model", parts: [{ text: "heard" }] }, finishReason: "STOP" }] });
     const provider = testProvider({
@@ -3014,7 +3013,6 @@ test("{§provider-completed-admission} billed output tokens never void a complet
 // Google reports thoughts as billed tokens (`thoughtsTokenCount`) and, when asked, returns a summary of
 // them, never the full text (ai.google.dev/gemini-api/docs/generate-content/thinking#summaries).
 const googleModel = async (model: string) => {
-    const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
     return createGoogleGenerativeAI({ apiKey: "fixture", baseURL: "https://example.test/v1beta" })(model);
 };
 const googleCompletion = (parts: unknown[], finishReason: string) => ({

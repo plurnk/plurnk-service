@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-providers",
     "version": "5.0.2",
-    "description": "PLURNK's stable model-provider contract and AI SDK adapter.",
+    "description": "PLURNK's stable model-provider contract and provider SDK adapter.",
     "keywords": [
         "plurnk",
         "llm",
@@ -70,24 +70,11 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@ai-sdk/amazon-bedrock": "5.0.123",
-        "@ai-sdk/anthropic": "4.0.87",
-        "@ai-sdk/cerebras": "3.0.77",
-        "@ai-sdk/deepinfra": "3.0.77",
-        "@ai-sdk/google": "4.0.104",
-        "@ai-sdk/groq": "4.0.69",
-        "@ai-sdk/mistral": "4.0.71",
-        "@ai-sdk/openai": "4.0.101",
-        "@ai-sdk/openai-compatible": "3.0.77",
-        "@ai-sdk/togetherai": "3.0.78",
-        "@ai-sdk/xai": "5.0.29",
-        "@openrouter/ai-sdk-provider": "3.1.0",
+        "@earendil-works/pi-ai": "1.4.0",
         "@plurnk/plurnk-aliases": "^2.0.0",
         "@plurnk/plurnk-contracts": "^6.0.0",
         "@plurnk/plurnk-meta": "^2.1.0",
-        "@plurnk/plurnk-models": "^3.0.0",
-        "ai": "7.0.152",
-        "zod": "^4.6.7"
+        "@plurnk/plurnk-models": "^3.0.0"
     },
     "devDependencies": {
         "esbuild": "^0.28.2"

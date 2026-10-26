@@ -1,7 +1,15 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { APICallError, JSONParseError, RetryError, TypeValidationError } from "ai";
-import { ProviderError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
+import {
+    APICallError,
+    JSONParseError,
+    ProviderError,
+    RETRYABLE_PROVIDER_KINDS,
+    RetryError,
+    TypeValidationError,
+    classifyProviderError,
+    toProviderError,
+} from "./errors.ts";
 import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
 

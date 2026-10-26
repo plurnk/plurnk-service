@@ -3,7 +3,6 @@
 // is the wire-reported CoT only.
 
 import type { ProviderNotice } from "./notices.ts";
-import type { LanguageModel } from "ai";
 import type {
     ExtensionAttribution,
     ExtensionAttributionContext,
@@ -15,6 +14,166 @@ import type {
     ProviderRequestObserver,
     Effort,
 } from "@plurnk/plurnk-contracts";
+
+export type JSONValue =
+    | null
+    | string
+    | number
+    | boolean
+    | { [key: string]: JSONValue | undefined }
+    | JSONValue[];
+
+export type CallWarning =
+    | {
+        readonly type: "unsupported";
+        readonly feature: string;
+        readonly details?: string;
+    }
+    | {
+        readonly type: "compatibility";
+        readonly feature: string;
+        readonly details?: string;
+    }
+    | {
+        readonly type: "deprecated";
+        readonly setting: string;
+        readonly message: string;
+    }
+    | {
+        readonly type: "other";
+        readonly message: string;
+    };
+
+export interface LanguageModelUsage {
+    readonly inputTokens: number | undefined;
+    readonly inputTokenDetails: {
+        readonly noCacheTokens: number | undefined;
+        readonly cacheReadTokens: number | undefined;
+        readonly cacheWriteTokens: number | undefined;
+    };
+    readonly outputTokens: number | undefined;
+    readonly outputTokenDetails: {
+        readonly textTokens: number | undefined;
+        readonly reasoningTokens: number | undefined;
+    };
+    readonly totalTokens: number | undefined;
+}
+
+export interface LanguageModelV4Usage {
+    readonly inputTokens: {
+        readonly total: number | undefined;
+        readonly noCache: number | undefined;
+        readonly cacheRead: number | undefined;
+        readonly cacheWrite: number | undefined;
+    };
+    readonly outputTokens: {
+        readonly total: number | undefined;
+        readonly text: number | undefined;
+        readonly reasoning: number | undefined;
+    };
+}
+
+export interface LanguageModelFinishReason {
+    readonly unified: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
+    readonly raw: string | undefined;
+}
+
+export type LanguageModelPromptMessage =
+    | {
+        readonly role: "system";
+        readonly content: string;
+        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    }
+    | {
+        readonly role: "user";
+        readonly content: ReadonlyArray<
+            | { readonly type: "text"; readonly text: string }
+            | { readonly type: "file"; readonly data: Uint8Array | string | { readonly type: "data"; readonly data: Uint8Array | string }; readonly mediaType: string }
+        >;
+        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    }
+    | {
+        readonly role: "assistant";
+        readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
+        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    };
+
+export interface LanguageModelCallOptions {
+    readonly prompt: readonly LanguageModelPromptMessage[];
+    readonly maxOutputTokens?: number;
+    readonly temperature?: number;
+    readonly stopSequences?: string[];
+    readonly topP?: number;
+    readonly topK?: number;
+    readonly presencePenalty?: number;
+    readonly frequencyPenalty?: number;
+    readonly seed?: number;
+    readonly headers?: Record<string, string | undefined>;
+    readonly abortSignal?: AbortSignal;
+    readonly toolChoice?: { readonly type: "none" };
+    readonly tools?: undefined;
+    readonly reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
+    readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    readonly includeRawChunks?: boolean;
+}
+
+export type LanguageModelContentPart =
+    | { readonly type: "text"; readonly text: string }
+    | { readonly type: "reasoning"; readonly text: string }
+    | { readonly type: "tool-call"; readonly toolCallId?: string; readonly toolName?: string; readonly input?: string };
+
+export interface LanguageModelGenerateResult {
+    readonly content: readonly LanguageModelContentPart[];
+    readonly finishReason: LanguageModelFinishReason;
+    readonly usage: LanguageModelV4Usage;
+    readonly providerMetadata?: Record<string, Record<string, JSONValue>>;
+    readonly response?: {
+        readonly id?: string;
+        readonly timestamp?: Date;
+        readonly modelId?: string;
+        readonly headers?: Record<string, string>;
+        readonly body?: unknown;
+    };
+    readonly warnings: readonly CallWarning[];
+}
+
+export type LanguageModelStreamPart =
+    | { readonly type: "stream-start"; readonly warnings: readonly CallWarning[] }
+    | { readonly type: "response-metadata"; readonly id?: string; readonly timestamp?: Date; readonly modelId?: string }
+    | { readonly type: "text-start"; readonly id: string }
+    | { readonly type: "text-delta"; readonly id: string; readonly delta: string }
+    | { readonly type: "text-end"; readonly id: string }
+    | { readonly type: "reasoning-start"; readonly id: string }
+    | { readonly type: "reasoning-delta"; readonly id: string; readonly delta: string }
+    | { readonly type: "reasoning-end"; readonly id: string }
+    | { readonly type: "tool-input-start"; readonly id: string; readonly toolName: string }
+    | { readonly type: "tool-input-delta"; readonly id: string; readonly delta: string }
+    | { readonly type: "tool-input-end"; readonly id: string }
+    | { readonly type: "tool-call"; readonly toolCallId?: string; readonly toolName?: string; readonly input?: string }
+    | { readonly type: "raw"; readonly rawValue: unknown }
+    | { readonly type: "error"; readonly error: unknown }
+    | {
+        readonly type: "finish";
+        readonly finishReason: LanguageModelFinishReason;
+        readonly usage: LanguageModelV4Usage;
+        readonly providerMetadata?: Record<string, Record<string, JSONValue>>;
+    };
+
+export interface LanguageModelStreamResult {
+    readonly stream: ReadableStream<LanguageModelStreamPart>;
+    readonly response?: {
+        readonly headers?: Record<string, string>;
+    };
+}
+
+export interface LanguageModel {
+    readonly specificationVersion: "v4";
+    readonly provider: string;
+    readonly modelId: string;
+    readonly supportedUrls?: Record<string, RegExp[]>;
+    doGenerate(options: LanguageModelCallOptions): PromiseLike<LanguageModelGenerateResult>;
+    doStream(options: LanguageModelCallOptions): PromiseLike<LanguageModelStreamResult>;
+}
 
 export type {
     ProviderAccounting,
