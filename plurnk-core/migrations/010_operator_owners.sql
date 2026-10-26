@@ -1,5 +1,16 @@
--- MIGRATE: 34 operator owners
+-- MIGRATE: 10 operator owners
 -- Released in 4.3.3 and frozen ({§db-migrations}).
+-- {§db-migrations} Refuse databases from before the 4.0.0 support floor, naming the stepping-stone release.
+CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
+CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
+WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
+ AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references')
+BEGIN
+    SELECT RAISE(ABORT, 'database schema precedes the 4.0.0 support floor; upgrade through @plurnk/plurnk-service@4.3.3 first ({§db-migrations})');
+END;
+INSERT INTO _support_floor_probe (id) VALUES (1);
+DROP TABLE _support_floor_probe;
+
 -- {§session-ownership} ACP operator owners are workspace-scoped (`acp://operator`), never per-principal or per-thread:
 -- any existing `acp://*/threads/*` owner or interaction recipient is unified onto `acp://operator`.
 INSERT INTO session_owners (workspace_id, address, tools, interactive)

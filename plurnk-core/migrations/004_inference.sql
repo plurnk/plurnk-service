@@ -6,19 +6,21 @@
 -- One logical model call owns its lifecycle and physical-request ledger.
 -- Response and admission evidence specialize this identity. {§tokenomics-provider-usage}
 CREATE TABLE IF NOT EXISTS inference_calls (
-    id               INTEGER NOT NULL PRIMARY KEY,
-    workspace_id     INTEGER NOT NULL,
-    turn_id          INTEGER NOT NULL,
-    sequence         INTEGER NOT NULL CHECK (sequence >= 1),
-    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
-    state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
+    id                  INTEGER NOT NULL PRIMARY KEY,
+    workspace_id        INTEGER NOT NULL,
+    turn_id             INTEGER NOT NULL,
+    sequence            INTEGER NOT NULL CHECK (sequence >= 1),
+    kind                TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
+    state               TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
     -- Exact opaque tag set forwarded with generation calls.
-    attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
+    attributions        TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(attributions) AND json_type(attributions) = 'array'
     ),
-    request_model    TEXT    NOT NULL CHECK (length(request_model) >= 1),
-    timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    completed_at     TEXT,
+    request_model       TEXT    NOT NULL CHECK (length(request_model) >= 1),
+    timestamp           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    completed_at        TEXT,
+    -- {§retention-policy}: one logical call owns retirement of all its captured payloads.
+    payloads_retired_at TEXT,
     CHECK (
         (state = 'pending' AND completed_at IS NULL)
         OR (state IN ('response', 'error') AND completed_at IS NOT NULL)
@@ -278,6 +280,8 @@ CREATE TABLE IF NOT EXISTS provider_requests (
     cost_reason              TEXT,
     started_at               TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     completed_at             TEXT,
+    -- {§provider-request-evidence}: physical request/response payload evidence.
+    evidence                 TEXT             CHECK (evidence IS NULL OR json_valid(evidence)),
     CHECK (
         (state = 'pending'
             AND outcome IS NULL AND status IS NULL
@@ -370,6 +374,32 @@ ON provider_requests
 WHEN OLD.state != 'pending'
 BEGIN
     SELECT RAISE(ABORT, 'provider request settlement is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_payload_retirement_insert
+BEFORE INSERT ON inference_calls WHEN NEW.payloads_retired_at IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'inference payloads cannot open retired');
+END;
+
+CREATE TRIGGER IF NOT EXISTS inference_payload_retirement_once
+BEFORE UPDATE OF payloads_retired_at ON inference_calls
+WHEN OLD.payloads_retired_at IS NOT NULL OR NEW.payloads_retired_at IS NULL
+  OR NEW.state = 'pending'
+  OR NOT EXISTS (SELECT 1 FROM turns WHERE id = NEW.turn_id AND completed_at IS NOT NULL)
+  OR EXISTS (SELECT 1 FROM provider_requests WHERE inference_call_id = NEW.id AND state = 'pending')
+BEGIN
+    SELECT RAISE(ABORT, 'inference payload retirement requires completed work and occurs once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS provider_request_payload_immutable
+BEFORE UPDATE OF evidence ON provider_requests
+WHEN OLD.state <> 'pending' AND NOT (
+    OLD.evidence IS NOT NULL AND NEW.evidence IS NULL
+    AND EXISTS (SELECT 1 FROM inference_calls WHERE id = OLD.inference_call_id AND payloads_retired_at IS NOT NULL)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'provider request payload is immutable except through retention');
 END;
 
 CREATE TRIGGER IF NOT EXISTS model_calls_native_inputs_valid

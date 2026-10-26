@@ -4,7 +4,6 @@
 -- an edit here.
 
 -- loops
--- policy: immutable per-loop proposal disposition.
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
@@ -16,15 +15,12 @@ CREATE TABLE IF NOT EXISTS loops (
     -- NULL means the owning session itself. Denormalized headline of the loop's
     -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
-    -- Every insert states the complete policy; a column default would
-    -- be a second home for a choice the panel owns. Likewise max_turns below.
-    policy   TEXT    NOT NULL CHECK (json_valid(policy)),
     -- {§session-model-selection}: immutable loop snapshots of the resolved model route and the
-    -- effective spawn route (was provider_spec/child_provider_spec JSON).
+    -- effective spawn route.
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
-    max_turns INTEGER NOT NULL CHECK (max_turns >= -1),
+    effort           TEXT                 CHECK (effort IS NULL OR length(effort) > 0),
+    max_turns        INTEGER NOT NULL     CHECK (max_turns >= -1),
     -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
@@ -51,7 +47,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     CONSTRAINT loops_generation_policy_contract CHECK (
-        (model_route_id IS NULL) = (reasoning_policy IS NULL)
+        (model_route_id IS NULL) = (effort IS NULL)
     ),
     CONSTRAINT loops_terminal_result_contract CHECK (
         CASE
@@ -110,24 +106,28 @@ CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_ro
 -- publication; a concluded loop's unpublished rows move to its recovery loop
 -- ({§message-loop-containment}).
 CREATE TABLE IF NOT EXISTS loop_messages (
-    id           INTEGER NOT NULL PRIMARY KEY,
-    loop_id      INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
-    ordinal      INTEGER NOT NULL CHECK (ordinal >= 1),
-    message_key  TEXT NOT NULL DEFAULT (lower(hex(randomblob(4)))),
-    address      TEXT CHECK (address IS NULL OR length(address) > 0),
+    id              INTEGER NOT NULL PRIMARY KEY,
+    loop_id         INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
+    ordinal         INTEGER NOT NULL CHECK (ordinal >= 1),
+    message_key     TEXT NOT NULL DEFAULT (lower(hex(randomblob(4)))),
+    address         TEXT CHECK (address IS NULL OR length(address) > 0),
     -- {§message-causal-source}: NULL means the owning session itself.
-    source       TEXT CHECK (source IS NULL OR length(source) > 0),
-    body         TEXT NOT NULL CHECK (length(body) > 0),
-    evidence     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence) AND json_type(evidence) = 'object'),
+    source          TEXT CHECK (source IS NULL OR length(source) > 0),
+    body            TEXT NOT NULL CHECK (length(body) > 0),
+    evidence        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence) AND json_type(evidence) = 'object'),
     -- {§methods-loop-run-open-paths}: the message's selected paths (string[] JSON), read at publication.
-    open_paths   TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
+    open_paths      TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
     -- The inbound SEND row this message became (log_entries, chapter 006); NULL until published.
-    log_entry_id INTEGER,
+    log_entry_id    INTEGER,
+    -- {§session-obligations}: a message a session's own operation sends records that operation by turn and sequence.
+    opened_turn_id  INTEGER REFERENCES turns(id) ON DELETE SET NULL,
+    opened_sequence INTEGER CHECK (opened_sequence IS NULL OR opened_sequence >= 1),
     UNIQUE (loop_id, ordinal)
 );
 CREATE INDEX IF NOT EXISTS loop_messages_unpublished ON loop_messages (loop_id) WHERE log_entry_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS loop_messages_key ON loop_messages (message_key);
 CREATE INDEX IF NOT EXISTS loop_messages_address ON loop_messages (address) WHERE address IS NOT NULL;
+CREATE INDEX IF NOT EXISTS loop_messages_opener ON loop_messages (opened_turn_id, opened_sequence) WHERE opened_turn_id IS NOT NULL;
 
 -- {§message-source-scheme}: an address identifies exactly one accepted source in its workspace.
 CREATE TRIGGER IF NOT EXISTS loop_messages_address_unique
@@ -246,6 +246,13 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 
+-- The session whose own operation sent each message.
+CREATE VIEW IF NOT EXISTS message_senders AS
+SELECT m.id AS message_id, sender.session_id AS sender_session_id
+FROM loop_messages m
+JOIN turns opened ON opened.id = m.opened_turn_id
+JOIN loops sender ON sender.id = opened.loop_id;
+
 -- {§actor-boundary-doc-injection}: derived observation only; no durable row is rewritten.
 CREATE VIEW IF NOT EXISTS work_loops AS
 SELECT l.* FROM loops l
@@ -261,11 +268,12 @@ CREATE TABLE IF NOT EXISTS packet_items (
     text TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
 
+-- {§packet-wire-envelope}: section slots include system, user, and assistant.
 CREATE TABLE IF NOT EXISTS turn_sections (
     turn_id  INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
     position INTEGER NOT NULL CHECK (position >= 0),
     name     TEXT    NOT NULL CHECK (length(name) > 0),
-    slot     TEXT    NOT NULL CHECK (slot IN ('system', 'user')),
+    slot     TEXT    NOT NULL CHECK (slot IN ('system', 'user', 'assistant')),
     header   TEXT,
     weight   INTEGER NOT NULL CHECK (weight >= 0),
     PRIMARY KEY (turn_id, position),
@@ -340,11 +348,11 @@ SELECT t.id, t.loop_id, t.sequence, t.timestamp, t.producer, t.kind, t.status, t
        ))) END AS packet
 FROM turns t;
 
--- {§turn-source-resources}: immutable source facts belong to their turn, not
+-- {§turn-source-resources} {§outside-text}: immutable source facts belong to their turn, not
 -- its curatable log. Derivation attachments are replaceable, source bytes are not.
 CREATE TABLE IF NOT EXISTS turn_sources (
     turn_id INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('ops', 'reasoning', 'note')),
+    kind TEXT NOT NULL CHECK (kind IN ('ops', 'reasoning', 'note', 'outside')),
     sequence INTEGER NOT NULL DEFAULT 0 CHECK ((kind = 'note' AND sequence > 0) OR (kind != 'note' AND sequence = 0)),
     content TEXT NOT NULL,
     model_call_id INTEGER REFERENCES model_calls(id),

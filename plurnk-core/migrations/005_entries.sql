@@ -66,11 +66,10 @@ CREATE TABLE IF NOT EXISTS entries (
     -- == members; 'constraint' rows are reconciled from ordinary pick policy.
     -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'constraint')),
-    -- SPEC {§membership-change-gated-sync} — the per-member sync stat-detect:
-    -- "<mtimeMs>:<size>" of the disk file at its last materialization, or `absent`
-    -- after an observed deletion. The pre-turn
-    -- sync stat()s every member but re-reads/re-tokenizes/rewrites only one whose
-    -- signature changed; an unchanged member is a no-op. NULL = never synced.
+    -- SPEC {§membership-change-gated-sync} {§file-snapshot-revision} — the per-member sync
+    -- revision of the disk file at its last materialization, or `absent` after an observed
+    -- deletion. The pre-turn sync stat()s every member but re-reads/re-tokenizes/rewrites
+    -- only one whose signature changed; an unchanged member is a no-op. NULL = never synced.
     synced_sig TEXT,
     -- User Note 5 — manifest cache-friendliness. Last-modified stamp, bumped on every
     -- addressable representation change; engine_list_workspace_entries orders the catalog
@@ -94,7 +93,7 @@ CREATE TABLE IF NOT EXISTS entry_channel_rows (
     weight   INTEGER NOT NULL DEFAULT 0   CHECK (weight >= 0),
     -- Line count of the body, kept at every write so a catalog lists extent without reading
     -- bodies: a trailing newline terminates the last line; empty content has none
-    -- ({§tokenomics-weight-stored-at-write}).
+    -- ({§tokenomics-weight-stored-at-write}, {§logical-line-count}).
     lines    INTEGER NOT NULL             CHECK (lines >= 0),
     -- Search derivation for this exact addressable channel representation.
     -- Content or mimetype changes invalidate it at the owning channel row.
@@ -153,6 +152,8 @@ SELECT entry_channel_rows.entry_id, entry_channel_rows.name,
 FROM entry_channel_rows
 LEFT JOIN contents ON contents.id = entry_channel_rows.content_id;
 
+-- {§logical-line-count}: `entry_channels.lines` mirrors `TextCoordinates.lineCount`, which breaks a
+-- line on LF, on CRLF and on a lone CR.
 CREATE TRIGGER IF NOT EXISTS entry_channels_insert
 INSTEAD OF INSERT ON entry_channels
 BEGIN
@@ -171,8 +172,10 @@ BEGIN
         CASE WHEN COALESCE(NEW.state, 'static') = 'active' THEN NEW.content END,
         NEW.mimetype, COALESCE(NEW.weight, 0),
         CASE WHEN length(NEW.content) = 0 THEN 0
-             WHEN substr(NEW.content, -1) = char(10) THEN length(NEW.content) - length(replace(NEW.content, char(10), ''))
-             ELSE length(NEW.content) - length(replace(NEW.content, char(10), '')) + 1 END,
+             ELSE length(NEW.content) - length(replace(NEW.content, char(10), ''))
+                + length(NEW.content) - length(replace(NEW.content, char(13), ''))
+                - (length(NEW.content) - length(replace(NEW.content, char(13) || char(10), ''))) / 2
+                + CASE WHEN substr(NEW.content, -1) IN (char(10), char(13)) THEN 0 ELSE 1 END END,
         NEW.deep_hash, COALESCE(NEW.state, 'static'), NEW.producer_result
     );
 END;
@@ -197,8 +200,10 @@ BEGIN
                           THEN (SELECT id FROM contents WHERE hash = sha256(NEW.content)) END,
         buffer = CASE WHEN NEW.state = 'active' THEN NEW.content END,
         lines = CASE WHEN length(NEW.content) = 0 THEN 0
-             WHEN substr(NEW.content, -1) = char(10) THEN length(NEW.content) - length(replace(NEW.content, char(10), ''))
-             ELSE length(NEW.content) - length(replace(NEW.content, char(10), '')) + 1 END
+             ELSE length(NEW.content) - length(replace(NEW.content, char(10), ''))
+                + length(NEW.content) - length(replace(NEW.content, char(13), ''))
+                - (length(NEW.content) - length(replace(NEW.content, char(13) || char(10), ''))) / 2
+                + CASE WHEN substr(NEW.content, -1) IN (char(10), char(13)) THEN 0 ELSE 1 END END
     WHERE entry_id = OLD.entry_id AND name = OLD.name
       AND (NEW.content IS NOT OLD.content OR (NEW.state = 'active') IS NOT (OLD.state = 'active'));
     UPDATE entry_channel_rows
@@ -217,12 +222,12 @@ BEGIN
     DELETE FROM entry_channel_rows WHERE entry_id = OLD.entry_id AND name = OLD.name;
 END;
 
--- {§crud} A publication is one SQL statement: failure rolls back metadata and
+-- {§crud} {§file-snapshot-revision} A publication is one SQL statement: failure rolls back metadata and
 -- every channel. The view is an input boundary, not a second persisted copy.
 CREATE VIEW IF NOT EXISTS entry_publication AS
 SELECT NULL AS workspace_id, NULL AS scheme, NULL AS authority, NULL AS pathname,
        NULL AS attributes, NULL AS default_channel, NULL AS output,
-       NULL AS channels, NULL AS created
+       NULL AS channels, NULL AS created, NULL AS synced_sig
 WHERE 0;
 
 CREATE TRIGGER IF NOT EXISTS entry_publication_insert
@@ -230,13 +235,14 @@ INSTEAD OF INSERT ON entry_publication
 BEGIN
     SELECT CASE WHEN json_type(NEW.channels) IS NOT 'object'
         THEN RAISE(ABORT, 'entry publication requires a channel object') END;
-    INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes, default_channel, output)
+    INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes, default_channel, output, synced_sig)
     VALUES (NEW.workspace_id, NEW.scheme, NEW.authority, NEW.pathname,
-            COALESCE(NEW.attributes, '{}'), NEW.default_channel, NEW.output)
+            COALESCE(NEW.attributes, '{}'), NEW.default_channel, NEW.output, NEW.synced_sig)
     ON CONFLICT (workspace_id, scheme, authority, pathname) DO UPDATE SET
         attributes = COALESCE(NEW.attributes, entries.attributes),
         default_channel = excluded.default_channel,
-        output = MAX(entries.output, excluded.output);
+        output = MAX(entries.output, excluded.output),
+        synced_sig = excluded.synced_sig;
     DELETE FROM entry_channels WHERE entry_id = (
         SELECT id FROM entries WHERE workspace_id = NEW.workspace_id
           AND scheme = NEW.scheme AND authority = NEW.authority AND pathname = NEW.pathname
@@ -265,17 +271,23 @@ BEGIN
 END;
 
 -- symbol_defs
--- &graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
+-- &graph NODES ({§relation-indexed-dialects}, {§graph-relations}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
-    id         INTEGER NOT NULL PRIMARY KEY,
+    id            INTEGER NOT NULL PRIMARY KEY,
     derivation_id INTEGER NOT NULL,
-    name       TEXT    NOT NULL CHECK (length(name) > 0),
-    kind       TEXT    NOT NULL,
-    container  TEXT,
-    line       INTEGER NOT NULL,
-    end_line   INTEGER,
+    name          TEXT    NOT NULL CHECK (length(name) > 0),
+    kind          TEXT    NOT NULL,
+    container     TEXT,
+    line          INTEGER NOT NULL,
+    end_line      INTEGER,
+    column        INTEGER,
+    end_column    INTEGER CHECK (
+        (column IS NULL AND end_column IS NULL)
+        OR (column >= 1 AND end_column >= 1 AND column IS NOT NULL AND end_column IS NOT NULL
+            AND end_line IS NOT NULL AND (end_line > line OR (end_line = line AND end_column >= column)))
+    ),
     FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -285,18 +297,21 @@ CREATE INDEX IF NOT EXISTS symbol_defs_name   ON symbol_defs (name);
 CREATE INDEX IF NOT EXISTS symbol_defs_source ON symbol_defs (derivation_id);
 
 -- symbol_refs
--- &graph EDGES ({§relation-indexed-dialects}), from mimetypes' `references` channel.
+-- &graph EDGES ({§relation-indexed-dialects}, {§graph-relations}), from mimetypes' `references` channel.
 -- name = edge TARGET; container = the SOURCE def's full qualified path (the
 -- &> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).
 CREATE TABLE IF NOT EXISTS symbol_refs (
-    id         INTEGER NOT NULL PRIMARY KEY,
-    derivation_id INTEGER NOT NULL,
-    name       TEXT    NOT NULL CHECK (length(name) > 0),
-    kind       TEXT    NOT NULL,
-    container  TEXT,
-    line       INTEGER NOT NULL,
-    FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
+    id            INTEGER NOT NULL PRIMARY KEY,
+    derivation_id INTEGER NOT NULL REFERENCES derivations(id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL CHECK (length(name) > 0),
+    kind          TEXT    NOT NULL,
+    container     TEXT,
+    line          INTEGER NOT NULL CHECK (line >= 1),
+    column        INTEGER NOT NULL CHECK (column >= 1),
+    end_line      INTEGER NOT NULL,
+    end_column    INTEGER NOT NULL CHECK (end_column >= 1),
+    CHECK (end_line > line OR (end_line = line AND end_column >= column))
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);

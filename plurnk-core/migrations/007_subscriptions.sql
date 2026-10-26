@@ -10,29 +10,31 @@
 -- unique index enforces one active subscription per entry. Causal session and
 -- resource owner may differ within the same workspace ({§runtime-resource-binding}).
 CREATE TABLE IF NOT EXISTS subscriptions (
-    id           INTEGER NOT NULL PRIMARY KEY,
-    version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    session_id       INTEGER,
-    entry_id     INTEGER NOT NULL,
-    scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
-    handle       TEXT    NOT NULL CHECK (length(handle) > 0),
-    published_channel TEXT          CHECK (published_channel IS NULL OR length(published_channel) > 0),
-    source       TEXT             CHECK (source IS NULL OR length(source) > 0),
-    opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    id                INTEGER NOT NULL PRIMARY KEY,
+    version           INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    session_id        INTEGER,
+    entry_id          INTEGER NOT NULL,
+    scheme            TEXT    NOT NULL CHECK (length(scheme) > 0),
+    handle            TEXT    NOT NULL CHECK (length(handle) > 0),
+    published_channel TEXT             CHECK (published_channel IS NULL OR length(published_channel) > 0),
+    source            TEXT             CHECK (source IS NULL OR length(source) > 0),
+    opened_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- `[{"lifetime":"turn"}]`: the stream is reaped at the session's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces initially visible like any conclusion. {§exec-lifetime}
-    turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
+    turn_scoped       INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     -- {§session-obligations}: a `[{"lifetime":"detached"}]` spawn outlives its loop and is nobody's obligation.
-    detached     INTEGER NOT NULL DEFAULT 0 CHECK (detached IN (0, 1)),
-    closed_at    TEXT,
-    close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
-    close_result TEXT             CHECK (close_result IS NULL OR json_valid(close_result)),
-    channel_results TEXT          CHECK (channel_results IS NULL OR json_valid(channel_results)),
+    detached          INTEGER NOT NULL DEFAULT 0 CHECK (detached IN (0, 1)),
+    closed_at         TEXT,
+    close_status      INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
+    close_result      TEXT             CHECK (close_result IS NULL OR json_valid(close_result)),
+    channel_results   TEXT             CHECK (channel_results IS NULL OR json_valid(channel_results)),
+    -- {§child-orientation}: last output activity timestamp on this stream.
+    output_changed_at TEXT,
     CHECK ((closed_at IS NULL AND close_status IS NULL AND close_result IS NULL AND channel_results IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL AND close_result IS NOT NULL AND channel_results IS NOT NULL)),
     CHECK (session_id IS NOT NULL OR closed_at IS NOT NULL),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    FOREIGN KEY (entry_id)   REFERENCES entries(id)  ON DELETE CASCADE
 ) STRICT;
 
 CREATE TRIGGER IF NOT EXISTS subscriptions_workspace_insert
@@ -74,6 +76,8 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription must open before it can settle');
 END;
 
+-- {§validation-topology}: matches chapter 5's `entry_channel_producer_result_contract` over `NEW.close_result`,
+-- with `$.status = NEW.close_status` and NULL meaning not yet settled.
 CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_update
 BEFORE UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions
 WHEN NOT (
@@ -83,19 +87,32 @@ WHEN NOT (
         AND NEW.close_status IS NOT NULL
         AND NEW.close_result IS NOT NULL
         AND NEW.channel_results IS NOT NULL
-        AND json_valid(NEW.close_result)
         AND json_valid(NEW.channel_results)
         AND json_type(NEW.channel_results) = 'object'
-        AND json_type(NEW.close_result, '$.status') = 'integer'
-        AND json_extract(NEW.close_result, '$.status') = NEW.close_status
-        AND (
-            (NEW.close_status < 400 AND json_type(NEW.close_result, '$.problem') IS NULL)
-            OR (
-                NEW.close_status >= 400
-                AND json_type(NEW.close_result, '$.problem') = 'object'
-                AND json_extract(NEW.close_result, '$.problem.status') = NEW.close_status
-            )
-        )
+        AND CASE
+            WHEN NOT json_valid(NEW.close_result) THEN 0
+            ELSE
+                json_type(NEW.close_result) IS 'object'
+                AND json_type(NEW.close_result, '$.status') IS 'integer'
+                AND json_extract(NEW.close_result, '$.status') BETWEEN 200 AND 599
+                AND json_extract(NEW.close_result, '$.status') != 202
+                AND json_extract(NEW.close_result, '$.status') = NEW.close_status
+                AND CASE
+                    WHEN json_extract(NEW.close_result, '$.status') < 400 THEN
+                        json_type(NEW.close_result, '$.problem') IS NULL
+                    ELSE
+                        json_type(NEW.close_result, '$.problem') IS 'object'
+                        AND json_type(NEW.close_result, '$.problem.status') IS 'integer'
+                        AND json_extract(NEW.close_result, '$.problem.status')
+                            = json_extract(NEW.close_result, '$.status')
+                        AND json_type(NEW.close_result, '$.problem.type') IS 'text'
+                        AND length(json_extract(NEW.close_result, '$.problem.type')) > 0
+                        AND json_type(NEW.close_result, '$.problem.title') IS 'text'
+                        AND length(json_extract(NEW.close_result, '$.problem.title')) > 0
+                        AND json_type(NEW.close_result, '$.problem.detail') IS 'text'
+                        AND length(json_extract(NEW.close_result, '$.problem.detail')) > 0
+                END
+        END
     )
 )
 BEGIN
@@ -137,7 +154,8 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
 END;
 
--- {§session-obligations}: the shared session work a loop is held on.
+-- {§session-obligations}: a session is held on its open streams, live children, and unanswered
+-- messages sent to live recipient loops.
 CREATE VIEW IF NOT EXISTS session_obligations AS
 SELECT w.id AS session_id,
        EXISTS (
@@ -147,11 +165,19 @@ SELECT w.id AS session_id,
        EXISTS (
            SELECT 1 FROM sessions c JOIN loops l ON l.session_id = c.id
            WHERE c.parent_session_id = w.id AND l.status IN (100, 102, 202)
-       ) AS sessions
+       ) AS sessions,
+       EXISTS (
+           SELECT 1 FROM message_senders s
+           JOIN loop_messages m ON m.id = s.message_id
+           JOIN loops l ON l.id = m.loop_id
+           WHERE s.sender_session_id = w.id
+             AND l.status IN (100, 102, 202)
+             AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
+       ) AS messages
 FROM sessions w;
 
 CREATE VIEW IF NOT EXISTS loop_obligations AS
-SELECT l.id AS loop_id, held.streams, held.sessions
+SELECT l.id AS loop_id, held.streams, held.sessions, held.messages
 FROM loops l JOIN session_obligations held ON held.session_id = l.session_id;
 
 -- {§exec-stream}: publication cursors survive curation of generated observations.

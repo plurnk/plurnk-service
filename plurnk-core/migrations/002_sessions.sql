@@ -1,5 +1,5 @@
 -- MIGRATE: 2 sessions
--- Chapter 2 of the schema baseline ({§db-schema-baseline}): Sessions over a workspace, their model routes, and the ambient event feed their siblings observe.
+-- Chapter 2 of the schema baseline ({§db-schema-baseline}): Sessions over a workspace, their owners, external references, model routes, and the ambient event feed their siblings observe.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS model_routes (
 
 CREATE UNIQUE INDEX IF NOT EXISTS model_routes_identity
 ON model_routes (coalesce(alias, ''), provider, model, coalesce(base_url, ''));
+
+-- {§session-owner-creation} {§session-ownership}: ownership is durable; an owner states whether
+-- a person attends it. The runtime owner (`_plurnk`) holds no client tools and is never interactive.
+CREATE TABLE IF NOT EXISTS session_owners (
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    address      TEXT    NOT NULL CHECK (length(address) > 0),
+    tools        TEXT    NOT NULL CHECK (json_valid(tools) AND json_type(tools) = 'array'),
+    interactive  INTEGER NOT NULL DEFAULT 0
+                         CHECK (interactive IN (0, 1) AND (address != '_plurnk' OR interactive = 0)),
+    PRIMARY KEY (workspace_id, address),
+    CHECK (address != '_plurnk' OR tools = '[]')
+) STRICT;
 
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (
@@ -36,16 +48,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- persistent spawn override; NULL means "use my model."
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    -- {§session-effort}: renamed effort by 009_effort.
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
-    -- {§session-effort-source}: renamed effort_source by 009_effort.
-    reasoning_source TEXT NOT NULL DEFAULT 'default' CHECK (reasoning_source IN ('default', 'explicit')),
+    -- {§session-effort}: durable generation effort policy.
+    effort          TEXT CHECK (effort IS NULL OR length(effort) > 0),
+    -- {§session-effort-source}: whether effort was explicitly selected or defaulted.
+    effort_source   TEXT NOT NULL DEFAULT 'default' CHECK (effort_source IN ('default', 'explicit')),
     -- sessions fork via parent_session_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_session_id INTEGER          CHECK (parent_session_id IS NULL OR parent_session_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
-    -- At most one root model session per workspace carries this flag; it is
-    -- separate from the session's literal name.
-    default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
+    default_session INTEGER NOT NULL DEFAULT 0 CHECK (default_session IN (0, 1)),
     -- {§session-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
     -- The Problem the latest cancellation delivered to this session's live loops; writing it is
@@ -56,21 +66,19 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- parent's cursor and records the closed event boundary of its snapshot.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
     fork_event_boundary INTEGER       CHECK (fork_event_boundary IS NULL OR fork_event_boundary >= 0),
+    owner           TEXT    NOT NULL DEFAULT '_plurnk' CHECK (length(owner) > 0),
     CHECK (fork_event_boundary IS NULL OR parent_session_id IS NOT NULL),
-    CHECK (default_conversation = 0 OR (origin = 'model' AND parent_session_id IS NULL)),
-    CHECK ((model_route_id IS NULL) = (reasoning_policy IS NULL)),
-    FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_session_id) REFERENCES sessions(id)     ON DELETE CASCADE
+    CHECK (default_session = 0 OR (origin = 'model' AND parent_session_id IS NULL)),
+    CHECK ((model_route_id IS NULL) = (effort IS NULL)),
+    FOREIGN KEY (workspace_id)      REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_session_id) REFERENCES sessions(id)   ON DELETE CASCADE
 ) STRICT;
 
 CREATE        INDEX IF NOT EXISTS sessions_workspace_id_created_at ON sessions (workspace_id, created_at);
 
-CREATE        INDEX IF NOT EXISTS sessions_parent_session_id         ON sessions (parent_session_id);
+CREATE        INDEX IF NOT EXISTS sessions_parent_session_id       ON sessions (parent_session_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS sessions_provider_identity         ON sessions (provider_identity);
-
-CREATE UNIQUE INDEX IF NOT EXISTS sessions_workspace_default_conversation
-    ON sessions (workspace_id) WHERE default_conversation = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_provider_identity       ON sessions (provider_identity);
 
 -- {§session-scheme-spawn}: a retained name cannot be rebound to another actor.
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_workspace_name          ON sessions (workspace_id, name);
@@ -79,6 +87,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS sessions_workspace_name          ON sessions (
 CREATE INDEX IF NOT EXISTS sessions_model_route_id       ON sessions (model_route_id)       WHERE model_route_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS sessions_spawn_model_route_id ON sessions (spawn_model_route_id) WHERE spawn_model_route_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS sessions_owner ON sessions (workspace_id, owner);
 
 CREATE TRIGGER IF NOT EXISTS sessions_provider_identity_immutable
 BEFORE UPDATE OF provider_identity ON sessions
@@ -94,6 +104,43 @@ BEGIN
     SELECT RAISE(ABORT, 'sessions.fork_event_boundary is immutable');
 END;
 
+CREATE TRIGGER IF NOT EXISTS session_owner_insert
+BEFORE INSERT ON sessions
+WHEN EXISTS (SELECT 1 FROM workspaces WHERE id = NEW.workspace_id) AND NOT EXISTS (
+    SELECT 1 FROM session_owners WHERE workspace_id = NEW.workspace_id AND address = NEW.owner
+)
+OR (NEW.origin = '_plurnk' AND NEW.owner != '_plurnk')
+OR (NEW.parent_session_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM sessions WHERE id = NEW.parent_session_id AND workspace_id != NEW.workspace_id
+))
+BEGIN
+    SELECT RAISE(ABORT, 'session owner or parent does not belong to its workspace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS session_owner_update
+BEFORE UPDATE OF owner, workspace_id ON sessions
+WHEN NOT EXISTS (
+    SELECT 1 FROM session_owners WHERE workspace_id = NEW.workspace_id AND address = NEW.owner
+)
+OR (NEW.origin = '_plurnk' AND NEW.owner != '_plurnk')
+BEGIN
+    SELECT RAISE(ABORT, 'session owner does not belong to its workspace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS session_owner_identity
+BEFORE UPDATE OF workspace_id, address ON session_owners
+BEGIN
+    SELECT RAISE(ABORT, 'session owner identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS session_owner_referenced
+BEFORE DELETE ON session_owners
+WHEN EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.workspace_id)
+AND EXISTS (SELECT 1 FROM sessions WHERE workspace_id = OLD.workspace_id AND owner = OLD.address)
+BEGIN
+    SELECT RAISE(ABORT, 'session owner is still referenced');
+END;
+
 -- {§env-delta-log-pull}: one append-only occurrence journal gives every
 -- producer a shared monotonic order. Audience is structural: direct parent,
 -- addressed reply, explicit workspace broadcast, or their union. The event snapshots exactly
@@ -103,8 +150,8 @@ END;
 CREATE TABLE IF NOT EXISTS ambient_events (
     id                      INTEGER NOT NULL PRIMARY KEY,
     workspace_id            INTEGER NOT NULL,
-    producer_session_id      INTEGER NOT NULL,
-    recipient_session_id     INTEGER,
+    producer_session_id     INTEGER NOT NULL,
+    recipient_session_id    INTEGER,
     workspace_broadcast     INTEGER NOT NULL DEFAULT 0 CHECK (workspace_broadcast IN (0, 1)),
     kind                    TEXT    NOT NULL CHECK (kind IN ('activity', 'loop_termination', 'reply')),
     source_record_id        INTEGER NOT NULL CHECK (source_record_id >= 1),
@@ -147,9 +194,9 @@ CREATE TABLE IF NOT EXISTS ambient_events (
             AND json_type(rx, '$.status') = 'integer'
             AND json_extract(rx, '$.status') = status_rx)
     ),
-    FOREIGN KEY (workspace_id)            REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (producer_session_id)      REFERENCES sessions(id)    ON DELETE CASCADE,
-    FOREIGN KEY (recipient_session_id)    REFERENCES sessions(id)    ON DELETE CASCADE
+    FOREIGN KEY (workspace_id)         REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (producer_session_id)  REFERENCES sessions(id)   ON DELETE CASCADE,
+    FOREIGN KEY (recipient_session_id) REFERENCES sessions(id)   ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
@@ -196,10 +243,38 @@ END;
 -- workspace_module_state: the foreign key is real, so a session's definitions die with it, and
 -- every identity component stays NOT NULL ({§entry-identity-no-null}).
 CREATE TABLE IF NOT EXISTS session_module_state (
-    session_id        INTEGER NOT NULL,
-    namespace_owner  TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
-    state            TEXT    NOT NULL CHECK (json_valid(state)),
-    updated_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    session_id      INTEGER NOT NULL,
+    namespace_owner TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
+    state           TEXT    NOT NULL CHECK (json_valid(state)),
+    updated_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     PRIMARY KEY (session_id, namespace_owner),
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) STRICT;
+
+-- {§session-external-reference} Protocol adapters own the opaque key; core owns its durable target.
+CREATE TABLE IF NOT EXISTS session_references (
+    namespace  TEXT    NOT NULL CHECK (length(namespace) > 0),
+    reference  TEXT    NOT NULL,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    PRIMARY KEY (namespace, reference)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS session_references_session ON session_references (session_id);
+
+CREATE TRIGGER IF NOT EXISTS session_reference_identity
+BEFORE UPDATE ON session_references
+BEGIN
+    SELECT RAISE(ABORT, 'session reference is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS session_reference_model
+BEFORE INSERT ON session_references
+WHEN EXISTS (SELECT 1 FROM sessions WHERE id = NEW.session_id AND origin != 'model')
+BEGIN
+    SELECT RAISE(ABORT, 'session reference requires a model session');
+END;
+
+CREATE VIEW IF NOT EXISTS session_reference_allocations AS
+SELECT r.namespace, r.reference, s.name AS workspace_name, w.name AS session_name
+FROM session_references r JOIN sessions w ON w.id = r.session_id
+JOIN workspaces s ON s.id = w.workspace_id;

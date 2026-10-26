@@ -1,6 +1,6 @@
 // {§validation-topology} — one settled-result corpus, three enforcers: the gate a scheme's result
 // crosses (`Results.assertChannelProducerResult`), chapter 5's `entry_channel_producer_result_contract`
-// and chapter 7's `subscriptions_result_contract_update` (`011_settled`). They agree on every row.
+// and chapter 7's `subscriptions_result_contract_update`. They agree on every row.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidOperationResultError, Results, type ChannelProducerResult, type ProblemDetails } from "@plurnk/plurnk-schemes";

@@ -1,5 +1,5 @@
 -- MIGRATE: 6 log
--- Chapter 6 of the schema baseline ({§db-schema-baseline}): The log: rows, their projections, curation effects, and the views the packet reads.
+-- Chapter 6 of the schema baseline ({§db-schema-baseline}): The log: rows, their projections, curation effects, proposal decisions, and the views the packet reads.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
 
-    session_id          INTEGER NOT NULL,
+    session_id      INTEGER NOT NULL,
     loop_id         INTEGER NOT NULL,
     turn_id         INTEGER NOT NULL,
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
@@ -50,8 +50,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- Rejected-attempt artifacts carry NULL here ({§rejected-emission-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
-    -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
-    -- (it did — FORK/WORK). Validity lives at the parse + type layer, not duplicated in DDL.
+    -- Validity lives at the parse + type layer, not duplicated in DDL.
     op              TEXT,
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 
@@ -87,8 +86,12 @@ CREATE TABLE IF NOT EXISTS log_entries (
     outcome         TEXT,
     attrs           TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
 
-    initial_folded   TEXT    NOT NULL DEFAULT '[]'
+    initial_folded  TEXT    NOT NULL DEFAULT '[]'
                     CHECK (json_valid(initial_folded) AND json_type(initial_folded) = 'array'),
+
+    -- {§log-mutation-patch}: a settled file mutation's row keeps the unified diff of what it did,
+    -- served as the row's `patch` channel and never entering a receipt or packet.
+    patch           TEXT,
 
     CHECK (
         (op IS NULL) = COALESCE(
@@ -98,19 +101,91 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ),
     CHECK (json_extract(attrs, '$.kind') != 'emissionAttempt' OR origin = 'model'),
 
-    FOREIGN KEY (session_id)  REFERENCES sessions(id)  ON DELETE CASCADE,
-    FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
-    FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (loop_id)    REFERENCES loops(id)    ON DELETE CASCADE,
+    FOREIGN KEY (turn_id)    REFERENCES turns(id)    ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (turn_id, sequence);
 
-CREATE        INDEX IF NOT EXISTS log_entries_session_id           ON log_entries (session_id);
+CREATE        INDEX IF NOT EXISTS log_entries_session_id       ON log_entries (session_id);
 
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 
 -- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
 CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
+    ON log_entries (model_call_id)
+    WHERE model_call_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS log_entries_subscription_publication_id
+    ON log_entries (subscription_publication_id)
+    WHERE subscription_publication_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_session_ambient_event
+    ON log_entries (session_id, ambient_event_id)
+    WHERE ambient_event_id IS NOT NULL;
+
+-- {§emission-row}: one announcement per turn.
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_emission_turn
+ON log_entries (turn_id)
+WHERE json_extract(attrs, '$.kind') = 'emission';
+
+CREATE TRIGGER IF NOT EXISTS log_entries_emission_shape
+BEFORE INSERT ON log_entries
+WHEN json_extract(NEW.attrs, '$.kind') = 'emission'
+  AND NOT COALESCE((
+      NEW.op = 'READ'
+      AND NEW.origin = '_plurnk'
+      AND NEW.source IS NULL
+      AND NEW.model_call_id IS NULL
+      AND NEW.lineMarker IS NULL
+      AND NEW.scheme = 'ops'
+      AND NEW.status_rx = 200
+      AND NEW.state = 'resolved'
+      AND NEW.mimetype_rx = 'application/json'
+      AND json(NEW.initial_folded) = json('[[1,-1]]')
+      AND json_type(NEW.rx, '$.content') = 'text'
+      AND length(json_extract(NEW.rx, '$.content')) > 0
+      AND NEW.pathname = (
+          SELECT '/' || l.sequence || '/' || t.sequence
+          FROM turns t JOIN loops l ON l.id = t.loop_id
+          WHERE t.id = NEW.turn_id
+      )
+      AND (SELECT kind FROM turns WHERE id = NEW.turn_id) IN ('inference', 'initialization')
+      AND EXISTS (
+          SELECT 1 FROM turn_sources
+          WHERE turn_id = NEW.turn_id AND kind = 'ops' AND sequence = 0
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM log_entries
+          WHERE turn_id = NEW.turn_id AND sequence > NEW.sequence
+      )
+      AND (
+          NEW.inherited_history = 1
+          OR NEW.hostname = (SELECT name FROM sessions WHERE id = NEW.session_id)
+      )
+  ), 0)
+BEGIN
+    SELECT RAISE(ABORT, 'an emission row is one born-folded _plurnk announcement of its own turn''s admitted ops source');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_entries_emission_frozen
+BEFORE UPDATE OF rx, status_rx, state, outcome, weight ON log_entries
+WHEN json_extract(OLD.attrs, '$.kind') = 'emission'
+BEGIN
+    SELECT RAISE(ABORT, 'an emission row is frozen');
+END;
+
+-- {§message-completion}: message outcome is independent of reply delivery and log curation.
+CREATE TABLE IF NOT EXISTS message_completions (
+    message_id  INTEGER PRIMARY KEY REFERENCES loop_messages(id) ON DELETE CASCADE,
+    response_id INTEGER NOT NULL REFERENCES log_entries(id),
+    status      INTEGER NOT NULL CHECK (status IN (200, 499))
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS message_completions_response_id ON message_completions (response_id);
 
 -- {§loop-response-messages}: delivered messages remain executed evidence;
 -- curation and loop termination cannot retract or replace them.
@@ -138,26 +213,9 @@ FROM log_responses r WHERE json_array_length(r.rx, '$.answers') = 0;
 
 CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m
-WHERE NOT EXISTS (
-    SELECT 1 FROM log_responses r
-    JOIN sessions w ON w.id = r.session_id, json_each(r.rx, '$.answers') answer
-    WHERE w.workspace_id = m.workspace_id AND answer.value = m.path
-);
+WHERE NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id);
 
--- {§message-reply-delivery}: notify the sender and the assigned session.
--- UNION prevents duplicate delivery when both roles belong to the same session.
--- {§loop-answer}: a child's answer to the very task its parent delegated is NOT delivered here;
--- the parent receives it once, as the child's termination row, which carries that answer at
--- ops://<child>/<loop> (operator, 2026-09-19). Replies to any other message still deliver.
-CREATE VIEW IF NOT EXISTS delegated_task_answers AS
-SELECT r.id AS source_record_id, parent.id AS recipient_session_id
-FROM log_responses r
-JOIN sessions producer ON producer.id = r.session_id
-JOIN sessions parent ON parent.id = producer.parent_session_id
-JOIN json_each(r.rx, '$.answers') answer
-JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
-WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND m.source = 'session://' || parent.name;
-
+-- {§message-reply-delivery}: a reply reaches the message's own session and the session that sent it.
 CREATE VIEW IF NOT EXISTS message_reply_deliveries AS
 SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
        r.session_id AS producer_session_id, m.session_id AS recipient_session_id
@@ -166,12 +224,22 @@ JOIN sessions producer ON producer.id = r.session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 UNION
-SELECT r.id, r.loop_id, m.workspace_id, r.session_id, sender.id
+SELECT r.id, r.loop_id, m.workspace_id, r.session_id, s.sender_session_id
 FROM log_responses r
 JOIN sessions producer ON producer.id = r.session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
-JOIN sessions sender ON sender.workspace_id = m.workspace_id AND m.source = 'session://' || sender.name;
+JOIN message_senders s ON s.message_id = m.id;
+
+-- {§session-scheme-collect}: a child's answer to the first message its parent sent is its conclusion, not a reply.
+CREATE VIEW IF NOT EXISTS delegated_task_answers AS
+SELECT r.id AS source_record_id, producer.parent_session_id AS recipient_session_id
+FROM log_responses r
+JOIN sessions producer ON producer.id = r.session_id
+JOIN json_each(r.rx, '$.answers') answer
+JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+JOIN message_senders s ON s.message_id = m.id
+WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND s.sender_session_id = producer.parent_session_id;
 
 CREATE VIEW IF NOT EXISTS delivered_message_replies AS
 SELECT d.* FROM message_reply_deliveries d
@@ -179,18 +247,6 @@ WHERE NOT EXISTS (
     SELECT 1 FROM delegated_task_answers t
     WHERE t.source_record_id = d.source_record_id AND t.recipient_session_id = d.recipient_session_id
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
-    ON log_entries (model_call_id)
-    WHERE model_call_id IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS log_entries_subscription_publication_id
-    ON log_entries (subscription_publication_id)
-    WHERE subscription_publication_id IS NOT NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS log_entries_session_ambient_event
-    ON log_entries (session_id, ambient_event_id)
-    WHERE ambient_event_id IS NOT NULL;
 
 -- {§log-history-projection} — log_entries is append-only execution evidence;
 -- this one-to-one row is the current model-facing projection of that evidence.
@@ -202,39 +258,8 @@ CREATE TABLE IF NOT EXISTS log_entry_projections (
     active       INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     folded       TEXT    NOT NULL DEFAULT '[]'
                          CHECK (json_valid(folded) AND json_type(folded) = 'array'),
-    output_admission_turn_id INTEGER,
-    output_withheld INTEGER NOT NULL DEFAULT 0 CHECK (output_withheld IN (0, 1)),
-    CHECK (output_withheld = 0 OR output_admission_turn_id IS NOT NULL),
-    FOREIGN KEY (output_admission_turn_id) REFERENCES turns(id),
     FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
-
--- {§db-fk-indexes} Opening a turn checks admissions that cite a turn; without this every projection row is read.
-CREATE INDEX IF NOT EXISTS log_entry_projections_output_admission_turn ON log_entry_projections (output_admission_turn_id) WHERE output_admission_turn_id IS NOT NULL;
-
--- Admission is a durable projection decision, not
--- deletion or proof of provider delivery. It cannot be reset to replay output.
-CREATE TRIGGER IF NOT EXISTS log_output_admission_immutable
-BEFORE UPDATE OF output_admission_turn_id, output_withheld ON log_entry_projections
-WHEN OLD.output_admission_turn_id IS NOT NULL AND (
-    NEW.output_admission_turn_id IS NOT OLD.output_admission_turn_id
-    OR NEW.output_withheld != OLD.output_withheld
-)
-BEGIN
-    SELECT RAISE(ABORT, 'log output admission is immutable');
-END;
-
-CREATE TRIGGER IF NOT EXISTS log_output_admission_owner
-BEFORE UPDATE OF output_admission_turn_id ON log_entry_projections
-WHEN NEW.output_admission_turn_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM turns turn
-    JOIN loops loop ON loop.id = turn.loop_id
-    JOIN log_entries entry ON entry.session_id = loop.session_id
-    WHERE turn.id = NEW.output_admission_turn_id AND entry.id = NEW.log_entry_id
-)
-BEGIN
-    SELECT RAISE(ABORT, 'log output admission must belong to its session');
-END;
 
 -- The ordinary operation surface reads this view. Forensic and lifecycle
 -- machinery names log_entries directly and therefore retains complete history.
@@ -246,8 +271,7 @@ SELECT le.id, le.version, le.session_id, le.loop_id, le.turn_id, le.sequence,
        le.hostname, le.port, le.pathname, le.query, le.fragment, le.lineMarker,
        le.tx, le.mimetype_tx,
        le.rx, le.mimetype_rx, le.status_rx, le.weight,
-       le.state, le.outcome, le.attrs, le.initial_folded, projection.folded,
-       projection.output_admission_turn_id, projection.output_withheld
+       le.state, le.outcome, le.attrs, le.initial_folded, le.patch, projection.folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE projection.active = 1;
@@ -366,6 +390,18 @@ BEFORE DELETE ON log_entry_projections
 WHEN EXISTS (SELECT 1 FROM log_entries WHERE id = OLD.log_entry_id)
 BEGIN
     SELECT RAISE(ABORT, 'a durable log event must retain its projection');
+END;
+
+-- {§emission-row} An emission is curated whole: its projection is retired, never trimmed.
+CREATE TRIGGER IF NOT EXISTS log_entry_projections_emission_whole
+BEFORE UPDATE OF folded ON log_entry_projections
+WHEN json(NEW.folded) != json('[]')
+  AND EXISTS (
+      SELECT 1 FROM log_entries
+      WHERE id = NEW.log_entry_id AND json_extract(attrs, '$.kind') = 'emission'
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'an emission row is curated whole');
 END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_model_call_valid
@@ -551,6 +587,39 @@ BEFORE UPDATE OF ambient_event_id ON log_entries
 WHEN NOT (OLD.ambient_event_id IS NULL AND NEW.ambient_event_id IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, 'log_entries ambient event identity may only be assigned once');
+END;
+
+-- {§proposal-decision-evidence}: authority precedes effects; results cannot replace decisions.
+CREATE TABLE IF NOT EXISTS proposal_decisions (
+    log_entry_id INTEGER PRIMARY KEY REFERENCES log_entries(id) ON DELETE CASCADE,
+    decision     TEXT NOT NULL CHECK (decision IN ('accept', 'reject', 'cancel')),
+    resolver     TEXT NOT NULL CHECK (length(resolver) > 0),
+    body         TEXT,
+    outcome      TEXT,
+    decided_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS proposal_decision_insert
+BEFORE INSERT ON proposal_decisions
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM log_entries le JOIN sessions w ON w.id = le.session_id
+        WHERE le.id = NEW.log_entry_id AND le.state = 'proposed'
+          AND (NEW.resolver = '_plurnk' OR NEW.resolver = w.owner)
+    ) THEN RAISE(ABORT, 'proposal decision requires a pending operation and its resolving authority') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS proposal_decision_immutable
+BEFORE UPDATE ON proposal_decisions
+BEGIN
+    SELECT RAISE(ABORT, 'proposal decisions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS proposal_decision_history_lifetime
+BEFORE DELETE ON proposal_decisions
+WHEN EXISTS (SELECT 1 FROM log_entries WHERE id = OLD.log_entry_id)
+BEGIN
+    SELECT RAISE(ABORT, 'proposal decisions belong to operation history');
 END;
 
 -- One relational projection owns activity eligibility, audience, and snapshot

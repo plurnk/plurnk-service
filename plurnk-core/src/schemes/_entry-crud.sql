@@ -1,6 +1,18 @@
 -- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes and
 -- the engine for cross-scheme COPY/MOVE/KILL.
 
+-- INIT: support_floor_guard
+-- {§db-migrations} Refuse databases from before the 4.0.0 support floor, naming the stepping-stone release.
+CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
+CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
+WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
+ AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references')
+BEGIN
+    SELECT RAISE(ABORT, 'database schema precedes the 4.0.0 support floor; upgrade through @plurnk/plurnk-service@4.3.3 first ({§db-migrations})');
+END;
+INSERT INTO _support_floor_probe (id) VALUES (1);
+DROP TABLE _support_floor_probe;
+
 -- PREP: crud_find_workspace_entry
 -- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
 -- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.

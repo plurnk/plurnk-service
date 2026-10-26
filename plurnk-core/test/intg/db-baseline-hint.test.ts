@@ -1,5 +1,6 @@
 // {§db-migrations} — a database whose shape disagrees with its version cannot be migrated;
-// the launcher must say so instead of surfacing SQLite's bare "no such column".
+// the launcher must say so instead of surfacing SQLite's bare "no such column", and a pre-floor
+// database must name its stepping-stone release.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -20,4 +21,15 @@ test("{§db-migrations}: opening a database whose shape disagrees with its versi
     assert.match(result.stderr, /shape disagrees with its schema version/, "the operator is told what the failure is");
     assert.match(result.stderr, /newer release needs that release; .* deleted with its -wal and -shm sidecars/, "and what to do about it");
     assert.match(result.stderr, /cause: no such (?:column|table)/, "SQLite's own diagnosis stays attached");
+});
+
+test("{§db-migrations}: opening a pre-floor database names the stepping-stone release", async () => {
+    const result = await launch({}, async ({ dir, dbPath }) => {
+        const legacy = join(dir, "pre-floor");
+        await mkdir(legacy);
+        await writeFile(join(legacy, "028_legacy.sql"), "-- MIGRATE: 28 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
+        new SqlRiteSync({ path: dbPath, dir: legacy }).close();
+    });
+    assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
+    assert.match(result.stderr, /precedes the 4\.0\.0 support floor; upgrade through @plurnk\/plurnk-service@4\.3\.3 first/, "the stepping-stone release is named");
 });

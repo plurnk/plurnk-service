@@ -10,14 +10,15 @@
 -- never copied into persistence.
 CREATE TABLE IF NOT EXISTS client_interactions (
     id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    session_id    INTEGER NOT NULL,
+    session_id   INTEGER NOT NULL,
     loop_id      INTEGER NOT NULL,
     turn_id      INTEGER NOT NULL,
     request      TEXT    NOT NULL CHECK (json_valid(request) AND json_type(request) = 'object'),
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    recipient    TEXT    NOT NULL DEFAULT '_plurnk',
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (loop_id)   REFERENCES loops(id)   ON DELETE CASCADE,
-    FOREIGN KEY (turn_id)   REFERENCES turns(id)   ON DELETE CASCADE
+    FOREIGN KEY (loop_id)    REFERENCES loops(id)    ON DELETE CASCADE,
+    FOREIGN KEY (turn_id)    REFERENCES turns(id)    ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS client_interactions_session_id_id

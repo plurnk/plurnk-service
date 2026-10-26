@@ -367,7 +367,7 @@ test("{§logical-line-count} entry_channels: the stored line count mirrors TextC
     } finally { await db.close(); }
 });
 
-// {§logical-line-count} — a lone CR breaks a line; `011_settled` counts it.
+// {§logical-line-count} — a lone CR breaks a line; `005_entries` counts it.
 test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
     const db = await openMigrated();
     try {
