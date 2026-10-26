@@ -539,10 +539,12 @@ export default class NativeToolCalls {
     // A plurnk operation name, case-insensitively, or a known executor by its own spelling.
     static #operation(raw: string, known: ReadonlySet<string>): string | null {
         const name = raw.trim();
+        const lower = name.toLowerCase();
         if (OPERATIONS.has(name.toUpperCase())) return name.toUpperCase();
         // A shell by another model's name: `bash` is `sh` when `sh` is the registered shell.
-        if (name.toLowerCase() === "bash" && !known.has("bash") && known.has("sh")) return "sh";
-        return known.has(name.toLowerCase()) ? name : null;
+        if (lower === "bash" && !known.has("bash") && known.has("sh")) return "sh";
+        if ((lower === "ts" || lower === "javascript" || lower === "typescript" || lower === "node") && !known.has(lower) && known.has("js")) return "js";
+        return known.has(lower) ? name : null;
     }
 
     // An executor's unknown parameter is one of its options, written as the option block its owner reads.

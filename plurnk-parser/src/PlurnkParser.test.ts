@@ -68,7 +68,7 @@ test("{§fence-heading-in-body} an unfinished wider body ends at the next known 
 test("{§response-text}: prose and operation-shaped text stay literal, without guessing intent", () => {
     const executors = ["sh", "js"];
     for (const source of [
-        "The answer is 42.\n\n```ts\nconst x = 1;\n```",
+        "The answer is 42.\n\n```rust\nconst x = 1;\n```",
         "Example:\n\n```text\n````READ (x.md\n````\n```",
         "I will look.\n\n    ```FIND (ledger.md) /shutdown/i\n    ```",
         "Thinking.\n\n    ```NOTE\nhello\n    ```",

@@ -5,7 +5,7 @@ import type { ExecInputReceiver } from "@plurnk/plurnk-execs";
 
 const cases = [
     ["sh", "cat", "42\n", "42"],
-    ["node", 'process.stdin.on("data", c => process.stdout.write(c))', "42\n", "42"],
+    ["js", 'process.stdin.on("data", c => process.stdout.write(c))', "42\n", "42"],
     ["python3", "import sys; sys.stdout.write(sys.stdin.read())", "42\n", "42"],
     ["perl", "print while <STDIN>", "42\n", "42"],
     ["ruby", "print STDIN.read", "42\n", "42"],

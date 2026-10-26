@@ -320,7 +320,7 @@ test("story: pull just one line out of a file", async (t) => {
 test("story: list every admin user from a JSON file", async (t) => {
     // data/users.json: [{name:Alice,role:admin}, {name:Bob,role:viewer}].
     // jsonpath path: $.[?(@.role=='admin')].name → ["Alice"]
-    // Fallback paths: regex match on lines / execution + jq / full READ + reason.
+    // Fallback paths: regex match on lines / execution / full READ + reason.
     const story = await runStory({
         signal: t.signal,
         label: "list-admins",

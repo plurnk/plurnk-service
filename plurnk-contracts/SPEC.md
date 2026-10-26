@@ -317,6 +317,7 @@ and parse diagnostics are separate contracts.
 | {§inline-chain} | A closer on a heading line, or on a body's closing line, may be followed on that same line by the next… |
 | {§transparent-inline-closer} | A closer mid-heading is read as if it were not written. |
 | {§executor-case} | An executor tag in any case. |
+| {§executor-js-spelling} | When `js` is registered, any of `ts`, `javascript`, `typescript`, or `node` that is not itself registered… |
 | {§one-line-turn} | A whole turn on one line. |
 | {§anchor-digits} | In a text scope, `@` followed by one to four digits cannot be a hash and is read as that line number, with… |
 | {§unclosed-aside} | A heading whose aside opens with `<!--` and never closes on its line takes the rest of the line as the aside,… |
@@ -562,6 +563,14 @@ registered spelling when known, otherwise the lowercase name. Native operation
 names remain case-sensitive. Recognition follows {§executor-heading}; availability
 and permission are checked at dispatch, not granted by a recognized spelling.
 
+§executor-js-spelling When `js` is registered, any of `ts`, `javascript`,
+`typescript`, or `node` that is not itself registered names `js` under
+{§executor-case}. Parsing normalizes the runtime before admission and dispatch;
+execution, policy, receipts, and output addresses remain `js`'s. The authored
+source remains unchanged. These spellings add no executor, discovery entry, or
+model-facing teaching. An explicitly registered spelling retains its own
+identity; absent `js`, the aliases grant no executable capability.
+
 §one-line-turn **A whole turn on one line.** A model may emit a turn as a single
 line: prose, then heading after heading with no line ending anywhere. Two
 rules absorb it. The next opener on a heading's own line, after the heading's
@@ -579,7 +588,7 @@ A closed aside followed by more text is unchanged.
 
 §quotation **A fence that opens no operation quotes.** Outside a body, a line-start fence that
 is not an operation heading ({§executor-heading}) — unlabeled or tagged like an unknown
-code language (`ts`, `json`) without invocation slots — opens a
+code language (`rust`, `json`) without invocation slots — opens a
 quotation that runs to its matching closer (same character, width at least the opener's) or to
 the end of the input. Everything inside is data: no operation runs there and native tool-call
 markup is not read ({§native-tool-calls}). An operation fenced inside an unlabeled code block

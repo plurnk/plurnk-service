@@ -65,7 +65,7 @@ export default class SchemeRegistry {
     #coreServices: CoreSchemeServices | undefined;
     #packageAttributions = new Map<string, ExtensionAttribution>();
     #packageAttributionSources = new Map<string, Set<object>>();
-    // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
+    // {§exec} — runtime-tag schemes (sh/js/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///<id>). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
@@ -83,7 +83,7 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("log", new Log());
         // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
-        // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
+        // schemes (sh://, js://) and process-KILLs the tag coordinate. The knowledgebase
         // is worker:/// (shared) or worker://<name>/ (named).
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer()));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));

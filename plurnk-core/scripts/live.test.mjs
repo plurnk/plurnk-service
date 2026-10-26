@@ -43,7 +43,7 @@ test("{§tier-census} the live catalog contains every registered specimen exactl
     assert.ok(names.includes("live: structural edits preserve neighboring source text"));
     assert.ok(names.includes("live: cancellation settles an active model request"));
     assert.ok(names.includes("{§bare-inference} live: delegate two isolated questions and consume their answers"));
-    assert.ok(names.includes("live executor input: SEND feeds a running Node process"));
+    assert.ok(names.includes("live executor input: SEND feeds a running js process"));
     assert.ok(names.includes("live: a client-attached image persists until log curation"));
     for (const form of ["hash", "line", "range", "insert", "column", "prepend", "append", "pattern", "whole"]) assert.ok(names.includes(`live: EDIT by ${form} — one taught EDIT lands the sentence that means it`), `the #893 ${form} specimen is registered`);
     for (const kind of ["image", "pdf", "audio"]) assert.ok(names.includes(`live: a retained ${kind} is reported as one earlier READ, never as a new arrival`), `the #899 ${kind} account specimen is registered`);

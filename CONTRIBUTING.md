@@ -46,8 +46,8 @@ root lint separately checks the declared package dependency graph. Unused-code
 and clone findings require review: runtime discovery and generated grammars can
 hide genuine uses from static analysis, and similar adapters need not share policy.
 
-The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
-`jq` is capability-dependent. Every other surface is a live specimen that declares what it
+The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`.
+Every other surface is a live specimen that declares what it
 requires and skips by name ({§tier-census}): the third-party MCP composition (`npx`, the npm
 registry, the remote server), the llama-server rails (`PLURNK_LLAMA_URL`, `127.0.0.1:11435` unless
 set, with `PLURNK_LLAMA_RAIL_PROFILE` naming the template, `qwen` or `gemma`) and the

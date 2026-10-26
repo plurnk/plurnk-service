@@ -10,6 +10,46 @@ const errors = (result: ReturnType<typeof PlurnkParser.parse>) =>
 const frame = PlurnkParser.frame;
 const task = (content: string, op: DispositionStatement["op"] = "WAIT") => frame(op, content);
 
+for (const entrypoint of ["parse", "parseStatements"] as const) {
+    test(`{§executor-js-spelling}: ${entrypoint} canonicalizes ts, javascript, typescript, and node to js without shadowing a registered executor`, () => {
+        for (const alias of ["ts", "javascript", "typescript", "node"]) {
+            for (const { executors, tag, runtime } of [
+                { executors: ["js"], tag: alias, runtime: "js" },
+                { executors: ["JS"], tag: alias.toUpperCase(), runtime: "JS" },
+                { executors: ["js", alias], tag: alias, runtime: alias },
+                { executors: [alias, "js"], tag: alias, runtime: alias },
+                { executors: [alias], tag: alias.toUpperCase(), runtime: alias },
+                { executors: [], tag: alias, runtime: null },
+            ]) {
+                const body = "console.log(42);";
+                const source = frame(tag, body) + "\n" + task("Inspect the result.");
+                const parsed = PlurnkParser[entrypoint](source, { executors });
+                const diagnostics = parsed.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+                assert.deepEqual(diagnostics.map((error) => ({ severity: error.severity, message: error.message })), [], "an unknown tag is a code block, silently");
+                assert.equal(parsed.unparsedTail, undefined);
+                const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+                assert.deepEqual(statements.map(writtenOp), runtime === null ? ["WAIT"] : [runtime, "WAIT"]);
+                if (runtime === null) continue;
+                const execution = statements[0];
+                assert.ok(isExecution(execution));
+                assert.equal(execution.body, body);
+                assert.equal(PlurnkParser.stringify([execution]), frame(runtime, body), "serialization uses the canonical executor");
+            }
+        }
+    });
+}
+
+test("{§executor-js-spelling}: a nested alias example remains a literal message body", () => {
+    for (const alias of ["ts", "javascript", "typescript", "node"]) {
+        const body = frame(alias, "console.log(42);");
+        const parsed = PlurnkParser.parse(frame("SEND", body) + "\n" + task("Explained."), { executors: ["js"] });
+        assert.deepEqual(errors(parsed), []);
+        assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "WAIT"]);
+        const send = ops(parsed)[0];
+        assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
+    }
+});
+
 // {§canonical-statement}
 test("{§section-boundary} independent fenced operations retain exact bodies and typed fields", () => {
     const input = [
