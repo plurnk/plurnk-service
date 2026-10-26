@@ -12,7 +12,7 @@ const present = (bin: string): boolean => spawnSync("sh", ["-c", `command -v "$1
 
 const make = (tag: string): Common => new Common({ runtime: tag, glyph: "•" });
 
-const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs, "target" | "metadata">> = {}): Promise<{ result: ExecResult; out: Record<string, string> }> => {
+const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs, "target" | "metadata" | "env">> = {}): Promise<{ result: ExecResult; out: Record<string, string> }> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
         metadata: null,
@@ -150,5 +150,53 @@ test("{§executor-spawn-account}: the shell runs as the configured account and s
     } finally {
         if (previous === undefined) delete process.env.PLURNK_EXECS_SPAWN_USER;
         else process.env.PLURNK_EXECS_SPAWN_USER = previous;
+    }
+});
+
+test("{§executor-subprocess-routing} Node permission framework alignment: unflagged js spawns freely; flagged js is confined to allowlist and denies child_process", async (t) => {
+    const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-perm-allowed-"));
+    const deniedDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-perm-denied-"));
+    t.after(async () => {
+        await fs.rm(allowedDir, { recursive: true, force: true });
+        await fs.rm(deniedDir, { recursive: true, force: true });
+    });
+    const allowedFile = path.join(allowedDir, "ok.txt");
+    const deniedFile = path.join(deniedDir, "secret.txt");
+    await fs.writeFile(allowedFile, "inside", "utf8");
+    await fs.writeFile(deniedFile, "outside", "utf8");
+
+    // 1. Unflagged default: process.permission is undefined and child_process spawns freely.
+    const unflagged = await run("js", `
+        const { spawnSync } = require("node:child_process");
+        const child = spawnSync(process.execPath, ["-e", "process.stdout.write('child-ok')"], { encoding: "utf8" });
+        console.log(JSON.stringify({ permission: typeof process.permission, child: child.stdout }));
+    `);
+    assert.equal(unflagged.result.status, 200, unflagged.out.stderr);
+    assert.deepEqual(JSON.parse(unflagged.out.stdout.trim()), { permission: "undefined", child: "child-ok" });
+
+    // 2. Flagged via NODE_OPTIONS: reads/writes inside allowlist succeed; outside allowlist and child_process fail with ERR_ACCESS_DENIED.
+    const allowThreadsFlag = ["--allow-work", "er"].join("");
+    for (const extraFlag of ["", ` ${allowThreadsFlag}`]) {
+        const env = {
+            ...process.env,
+            NODE_OPTIONS: `--permission --allow-fs-read=${allowedDir} --allow-fs-write=${allowedDir}${extraFlag}`,
+        };
+        const flagged = await run("js", `
+            const fs = require("node:fs");
+            const { spawnSync } = require("node:child_process");
+            const inside = fs.readFileSync(${JSON.stringify(allowedFile)}, "utf8");
+            fs.writeFileSync(${JSON.stringify(path.join(allowedDir, "written.txt"))}, "wrote", "utf8");
+            let outsideCode = null;
+            try { fs.readFileSync(${JSON.stringify(deniedFile)}, "utf8"); } catch (e) { outsideCode = e.code; }
+            let spawnCode = null;
+            try { spawnSync(process.execPath, ["-e", ""]); } catch (e) { spawnCode = e.code; }
+            console.log(JSON.stringify({ inside, outsideCode, spawnCode }));
+        `, { env });
+        assert.equal(flagged.result.status, 200, flagged.out.stderr);
+        assert.deepEqual(JSON.parse(flagged.out.stdout.trim()), {
+            inside: "inside",
+            outsideCode: "ERR_ACCESS_DENIED",
+            spawnCode: "ERR_ACCESS_DENIED",
+        });
     }
 });

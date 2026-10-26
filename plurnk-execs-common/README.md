@@ -48,6 +48,26 @@ Per-tag kill-switches (`PLURNK_EXECS_<TAG>=0`) and the
 across every extension ({§executor-policy}). A disabled tag is not registered and
 never reaches this executor.
 
+## Alignment with Node's permission framework
+
+Node's `--permission` model is natively conditional: unflagged `js` invocations run
+with normal Node semantics, while passing `--permission` flags through
+`NODE_OPTIONS` confines `js` child processes at access time (`ERR_ACCESS_DENIED`)
+without adding any PLURNK-specific knob or altering default behavior.
+
+| Step | Existing surface | Effect |
+| --- | --- | --- |
+| 1. Remove out-of-model interpreters | `PLURNK_EXECS_ONLY=js` | Unregisters `sh` and `python3` at discovery ({§executor-policy}); downstream layers cannot re-enable them. |
+| 2. Confine `js` children | `NODE_OPTIONS="--permission --allow-fs-read=<workspace> --allow-fs-write=<workspace>"` | Confines filesystem reads and writes to `<workspace>` and denies `child_process` spawning (`ERR_ACCESS_DENIED`). |
+| 3. Discover daemon envelope (optional) | `node --permission-audit ...` | Audits paths the daemon itself touches (run root, checkout, `node_modules`) before launching the daemon under `--permission`. |
+
+**Scope choices** ({§exec-env-scoped}):
+
+- **Workspace scope** (`plurnk (env)` with `scope: "workspace"`): `NODE_OPTIONS` reaches both `js` execution children and Node-based MCP server subprocesses in the workspace.
+- **Session scope** (`plurnk (env)` with `scope: "session"`): `NODE_OPTIONS` reaches `js` execution children of that session only.
+
+**Honest ledger:** Node's permission model provides same-UID accident containment, not adversarial security boundaries. PLURNK owns authority, consent, and audit, and never claims containment; for OS-account separation, combine with `PLURNK_EXECS_SPAWN_USER` ({§executor-spawn-account}) or an external container/VM sandbox.
+
 ## Tests
 
 `test:lint`, `test:unit`. Live-eval tests auto-skip where the interpreter is absent.
